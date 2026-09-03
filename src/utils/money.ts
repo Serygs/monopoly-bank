@@ -1,3 +1,3 @@
-export function formatThousands(value: number): string {
-  return new Intl.NumberFormat('en-US').format(value);
+export function formatThousands(value: number, locale = 'en-US'): string {
+  return new Intl.NumberFormat(locale).format(value);
 }

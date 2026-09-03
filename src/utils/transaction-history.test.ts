@@ -7,6 +7,7 @@ const rent: Transaction = { id: 'transaction', gameId: 'game', type: 'PAY_RENT',
 
 describe('transaction history formatting', () => {
   it('formats a rent payment with both player names', () => { expect(transactionDescription(rent, players)).toBe('John → Alex · Rent'); });
+  it('formats transaction descriptions in Ukrainian', () => { expect(transactionDescription(rent, players, 'uk')).toBe('John → Alex · Оренда'); });
   it('formats multi-player amounts and player-relative values', () => {
     const transaction: Transaction = { ...rent, type: 'PLAYER_TO_ALL', amount: 50, totalAmount: 200 };
     expect(transactionAmount(transaction)).toBe('50k each · 200k total');

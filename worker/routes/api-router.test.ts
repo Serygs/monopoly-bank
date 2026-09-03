@@ -155,6 +155,24 @@ describe('API router', () => {
     expect(response.status).toBe(404);
   });
 
+  it('deletes a saved game', async () => {
+    let deletedGameId: string | undefined;
+    const router = createTestRouter({
+      deleteGame: async (requestedGameId) => {
+        deletedGameId = requestedGameId;
+        return { gameId: requestedGameId };
+      },
+    });
+
+    const response = await router(new Request(`https://example.test/api/games/${gameId}`, {
+      method: 'DELETE',
+    }));
+
+    expect(response.status).toBe(200);
+    expect(deletedGameId).toBe(gameId);
+    await expect(response.json()).resolves.toEqual({ data: { gameId } });
+  });
+
   it('returns 404 for a missing player history', async () => {
     const router = createTestRouter({
       listPlayerTransactions: async () => {
@@ -190,6 +208,7 @@ function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {
     listGames: async (): Promise<GameSummary[]> => [],
     createGame: async () => gameDetails,
     getGame: async () => gameDetails,
+    deleteGame: async (requestedGameId) => ({ gameId: requestedGameId }),
     ...pickGameOverrides(overrides),
   };
   const banking: BankingService = {
@@ -204,16 +223,18 @@ function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {
 interface TestServiceOverrides {
   createGame: GameService['createGame'];
   getGame: GameService['getGame'];
+  deleteGame: GameService['deleteGame'];
   createTransaction: BankingService['createTransaction'];
   listTransactions: BankingService['listTransactions'];
   listPlayerTransactions: BankingService['listPlayerTransactions'];
 }
 
 function pickGameOverrides(overrides: Partial<TestServiceOverrides>): Partial<GameService> {
-  const { createGame, getGame } = overrides;
+  const { createGame, getGame, deleteGame } = overrides;
   return {
     ...(createGame === undefined ? {} : { createGame }),
     ...(getGame === undefined ? {} : { getGame }),
+    ...(deleteGame === undefined ? {} : { deleteGame }),
   };
 }
 

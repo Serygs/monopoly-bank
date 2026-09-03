@@ -1,4 +1,4 @@
-import type { CreateGameRequest, GameDetails, GameSummary } from '../../shared/contracts/api.js';
+import type { CreateGameRequest, DeleteGameResponse, GameDetails, GameSummary } from '../../shared/contracts/api.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { CreatePlayerInput, PlayerRepository } from '../repositories/player-repository.js';
 import { ResourceNotFoundError } from './errors.js';
@@ -7,6 +7,7 @@ export interface GameService {
   listGames(): Promise<GameSummary[]>;
   createGame(request: CreateGameRequest): Promise<GameDetails>;
   getGame(gameId: string): Promise<GameDetails>;
+  deleteGame(gameId: string): Promise<DeleteGameResponse>;
 }
 
 export interface GameServiceDependencies {
@@ -63,5 +64,13 @@ export class DefaultGameService implements GameService {
       game,
       players: await this.players.listByGameId(gameId),
     };
+  }
+
+  async deleteGame(gameId: string): Promise<DeleteGameResponse> {
+    if (!(await this.games.delete(gameId))) {
+      throw new ResourceNotFoundError('Game');
+    }
+
+    return { gameId };
   }
 }

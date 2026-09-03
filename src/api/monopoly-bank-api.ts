@@ -1,4 +1,4 @@
-import type { ApiError, ApiResponse, CreateGameRequest, CreateTransactionRequest, CreateTransactionResponse, GameDetails, GameSummary } from '../../shared/contracts/api.js';
+import type { ApiError, ApiResponse, CreateGameRequest, CreateTransactionRequest, CreateTransactionResponse, DeleteGameResponse, GameDetails, GameSummary } from '../../shared/contracts/api.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 
 export class MonopolyBankApiError extends Error {
@@ -16,6 +16,7 @@ export interface MonopolyBankApi {
   listGames(): Promise<GameSummary[]>;
   createGame(request: CreateGameRequest): Promise<GameDetails>;
   getGame(gameId: string): Promise<GameDetails>;
+  deleteGame(gameId: string): Promise<DeleteGameResponse>;
   createTransaction(gameId: string, request: CreateTransactionRequest): Promise<CreateTransactionResponse>;
   listTransactions(gameId: string, limit?: number): Promise<Transaction[]>;
   listPlayerTransactions(gameId: string, playerId: string, limit?: number): Promise<Transaction[]>;
@@ -25,6 +26,7 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   async listGames(): Promise<GameSummary[]> { return request<GameSummary[]>('/api/games'); }
   async createGame(input: CreateGameRequest): Promise<GameDetails> { return request<GameDetails>('/api/games', { method: 'POST', body: JSON.stringify(input) }); }
   async getGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}`); }
+  async deleteGame(gameId: string): Promise<DeleteGameResponse> { return request<DeleteGameResponse>(`/api/games/${encodeURIComponent(gameId)}`, { method: 'DELETE' }); }
   async createTransaction(gameId: string, input: CreateTransactionRequest): Promise<CreateTransactionResponse> { return request<CreateTransactionResponse>(`/api/games/${encodeURIComponent(gameId)}/transactions`, { method: 'POST', body: JSON.stringify(input) }); }
   async listTransactions(gameId: string, limit = 50): Promise<Transaction[]> { return request<Transaction[]>(`/api/games/${encodeURIComponent(gameId)}/transactions?limit=${limit}`); }
   async listPlayerTransactions(gameId: string, playerId: string, limit = 50): Promise<Transaction[]> { return request<Transaction[]>(`/api/games/${encodeURIComponent(gameId)}/players/${encodeURIComponent(playerId)}/transactions?limit=${limit}`); }
