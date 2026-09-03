@@ -45,9 +45,13 @@ Run the migration command before every deployment that introduces a new file in 
 
 Pushes to `dev` deploy automatically to the separate `monopoly-bank-dev` Worker and D1 database. Create that database once, then configure the GitHub `development` environment with:
 
-- secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`;
-- variables: `CLOUDFLARE_DEV_D1_DATABASE_ID`, `CLOUDFLARE_DEV_D1_DATABASE_NAME`.
+```bash
+npx wrangler d1 create monopoly-bank-dev --location eeur
+```
 
-The D1 database name and ID must identify the development database, not `monopoly-bank`. Pending migrations are applied to that development database before each deployment.
+- secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`;
+- optionally, the `CLOUDFLARE_DEV_D1_DATABASE_NAME` variable when the database is not named `monopoly-bank-dev`.
+
+The workflow resolves the development D1 database UUID from its name, so no database ID needs to be stored in GitHub. The database must identify the development database, not `monopoly-bank`. Pending migrations are applied to that development database before each deployment.
 
 Production releases are manual only: run the `Deploy` workflow from the `main` branch and confirm the release input. Configure the GitHub `production` environment with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; require a deployment reviewer there if an additional release approval is desired.
