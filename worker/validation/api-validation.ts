@@ -1,0 +1,148 @@
+import type { CreateGameRequest, CreateTransactionRequest } from '../../shared/contracts/api.js';
+import { transactionTypes, type TransactionType } from '../../shared/types/monopoly.js';
+
+export class ApiValidationError extends Error {
+  readonly details: Record<string, string | number>;
+
+  constructor(message: string, details: Record<string, string | number> = {}) {
+    super(message);
+    this.details = details;
+  }
+}
+
+export async function parseCreateGameRequest(request: Request): Promise<CreateGameRequest> {
+  const body = await parseJsonObject(request);
+  const players = readArray(body, 'players').map((player, index) => {
+    const value = readObject(player, `players[${index}]`);
+    return {
+      name: readRequiredString(value, 'name', `players[${index}].name`),
+      color: readRequiredString(value, 'color', `players[${index}].color`),
+    };
+  });
+
+  if (players.length < 2 || players.length > 6) {
+    throw new ApiValidationError('A game must have between 2 and 6 players.', {
+      playerCount: players.length,
+    });
+  }
+
+  return {
+    name: readRequiredString(body, 'name', 'name'),
+    startingBalance: readPositiveInteger(body, 'startingBalance'),
+    passGoReward: readPositiveInteger(body, 'passGoReward'),
+    players,
+  };
+}
+
+export async function parseCreateTransactionRequest(
+  request: Request,
+): Promise<CreateTransactionRequest> {
+  const body = await parseJsonObject(request);
+  const type = readTransactionType(body);
+  const comment = readOptionalComment(body);
+
+  switch (type) {
+    case 'PLAYER_TO_PLAYER':
+    case 'PAY_RENT':
+      return {
+        type,
+        sourcePlayerId: readRequiredString(body, 'sourcePlayerId', 'sourcePlayerId'),
+        destinationPlayerId: readRequiredString(body, 'destinationPlayerId', 'destinationPlayerId'),
+        amount: readPositiveInteger(body, 'amount'),
+        ...(comment === undefined ? {} : { comment }),
+      };
+    case 'PLAYER_TO_BANK':
+    case 'BANK_TO_PLAYER':
+      return {
+        type,
+        playerId: readRequiredString(body, 'playerId', 'playerId'),
+        amount: readPositiveInteger(body, 'amount'),
+        ...(comment === undefined ? {} : { comment }),
+      };
+    case 'PLAYER_TO_ALL':
+      return {
+        type,
+        payerPlayerId: readRequiredString(body, 'payerPlayerId', 'payerPlayerId'),
+        amountPerPlayer: readPositiveInteger(body, 'amountPerPlayer'),
+        ...(comment === undefined ? {} : { comment }),
+      };
+    case 'ALL_TO_PLAYER':
+      return {
+        type,
+        recipientPlayerId: readRequiredString(body, 'recipientPlayerId', 'recipientPlayerId'),
+        amountPerPlayer: readPositiveInteger(body, 'amountPerPlayer'),
+        ...(comment === undefined ? {} : { comment }),
+      };
+    case 'PASS_GO':
+      return {
+        type,
+        playerId: readRequiredString(body, 'playerId', 'playerId'),
+        ...(comment === undefined ? {} : { comment }),
+      };
+  }
+}
+
+async function parseJsonObject(request: Request): Promise<Record<string, unknown>> {
+  try {
+    return readObject(await request.json(), 'body');
+  } catch (error) {
+    if (error instanceof ApiValidationError) {
+      throw error;
+    }
+    throw new ApiValidationError('Request body must be valid JSON.');
+  }
+}
+
+function readObject(value: unknown, field: string): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new ApiValidationError(`${field} must be an object.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function readArray(body: Record<string, unknown>, field: string): unknown[] {
+  const value = body[field];
+  if (!Array.isArray(value)) {
+    throw new ApiValidationError(`${field} must be an array.`);
+  }
+  return value;
+}
+
+function readRequiredString(
+  body: Record<string, unknown>,
+  key: string,
+  field: string,
+): string {
+  const value = body[key];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new ApiValidationError(`${field} is required.`);
+  }
+  return value.trim();
+}
+
+function readPositiveInteger(body: Record<string, unknown>, key: string): number {
+  const value = body[key];
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new ApiValidationError(`${key} must be a positive integer.`);
+  }
+  return value;
+}
+
+function readTransactionType(body: Record<string, unknown>): TransactionType {
+  const value = body.type;
+  if (typeof value !== 'string' || !transactionTypes.includes(value as TransactionType)) {
+    throw new ApiValidationError('type must be a supported transaction type.');
+  }
+  return value as TransactionType;
+}
+
+function readOptionalComment(body: Record<string, unknown>): string | undefined {
+  const value = body.comment;
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new ApiValidationError('comment must be a string.');
+  }
+  return value.trim();
+}
