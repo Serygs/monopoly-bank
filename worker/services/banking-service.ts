@@ -66,6 +66,10 @@ export class DefaultBankingService implements BankingService {
       balanceChanges: result.affectedPlayers,
     });
 
+    if (request.type !== 'PASS_GO') {
+      await this.games.recordRecentAmount(gameId, result.transaction.amount);
+    }
+
     const transaction = await this.transactions.getById(gameId, transactionId);
     if (transaction === null) {
       throw new PersistenceConsistencyError();

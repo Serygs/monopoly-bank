@@ -33,6 +33,11 @@ export interface PassGoCommand {
   comment?: string | null;
 }
 
+export interface BankruptcyCommand extends BankingCommand {
+  playerId: string;
+  creditorPlayerId: string;
+}
+
 interface BankingCommand {
   game: Game;
   players: readonly Player[];
@@ -137,6 +142,8 @@ export function playerToPlayer(command: PlayerToPlayerCommand): BankingOperation
 
   const source = findPlayer(players, command.sourcePlayerId);
   const destination = findPlayer(players, command.destinationPlayerId);
+  ensureActive(source);
+  ensureActive(destination);
   ensureDifferentPlayers(source, destination);
   ensureSufficientFunds(source, command.amount);
 
@@ -158,6 +165,7 @@ export function playerToBank(command: PlayerToBankCommand): BankingOperationResu
   validateAmount(command.amount);
 
   const player = findPlayer(players, command.playerId);
+  ensureActive(player);
   ensureSufficientFunds(player, command.amount);
 
   return createResult(
@@ -175,6 +183,7 @@ export function bankToPlayer(command: BankToPlayerCommand): BankingOperationResu
   validateAmount(command.amount);
 
   const player = findPlayer(players, command.playerId);
+  ensureActive(player);
   return createResult(
     command.game.id,
     'BANK_TO_PLAYER',
@@ -190,7 +199,8 @@ export function playerToAll(command: PlayerToAllCommand): BankingOperationResult
   validateAmount(command.amountPerPlayer);
 
   const payer = findPlayer(players, command.payerPlayerId);
-  const recipients = players.filter((player) => player.id !== payer.id);
+  ensureActive(payer);
+  const recipients = players.filter((player) => player.id !== payer.id && player.status !== 'BANKRUPT');
   const totalAmount = multiplyAmounts(command.amountPerPlayer, recipients.length);
   ensureSufficientFunds(payer, totalAmount);
 
@@ -212,7 +222,8 @@ export function allToPlayer(command: AllToPlayerCommand): BankingOperationResult
   validateAmount(command.amountPerPlayer);
 
   const recipient = findPlayer(players, command.recipientPlayerId);
-  const payers = players.filter((player) => player.id !== recipient.id);
+  ensureActive(recipient);
+  const payers = players.filter((player) => player.id !== recipient.id && player.status !== 'BANKRUPT');
   for (const payer of payers) {
     ensureSufficientFunds(payer, command.amountPerPlayer);
   }
@@ -247,6 +258,7 @@ export function passGo(command: PassGoCommand): BankingOperationResult {
   validateAmount(command.game.passGoReward);
 
   const player = findPlayer(players, command.playerId);
+  ensureActive(player);
   return createResult(
     command.game.id,
     'PASS_GO',
@@ -255,6 +267,22 @@ export function passGo(command: PassGoCommand): BankingOperationResult {
     command.comment,
     [createBalanceChange(player, command.game.passGoReward)],
   );
+}
+
+export function declareBankruptcy(command: BankruptcyCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const bankruptPlayer = findPlayer(players, command.playerId);
+  const creditor = findPlayer(players, command.creditorPlayerId);
+  ensureActive(bankruptPlayer);
+  ensureActive(creditor);
+  ensureDifferentPlayers(bankruptPlayer, creditor);
+  if (bankruptPlayer.balance === 0) {
+    return createResult(command.game.id, 'BANKRUPTCY_TRANSFER', 1, 1, null, []);
+  }
+  return createResult(command.game.id, 'BANKRUPTCY_TRANSFER', bankruptPlayer.balance, bankruptPlayer.balance, null, [
+    createBalanceChange(bankruptPlayer, -bankruptPlayer.balance),
+    createBalanceChange(creditor, bankruptPlayer.balance),
+  ]);
 }
 
 function validateGame(game: Game, players: readonly Player[]): readonly Player[] {
@@ -306,6 +334,12 @@ function ensureDifferentPlayers(source: Player, destination: Player): void {
 function ensureSufficientFunds(player: Player, requiredAmount: number): void {
   if (player.balance < requiredAmount) {
     throw new InsufficientFundsError(player.id, player.balance, requiredAmount);
+  }
+}
+
+function ensureActive(player: Player): void {
+  if (player.status === 'BANKRUPT') {
+    throw new InvalidGameStateError(`player "${player.id}" is bankrupt`);
   }
 }
 

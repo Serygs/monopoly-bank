@@ -21,6 +21,7 @@ export function transactionDescription(transaction: Transaction, players: Player
     case 'PLAYER_TO_ALL': return `${nameOf(negative?.playerId)} → ${text.everyone}`;
     case 'ALL_TO_PLAYER': return `${text.everyone} → ${nameOf(positive?.playerId)}`;
     case 'PASS_GO': return `${nameOf(positive?.playerId)} · ${text.passGo}`;
+    case 'BANKRUPTCY_TRANSFER': return `${nameOf(negative?.playerId)} declared bankruptcy to ${nameOf(positive?.playerId)}`;
   }
 }
 

@@ -18,6 +18,7 @@ export function SavedGamesPage({ onCreateGame, onOpenGame }: Props) {
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<unknown | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState<string | null>(null);
 
   const loadGames = () => {
     setLoading(true);
@@ -64,6 +65,10 @@ export function SavedGamesPage({ onCreateGame, onOpenGame }: Props) {
       setRemoving(false);
     }
   };
+  const duplicateGame = async (game: GameSummary) => {
+    setDuplicating(game.game.id);
+    try { onOpenGame((await monopolyBankApi.duplicateGame(game.game.id)).game.id); } finally { setDuplicating(null); }
+  };
 
   return <main className="page saved-games-page">
     <section className="page-heading hero-heading">
@@ -102,6 +107,7 @@ export function SavedGamesPage({ onCreateGame, onOpenGame }: Props) {
         </div>
         <div className="game-card-actions">
           <button className="button button-secondary" type="button" onClick={() => onOpenGame(summary.game.id)}>{t('openGame')}</button>
+          <button className="button button-quiet" type="button" disabled={duplicating === summary.game.id} onClick={() => void duplicateGame(summary)}>{duplicating === summary.game.id ? 'Copying…' : 'Duplicate'}</button>
           <button className="button button-danger-quiet" type="button" aria-label={t('removeGameAria', { name: summary.game.name })} onClick={() => requestRemoval(summary)}>{t('removeGame')}</button>
         </div>
       </article>)}

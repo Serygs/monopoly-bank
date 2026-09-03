@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rollDice, rollDie } from './dice';
+import { applyDiceResult, rollDice, rollDie } from './dice';
 
 describe('dice utilities', () => {
   it('produces die values from 1 through 6', () => {
@@ -16,5 +16,18 @@ describe('dice utilities', () => {
     expect(rollDice(() => 0.4).isDouble).toBe(true);
     const values = [0, 0.5];
     expect(rollDice(() => values.shift() ?? 0).isDouble).toBe(false);
+  });
+});
+
+describe('consecutive doubles', () => {
+  it('increments doubles and sends only the third double to jail', () => {
+    const double = { first: 4, second: 4, total: 8, isDouble: true };
+    expect(applyDiceResult(0, double)).toMatchObject({ consecutiveDoubles: 1, thirdDouble: false });
+    expect(applyDiceResult(1, double)).toMatchObject({ consecutiveDoubles: 2, thirdDouble: false });
+    expect(applyDiceResult(2, double)).toEqual({ consecutiveDoubles: 0, isInJail: true, thirdDouble: true });
+  });
+
+  it('resets a player counter on a non-double', () => {
+    expect(applyDiceResult(2, { first: 1, second: 2, total: 3, isDouble: false })).toEqual({ consecutiveDoubles: 0, isInJail: false, thirdDouble: false });
   });
 });

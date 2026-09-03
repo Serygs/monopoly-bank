@@ -22,6 +22,8 @@ export interface GameSummary {
 export interface GameDetails {
   game: Game;
   players: Player[];
+  favoriteAmounts?: number[];
+  recentAmounts?: number[];
 }
 
 export interface DeleteGameResponse {
@@ -79,6 +81,24 @@ export interface AllToPlayerTransactionRequest extends TransactionRequestBase {
 export interface PassGoTransactionRequest extends TransactionRequestBase {
   type: 'PASS_GO';
   playerId: string;
+}
+
+export interface BankruptcyRequest {
+  playerId: string;
+  creditorPlayerId: string;
+}
+
+export interface SetJailRequest { isInJail: boolean; }
+export interface DiceRollRequest { playerId: string; first: number; second: number; }
+export interface DiceRollResponse { player: Player; thirdDouble: boolean; }
+export interface GameSummaryStatistics {
+  durationMs: number;
+  totalTransactions: number;
+  totalMoneyTransferred: number;
+  largestSinglePayment: number;
+  richestActivePlayer: Player | null;
+  lowestActiveBalance: number | null;
+  players: Array<{ player: Player; totalReceived: number; totalPaid: number; passGoCount: number; transactionCount: number }>;
 }
 
 export type CreateTransactionRequest =

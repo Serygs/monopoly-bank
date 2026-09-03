@@ -1,4 +1,4 @@
-export const gameStatuses = ['ACTIVE', 'ARCHIVED'] as const;
+export const gameStatuses = ['ACTIVE', 'FINISHED'] as const;
 
 export type GameStatus = (typeof gameStatuses)[number];
 
@@ -10,6 +10,7 @@ export const transactionTypes = [
   'ALL_TO_PLAYER',
   'PAY_RENT',
   'PASS_GO',
+  'BANKRUPTCY_TRANSFER',
 ] as const;
 
 export type TransactionType = (typeof transactionTypes)[number];
@@ -30,8 +31,14 @@ export interface Player {
   name: string;
   color: string;
   balance: number;
+  status?: PlayerStatus;
+  isInJail?: boolean;
+  consecutiveDoubles?: number;
   createdAt: string;
 }
+
+export const playerStatuses = ['ACTIVE', 'BANKRUPT'] as const;
+export type PlayerStatus = (typeof playerStatuses)[number];
 
 export interface TransactionParticipant {
   playerId: string;

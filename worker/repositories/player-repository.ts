@@ -1,4 +1,4 @@
-import type { Player } from '../../shared/types/monopoly.js';
+import type { Player, PlayerStatus } from '../../shared/types/monopoly.js';
 
 interface PlayerRow {
   id: string;
@@ -6,6 +6,9 @@ interface PlayerRow {
   name: string;
   color: string;
   balance: number;
+  status: PlayerStatus;
+  is_in_jail: number;
+  consecutive_doubles: number;
   created_at: string;
 }
 
@@ -21,6 +24,7 @@ export interface PlayerRepository {
   createMany(inputs: CreatePlayerInput[]): Promise<Player[]>;
   listByGameId(gameId: string): Promise<Player[]>;
   updateBalance(playerId: string, balance: number): Promise<boolean>;
+  updateGameplayState(playerId: string, input: { status?: PlayerStatus; isInJail?: boolean; consecutiveDoubles?: number }): Promise<Player | null>;
 }
 
 export class D1PlayerRepository implements PlayerRepository {
@@ -56,7 +60,7 @@ export class D1PlayerRepository implements PlayerRepository {
   async listByGameId(gameId: string): Promise<Player[]> {
     const result = await this.database
       .prepare(
-        `SELECT id, game_id, name, color, balance, created_at
+        `SELECT id, game_id, name, color, balance, status, is_in_jail, consecutive_doubles, created_at
          FROM players
          WHERE game_id = ?
          ORDER BY created_at ASC, id ASC`,
@@ -79,6 +83,17 @@ export class D1PlayerRepository implements PlayerRepository {
 
     return result.meta.changes > 0;
   }
+
+  async updateGameplayState(playerId: string, input: { status?: PlayerStatus; isInJail?: boolean; consecutiveDoubles?: number }): Promise<Player | null> {
+    const assignments: string[] = [];
+    const values: (string | number)[] = [];
+    if (input.status !== undefined) { assignments.push('status = ?'); values.push(input.status); }
+    if (input.isInJail !== undefined) { assignments.push('is_in_jail = ?'); values.push(input.isInJail ? 1 : 0); }
+    if (input.consecutiveDoubles !== undefined) { assignments.push('consecutive_doubles = ?'); values.push(input.consecutiveDoubles); }
+    if (assignments.length === 0) return null;
+    const row = await this.database.prepare(`UPDATE players SET ${assignments.join(', ')} WHERE id = ? RETURNING id, game_id, name, color, balance, status, is_in_jail, consecutive_doubles, created_at`).bind(...values, playerId).first<PlayerRow>();
+    return row === null ? null : mapPlayer(row);
+  }
 }
 
 function mapPlayer(row: PlayerRow): Player {
@@ -88,6 +103,9 @@ function mapPlayer(row: PlayerRow): Player {
     name: row.name,
     color: row.color,
     balance: row.balance,
+    status: row.status,
+    isInJail: row.is_in_jail === 1,
+    consecutiveDoubles: row.consecutive_doubles,
     createdAt: row.created_at,
   };
 }
