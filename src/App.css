@@ -41,6 +41,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid #174a31; outline-
 .game-card-copy { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .game-card-seal { flex: 0 0 auto; width: 48px; height: 48px; }
 .game-card-actions { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.saved-games-page .game-card { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 16px; }
+.saved-games-page .game-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; justify-content: stretch; }
+.saved-games-page .game-card-actions .button { width: 100%; min-width: 0; }
+.saved-games-page .game-card-actions .button-danger-quiet { grid-column: 1 / -1; }
 .banknote-panel { position: relative; overflow: hidden; background: #f9f3d9; border: 2px solid #8ca491; }
 .empty-state-token { position: relative; z-index: 1; width: 58px; height: 58px; margin: 0 auto 16px; }
 .wallet-card { overflow: hidden; isolation: isolate; border-width: 2px; background: linear-gradient(145deg, #fff 65%, #f2f5ef); }
