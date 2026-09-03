@@ -62,3 +62,13 @@ button:focus-visible, input:focus-visible { outline: 3px solid #174a31; outline-
 .remove-game-dialog > p { line-height: 1.55; }
 .remove-game-dialog .notice { padding: 14px; box-shadow: none; }
 @media (max-width: 640px) { .app-header { padding: 0 12px; }.app-header-inner { min-height: 64px; }.brand { gap: 7px; font-size: .92rem; }.brand-mark { width: 34px; height: 34px; }.header-tools { gap: 8px; }.bank-status { display: none; }.language-switch button { min-width: 38px; }.hero-heading { border-radius: 14px; }.game-card-actions { display: grid; grid-template-columns: 1fr; }.game-card-actions .button { width: 100%; }.game-card-copy { align-items: flex-start; }.game-card-seal { width: 42px; height: 42px; } }
+@media (max-width: 640px) {
+  .saved-games-page .game-card { gap: 14px; padding: 16px; }
+  .saved-games-page .game-card-actions { grid-template-columns: 1fr; }
+  .saved-games-page .game-card-actions .button-danger-quiet { grid-column: auto; }
+  .table-calculator { padding: 18px; }
+  .calculator-controls { flex-wrap: wrap; }
+  .calculator-controls input { flex: 1 1 110px; min-width: 0; }
+  .calculator-operations { flex: 0 0 auto; }
+  .calculator-controls output { flex: 1 0 100%; text-align: left; }
+}
