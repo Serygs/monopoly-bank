@@ -8,9 +8,13 @@ import { ResourceNotFoundError } from '../services/errors.js';
 import type { GameService } from '../services/game-service.js';
 import { createApiRouter } from './api-router.js';
 
+const gameId = '00000000-0000-4000-8000-000000000001';
+const firstPlayerId = '00000000-0000-4000-8000-000000000002';
+const secondPlayerId = '00000000-0000-4000-8000-000000000003';
+
 const gameDetails: GameDetails = {
   game: {
-    id: 'game-1',
+    id: gameId,
     name: 'Friday Monopoly',
     startingBalance: 1500,
     passGoReward: 200,
@@ -19,8 +23,8 @@ const gameDetails: GameDetails = {
     updatedAt: '2026-01-01T00:00:00Z',
   },
   players: [
-    { id: 'player-1', gameId: 'game-1', name: 'Ada', color: '#123456', balance: 1500, createdAt: '2026-01-01T00:00:00Z' },
-    { id: 'player-2', gameId: 'game-1', name: 'Lin', color: '#654321', balance: 1500, createdAt: '2026-01-01T00:00:00Z' },
+    { id: firstPlayerId, gameId, name: 'Ada', color: '#123456', balance: 1500, createdAt: '2026-01-01T00:00:00Z' },
+    { id: secondPlayerId, gameId, name: 'Lin', color: '#654321', balance: 1500, createdAt: '2026-01-01T00:00:00Z' },
   ],
 };
 
@@ -94,10 +98,10 @@ describe('API router', () => {
       },
     });
 
-    const response = await router(jsonRequest('POST', '/api/games/game-1/transactions', {
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/transactions`, {
       type: 'PLAYER_TO_PLAYER',
-      sourcePlayerId: 'player-1',
-      destinationPlayerId: 'player-2',
+      sourcePlayerId: firstPlayerId,
+      destinationPlayerId: secondPlayerId,
       amount: 100,
     }));
 
@@ -105,24 +109,37 @@ describe('API router', () => {
     expect(received).toMatchObject({ type: 'PLAYER_TO_PLAYER', amount: 100 });
   });
 
+  it('rejects malformed player IDs in a payment request', async () => {
+    const response = await createTestRouter()(jsonRequest('POST', `/api/games/${gameId}/transactions`, {
+      type: 'PLAYER_TO_BANK',
+      playerId: 'not-a-uuid',
+      amount: 100,
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'VALIDATION_ERROR', message: 'playerId must be a UUID.' },
+    });
+  });
+
   it.each([
-    ['PLAYER_TO_ALL', { payerPlayerId: 'player-1', amountPerPlayer: 100 }],
-    ['ALL_TO_PLAYER', { recipientPlayerId: 'player-1', amountPerPlayer: 100 }],
+    ['PLAYER_TO_ALL', { payerPlayerId: firstPlayerId, amountPerPlayer: 100 }],
+    ['ALL_TO_PLAYER', { recipientPlayerId: firstPlayerId, amountPerPlayer: 100 }],
   ] as const)('returns atomic insufficient-funds failure for %s', async (type, fields) => {
     const router = createTestRouter({
       createTransaction: async () => {
-        throw new InsufficientFundsError('player-1', 50, 200);
+        throw new InsufficientFundsError(firstPlayerId, 50, 200);
       },
     });
 
-    const response = await router(jsonRequest('POST', '/api/games/game-1/transactions', { type, ...fields }));
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/transactions`, { type, ...fields }));
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
       error: {
         code: 'INSUFFICIENT_FUNDS',
         message: 'Insufficient funds.',
-        details: { playerId: 'player-1', currentBalance: 50, requiredAmount: 200, shortfall: 150 },
+        details: { playerId: firstPlayerId, currentBalance: 50, requiredAmount: 200, shortfall: 150 },
       },
     });
   });
@@ -134,7 +151,7 @@ describe('API router', () => {
       },
     });
 
-    const response = await router(new Request('https://example.test/api/games/missing'));
+    const response = await router(new Request(`https://example.test/api/games/${gameId}`));
     expect(response.status).toBe(404);
   });
 
@@ -145,7 +162,7 @@ describe('API router', () => {
       },
     });
 
-    const response = await router(new Request('https://example.test/api/games/game-1/players/missing/transactions'));
+    const response = await router(new Request(`https://example.test/api/games/${gameId}/players/${firstPlayerId}/transactions`));
     expect(response.status).toBe(404);
   });
 
@@ -153,9 +170,18 @@ describe('API router', () => {
     const history: Transaction[] = [transactionResponse().transaction];
     const router = createTestRouter({ listTransactions: async () => history });
 
-    const response = await router(new Request('https://example.test/api/games/game-1/transactions'));
+    const response = await router(new Request(`https://example.test/api/games/${gameId}/transactions`));
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: history });
+  });
+
+  it('rejects malformed resource IDs before calling a service', async () => {
+    const response = await createTestRouter()(new Request('https://example.test/api/games/not-a-uuid'));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'VALIDATION_ERROR', message: 'gameId must be a UUID.' },
+    });
   });
 });
 
@@ -211,16 +237,16 @@ function jsonRequest(method: string, path: string, body: unknown): Request {
 function transactionResponse() {
   return {
     transaction: {
-      id: 'transaction-1',
-      gameId: 'game-1',
+      id: '00000000-0000-4000-8000-000000000004',
+      gameId,
       type: 'PLAYER_TO_PLAYER' as const,
       amount: 100,
       totalAmount: 100,
       comment: null,
       createdAt: '2026-01-01T00:00:00Z',
       participants: [
-        { playerId: 'player-1', balanceDelta: -100 },
-        { playerId: 'player-2', balanceDelta: 100 },
+        { playerId: firstPlayerId, balanceDelta: -100 },
+        { playerId: secondPlayerId, balanceDelta: 100 },
       ],
     },
     players: gameDetails.players,

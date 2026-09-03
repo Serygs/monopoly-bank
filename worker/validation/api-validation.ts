@@ -1,6 +1,8 @@
 import type { CreateGameRequest, CreateTransactionRequest } from '../../shared/contracts/api.js';
 import { transactionTypes, type TransactionType } from '../../shared/types/monopoly.js';
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export class ApiValidationError extends Error {
   readonly details: Record<string, string | number>;
 
@@ -8,6 +10,13 @@ export class ApiValidationError extends Error {
     super(message);
     this.details = details;
   }
+}
+
+export function parseResourceId(value: string, field: string): string {
+  if (!uuidPattern.test(value)) {
+    throw new ApiValidationError(`${field} must be a UUID.`);
+  }
+  return value;
 }
 
 export async function parseCreateGameRequest(request: Request): Promise<CreateGameRequest> {
@@ -46,8 +55,8 @@ export async function parseCreateTransactionRequest(
     case 'PAY_RENT':
       return {
         type,
-        sourcePlayerId: readRequiredString(body, 'sourcePlayerId', 'sourcePlayerId'),
-        destinationPlayerId: readRequiredString(body, 'destinationPlayerId', 'destinationPlayerId'),
+        sourcePlayerId: readUuid(body, 'sourcePlayerId'),
+        destinationPlayerId: readUuid(body, 'destinationPlayerId'),
         amount: readPositiveInteger(body, 'amount'),
         ...(comment === undefined ? {} : { comment }),
       };
@@ -55,28 +64,28 @@ export async function parseCreateTransactionRequest(
     case 'BANK_TO_PLAYER':
       return {
         type,
-        playerId: readRequiredString(body, 'playerId', 'playerId'),
+        playerId: readUuid(body, 'playerId'),
         amount: readPositiveInteger(body, 'amount'),
         ...(comment === undefined ? {} : { comment }),
       };
     case 'PLAYER_TO_ALL':
       return {
         type,
-        payerPlayerId: readRequiredString(body, 'payerPlayerId', 'payerPlayerId'),
+        payerPlayerId: readUuid(body, 'payerPlayerId'),
         amountPerPlayer: readPositiveInteger(body, 'amountPerPlayer'),
         ...(comment === undefined ? {} : { comment }),
       };
     case 'ALL_TO_PLAYER':
       return {
         type,
-        recipientPlayerId: readRequiredString(body, 'recipientPlayerId', 'recipientPlayerId'),
+        recipientPlayerId: readUuid(body, 'recipientPlayerId'),
         amountPerPlayer: readPositiveInteger(body, 'amountPerPlayer'),
         ...(comment === undefined ? {} : { comment }),
       };
     case 'PASS_GO':
       return {
         type,
-        playerId: readRequiredString(body, 'playerId', 'playerId'),
+        playerId: readUuid(body, 'playerId'),
         ...(comment === undefined ? {} : { comment }),
       };
   }
@@ -118,6 +127,10 @@ function readRequiredString(
     throw new ApiValidationError(`${field} is required.`);
   }
   return value.trim();
+}
+
+function readUuid(body: Record<string, unknown>, key: string): string {
+  return parseResourceId(readRequiredString(body, key, key), key);
 }
 
 function readPositiveInteger(body: Record<string, unknown>, key: string): number {

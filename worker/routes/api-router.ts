@@ -6,7 +6,12 @@ import {
 import type { BankingService } from '../services/banking-service.js';
 import type { GameService } from '../services/game-service.js';
 import { PersistenceConsistencyError, ResourceNotFoundError } from '../services/errors.js';
-import { ApiValidationError, parseCreateGameRequest, parseCreateTransactionRequest } from '../validation/api-validation.js';
+import {
+  ApiValidationError,
+  parseCreateGameRequest,
+  parseCreateTransactionRequest,
+  parseResourceId,
+} from '../validation/api-validation.js';
 
 export interface ApiRouterDependencies {
   games: GameService;
@@ -39,29 +44,34 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
   }
 
   if (gameMatch !== null && request.method === 'GET') {
-    return success(await dependencies.games.getGame(gameMatch[1]));
+    return success(await dependencies.games.getGame(parseResourceId(gameMatch[1], 'gameId')));
   }
 
   if (transactionMatch !== null) {
     if (request.method === 'POST') {
       return success(
         await dependencies.banking.createTransaction(
-          transactionMatch[1],
+          parseResourceId(transactionMatch[1], 'gameId'),
           await parseCreateTransactionRequest(request),
         ),
         201,
       );
     }
     if (request.method === 'GET') {
-      return success(await dependencies.banking.listTransactions(transactionMatch[1], readHistoryLimit(request)));
+      return success(
+        await dependencies.banking.listTransactions(
+          parseResourceId(transactionMatch[1], 'gameId'),
+          readHistoryLimit(request),
+        ),
+      );
     }
   }
 
   if (playerTransactionMatch !== null && request.method === 'GET') {
     return success(
       await dependencies.banking.listPlayerTransactions(
-        playerTransactionMatch[1],
-        playerTransactionMatch[2],
+        parseResourceId(playerTransactionMatch[1], 'gameId'),
+        parseResourceId(playerTransactionMatch[2], 'playerId'),
         readHistoryLimit(request),
       ),
     );

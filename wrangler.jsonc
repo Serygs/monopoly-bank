@@ -18,7 +18,8 @@
 		{
 			"binding": "MONOPOLY_BANK_DB",
 			"database_name": "monopoly-bank",
-			"migrations_dir": "migrations"
+			"migrations_dir": "migrations",
+			"database_id": "d9a99c5e-be1d-4112-a8e1-cba4b910a77d"
 		}
 	]
 	/**
