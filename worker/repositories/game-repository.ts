@@ -7,7 +7,7 @@ interface GameRow {
   name: string;
   starting_balance: number;
   pass_go_reward: number;
-  status: GameStatus;
+  status: string;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +34,10 @@ export interface GameRepository {
   listSummaries(): Promise<GameSummary[]>;
   updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null>;
   delete(id: string): Promise<boolean>;
+  listFavoriteAmounts(gameId: string): Promise<number[]>;
+  toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
+  listRecentAmounts(gameId: string): Promise<number[]>;
+  recordRecentAmount(gameId: string, amount: number): Promise<void>;
 }
 
 export class D1GameRepository implements GameRepository {
@@ -140,7 +144,7 @@ export class D1GameRepository implements GameRepository {
 
     if (input.status !== undefined) {
       assignments.push('status = ?');
-      values.push(input.status);
+      values.push(input.status === 'FINISHED' ? 'ARCHIVED' : input.status);
     }
 
     if (assignments.length === 0) {
@@ -167,6 +171,34 @@ export class D1GameRepository implements GameRepository {
     const result = await this.database.prepare('DELETE FROM games WHERE id = ?').bind(id).run();
     return result.meta.changes > 0;
   }
+
+  async listFavoriteAmounts(gameId: string): Promise<number[]> {
+    const result = await this.database.prepare('SELECT amount FROM game_favorite_amounts WHERE game_id = ? ORDER BY created_at DESC, amount DESC').bind(gameId).all<{ amount: number }>();
+    return result.results.map((row) => row.amount);
+  }
+
+  async toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]> {
+    const exists = await this.database.prepare('SELECT 1 AS value FROM game_favorite_amounts WHERE game_id = ? AND amount = ?').bind(gameId, amount).first<{ value: number }>();
+    if (exists === null) {
+      await this.database.prepare('INSERT INTO game_favorite_amounts (game_id, amount) VALUES (?, ?)').bind(gameId, amount).run();
+    } else {
+      await this.database.prepare('DELETE FROM game_favorite_amounts WHERE game_id = ? AND amount = ?').bind(gameId, amount).run();
+    }
+    return this.listFavoriteAmounts(gameId);
+  }
+
+  async listRecentAmounts(gameId: string): Promise<number[]> {
+    const result = await this.database.prepare('SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5').bind(gameId).all<{ amount: number }>();
+    return result.results.map((row) => row.amount);
+  }
+
+  async recordRecentAmount(gameId: string, amount: number): Promise<void> {
+    await this.database.batch([
+      this.database.prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?').bind(gameId, amount),
+      this.database.prepare('INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES (?, ?, CURRENT_TIMESTAMP)').bind(gameId, amount),
+      this.database.prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount NOT IN (SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5)').bind(gameId, gameId),
+    ]);
+  }
 }
 
 interface GameSummaryRow extends GameRow {
@@ -179,7 +211,7 @@ function mapGame(row: GameRow): Game {
     name: row.name,
     startingBalance: row.starting_balance,
     passGoReward: row.pass_go_reward,
-    status: row.status,
+    status: row.status === 'ARCHIVED' ? 'FINISHED' : 'ACTIVE',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

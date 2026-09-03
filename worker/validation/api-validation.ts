@@ -88,6 +88,8 @@ export async function parseCreateTransactionRequest(
         playerId: readUuid(body, 'playerId'),
         ...(comment === undefined ? {} : { comment }),
       };
+    case 'BANKRUPTCY_TRANSFER':
+      throw new ApiValidationError('BANKRUPTCY_TRANSFER must use the bankruptcy endpoint.');
   }
 }
 

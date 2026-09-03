@@ -3,6 +3,10 @@ import type { CreateTransactionRequest, GameDetails } from '../../shared/contrac
 import type { Player, Transaction, TransactionType } from '../../shared/types/monopoly';
 import { MonopolyBankApiError, monopolyBankApi } from '../api/monopoly-bank-api';
 import { DiceRoller } from '../components/DiceRoller';
+import { AmountSelector } from '../components/AmountSelector';
+import { TableCalculator } from '../components/TableCalculator';
+import type { DevicePreferences } from '../utils/preferences';
+import { playPaymentFeedback, vibrate } from '../utils/feedback';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import type { Language, Translate } from '../i18n/translations';
@@ -10,7 +14,7 @@ import { formatThousands } from '../utils/money';
 import { playerTransactionAmount, transactionAmount, transactionDescription } from '../utils/transaction-history';
 
 type ActionType = CreateTransactionRequest['type'];
-interface Props { gameId: string; onBack: () => void; }
+interface Props { gameId: string; onBack: () => void; preferences: DevicePreferences; }
 
 const actions: ActionType[] = [
   'PLAYER_TO_PLAYER',
@@ -22,7 +26,7 @@ const actions: ActionType[] = [
   'PASS_GO',
 ];
 
-export function GamePage({ gameId, onBack }: Props) {
+export function GamePage({ gameId, onBack, preferences }: Props) {
   const { language, locale, t } = useLanguage();
   const [details, setDetails] = useState<GameDetails | null>(null);
   const [error, setError] = useState<unknown | null>(null);
@@ -73,19 +77,23 @@ export function GamePage({ gameId, onBack }: Props) {
       {details.players.map((player) => <button className="wallet-card wallet-card-button" type="button" key={player.id} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: player.name, balance: formatMoney(player.balance, locale) })} onClick={() => setSelectedPlayer(player)}><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{player.name}</span><strong>{formatMoney(player.balance, locale)}</strong><span className="wallet-action">{t('walletAction')}</span></button>)}
     </section>
     <DiceRoller />
-    {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} onClose={() => setSelectedPlayer(null)} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action) => { setDetails({ ...details, players }); setSelectedPlayer(null); setNotice(action); }} />}
+    <TableCalculator />
+    {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} favoriteAmounts={details.favoriteAmounts ?? []} recentAmounts={details.recentAmounts ?? []} onToggleFavorite={(amount) => void monopolyBankApi.toggleFavoriteAmount(gameId, amount).then((favoriteAmounts) => setDetails((current) => current === null ? current : { ...current, favoriteAmounts }))} onClose={() => setSelectedPlayer(null)} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action, amount) => { playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails({ ...details, players, recentAmounts: amount === null ? details.recentAmounts : [amount, ...(details.recentAmounts ?? []).filter((value) => value !== amount)].slice(0, 5) }); setSelectedPlayer(null); setNotice(action); }} />}
     {historyOpen && <HistoryDialog history={history} player={historyPlayer} players={details.players} error={historyError} language={language} locale={locale} onClose={() => { setHistoryOpen(false); setHistory(null); setHistoryError(null); }} onRetry={() => void loadHistory(historyPlayer)} />}
   </main>;
 }
 
-function BankingDialog({ gameId, player, players, passGoReward, onClose, onViewHistory, onCompleted }: {
+function BankingDialog({ gameId, player, players, passGoReward, favoriteAmounts, recentAmounts, onToggleFavorite, onClose, onViewHistory, onCompleted }: {
   gameId: string;
   player: Player;
   players: Player[];
   passGoReward: number;
+  favoriteAmounts: number[];
+  recentAmounts: number[];
+  onToggleFavorite: (amount: number) => void;
   onClose: () => void;
   onViewHistory: (player: Player) => void;
-  onCompleted: (players: Player[], action: ActionType) => void;
+  onCompleted: (players: Player[], action: ActionType, amount: number | null) => void;
 }) {
   const { locale, t } = useLanguage();
   const [action, setAction] = useState<ActionType | null>(null);
@@ -122,7 +130,7 @@ function BankingDialog({ gameId, player, players, passGoReward, onClose, onViewH
     setError(null);
     try {
       const result = await monopolyBankApi.createTransaction(gameId, request);
-      onCompleted(result.players, action);
+      onCompleted(result.players, action, action === 'PASS_GO' ? null : result.transaction.amount);
     } catch (caught) {
       setConfirming(false);
       setError(caught);
@@ -146,7 +154,7 @@ function BankingDialog({ gameId, player, players, passGoReward, onClose, onViewH
     </> : <>
       <p className="dialog-intro">{actionDescription(action, player.name, t)}</p>
       {targetRequired && <PlayerPicker label={t('chooseRecipient')} players={players.filter((candidate) => candidate.id !== player.id)} value={targetId} locale={locale} onChange={setTargetId} />}
-      {amountRequired && <label className="dialog-field">{t('amount')} <span className="field-note">{t('inThousands')}{action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? `, ${t('perPlayer')}` : ''}</span><input type="number" inputMode="numeric" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9]/g, ''))} autoFocus /><span className="field-hint">{isPositiveInteger(amount) ? formatMoney(amountValue, locale) : t('enterPositiveInteger')}</span></label>}
+      {amountRequired && <><AmountSelector value={amount} onChange={setAmount} favorites={favoriteAmounts} recent={recentAmounts} onToggleFavorite={onToggleFavorite} /><span className="field-hint">{isPositiveInteger(amount) ? formatMoney(amountValue, locale) : t('enterPositiveInteger')}</span></>}
       {fundsError !== null && <p className="field-error" role="alert">{fundsError}</p>}
       {action === 'PASS_GO' && <p className="pass-go-value">{t('passGoReceives', { amount: formatMoney(passGoReward, locale) })}</p>}
       <label className="dialog-field">{t('comment')} <span className="field-note">{t('optional')}</span><input value={comment} maxLength={500} onChange={(event) => setComment(event.target.value)} /></label>
@@ -244,7 +252,7 @@ function destinationFor(action: ActionType, player: Player, target: Player | nul
 }
 
 function transactionLabel(type: TransactionType, t: Translate): string {
-  return ({ PLAYER_TO_PLAYER: t('playerPayment'), PLAYER_TO_BANK: t('paidBank'), BANK_TO_PLAYER: t('receivedFromBank'), PLAYER_TO_ALL: t('paidEveryone'), ALL_TO_PLAYER: t('everyonePaidPlayer'), PAY_RENT: t('paidRent'), PASS_GO: t('passedGo') })[type];
+  return ({ PLAYER_TO_PLAYER: t('playerPayment'), PLAYER_TO_BANK: t('paidBank'), BANK_TO_PLAYER: t('receivedFromBank'), PLAYER_TO_ALL: t('paidEveryone'), ALL_TO_PLAYER: t('everyonePaidPlayer'), PAY_RENT: t('paidRent'), PASS_GO: t('passedGo'), BANKRUPTCY_TRANSFER: 'Bankruptcy transfer' })[type];
 }
 
 function formatMoney(value: number, locale: string): string { return `${formatThousands(value, locale)}k`; }

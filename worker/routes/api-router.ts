@@ -33,6 +33,9 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
   const gameMatch = /^\/api\/games\/([^/]+)$/.exec(pathname);
   const transactionMatch = /^\/api\/games\/([^/]+)\/transactions$/.exec(pathname);
   const playerTransactionMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)\/transactions$/.exec(pathname);
+  const duplicateMatch = /^\/api\/games\/([^/]+)\/duplicate$/.exec(pathname);
+  const finishMatch = /^\/api\/games\/([^/]+)\/finish$/.exec(pathname);
+  const favoriteMatch = /^\/api\/games\/([^/]+)\/favorite-amounts$/.exec(pathname);
 
   if (pathname === '/api/games') {
     if (request.method === 'GET') {
@@ -49,6 +52,13 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
 
   if (gameMatch !== null && request.method === 'DELETE') {
     return success(await dependencies.games.deleteGame(parseResourceId(gameMatch[1], 'gameId')));
+  }
+  if (duplicateMatch !== null && request.method === 'POST') return success(await dependencies.games.duplicateGame(parseResourceId(duplicateMatch[1], 'gameId')), 201);
+  if (finishMatch !== null && request.method === 'POST') return success(await dependencies.games.finishGame(parseResourceId(finishMatch[1], 'gameId')));
+  if (favoriteMatch !== null && request.method === 'POST') {
+    const body = await request.json() as { amount?: unknown };
+    if (typeof body.amount !== 'number' || !Number.isSafeInteger(body.amount) || body.amount <= 0) throw new ApiValidationError('amount must be a positive integer.');
+    return success(await dependencies.games.toggleFavoriteAmount(parseResourceId(favoriteMatch[1], 'gameId'), body.amount));
   }
 
   if (transactionMatch !== null) {
