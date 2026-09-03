@@ -14,3 +14,12 @@ export function rollDice(random: () => number = Math.random): DiceRoll {
   const second = rollDie(random);
   return { first, second, total: first + second, isDouble: first === second };
 }
+
+export interface DoublesState { consecutiveDoubles: number; isInJail: boolean; thirdDouble: boolean; }
+
+export function applyDiceResult(currentDoubles: number, roll: DiceRoll): DoublesState {
+  if (!roll.isDouble) return { consecutiveDoubles: 0, isInJail: false, thirdDouble: false };
+  const next = currentDoubles + 1;
+  if (next >= 3) return { consecutiveDoubles: 0, isInJail: true, thirdDouble: true };
+  return { consecutiveDoubles: next, isInJail: false, thirdDouble: false };
+}
