@@ -52,6 +52,19 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_DEV_D1_DATABASE_NAME: ${{ vars.CLOUDFLARE_DEV_D1_DATABASE_NAME || 'monopoly-bank-dev' }}
     steps:
+      - name: Validate Cloudflare credentials
+        run: |
+          missing=0
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            echo "::error::Add CLOUDFLARE_API_TOKEN to the GitHub development environment secrets."
+            missing=1
+          fi
+          if [[ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::Add CLOUDFLARE_ACCOUNT_ID to the GitHub development environment secrets."
+            missing=1
+          fi
+          exit "$missing"
+
       - name: Check out repository
         uses: actions/checkout@v4
 
