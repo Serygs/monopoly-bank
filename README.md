@@ -4,7 +4,7 @@ A responsive English/Ukrainian banking companion for an in-person Monopoly game.
 
 ## Database setup
 
-`wrangler.jsonc` deliberately contains no production database ID. Create the D1 database in the target Cloudflare account, then copy the returned `database_id` into the `MONOPOLY_BANK_DB` binding in that file. This is a required prerequisite for both local and remote D1 migration commands.
+`wrangler.jsonc` contains the production `MONOPOLY_BANK_DB` binding. If a new production D1 database is created, update that binding's `database_id` deliberately before running remote migrations or deploying.
 
 ```bash
 npx wrangler d1 create monopoly-bank
@@ -40,3 +40,14 @@ npm run deploy
 ```
 
 Run the migration command before every deployment that introduces a new file in `migrations/`. Do not commit account credentials or Cloudflare API tokens.
+
+## GitHub Actions deployments
+
+Pushes to `dev` deploy automatically to the separate `monopoly-bank-dev` Worker and D1 database. Create that database once, then configure the GitHub `development` environment with:
+
+- secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`;
+- variables: `CLOUDFLARE_DEV_D1_DATABASE_ID`, `CLOUDFLARE_DEV_D1_DATABASE_NAME`.
+
+The D1 database name and ID must identify the development database, not `monopoly-bank`. Pending migrations are applied to that development database before each deployment.
+
+Production releases are manual only: run the `Deploy` workflow from the `main` branch and confirm the release input. Configure the GitHub `production` environment with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; require a deployment reviewer there if an additional release approval is desired.
