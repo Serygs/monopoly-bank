@@ -47,6 +47,10 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
     return success(await dependencies.games.getGame(parseResourceId(gameMatch[1], 'gameId')));
   }
 
+  if (gameMatch !== null && request.method === 'DELETE') {
+    return success(await dependencies.games.deleteGame(parseResourceId(gameMatch[1], 'gameId')));
+  }
+
   if (transactionMatch !== null) {
     if (request.method === 'POST') {
       return success(

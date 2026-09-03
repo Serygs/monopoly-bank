@@ -24,6 +24,10 @@ export interface GameDetails {
   players: Player[];
 }
 
+export interface DeleteGameResponse {
+  gameId: string;
+}
+
 export interface CreateGameRequest {
   name: string;
   startingBalance: number;

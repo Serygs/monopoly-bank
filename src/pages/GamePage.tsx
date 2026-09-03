@@ -1,61 +1,279 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CreateTransactionRequest, GameDetails } from '../../shared/contracts/api';
 import type { Player, Transaction, TransactionType } from '../../shared/types/monopoly';
 import { MonopolyBankApiError, monopolyBankApi } from '../api/monopoly-bank-api';
 import { DiceRoller } from '../components/DiceRoller';
-import { playerTransactionAmount, transactionAmount, transactionDescription } from '../utils/transaction-history';
+import { apiErrorMessage } from '../i18n/api-errors';
+import { useLanguage } from '../i18n/language-context';
+import type { Language, Translate } from '../i18n/translations';
 import { formatThousands } from '../utils/money';
+import { playerTransactionAmount, transactionAmount, transactionDescription } from '../utils/transaction-history';
 
 type ActionType = CreateTransactionRequest['type'];
 interface Props { gameId: string; onBack: () => void; }
-interface ActionDefinition { type: ActionType; label: string; }
-const actions: ActionDefinition[] = [
-  { type: 'PLAYER_TO_PLAYER', label: 'Pay Player' }, { type: 'PAY_RENT', label: 'Pay Rent' },
-  { type: 'PLAYER_TO_BANK', label: 'Pay Bank' }, { type: 'BANK_TO_PLAYER', label: 'Receive from Bank' },
-  { type: 'PLAYER_TO_ALL', label: 'Pay Everyone' }, { type: 'ALL_TO_PLAYER', label: 'Everyone Pays Me' }, { type: 'PASS_GO', label: 'Pass GO' },
+
+const actions: ActionType[] = [
+  'PLAYER_TO_PLAYER',
+  'PAY_RENT',
+  'PLAYER_TO_BANK',
+  'BANK_TO_PLAYER',
+  'PLAYER_TO_ALL',
+  'ALL_TO_PLAYER',
+  'PASS_GO',
 ];
 
 export function GamePage({ gameId, onBack }: Props) {
-  const [details, setDetails] = useState<GameDetails | null>(null); const [error, setError] = useState<string | null>(null);
-  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null); const [history, setHistory] = useState<Transaction[] | null>(null); const [historyOpen, setHistoryOpen] = useState(false); const [historyPlayer, setHistoryPlayer] = useState<Player | null>(null);
-  const [historyError, setHistoryError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null);
-  useEffect(() => { let active = true; void monopolyBankApi.getGame(gameId).then((game) => { if (active) setDetails(game); }, (caught: unknown) => { if (active) setError(messageFor(caught, 'Unable to load game.')); }); return () => { active = false; }; }, [gameId]);
-  const loadHistory = async (player: Player | null = null) => { setHistoryOpen(true); setHistoryPlayer(player); setHistory(null); setHistoryError(null); try { setHistory(player === null ? await monopolyBankApi.listTransactions(gameId) : await monopolyBankApi.listPlayerTransactions(gameId, player.id)); } catch (caught) { setHistoryError(messageFor(caught, 'Unable to load transaction history.')); } };
-  if (error !== null) return <main className="page"><section className="notice notice-error" role="alert"><p>{error}</p><button className="button button-secondary" type="button" onClick={onBack}>Back to saved games</button></section></main>;
-  if (details === null) return <main className="page"><p className="status" role="status">Loading game…</p></main>;
-  return <main className="page"><section className="page-heading game-heading"><div><p className="eyebrow">Active game</p><h1>{details.game.name}</h1><p className="lede">Pass GO reward {formatMoney(details.game.passGoReward)}</p></div><div className="header-actions"><button className="button button-secondary" type="button" onClick={() => void loadHistory()}>History</button><button className="button button-quiet" type="button" onClick={onBack}>Saved games</button></div></section>
-    {notice !== null && <section className="notice notice-success" role="status"><p>{notice}</p><button className="button button-quiet" type="button" onClick={() => setNotice(null)}>Dismiss</button></section>}
-    <section className="wallet-grid" aria-label="Player wallets">{details.players.map((player) => <button className="wallet-card wallet-card-button" type="button" key={player.id} style={{ borderTopColor: player.color }} aria-label={`${player.name}, balance ${formatMoney(player.balance)}. Open banking actions.`} onClick={() => setSelectedPlayer(player)}><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{player.name}</span><strong>{formatMoney(player.balance)}</strong><span className="wallet-action">Tap for banking actions</span></button>)}</section>
+  const { language, locale, t } = useLanguage();
+  const [details, setDetails] = useState<GameDetails | null>(null);
+  const [error, setError] = useState<unknown | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [history, setHistory] = useState<Transaction[] | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyPlayer, setHistoryPlayer] = useState<Player | null>(null);
+  const [historyError, setHistoryError] = useState<unknown | null>(null);
+  const [notice, setNotice] = useState<ActionType | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void monopolyBankApi.getGame(gameId).then(
+      (game) => { if (active) setDetails(game); },
+      (caught: unknown) => { if (active) setError(caught); },
+    );
+    return () => { active = false; };
+  }, [gameId]);
+
+  const loadHistory = async (player: Player | null = null) => {
+    setHistoryOpen(true);
+    setHistoryPlayer(player);
+    setHistory(null);
+    setHistoryError(null);
+    try {
+      setHistory(player === null
+        ? await monopolyBankApi.listTransactions(gameId)
+        : await monopolyBankApi.listPlayerTransactions(gameId, player.id));
+    } catch (caught) {
+      setHistoryError(caught);
+    }
+  };
+
+  if (error !== null) {
+    return <main className="page"><section className="notice notice-error" role="alert"><p>{apiErrorMessage(error, t, 'unableLoadGame')}</p><button className="button button-secondary" type="button" onClick={onBack}>{t('savedGames')}</button></section></main>;
+  }
+  if (details === null) {
+    return <main className="page"><p className="status" role="status">{t('loadingGame')}</p></main>;
+  }
+
+  return <main className="page">
+    <section className="page-heading game-heading">
+      <div><p className="eyebrow">{t('activeGame')}</p><h1>{details.game.name}</h1><p className="lede">{t('configuredPassGoReward', { amount: formatMoney(details.game.passGoReward, locale) })}</p></div>
+      <div className="header-actions"><button className="button button-secondary" type="button" onClick={() => void loadHistory()}>{t('history')}</button><button className="button button-quiet" type="button" onClick={onBack}>{t('savedGames')}</button></div>
+    </section>
+    {notice !== null && <section className="notice notice-success" role="status"><p>{t('recorded', { action: actionLabel(notice, t) })}</p><button className="button button-quiet" type="button" onClick={() => setNotice(null)}>{t('dismiss')}</button></section>}
+    <section className="wallet-grid" aria-label={t('playerWallets')}>
+      {details.players.map((player) => <button className="wallet-card wallet-card-button" type="button" key={player.id} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: player.name, balance: formatMoney(player.balance, locale) })} onClick={() => setSelectedPlayer(player)}><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{player.name}</span><strong>{formatMoney(player.balance, locale)}</strong><span className="wallet-action">{t('walletAction')}</span></button>)}
+    </section>
     <DiceRoller />
-    {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} onClose={() => setSelectedPlayer(null)} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, label) => { setDetails({ ...details, players }); setSelectedPlayer(null); setNotice(`${label} recorded.`); }} />}
-    {historyOpen && <HistoryDialog history={history} player={historyPlayer} players={details.players} error={historyError} onClose={() => { setHistoryOpen(false); setHistory(null); setHistoryError(null); }} onRetry={() => void loadHistory(historyPlayer)} />}</main>;
+    {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} onClose={() => setSelectedPlayer(null)} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action) => { setDetails({ ...details, players }); setSelectedPlayer(null); setNotice(action); }} />}
+    {historyOpen && <HistoryDialog history={history} player={historyPlayer} players={details.players} error={historyError} language={language} locale={locale} onClose={() => { setHistoryOpen(false); setHistory(null); setHistoryError(null); }} onRetry={() => void loadHistory(historyPlayer)} />}
+  </main>;
 }
 
-function BankingDialog({ gameId, player, players, passGoReward, onClose, onViewHistory, onCompleted }: { gameId: string; player: Player; players: Player[]; passGoReward: number; onClose: () => void; onViewHistory: (player: Player) => void; onCompleted: (players: Player[], label: string) => void }) {
-  const [action, setAction] = useState<ActionType | null>(null); const [targetId, setTargetId] = useState(''); const [amount, setAmount] = useState(''); const [comment, setComment] = useState('');
-  const [confirming, setConfirming] = useState(false); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState<string | null>(null);
-  const target = players.find((candidate) => candidate.id === targetId) ?? null; const amountValue = Number(amount);
-  const request = action === null ? null : buildRequest(action, player.id, targetId, amountValue, comment); const preview = useMemo(() => request === null ? [] : previewBalances(request, players, passGoReward), [request, players, passGoReward]);
-  const definition = actions.find((candidate) => candidate.type === action); const targetRequired = action === 'PLAYER_TO_PLAYER' || action === 'PAY_RENT'; const amountRequired = action !== 'PASS_GO';
-  const fundsError = preflightFundsError(action, player, players, amountValue);
-  const valid = request !== null && (!targetRequired || target !== null && target.id !== player.id) && (!amountRequired || isPositiveInteger(amount)) && fundsError === null;
-  const selectAction = (next: ActionType | null) => { setAction(next); setTargetId(''); setAmount(''); setComment(''); setConfirming(false); setError(null); };
-  const submit = async () => { if (request === null || !valid || definition === undefined) return; setSubmitting(true); setError(null); try { const result = await monopolyBankApi.createTransaction(gameId, request); onCompleted(result.players, definition.label); } catch (caught) { setConfirming(false); setError(insufficientMessage(caught, players) ?? messageFor(caught, 'Unable to record this transaction.')); } finally { setSubmitting(false); } };
-  return <Dialog title={action === null ? `${player.name}'s wallet` : definition?.label ?? 'Banking action'} onClose={onClose}>{error !== null && <p className="notice notice-error" role="alert">{error}</p>}{action === null ? <><div className="action-grid">{actions.map((item) => <button className="button button-secondary action-button" type="button" key={item.type} onClick={() => selectAction(item.type)}>{item.label}</button>)}</div><button className="button button-quiet player-history-button" type="button" onClick={() => onViewHistory(player)}>View {player.name}'s history</button></> : confirming ? <><p className="dialog-intro">Confirm this transaction before it changes the saved balances.</p><Confirmation action={action} player={player} target={target} amount={amountValue} passGoReward={passGoReward} preview={preview} comment={comment} /><div className="dialog-actions"><button className="button button-secondary" type="button" disabled={submitting} onClick={onClose}>Cancel</button><button className="button button-primary" type="button" disabled={submitting} onClick={() => void submit()}>{submitting ? 'Recording…' : 'Confirm transaction'}</button></div></> : <><p className="dialog-intro">{actionDescription(action, player.name)}</p>{targetRequired && <PlayerPicker label="Choose recipient" players={players.filter((candidate) => candidate.id !== player.id)} value={targetId} onChange={setTargetId} />}{amountRequired && <label className="dialog-field">Amount <span className="field-note">in thousands{action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? ', per player' : ''}</span><input type="number" inputMode="numeric" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9]/g, ''))} autoFocus /><span className="field-hint">{isPositiveInteger(amount) ? formatMoney(amountValue) : 'Enter a positive whole number.'}</span></label>}{fundsError !== null && <p className="field-error" role="alert">{fundsError}</p>}{action === 'PASS_GO' && <p className="pass-go-value">This player receives {formatMoney(passGoReward)}.</p>}<label className="dialog-field">Comment <span className="field-note">optional</span><input value={comment} maxLength={500} onChange={(event) => setComment(event.target.value)} /></label><div className="dialog-actions"><button className="button button-quiet" type="button" onClick={() => selectAction(null)}>Back</button><button className="button button-primary" type="button" disabled={!valid} onClick={() => setConfirming(true)}>Review transaction</button></div></>}</Dialog>;
+function BankingDialog({ gameId, player, players, passGoReward, onClose, onViewHistory, onCompleted }: {
+  gameId: string;
+  player: Player;
+  players: Player[];
+  passGoReward: number;
+  onClose: () => void;
+  onViewHistory: (player: Player) => void;
+  onCompleted: (players: Player[], action: ActionType) => void;
+}) {
+  const { locale, t } = useLanguage();
+  const [action, setAction] = useState<ActionType | null>(null);
+  const [targetId, setTargetId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [comment, setComment] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<unknown | null>(null);
+  const target = players.find((candidate) => candidate.id === targetId) ?? null;
+  const amountValue = Number(amount);
+  const request = action === null ? null : buildRequest(action, player.id, targetId, amountValue, comment);
+  const preview = request === null ? [] : previewBalances(request, players, passGoReward);
+  const targetRequired = action === 'PLAYER_TO_PLAYER' || action === 'PAY_RENT';
+  const amountRequired = action !== 'PASS_GO';
+  const fundsError = preflightFundsError(action, player, players, amountValue, locale, t);
+  const valid = request !== null
+    && (!targetRequired || target !== null && target.id !== player.id)
+    && (!amountRequired || isPositiveInteger(amount))
+    && fundsError === null;
+
+  const selectAction = (next: ActionType | null) => {
+    setAction(next);
+    setTargetId('');
+    setAmount('');
+    setComment('');
+    setConfirming(false);
+    setError(null);
+  };
+
+  const submit = async () => {
+    if (request === null || !valid || action === null) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await monopolyBankApi.createTransaction(gameId, request);
+      onCompleted(result.players, action);
+    } catch (caught) {
+      setConfirming(false);
+      setError(caught);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const title = action === null ? t('walletTitle', { name: player.name }) : actionLabel(action, t);
+  const transactionError = error === null ? null : insufficientMessage(error, players, locale, t) ?? apiErrorMessage(error, t, 'unableRecordTransaction');
+
+  return <Dialog title={title} onClose={onClose}>
+    {transactionError !== null && <p className="notice notice-error" role="alert">{transactionError}</p>}
+    {action === null ? <>
+      <div className="action-grid">{actions.map((item) => <button className="button button-secondary action-button" type="button" key={item} onClick={() => selectAction(item)}>{actionLabel(item, t)}</button>)}</div>
+      <button className="button button-quiet player-history-button" type="button" onClick={() => onViewHistory(player)}>{t('viewPlayerHistory', { name: player.name })}</button>
+    </> : confirming ? <>
+      <p className="dialog-intro">{t('confirmationIntro')}</p>
+      <Confirmation action={action} player={player} target={target} amount={amountValue} passGoReward={passGoReward} preview={preview} comment={comment} locale={locale} />
+      <div className="dialog-actions"><button className="button button-secondary" type="button" disabled={submitting} onClick={onClose}>{t('cancel')}</button><button className="button button-primary" type="button" disabled={submitting} onClick={() => void submit()}>{submitting ? t('recording') : t('confirmTransaction')}</button></div>
+    </> : <>
+      <p className="dialog-intro">{actionDescription(action, player.name, t)}</p>
+      {targetRequired && <PlayerPicker label={t('chooseRecipient')} players={players.filter((candidate) => candidate.id !== player.id)} value={targetId} locale={locale} onChange={setTargetId} />}
+      {amountRequired && <label className="dialog-field">{t('amount')} <span className="field-note">{t('inThousands')}{action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? `, ${t('perPlayer')}` : ''}</span><input type="number" inputMode="numeric" min="1" step="1" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9]/g, ''))} autoFocus /><span className="field-hint">{isPositiveInteger(amount) ? formatMoney(amountValue, locale) : t('enterPositiveInteger')}</span></label>}
+      {fundsError !== null && <p className="field-error" role="alert">{fundsError}</p>}
+      {action === 'PASS_GO' && <p className="pass-go-value">{t('passGoReceives', { amount: formatMoney(passGoReward, locale) })}</p>}
+      <label className="dialog-field">{t('comment')} <span className="field-note">{t('optional')}</span><input value={comment} maxLength={500} onChange={(event) => setComment(event.target.value)} /></label>
+      <div className="dialog-actions"><button className="button button-quiet" type="button" onClick={() => selectAction(null)}>{t('back')}</button><button className="button button-primary" type="button" disabled={!valid} onClick={() => setConfirming(true)}>{t('reviewTransaction')}</button></div>
+    </>}
+  </Dialog>;
 }
 
-function HistoryDialog({ history, player, players, error, onClose, onRetry }: { history: Transaction[] | null; player: Player | null; players: Player[]; error: string | null; onClose: () => void; onRetry: () => void }) { const title = player === null ? 'Game history' : `${player.name}'s history`; return <Dialog title={title} onClose={onClose}>{error !== null ? <><p className="notice notice-error" role="alert">{error}</p><button className="button button-secondary" type="button" onClick={onRetry}>Try again</button></> : history === null ? <p className="status" role="status">Loading history…</p> : history.length === 0 ? <p className="muted">No transactions have been recorded yet.</p> : <ol className="history-list">{history.map((transaction) => <li key={transaction.id}><strong>{transactionDescription(transaction, players)}</strong><span className={player === null ? '' : 'player-history-amount'}>{player === null ? transactionAmount(transaction) : playerTransactionAmount(transaction, player.id)}</span><small>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(transaction.createdAt))}</small>{transaction.comment !== null && <em>{transaction.comment}</em>}</li>)}</ol>}</Dialog>; }
-function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) { const dialog = useRef<HTMLElement>(null); useEffect(() => { dialog.current?.focus(); }, []); return <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}><section ref={dialog} className="dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }} onMouseDown={(event) => event.stopPropagation()}><header><h2>{title}</h2><button className="button button-quiet" type="button" onClick={onClose} aria-label={`Close ${title}`}>Close</button></header>{children}</section></div>; }
-function PlayerPicker({ label, players, value, onChange }: { label: string; players: Player[]; value: string; onChange: (id: string) => void }) { return <fieldset className="player-picker"><legend>{label}</legend><div>{players.map((candidate) => <button className={`player-choice${value === candidate.id ? ' selected' : ''}`} type="button" key={candidate.id} aria-pressed={value === candidate.id} onClick={() => onChange(candidate.id)}><span className="player-color" style={{ backgroundColor: candidate.color }} />{candidate.name}<small>{formatMoney(candidate.balance)}</small></button>)}</div></fieldset>; }
-function Confirmation({ action, player, target, amount, passGoReward, preview, comment }: { action: ActionType; player: Player; target: Player | null; amount: number; passGoReward: number; preview: { player: Player; after: number; delta: number }[]; comment: string }) { const total = action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? amount * (preview.length - 1) : action === 'PASS_GO' ? passGoReward : amount; return <section className="confirmation"><dl><div><dt>Operation</dt><dd>{transactionLabel(action)}</dd></div><div><dt>Source</dt><dd>{sourceFor(action, player)}</dd></div><div><dt>Destination</dt><dd>{destinationFor(action, player, target)}</dd></div><div><dt>Amount</dt><dd>{formatMoney(action === 'PASS_GO' ? passGoReward : amount)}{action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? ' per player' : ''}</dd></div><div><dt>Total</dt><dd>{formatMoney(total)}</dd></div>{comment.trim() !== '' && <div><dt>Comment</dt><dd>{comment.trim()}</dd></div>}</dl><h3>Resulting balances</h3><ul className="balance-preview">{preview.map(({ player: affected, after, delta }) => <li key={affected.id}><span><i style={{ backgroundColor: affected.color }} />{affected.name}</span><strong>{formatMoney(after)} <small>({delta >= 0 ? '+' : ''}{formatMoney(delta)})</small></strong></li>)}</ul></section>; }
-function buildRequest(action: ActionType, playerId: string, targetId: string, amount: number, comment: string): CreateTransactionRequest | null { const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() }; switch (action) { case 'PLAYER_TO_PLAYER': case 'PAY_RENT': return targetId === '' ? null : { type: action, sourcePlayerId: playerId, destinationPlayerId: targetId, amount, ...optionalComment }; case 'PLAYER_TO_BANK': return { type: action, playerId, amount, ...optionalComment }; case 'BANK_TO_PLAYER': return { type: action, playerId, amount, ...optionalComment }; case 'PLAYER_TO_ALL': return { type: action, payerPlayerId: playerId, amountPerPlayer: amount, ...optionalComment }; case 'ALL_TO_PLAYER': return { type: action, recipientPlayerId: playerId, amountPerPlayer: amount, ...optionalComment }; case 'PASS_GO': return { type: action, playerId, ...optionalComment }; } }
-function previewBalances(request: CreateTransactionRequest, players: Player[], passGoReward: number) { return players.map((player) => { let delta = 0; switch (request.type) { case 'PLAYER_TO_PLAYER': case 'PAY_RENT': if (player.id === request.sourcePlayerId) delta = -request.amount; if (player.id === request.destinationPlayerId) delta = request.amount; break; case 'PLAYER_TO_BANK': if (player.id === request.playerId) delta = -request.amount; break; case 'BANK_TO_PLAYER': if (player.id === request.playerId) delta = request.amount; break; case 'PLAYER_TO_ALL': if (player.id === request.payerPlayerId) delta = -request.amountPerPlayer * (players.length - 1); else delta = request.amountPerPlayer; break; case 'ALL_TO_PLAYER': if (player.id === request.recipientPlayerId) delta = request.amountPerPlayer * (players.length - 1); else delta = -request.amountPerPlayer; break; case 'PASS_GO': if (player.id === request.playerId) delta = passGoReward; break; } return { player, delta, after: player.balance + delta }; }); }
-function actionDescription(action: ActionType, name: string) { switch (action) { case 'PLAYER_TO_PLAYER': return `${name} pays another player.`; case 'PAY_RENT': return `${name} pays rent directly to another player.`; case 'PLAYER_TO_BANK': return `${name} pays the bank.`; case 'BANK_TO_PLAYER': return `The bank pays ${name}.`; case 'PLAYER_TO_ALL': return `${name} pays every other player.`; case 'ALL_TO_PLAYER': return `Every other player pays ${name}.`; case 'PASS_GO': return `${name} collects the game’s fixed Pass GO reward.`; } }
-function sourceFor(action: ActionType, player: Player) { if (action === 'BANK_TO_PLAYER' || action === 'PASS_GO') return 'Bank'; if (action === 'ALL_TO_PLAYER') return 'All other players'; return player.name; }
-function destinationFor(action: ActionType, player: Player, target: Player | null) { if (action === 'PLAYER_TO_BANK') return 'Bank'; if (action === 'PLAYER_TO_ALL') return 'All other players'; if (action === 'PLAYER_TO_PLAYER' || action === 'PAY_RENT') return target?.name ?? 'Selected player'; return player.name; }
-function transactionLabel(type: TransactionType) { return ({ PLAYER_TO_PLAYER: 'Player payment', PLAYER_TO_BANK: 'Paid bank', BANK_TO_PLAYER: 'Received from bank', PLAYER_TO_ALL: 'Paid everyone', ALL_TO_PLAYER: 'Everyone paid player', PAY_RENT: 'Paid rent', PASS_GO: 'Passed GO' })[type]; }
-function formatMoney(value: number) { return `${formatThousands(value)}k`; }
-function messageFor(error: unknown, fallback: string) { return error instanceof MonopolyBankApiError ? error.message : fallback; }
+function HistoryDialog({ history, player, players, error, language, locale, onClose, onRetry }: {
+  history: Transaction[] | null;
+  player: Player | null;
+  players: Player[];
+  error: unknown | null;
+  language: Language;
+  locale: string;
+  onClose: () => void;
+  onRetry: () => void;
+}) {
+  const { t } = useLanguage();
+  const title = player === null ? t('gameHistory') : t('playerHistory', { name: player.name });
+  return <Dialog title={title} onClose={onClose}>
+    {error !== null ? <><p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableLoadHistory')}</p><button className="button button-secondary" type="button" onClick={onRetry}>{t('tryAgain')}</button></>
+      : history === null ? <p className="status" role="status">{t('loadingHistory')}</p>
+        : history.length === 0 ? <p className="muted">{t('noTransactions')}</p>
+          : <ol className="history-list">{history.map((transaction) => <li key={transaction.id}><strong>{transactionDescription(transaction, players, language)}</strong><span className={player === null ? '' : 'player-history-amount'}>{player === null ? transactionAmount(transaction, language) : playerTransactionAmount(transaction, player.id, language)}</span><small>{new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(transaction.createdAt))}</small>{transaction.comment !== null && <em>{transaction.comment}</em>}</li>)}</ol>}
+  </Dialog>;
+}
+
+function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const { t } = useLanguage();
+  const dialog = useRef<HTMLElement>(null);
+  useEffect(() => { dialog.current?.focus(); }, []);
+  return <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}><section ref={dialog} className="dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }} onMouseDown={(event) => event.stopPropagation()}><header><h2>{title}</h2><button className="button button-quiet" type="button" onClick={onClose} aria-label={t('closeDialog', { title })}>{t('close')}</button></header>{children}</section></div>;
+}
+
+function PlayerPicker({ label, players, value, locale, onChange }: { label: string; players: Player[]; value: string; locale: string; onChange: (id: string) => void }) {
+  return <fieldset className="player-picker"><legend>{label}</legend><div>{players.map((candidate) => <button className={`player-choice${value === candidate.id ? ' selected' : ''}`} type="button" key={candidate.id} aria-pressed={value === candidate.id} onClick={() => onChange(candidate.id)}><span className="player-color" style={{ backgroundColor: candidate.color }} />{candidate.name}<small>{formatMoney(candidate.balance, locale)}</small></button>)}</div></fieldset>;
+}
+
+function Confirmation({ action, player, target, amount, passGoReward, preview, comment, locale }: { action: ActionType; player: Player; target: Player | null; amount: number; passGoReward: number; preview: { player: Player; after: number; delta: number }[]; comment: string; locale: string }) {
+  const { t } = useLanguage();
+  const total = action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? amount * (preview.length - 1) : action === 'PASS_GO' ? passGoReward : amount;
+  return <section className="confirmation"><dl><div><dt>{t('operation')}</dt><dd>{transactionLabel(action, t)}</dd></div><div><dt>{t('source')}</dt><dd>{sourceFor(action, player, t)}</dd></div><div><dt>{t('destination')}</dt><dd>{destinationFor(action, player, target, t)}</dd></div><div><dt>{t('amount')}</dt><dd>{formatMoney(action === 'PASS_GO' ? passGoReward : amount, locale)}{action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? ` ${t('perPlayer')}` : ''}</dd></div><div><dt>{t('total')}</dt><dd>{formatMoney(total, locale)}</dd></div>{comment.trim() !== '' && <div><dt>{t('comment')}</dt><dd>{comment.trim()}</dd></div>}</dl><h3>{t('resultingBalances')}</h3><ul className="balance-preview">{preview.map(({ player: affected, after, delta }) => <li key={affected.id}><span><i style={{ backgroundColor: affected.color }} />{affected.name}</span><strong>{formatMoney(after, locale)} <small>({delta >= 0 ? '+' : ''}{formatMoney(delta, locale)})</small></strong></li>)}</ul></section>;
+}
+
+function buildRequest(action: ActionType, playerId: string, targetId: string, amount: number, comment: string): CreateTransactionRequest | null {
+  const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
+  switch (action) {
+    case 'PLAYER_TO_PLAYER':
+    case 'PAY_RENT': return targetId === '' ? null : { type: action, sourcePlayerId: playerId, destinationPlayerId: targetId, amount, ...optionalComment };
+    case 'PLAYER_TO_BANK':
+    case 'BANK_TO_PLAYER': return { type: action, playerId, amount, ...optionalComment };
+    case 'PLAYER_TO_ALL': return { type: action, payerPlayerId: playerId, amountPerPlayer: amount, ...optionalComment };
+    case 'ALL_TO_PLAYER': return { type: action, recipientPlayerId: playerId, amountPerPlayer: amount, ...optionalComment };
+    case 'PASS_GO': return { type: action, playerId, ...optionalComment };
+  }
+}
+
+function previewBalances(request: CreateTransactionRequest, players: Player[], passGoReward: number) {
+  return players.map((player) => {
+    let delta = 0;
+    switch (request.type) {
+      case 'PLAYER_TO_PLAYER':
+      case 'PAY_RENT': if (player.id === request.sourcePlayerId) delta = -request.amount; if (player.id === request.destinationPlayerId) delta = request.amount; break;
+      case 'PLAYER_TO_BANK': if (player.id === request.playerId) delta = -request.amount; break;
+      case 'BANK_TO_PLAYER': if (player.id === request.playerId) delta = request.amount; break;
+      case 'PLAYER_TO_ALL': if (player.id === request.payerPlayerId) delta = -request.amountPerPlayer * (players.length - 1); else delta = request.amountPerPlayer; break;
+      case 'ALL_TO_PLAYER': if (player.id === request.recipientPlayerId) delta = request.amountPerPlayer * (players.length - 1); else delta = -request.amountPerPlayer; break;
+      case 'PASS_GO': if (player.id === request.playerId) delta = passGoReward; break;
+    }
+    return { player, delta, after: player.balance + delta };
+  });
+}
+
+function actionLabel(type: ActionType, t: Translate): string {
+  return ({ PLAYER_TO_PLAYER: t('payPlayer'), PAY_RENT: t('payRent'), PLAYER_TO_BANK: t('payBank'), BANK_TO_PLAYER: t('receiveFromBank'), PLAYER_TO_ALL: t('payEveryone'), ALL_TO_PLAYER: t('everyonePaysMe'), PASS_GO: t('passGo') })[type];
+}
+
+function actionDescription(action: ActionType, name: string, t: Translate): string {
+  const key = ({ PLAYER_TO_PLAYER: 'actionPayPlayer', PAY_RENT: 'actionPayRent', PLAYER_TO_BANK: 'actionPayBank', BANK_TO_PLAYER: 'actionReceiveBank', PLAYER_TO_ALL: 'actionPayEveryone', ALL_TO_PLAYER: 'actionEveryonePays', PASS_GO: 'actionPassGo' } as const)[action];
+  return t(key, { name });
+}
+
+function sourceFor(action: ActionType, player: Player, t: Translate): string {
+  if (action === 'BANK_TO_PLAYER' || action === 'PASS_GO') return t('bank');
+  if (action === 'ALL_TO_PLAYER') return t('allOtherPlayers');
+  return player.name;
+}
+
+function destinationFor(action: ActionType, player: Player, target: Player | null, t: Translate): string {
+  if (action === 'PLAYER_TO_BANK') return t('bank');
+  if (action === 'PLAYER_TO_ALL') return t('allOtherPlayers');
+  if (action === 'PLAYER_TO_PLAYER' || action === 'PAY_RENT') return target?.name ?? t('selectedPlayer');
+  return player.name;
+}
+
+function transactionLabel(type: TransactionType, t: Translate): string {
+  return ({ PLAYER_TO_PLAYER: t('playerPayment'), PLAYER_TO_BANK: t('paidBank'), BANK_TO_PLAYER: t('receivedFromBank'), PLAYER_TO_ALL: t('paidEveryone'), ALL_TO_PLAYER: t('everyonePaidPlayer'), PAY_RENT: t('paidRent'), PASS_GO: t('passedGo') })[type];
+}
+
+function formatMoney(value: number, locale: string): string { return `${formatThousands(value, locale)}k`; }
 function isPositiveInteger(value: string) { return /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0; }
-function preflightFundsError(action: ActionType | null, player: Player, players: Player[], amount: number) { if (!Number.isSafeInteger(amount) || amount <= 0) return null; if (action === 'PLAYER_TO_ALL') { const required = amount * (players.length - 1); return player.balance < required ? `Insufficient funds. Current balance: ${formatMoney(player.balance)}. Required: ${formatMoney(required)}.` : null; } if (action === 'ALL_TO_PLAYER') { const payers = players.filter((candidate) => candidate.id !== player.id && candidate.balance < amount); return payers.length === 0 ? null : `${payers.map((payer) => payer.name).join(', ')} cannot afford ${formatMoney(amount)}.`; } if (action === 'PLAYER_TO_PLAYER' || action === 'PAY_RENT' || action === 'PLAYER_TO_BANK') return player.balance < amount ? `Insufficient funds. Current balance: ${formatMoney(player.balance)}. Required: ${formatMoney(amount)}.` : null; return null; }
-function insufficientMessage(error: unknown, players: Player[]) { if (!(error instanceof MonopolyBankApiError) || error.code !== 'INSUFFICIENT_FUNDS') return null; const current = error.details?.currentBalance; const required = error.details?.requiredAmount; const playerId = error.details?.playerId; const player = typeof playerId === 'string' ? players.find((candidate) => candidate.id === playerId) : undefined; const prefix = player === undefined ? 'Insufficient funds.' : `${player.name} has insufficient funds.`; return typeof current === 'number' && typeof required === 'number' ? `${prefix} Current balance: ${formatMoney(current)}. Required: ${formatMoney(required)}.` : error.message; }
+
+function preflightFundsError(action: ActionType | null, player: Player, players: Player[], amount: number, locale: string, t: Translate) {
+  if (!Number.isSafeInteger(amount) || amount <= 0) return null;
+  if (action === 'PLAYER_TO_ALL') {
+    const required = amount * (players.length - 1);
+    return player.balance < required ? `${t('insufficientFunds')} ${t('balanceRequirement', { current: formatMoney(player.balance, locale), required: formatMoney(required, locale) })}` : null;
+  }
+  if (action === 'ALL_TO_PLAYER') {
+    const payers = players.filter((candidate) => candidate.id !== player.id && candidate.balance < amount);
+    return payers.length === 0 ? null : t('cannotAfford', { names: payers.map((payer) => payer.name).join(', '), amount: formatMoney(amount, locale) });
+  }
+  if (action === 'PLAYER_TO_PLAYER' || action === 'PAY_RENT' || action === 'PLAYER_TO_BANK') {
+    return player.balance < amount ? `${t('insufficientFunds')} ${t('balanceRequirement', { current: formatMoney(player.balance, locale), required: formatMoney(amount, locale) })}` : null;
+  }
+  return null;
+}
+
+function insufficientMessage(error: unknown, players: Player[], locale: string, t: Translate) {
+  if (!(error instanceof MonopolyBankApiError) || error.code !== 'INSUFFICIENT_FUNDS') return null;
+  const current = error.details?.currentBalance;
+  const required = error.details?.requiredAmount;
+  const playerId = error.details?.playerId;
+  const player = typeof playerId === 'string' ? players.find((candidate) => candidate.id === playerId) : undefined;
+  const prefix = player === undefined ? t('insufficientFunds') : t('playerInsufficientFunds', { name: player.name });
+  return typeof current === 'number' && typeof required === 'number'
+    ? `${prefix} ${t('balanceRequirement', { current: formatMoney(current, locale), required: formatMoney(required, locale) })}`
+    : prefix;
+}
