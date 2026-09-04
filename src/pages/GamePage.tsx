@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import type { CreateTransactionRequest, GameDetails } from '../../shared/contracts/api';
 import type { Currency, Game, Player, Transaction, TransactionType } from '../../shared/types/monopoly';
 import type { FinalGameSummary } from '../../shared/domain/game-summary';
@@ -36,6 +36,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyPlayer, setHistoryPlayer] = useState<Player | null>(null);
   const [historyError, setHistoryError] = useState<unknown | null>(null);
+  const historyCache = useRef(new Map<string, Transaction[]>());
   const [notice, setNotice] = useState<ActionType | null>(null);
   const [summary, setSummary] = useState<({ game: Game; winners: Player[] } & FinalGameSummary) | null>(null);
   const [bankruptPlayer, setBankruptPlayer] = useState<Player | null>(null);
@@ -65,7 +66,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
       const nextSocket = new WebSocket(url);
       socket = nextSocket;
       nextSocket.onopen = () => { if (socket === nextSocket) { attempts = 0; setLiveStatus('live'); } };
-      nextSocket.onmessage = (message) => { if (socket !== nextSocket) return; try { const event: unknown = JSON.parse(String(message.data)); if (isLiveServerEvent(event)) applyLiveEvent(event, setDetails, setHistory); } catch { /* Ignore malformed network data. */ } };
+      nextSocket.onmessage = (message) => { if (socket !== nextSocket) return; try { const event: unknown = JSON.parse(String(message.data)); if (isLiveServerEvent(event)) applyLiveEvent(event, setDetails, setHistory, historyCache); } catch { /* Ignore malformed network data. */ } };
       nextSocket.onclose = () => { if (closed || socket !== nextSocket) return; setLiveStatus('offline'); attempts += 1; retry = window.setTimeout(connect, Math.min(1000 * 2 ** (attempts - 1), 10_000)); };
       nextSocket.onerror = () => { if (socket === nextSocket) nextSocket.close(); };
     };
@@ -81,14 +82,29 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
   }, [gameId, details?.game.status]);
 
   const loadHistory = async (player: Player | null = null) => {
+    const scope = player === null ? 'all' : `player:${player.id}`;
     setHistoryOpen(true);
     setHistoryPlayer(player);
-    setHistory(null);
     setHistoryError(null);
+    const cached = historyCache.current.get(scope);
+    if (cached !== undefined) {
+      setHistory(cached);
+      return;
+    }
+    const allTransactions = historyCache.current.get('all');
+    if (player !== null && allTransactions !== undefined) {
+      const playerTransactions = allTransactions.filter((transaction) => transaction.participants.some((participant) => participant.playerId === player.id));
+      historyCache.current.set(scope, playerTransactions);
+      setHistory(playerTransactions);
+      return;
+    }
+    setHistory(null);
     try {
-      setHistory(player === null
+      const transactions = player === null
         ? await monopolyBankApi.listTransactions(gameId)
-        : await monopolyBankApi.listPlayerTransactions(gameId, player.id));
+        : await monopolyBankApi.listPlayerTransactions(gameId, player.id);
+      historyCache.current.set(scope, transactions);
+      setHistory(transactions);
     } catch (caught) {
       setHistoryError(caught);
     }
@@ -113,8 +129,8 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
     </section>
     {details.game.status === 'ACTIVE' && <div className="game-tools"><DiceRoller /><TableCalculator /></div>}
     {summary !== null && <GameSummaryScreen summary={summary} players={details.players} currency={details.game.currency} onClose={() => setSummary(null)} />}
-    {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} currency={details.game.currency} favoriteAmounts={details.favoriteAmounts ?? []} recentAmounts={details.recentAmounts ?? []} onToggleFavorite={(amount) => void monopolyBankApi.toggleFavoriteAmount(gameId, amount).then((favoriteAmounts) => setDetails((current) => current === null ? current : { ...current, favoriteAmounts }))} onClose={() => setSelectedPlayer(null)} onBankrupt={() => { setBankruptPlayer(selectedPlayer); setSelectedPlayer(null); }} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action, amount) => { playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails({ ...details, players, recentAmounts: amount === null ? details.recentAmounts : [amount, ...(details.recentAmounts ?? []).filter((value) => value !== amount)].slice(0, 5) }); setSelectedPlayer(null); setNotice(action); }} />}
-    {bankruptPlayer !== null && <BankruptcyDialog gameId={gameId} player={bankruptPlayer} players={details.players} onClose={() => setBankruptPlayer(null)} onCompleted={(players) => { setDetails({ ...details, players }); setBankruptPlayer(null); }} />}
+    {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} currency={details.game.currency} favoriteAmounts={details.favoriteAmounts ?? []} recentAmounts={details.recentAmounts ?? []} onToggleFavorite={(amount) => void monopolyBankApi.toggleFavoriteAmount(gameId, amount).then((favoriteAmounts) => setDetails((current) => current === null ? current : { ...current, favoriteAmounts }))} onClose={() => setSelectedPlayer(null)} onBankrupt={() => { setBankruptPlayer(selectedPlayer); setSelectedPlayer(null); }} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action, amount) => { historyCache.current.clear(); playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails({ ...details, players, recentAmounts: amount === null ? details.recentAmounts : [amount, ...(details.recentAmounts ?? []).filter((value) => value !== amount)].slice(0, 5) }); setSelectedPlayer(null); setNotice(action); }} />}
+    {bankruptPlayer !== null && <BankruptcyDialog gameId={gameId} player={bankruptPlayer} players={details.players} onClose={() => setBankruptPlayer(null)} onCompleted={(players) => { historyCache.current.clear(); setDetails({ ...details, players }); setBankruptPlayer(null); }} />}
     {inviteOpen && <InviteDialog gameId={gameId} gameName={details.game.name} onClose={() => setInviteOpen(false)} />}
     {finishing && <Dialog title="Finish Game" onClose={() => setFinishing(false)}><p className="dialog-intro">Finish this game and finalize the linked player statistics? Financial actions will become read-only.</p><div className="dialog-actions"><button className="button button-secondary" onClick={() => setFinishing(false)}>Cancel</button><button className="button button-danger" onClick={() => void monopolyBankApi.finishGame(gameId).then((finished) => { setDetails(finished); setFinishing(false); })}>Finish Game</button></div></Dialog>}
     {historyOpen && <HistoryDialog history={history} player={historyPlayer} players={details.players} currency={details.game.currency} error={historyError} language={language} locale={locale} onClose={() => { setHistoryOpen(false); setHistory(null); setHistoryError(null); }} onRetry={() => void loadHistory(historyPlayer)} />}
@@ -231,11 +247,11 @@ function HistoryDialog({ history, player, players, currency, error, language, lo
   </Dialog>;
 }
 
-function applyLiveEvent(event: LiveServerEvent, setDetails: React.Dispatch<React.SetStateAction<GameDetails | null>>, setHistory: React.Dispatch<React.SetStateAction<Transaction[] | null>>) {
-  if (event.type === 'GAME_STATE') { setDetails(event.state.details); setHistory(event.state.transactions); return; }
-  if (event.type === 'BALANCES_UPDATED' || event.type === 'PLAYER_BANKRUPT') setDetails((current) => current === null ? current : { ...current, players: event.players });
+function applyLiveEvent(event: LiveServerEvent, setDetails: React.Dispatch<React.SetStateAction<GameDetails | null>>, setHistory: React.Dispatch<React.SetStateAction<Transaction[] | null>>, historyCache: MutableRefObject<Map<string, Transaction[]>>) {
+  if (event.type === 'GAME_STATE') { historyCache.current.set('all', event.state.transactions); setDetails(event.state.details); setHistory(event.state.transactions); return; }
+  if (event.type === 'BALANCES_UPDATED' || event.type === 'PLAYER_BANKRUPT') { historyCache.current.clear(); setDetails((current) => current === null ? current : { ...current, players: event.players }); }
   if (event.type === 'GAME_FINISHED') setDetails(event.details);
-  if (event.type === 'TRANSACTION_CREATED') setHistory((current) => current === null ? current : [event.transaction, ...current.filter((transaction) => transaction.id !== event.transaction.id)]);
+  if (event.type === 'TRANSACTION_CREATED') { historyCache.current.clear(); setHistory((current) => current === null ? current : [event.transaction, ...current.filter((transaction) => transaction.id !== event.transaction.id)]); }
 }
 
 function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {

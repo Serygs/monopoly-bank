@@ -86,7 +86,7 @@ export class GameSession {
   }
 
   private async state(gameId: string, details?: GameDetails): Promise<LiveGameState> {
-    return { version: await this.version(), details: details ?? await this.gameService().getGame(gameId), transactions: await this.transactions().listByGameId(gameId, 100) };
+    return { version: await this.version(), details: details ?? await this.gameService().getGame(gameId), transactions: await this.transactions().listByGameId(gameId, 50) };
   }
   private async broadcast(event: LiveServerEvent): Promise<void> { const encoded = JSON.stringify(event); for (const ws of this.ctx.getWebSockets()) ws.send(encoded); }
   private version(): Promise<number> { return this.ctx.storage.get<number>('version').then((value) => value ?? 0); }
