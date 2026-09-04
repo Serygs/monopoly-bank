@@ -10,8 +10,8 @@ describe('transaction history formatting', () => {
   it('formats transaction descriptions in Ukrainian', () => { expect(transactionDescription(rent, players, 'uk')).toBe('John → Alex · Оренда'); });
   it('formats multi-player amounts and player-relative values', () => {
     const transaction: Transaction = { ...rent, type: 'PLAYER_TO_ALL', amount: 50, totalAmount: 200 };
-    expect(transactionAmount(transaction)).toBe('50k each · 200k total');
-    expect(playerTransactionAmount(rent, 'john')).toBe('-120k');
-    expect(playerTransactionAmount(rent, 'alex')).toBe('+120k');
+    expect(transactionAmount(transaction, 'K')).toBe('50k each · 200k total');
+    expect(playerTransactionAmount(rent, 'john', 'K')).toBe('-120k');
+    expect(playerTransactionAmount(rent, 'alex', 'K')).toBe('+120k');
   });
 });

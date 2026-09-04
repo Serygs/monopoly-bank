@@ -2,6 +2,9 @@ export const gameStatuses = ['ACTIVE', 'FINISHED'] as const;
 
 export type GameStatus = (typeof gameStatuses)[number];
 
+export const currencies = ['USD', 'EUR', 'UAH', 'K'] as const;
+export type Currency = (typeof currencies)[number];
+
 export const transactionTypes = [
   'PLAYER_TO_PLAYER',
   'PLAYER_TO_BANK',
@@ -20,6 +23,7 @@ export interface Game {
   name: string;
   startingBalance: number;
   passGoReward: number;
+  currency: Currency;
   status: GameStatus;
   createdAt: string;
   updatedAt: string;

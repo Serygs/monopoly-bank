@@ -18,6 +18,7 @@ const gameDetails: GameDetails = {
     name: 'Friday Monopoly',
     startingBalance: 1500,
     passGoReward: 200,
+    currency: 'K',
     status: 'ACTIVE',
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
@@ -42,6 +43,7 @@ describe('API router', () => {
       name: ' Friday Monopoly ',
       startingBalance: 1500,
       passGoReward: 200,
+      currency: 'K',
       players: [
         { name: ' Ada ', color: '#123456' },
         { name: 'Lin', color: '#654321' },
@@ -53,6 +55,7 @@ describe('API router', () => {
       name: 'Friday Monopoly',
       startingBalance: 1500,
       passGoReward: 200,
+      currency: 'K',
       players: [
         { name: 'Ada', color: '#123456' },
         { name: 'Lin', color: '#654321' },
@@ -80,10 +83,23 @@ describe('API router', () => {
       name: 'Friday Monopoly',
       startingBalance: field === 'startingBalance' ? 0 : 1500,
       passGoReward: field === 'passGoReward' ? -1 : 200,
+      currency: 'K',
       players: [
         { name: 'Ada', color: '#123456' },
         { name: 'Lin', color: '#654321' },
       ],
+    }));
+
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects an unsupported game currency', async () => {
+    const response = await createTestRouter()(jsonRequest('POST', '/api/games', {
+      name: 'Friday Monopoly',
+      startingBalance: 1500,
+      passGoReward: 200,
+      currency: 'GBP',
+      players: [{ name: 'Ada', color: '#123456' }, { name: 'Lin', color: '#654321' }],
     }));
 
     expect(response.status).toBe(400);

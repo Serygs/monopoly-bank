@@ -50,6 +50,7 @@ export class DefaultGameService implements GameService {
         name: request.name,
         startingBalance: request.startingBalance,
         passGoReward: request.passGoReward,
+        currency: request.currency,
       },
       playerInputs,
     );
@@ -82,7 +83,7 @@ export class DefaultGameService implements GameService {
   async duplicateGame(gameId: string): Promise<GameDetails> {
     const source = await this.getGame(gameId);
     const copyId = this.createId();
-    await this.games.createWithPlayers({ id: copyId, name: `${source.game.name} (Copy)`, startingBalance: source.game.startingBalance, passGoReward: source.game.passGoReward }, source.players.map((player) => ({ id: this.createId(), gameId: copyId, name: player.name, color: player.color, balance: source.game.startingBalance })));
+    await this.games.createWithPlayers({ id: copyId, name: `${source.game.name} (Copy)`, startingBalance: source.game.startingBalance, passGoReward: source.game.passGoReward, currency: source.game.currency }, source.players.map((player) => ({ id: this.createId(), gameId: copyId, name: player.name, color: player.color, balance: source.game.startingBalance })));
     for (const amount of source.favoriteAmounts ?? []) {
       await this.games.toggleFavoriteAmount(copyId, amount);
     }

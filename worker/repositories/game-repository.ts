@@ -1,5 +1,5 @@
 import type { GameSummary } from '../../shared/contracts/api.js';
-import type { Game, GameStatus } from '../../shared/types/monopoly.js';
+import type { Currency, Game, GameStatus } from '../../shared/types/monopoly.js';
 import type { CreatePlayerInput } from './player-repository.js';
 
 interface GameRow {
@@ -7,6 +7,7 @@ interface GameRow {
   name: string;
   starting_balance: number;
   pass_go_reward: number;
+  currency: Currency;
   status: string;
   created_at: string;
   updated_at: string;
@@ -17,6 +18,7 @@ export interface CreateGameInput {
   name: string;
   startingBalance: number;
   passGoReward: number;
+  currency: Currency;
   status?: GameStatus;
 }
 
@@ -50,15 +52,16 @@ export class D1GameRepository implements GameRepository {
   async create(input: CreateGameInput): Promise<Game> {
     const row = await this.database
       .prepare(
-        `INSERT INTO games (id, name, starting_balance, pass_go_reward, status)
-         VALUES (?, ?, ?, ?, ?)
-         RETURNING id, name, starting_balance, pass_go_reward, status, created_at, updated_at`,
+        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status)
+         VALUES (?, ?, ?, ?, ?, ?)
+         RETURNING id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at`,
       )
       .bind(
         input.id,
         input.name,
         input.startingBalance,
         input.passGoReward,
+        input.currency,
         input.status ?? 'ACTIVE',
       )
       .first<GameRow>();
@@ -73,10 +76,10 @@ export class D1GameRepository implements GameRepository {
   async createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void> {
     const gameStatement = this.database
       .prepare(
-        `INSERT INTO games (id, name, starting_balance, pass_go_reward, status)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.status ?? 'ACTIVE');
+      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.status ?? 'ACTIVE');
     const playerStatements = players.map((player) =>
       this.database
         .prepare(
@@ -92,7 +95,7 @@ export class D1GameRepository implements GameRepository {
   async getById(id: string): Promise<Game | null> {
     const row = await this.database
       .prepare(
-        `SELECT id, name, starting_balance, pass_go_reward, status, created_at, updated_at
+        `SELECT id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at
          FROM games
          WHERE id = ?`,
       )
@@ -105,7 +108,7 @@ export class D1GameRepository implements GameRepository {
   async list(): Promise<Game[]> {
     const result = await this.database
       .prepare(
-        `SELECT id, name, starting_balance, pass_go_reward, status, created_at, updated_at
+        `SELECT id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at
          FROM games
          ORDER BY updated_at DESC, id DESC`,
       )
@@ -117,7 +120,7 @@ export class D1GameRepository implements GameRepository {
   async listSummaries(): Promise<GameSummary[]> {
     const result = await this.database
       .prepare(
-        `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward,
+        `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency,
                 games.status, games.created_at, games.updated_at,
                 COUNT(players.id) AS player_count
          FROM games
@@ -159,7 +162,7 @@ export class D1GameRepository implements GameRepository {
         `UPDATE games
          SET ${assignments.join(', ')}
          WHERE id = ?
-         RETURNING id, name, starting_balance, pass_go_reward, status, created_at, updated_at`,
+         RETURNING id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at`,
       )
       .bind(...values)
       .first<GameRow>();
@@ -211,6 +214,7 @@ function mapGame(row: GameRow): Game {
     name: row.name,
     startingBalance: row.starting_balance,
     passGoReward: row.pass_go_reward,
+    currency: row.currency,
     status: row.status === 'ARCHIVED' ? 'FINISHED' : 'ACTIVE',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
