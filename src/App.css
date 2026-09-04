@@ -63,6 +63,31 @@ button:focus-visible, input:focus-visible { outline: 3px solid #174a31; outline-
 .table-calculator { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 24px; margin-top: 16px; padding: 22px; border: 2px solid #8ca491; border-radius: 12px; background: #f9f3d9; }.table-calculator h2 { margin: 0 0 4px; }.table-calculator .muted { margin: 0; }.calculator-controls { display: flex; align-items: center; gap: 8px; }.calculator-controls input { width: 82px; min-height: 42px; padding: 6px 8px; border: 1px solid #8ca491; border-radius: 7px; font: inherit; }.calculator-operations { display: grid; grid-template-columns: repeat(2, 32px); gap: 3px; }.calculator-operations button { min-height: 28px; border: 1px solid #8ca491; border-radius: 5px; background: #fff; font: inherit; font-weight: 800; }.calculator-operations button.selected { color: #fff; background: #1c6947; }.calculator-controls output { min-width: 76px; font: 800 1.15rem Georgia, serif; text-align: right; }@media (max-width: 640px) { .table-calculator { grid-template-columns: 1fr; gap: 14px; }.calculator-controls { justify-content: space-between; } }
 .remove-game-dialog > p { line-height: 1.55; }
 .remove-game-dialog .notice { padding: 14px; box-shadow: none; }
+
+/* Focused account screens: readable in both themes and sized for phone Safari. */
+.auth-page { min-height: calc(100dvh - 72px); display: grid; place-items: start center; padding-top: clamp(28px, 8vh, 72px); }
+.auth-card { width: min(100%, 460px); padding: clamp(24px, 6vw, 36px); border-radius: 18px; }
+.auth-card-heading { display: flex; align-items: center; gap: 14px; }
+.auth-card-mark { display: grid; place-items: center; flex: 0 0 auto; width: 46px; height: 46px; border: 2px solid #184d37; border-radius: 13px; color: #f7ebbd; background: #174a31; box-shadow: inset 0 0 0 3px #285f45; font: 900 .85rem Georgia, serif; letter-spacing: .04em; }
+.auth-card h1 { margin: 0; font-size: clamp(2rem, 8vw, 2.65rem); }
+.auth-card .lede { margin: 18px 0 26px; line-height: 1.55; }
+.auth-form { gap: 18px; }
+.auth-form label { color: #254b39; font-size: .92rem; }
+.auth-form input, .auth-form select { width: 100%; min-height: 50px; padding: 12px 13px; border: 1px solid #a4b8a8; border-radius: 10px; color: #173d2b; background: #fffdf7; box-shadow: inset 0 1px 2px rgb(23 74 49 / .06); }
+.auth-form input::placeholder { color: #76897d; opacity: 1; }
+.auth-form .button-primary { width: 100%; min-height: 52px; margin-top: 4px; font-size: 1rem; }
+.auth-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid #d5decf; color: #567060; font-size: .9rem; }
+.auth-card-footer .button { min-height: 38px; padding: 6px 0; color: #195f40; white-space: nowrap; }
+.auth-back { min-height: 34px; padding: 0; margin: 0 0 24px; }
+[data-theme='dark'] .auth-card { border-color: #547764; background: linear-gradient(145deg, #1d3d30, #142e24); box-shadow: 0 16px 35px rgb(0 0 0 / .28); }
+[data-theme='dark'] .auth-card::before { border-color: rgb(234 217 149 / .24); }
+[data-theme='dark'] .auth-card h1, [data-theme='dark'] .auth-card .eyebrow { color: #fff6cb; }
+[data-theme='dark'] .auth-card .lede, [data-theme='dark'] .auth-card-footer { color: #c3d5c7; }
+[data-theme='dark'] .auth-card-footer { border-color: #3d5e4d; }
+[data-theme='dark'] .auth-form label { color: #e2eee4; }
+[data-theme='dark'] .auth-form input, [data-theme='dark'] .auth-form select { border-color: #5a7968; color: #f3faf4; background: #10271e; box-shadow: inset 0 1px 2px rgb(0 0 0 / .25); }
+[data-theme='dark'] .auth-form input::placeholder { color: #aabdb0; }
+[data-theme='dark'] .auth-card-footer .button, [data-theme='dark'] .auth-back { color: #f7ebbd; }
 @media (max-width: 640px) { .app-header { padding: 0 12px; }.app-header-inner { min-height: 64px; }.brand { gap: 7px; font-size: .92rem; }.brand-mark { width: 34px; height: 34px; }.header-tools { gap: 8px; }.bank-status { display: none; }.language-switch button { min-width: 38px; }.hero-heading { border-radius: 14px; }.game-card-actions { display: grid; grid-template-columns: 1fr; }.game-card-actions .button { width: 100%; }.game-card-copy { align-items: flex-start; }.game-card-seal { width: 42px; height: 42px; } }
 @media (max-width: 640px) {
   .saved-games-page .game-card { gap: 14px; padding: 16px; }
@@ -107,6 +132,9 @@ input, select, textarea { font-size: 16px; }
   [data-theme='dark'] .dialog-actions { background: #193229; }
   .action-button { min-height: 52px; }
   .player-choice { min-height: 48px; }
+  .auth-page { min-height: 100dvh; padding-top: max(24px, env(safe-area-inset-top)); padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+  .auth-card { padding: 24px 20px; border-radius: 16px; }
+  .auth-card-footer { align-items: flex-start; flex-direction: column; }
 }
 
 @media (max-height: 500px) and (orientation: landscape) {
