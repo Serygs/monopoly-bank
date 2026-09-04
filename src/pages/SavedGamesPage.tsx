@@ -6,10 +6,11 @@ import { useLanguage } from '../i18n/language-context';
 
 interface Props {
   onCreateGame: () => void;
+  onJoinGame: () => void;
   onOpenGame: (gameId: string) => void;
 }
 
-export function SavedGamesPage({ onCreateGame, onOpenGame }: Props) {
+export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) {
   const { locale, t } = useLanguage();
   const [games, setGames] = useState<GameSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,8 +67,10 @@ export function SavedGamesPage({ onCreateGame, onOpenGame }: Props) {
     }
   };
   const duplicateGame = async (game: GameSummary) => {
+    const gameAccessPassword = window.prompt('Choose a new access password for the copied game (10+ characters).');
+    if (gameAccessPassword === null) return;
     setDuplicating(game.game.id);
-    try { onOpenGame((await monopolyBankApi.duplicateGame(game.game.id)).game.id); } finally { setDuplicating(null); }
+    try { onOpenGame((await monopolyBankApi.duplicateGame(game.game.id, gameAccessPassword)).game.id); } finally { setDuplicating(null); }
   };
 
   return <main className="page saved-games-page">
@@ -77,7 +80,7 @@ export function SavedGamesPage({ onCreateGame, onOpenGame }: Props) {
         <h1>{t('savedGames')}</h1>
         <p className="lede">{t('savedGamesLede')}</p>
       </div>
-      <button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button>
+      <div className="header-actions"><button className="button button-secondary" type="button" onClick={onJoinGame}>Join game</button><button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button></div>
     </section>
 
     {notice !== null && <section className="notice notice-success" role="status">

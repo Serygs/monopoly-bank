@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "check": "npm run lint && npm test",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --passWithNoTests",
     "preview": "npm run build && vite preview",

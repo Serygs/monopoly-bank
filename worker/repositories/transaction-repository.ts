@@ -12,8 +12,8 @@ interface TransactionRow {
   total_amount: number;
   comment: string | null;
   created_at: string;
-  player_id: string;
-  balance_delta: number;
+  player_id: string | null;
+  balance_delta: number | null;
 }
 
 export interface CreateTransactionInput {
@@ -140,7 +140,7 @@ const transactionSelect = `SELECT
   transaction_participants.player_id,
   transaction_participants.balance_delta
 FROM transactions
-INNER JOIN transaction_participants ON transaction_participants.transaction_id = transactions.id`;
+LEFT JOIN transaction_participants ON transaction_participants.transaction_id = transactions.id`;
 
 function mapTransactions(rows: TransactionRow[]): Transaction[] {
   const transactions = new Map<string, Transaction>();
@@ -161,10 +161,7 @@ function mapTransactions(rows: TransactionRow[]): Transaction[] {
       transactions.set(row.id, transaction);
     }
 
-    transaction.participants.push({
-      playerId: row.player_id,
-      balanceDelta: row.balance_delta,
-    });
+    if (row.player_id !== null && row.balance_delta !== null) transaction.participants.push({ playerId: row.player_id, balanceDelta: row.balance_delta });
   }
 
   return [...transactions.values()];

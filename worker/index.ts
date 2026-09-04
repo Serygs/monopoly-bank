@@ -5,6 +5,15 @@ import { D1PlayerRepository } from './repositories/player-repository.js';
 import { D1TransactionRepository } from './repositories/transaction-repository.js';
 import { DefaultBankingService } from './services/banking-service.js';
 import { DefaultGameService } from './services/game-service.js';
+import { D1UserRepository } from './repositories/user-repository.js';
+import { D1SessionRepository } from './repositories/session-repository.js';
+import { D1GameAccessRepository } from './repositories/game-access-repository.js';
+import { AuthService } from './services/auth-service.js';
+import { GameAccessService } from './services/game-access-service.js';
+import { D1GameCompletionRepository } from './repositories/game-completion-repository.js';
+import { ProfileStatisticsService } from './services/profile-statistics-service.js';
+import { DurableObjectGameLiveGateway } from './services/game-live-gateway.js';
+export { GameSession } from './game-session.js';
 
 export default {
   fetch(request, env) {
@@ -16,8 +25,12 @@ export default {
     const players = new D1PlayerRepository(env.MONOPOLY_BANK_DB);
     const transactions = new D1TransactionRepository(env.MONOPOLY_BANK_DB);
     const createId = () => crypto.randomUUID();
+    const access = new GameAccessService(new D1GameAccessRepository(env.MONOPOLY_BANK_DB));
     const router = createApiRouter({
       games: new DefaultGameService({ games, players, createId }),
+      auth: new AuthService(new D1UserRepository(env.MONOPOLY_BANK_DB), new D1SessionRepository(env.MONOPOLY_BANK_DB), createId),
+      access,
+      profileStatistics: new ProfileStatisticsService(new D1GameCompletionRepository(env.MONOPOLY_BANK_DB)),
       banking: new DefaultBankingService({
         games,
         players,
@@ -25,6 +38,7 @@ export default {
         operations: new D1BankingOperationRepository(env.MONOPOLY_BANK_DB),
         createId,
       }),
+      live: new DurableObjectGameLiveGateway(env.GAME_SESSIONS),
     });
     return router(request);
   },

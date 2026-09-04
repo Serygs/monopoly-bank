@@ -1,0 +1,12 @@
+export interface UserRecord { id: string; nickname: string; avatar: string; passwordHash: string; passwordSalt: string; gamesPlayed: number; gamesWon: number; createdAt: string; updatedAt: string; }
+interface UserRow { id: string; nickname: string; avatar: string; password_hash: string; password_salt: string; games_played: number; games_won: number; created_at: string; updated_at: string; }
+export interface UserRepository { create(input: Omit<UserRecord, 'gamesPlayed' | 'gamesWon' | 'createdAt' | 'updatedAt'>): Promise<UserRecord>; findByNickname(nickname: string): Promise<UserRecord | null>; findById(id: string): Promise<UserRecord | null>; updateProfile(id: string, nickname: string, avatar: string): Promise<UserRecord | null>; }
+export class D1UserRepository implements UserRepository {
+  private readonly database: D1Database;
+  constructor(database: D1Database) { this.database = database; }
+  async create(input: Omit<UserRecord, 'gamesPlayed' | 'gamesWon' | 'createdAt' | 'updatedAt'>): Promise<UserRecord> { const row = await this.database.prepare('INSERT INTO users (id, nickname, avatar, password_hash, password_salt) VALUES (?, ?, ?, ?, ?) RETURNING *').bind(input.id, input.nickname, input.avatar, input.passwordHash, input.passwordSalt).first<UserRow>(); if (row === null) throw new Error('D1 did not return user.'); return map(row); }
+  async findByNickname(nickname: string): Promise<UserRecord | null> { const row = await this.database.prepare('SELECT * FROM users WHERE nickname = ?').bind(nickname).first<UserRow>(); return row === null ? null : map(row); }
+  async findById(id: string): Promise<UserRecord | null> { const row = await this.database.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>(); return row === null ? null : map(row); }
+  async updateProfile(id: string, nickname: string, avatar: string): Promise<UserRecord | null> { const row = await this.database.prepare('UPDATE users SET nickname = ?, avatar = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *').bind(nickname, avatar, id).first<UserRow>(); return row === null ? null : map(row); }
+}
+function map(row: UserRow): UserRecord { return { id: row.id, nickname: row.nickname, avatar: row.avatar, passwordHash: row.password_hash, passwordSalt: row.password_salt, gamesPlayed: row.games_played, gamesWon: row.games_won, createdAt: row.created_at, updatedAt: row.updated_at }; }

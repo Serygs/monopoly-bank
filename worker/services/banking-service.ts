@@ -6,11 +6,11 @@ import {
   allToPlayer,
   bankToPlayer,
   passGo,
-  payRent,
   playerToAll,
   playerToBank,
   playerToPlayer,
   type BankingOperationResult,
+  declareBankruptcy,
 } from '../../shared/domain/banking.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { BankingOperationRepository } from '../repositories/banking-operation-repository.js';
@@ -23,6 +23,7 @@ export interface BankingService {
   createTransaction(gameId: string, request: CreateTransactionRequest): Promise<CreateTransactionResponse>;
   listTransactions(gameId: string, limit: number): Promise<Transaction[]>;
   listPlayerTransactions(gameId: string, playerId: string, limit: number): Promise<Transaction[]>;
+  declareBankruptcy(gameId: string, request: import('../../shared/contracts/api.js').BankruptcyRequest): Promise<CreateTransactionResponse>;
 }
 
 export interface BankingServiceDependencies {
@@ -95,6 +96,16 @@ export class DefaultBankingService implements BankingService {
     return this.transactions.listByPlayerId(gameId, playerId, limit);
   }
 
+  async declareBankruptcy(gameId: string, request: import('../../shared/contracts/api.js').BankruptcyRequest): Promise<CreateTransactionResponse> {
+    const game = await this.games.getById(gameId); if (game === null) throw new ResourceNotFoundError('Game');
+    const players = await this.players.listByGameId(gameId);
+    const result = declareBankruptcy({ game, players, ...request });
+    const transactionId = this.createId();
+    await this.operations.persist({ transactionId, transaction: result.transaction, balanceChanges: result.affectedPlayers, bankruptPlayerId: request.playerId });
+    const transaction = await this.transactions.getById(gameId, transactionId); if (transaction === null) throw new PersistenceConsistencyError();
+    return { transaction, players: await this.players.listByGameId(gameId) };
+  }
+
   private async ensureGameExists(gameId: string): Promise<void> {
     if ((await this.games.getById(gameId)) === null) {
       throw new ResourceNotFoundError('Game');
@@ -110,8 +121,6 @@ function executeOperation(
   switch (request.type) {
     case 'PLAYER_TO_PLAYER':
       return playerToPlayer({ ...request, game, players });
-    case 'PAY_RENT':
-      return payRent({ ...request, game, players });
     case 'PLAYER_TO_BANK':
       return playerToBank({ ...request, game, players });
     case 'BANK_TO_PLAYER':
