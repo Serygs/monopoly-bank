@@ -12,6 +12,8 @@ import { AuthService } from './services/auth-service.js';
 import { GameAccessService } from './services/game-access-service.js';
 import { D1GameCompletionRepository } from './repositories/game-completion-repository.js';
 import { ProfileStatisticsService } from './services/profile-statistics-service.js';
+import { DurableObjectGameLiveGateway } from './services/game-live-gateway.js';
+export { GameSession } from './game-session.js';
 
 export default {
   fetch(request, env) {
@@ -36,6 +38,7 @@ export default {
         operations: new D1BankingOperationRepository(env.MONOPOLY_BANK_DB),
         createId,
       }),
+      live: new DurableObjectGameLiveGateway(env.GAME_SESSIONS),
     });
     return router(request);
   },

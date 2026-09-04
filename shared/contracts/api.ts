@@ -24,6 +24,7 @@ export interface GameDetails {
   players: Player[];
   favoriteAmounts?: number[];
   recentAmounts?: number[];
+  canManage?: boolean;
 }
 
 export interface DeleteGameResponse {
@@ -108,6 +109,7 @@ export interface GameSummaryStatistics {
   lowestActiveBalance: number | null;
   players: Array<{ player: Player; totalReceived: number; totalPaid: number; passGoCount: number; transactionCount: number }>;
 }
+export interface FinalGameSummaryResponse extends GameSummaryStatistics { playerToPlayerTotal: number; paidToBank: number; receivedFromBank: number; largestTransaction: number; biggestSenderId: string | null; leastSenderId: string | null; biggestPayerRecipient: { payerId: string; recipientId: string; amount: number; transactionCount: number } | null; }
 
 export type CreateTransactionRequest =
   | PlayerToPlayerTransactionRequest

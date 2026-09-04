@@ -36,6 +36,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #174a31; outline-
 .button-danger-quiet { color: #8b2430; background: transparent; border-color: transparent; }
 .button-danger-quiet:hover:not(:disabled) { background: #fff0f1; }
 .status, .empty-state, .notice, .game-card, .wallet-card, .game-form fieldset, .dialog, .dice-roller { box-shadow: 0 8px 22px rgb(37 54 44 / .08); }
+.live-status { display: inline-block; margin-top: 8px; font-size: .82rem; font-weight: 700; color: #315b43; }.live-status::before { content: '●'; margin-right: 6px; }.live-status-connecting { color: #9a6700; }.live-status-offline { color: #8b2430; }
 .game-card { position: relative; overflow: hidden; min-height: 148px; padding-top: 30px; border-color: #bfc9bf; border-width: 2px; }
 .game-card::before { content: ''; position: absolute; inset: 0 0 auto; height: 10px; background: repeating-linear-gradient(90deg, #c83d3f 0 42px, #fff4dd 42px 48px); border-bottom: 2px solid #a52f34; }
 .game-card-copy { display: flex; align-items: center; gap: 16px; min-width: 0; }

@@ -1,5 +1,7 @@
 import type { ApiError, ApiResponse, BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, CreateTransactionResponse, DeleteGameResponse, GameDetails, GameSummary, LoginRequest, RegisterRequest, UpdateProfileRequest, UserProfile } from '../../shared/contracts/api.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
+import type { FinalGameSummary } from '../../shared/domain/game-summary.js';
+import type { Player, Game } from '../../shared/types/monopoly.js';
 
 export class MonopolyBankApiError extends Error {
   readonly code: string;
@@ -23,6 +25,7 @@ export interface MonopolyBankApi {
   toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
   createTransaction(gameId: string, request: CreateTransactionRequest): Promise<CreateTransactionResponse>;
   declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<CreateTransactionResponse>;
+  getGameSummary(gameId: string): Promise<{ game: Game; winners: Player[] } & FinalGameSummary>;
   listTransactions(gameId: string, limit?: number): Promise<Transaction[]>;
   listPlayerTransactions(gameId: string, playerId: string, limit?: number): Promise<Transaction[]>;
 }
@@ -38,13 +41,16 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   async getGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}`); }
   async deleteGame(gameId: string): Promise<DeleteGameResponse> { return request<DeleteGameResponse>(`/api/games/${encodeURIComponent(gameId)}`, { method: 'DELETE' }); }
   async duplicateGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}/duplicate`, { method: 'POST' }); }
-  async finishGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}/finish`, { method: 'POST' }); }
+  async finishGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}/finish`, commandInit({ method: 'POST' })); }
   async toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]> { return request<number[]>(`/api/games/${encodeURIComponent(gameId)}/favorite-amounts`, { method: 'POST', body: JSON.stringify({ amount }) }); }
-  async createTransaction(gameId: string, input: CreateTransactionRequest): Promise<CreateTransactionResponse> { return request<CreateTransactionResponse>(`/api/games/${encodeURIComponent(gameId)}/transactions`, { method: 'POST', body: JSON.stringify(input) }); }
-  async declareBankruptcy(gameId: string, input: BankruptcyRequest): Promise<CreateTransactionResponse> { return request<CreateTransactionResponse>(`/api/games/${encodeURIComponent(gameId)}/bankruptcy`, { method: 'POST', body: JSON.stringify(input) }); }
+  async createTransaction(gameId: string, input: CreateTransactionRequest): Promise<CreateTransactionResponse> { return request<CreateTransactionResponse>(`/api/games/${encodeURIComponent(gameId)}/transactions`, commandInit({ method: 'POST', body: JSON.stringify(input) })); }
+  async declareBankruptcy(gameId: string, input: BankruptcyRequest): Promise<CreateTransactionResponse> { return request<CreateTransactionResponse>(`/api/games/${encodeURIComponent(gameId)}/bankruptcy`, commandInit({ method: 'POST', body: JSON.stringify(input) })); }
+  async getGameSummary(gameId: string): Promise<{ game: Game; winners: Player[] } & FinalGameSummary> { return request<{ game: Game; winners: Player[] } & FinalGameSummary>(`/api/games/${encodeURIComponent(gameId)}/summary`); }
   async listTransactions(gameId: string, limit = 50): Promise<Transaction[]> { return request<Transaction[]>(`/api/games/${encodeURIComponent(gameId)}/transactions?limit=${limit}`); }
   async listPlayerTransactions(gameId: string, playerId: string, limit = 50): Promise<Transaction[]> { return request<Transaction[]>(`/api/games/${encodeURIComponent(gameId)}/players/${encodeURIComponent(playerId)}/transactions?limit=${limit}`); }
 }
+
+function commandInit(init: RequestInit): RequestInit { return { ...init, headers: { ...init.headers, 'x-command-id': crypto.randomUUID() } }; }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;

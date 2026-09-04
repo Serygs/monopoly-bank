@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CreateTransactionRequest, GameDetails } from '../../shared/contracts/api';
-import type { Currency, Player, Transaction, TransactionType } from '../../shared/types/monopoly';
+import type { Currency, Game, Player, Transaction, TransactionType } from '../../shared/types/monopoly';
+import type { FinalGameSummary } from '../../shared/domain/game-summary';
 import { MonopolyBankApiError, monopolyBankApi } from '../api/monopoly-bank-api';
 import { DiceRoller } from '../components/DiceRoller';
 import { AmountSelector } from '../components/AmountSelector';
@@ -12,6 +13,7 @@ import { useLanguage } from '../i18n/language-context';
 import type { Language, Translate } from '../i18n/translations';
 import { formatMoney, formatMoneyDelta } from '../utils/money';
 import { playerTransactionAmount, transactionAmount, transactionDescription } from '../utils/transaction-history';
+import { isLiveServerEvent, type LiveServerEvent } from '../../shared/contracts/live';
 
 type ActionType = CreateTransactionRequest['type'];
 interface Props { gameId: string; onBack: () => void; preferences: DevicePreferences; }
@@ -35,6 +37,10 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
   const [historyPlayer, setHistoryPlayer] = useState<Player | null>(null);
   const [historyError, setHistoryError] = useState<unknown | null>(null);
   const [notice, setNotice] = useState<ActionType | null>(null);
+  const [summary, setSummary] = useState<({ game: Game; winners: Player[] } & FinalGameSummary) | null>(null);
+  const [bankruptPlayer, setBankruptPlayer] = useState<Player | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<'connecting' | 'live' | 'offline'>('connecting');
 
   useEffect(() => {
     let active = true;
@@ -43,6 +49,23 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
       (caught: unknown) => { if (active) setError(caught); },
     );
     return () => { active = false; };
+  }, [gameId]);
+
+  useEffect(() => {
+    let closed = false; let retry: number | undefined; let socket: WebSocket | null = null;
+    const connect = () => {
+      if (closed) return;
+      setLiveStatus('connecting');
+      const url = new URL(`/api/games/${encodeURIComponent(gameId)}/live`, window.location.origin);
+      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+      socket = new WebSocket(url);
+      socket.onopen = () => setLiveStatus('live');
+      socket.onmessage = (message) => { try { const event: unknown = JSON.parse(String(message.data)); if (isLiveServerEvent(event)) applyLiveEvent(event, setDetails, setHistory); } catch { /* Ignore malformed network data. */ } };
+      socket.onclose = () => { if (!closed) { setLiveStatus('offline'); retry = window.setTimeout(connect, 1500); } };
+      socket.onerror = () => socket?.close();
+    };
+    connect();
+    return () => { closed = true; if (retry !== undefined) window.clearTimeout(retry); socket?.close(); };
   }, [gameId]);
 
   const loadHistory = async (player: Player | null = null) => {
@@ -68,20 +91,23 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
 
   return <main className="page game-page">
     <section className="page-heading game-heading">
-      <div><p className="eyebrow">{t('activeGame')}</p><h1>{details.game.name}</h1><p className="lede">{t('configuredPassGoReward', { amount: formatMoney(details.game.passGoReward, details.game.currency) })}</p></div>
-      <div className="header-actions"><button className="button button-secondary" type="button" onClick={() => void loadHistory()}>{t('history')}</button><button className="button button-quiet" type="button" onClick={onBack}>{t('savedGames')}</button></div>
+      <div><p className="eyebrow">{t('activeGame')}</p><h1>{details.game.name}</h1><p className="lede">{t('configuredPassGoReward', { amount: formatMoney(details.game.passGoReward, details.game.currency) })}</p><span className={`live-status live-status-${liveStatus}`} role="status">{liveStatus === 'live' ? 'Live' : liveStatus === 'connecting' ? 'Reconnecting…' : 'Offline'}</span></div>
+      <div className="header-actions">{details.canManage && details.game.status === 'ACTIVE' && <button className="button button-danger" type="button" disabled={liveStatus !== 'live'} onClick={() => setFinishing(true)}>Finish Game</button>}<button className="button button-secondary" type="button" onClick={() => void monopolyBankApi.getGameSummary(gameId).then(setSummary)}>{details.game.status === 'FINISHED' ? 'Final summary' : 'Game summary'}</button><button className="button button-secondary" type="button" onClick={() => void loadHistory()}>{t('history')}</button><button className="button button-quiet" type="button" onClick={onBack}>{t('savedGames')}</button></div>
     </section>
     {notice !== null && <section className="notice notice-success" role="status"><p>{t('recorded', { action: actionLabel(notice, t) })}</p><button className="button button-quiet" type="button" onClick={() => setNotice(null)}>{t('dismiss')}</button></section>}
     <section className="wallet-grid" aria-label={t('playerWallets')}>
-      {details.players.map((player) => <button className="wallet-card wallet-card-button" type="button" key={player.id} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: player.name, balance: formatMoney(player.balance, details.game.currency) })} onClick={() => setSelectedPlayer(player)}><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{player.name}</span><strong>{formatMoney(player.balance, details.game.currency)}</strong><span className="wallet-action">{t('walletAction')}</span></button>)}
+      {details.players.map((player) => <button className="wallet-card wallet-card-button" type="button" disabled={liveStatus !== 'live' || details.game.status !== 'ACTIVE' || player.status === 'BANKRUPT'} key={player.id} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: player.name, balance: formatMoney(player.balance, details.game.currency) })} onClick={() => setSelectedPlayer(player)}><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{player.name}{player.status === 'BANKRUPT' ? ' · Bankrupt' : ''}</span><strong>{formatMoney(player.balance, details.game.currency)}</strong><span className="wallet-action">{t('walletAction')}</span></button>)}
     </section>
-    <div className="game-tools"><DiceRoller /><TableCalculator /></div>
-    {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} currency={details.game.currency} favoriteAmounts={details.favoriteAmounts ?? []} recentAmounts={details.recentAmounts ?? []} onToggleFavorite={(amount) => void monopolyBankApi.toggleFavoriteAmount(gameId, amount).then((favoriteAmounts) => setDetails((current) => current === null ? current : { ...current, favoriteAmounts }))} onClose={() => setSelectedPlayer(null)} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action, amount) => { playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails({ ...details, players, recentAmounts: amount === null ? details.recentAmounts : [amount, ...(details.recentAmounts ?? []).filter((value) => value !== amount)].slice(0, 5) }); setSelectedPlayer(null); setNotice(action); }} />}
+    {details.game.status === 'ACTIVE' && <div className="game-tools"><DiceRoller /><TableCalculator /></div>}
+    {summary !== null && <section className="banknote-panel"><div className="page-heading"><div><p className="eyebrow">Game summary</p><h2>{summary.game.name}</h2><p>Winners: {summary.winners.length === 0 ? 'Not decided' : summary.winners.map((player) => player.name).join(', ')}</p></div><button className="button button-quiet" onClick={() => setSummary(null)}>Close</button></div><dl><div><dt>Total transferred</dt><dd>{formatMoney(summary.totalMoneyTransferred, details.game.currency)}</dd></div><div><dt>Player to player</dt><dd>{formatMoney(summary.playerToPlayerTotal, details.game.currency)}</dd></div><div><dt>Paid to Bank</dt><dd>{formatMoney(summary.paidToBank, details.game.currency)}</dd></div><div><dt>Received from Bank</dt><dd>{formatMoney(summary.receivedFromBank, details.game.currency)}</dd></div><div><dt>Largest transaction</dt><dd>{formatMoney(summary.largestTransaction, details.game.currency)}</dd></div></dl>{summary.biggestPayerRecipient !== null && <p>Largest player payment: {details.players.find((player) => player.id === summary.biggestPayerRecipient?.payerId)?.name} → {details.players.find((player) => player.id === summary.biggestPayerRecipient?.recipientId)?.name}, {formatMoney(summary.biggestPayerRecipient.amount, details.game.currency)}.</p>}</section>}
+    {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} currency={details.game.currency} favoriteAmounts={details.favoriteAmounts ?? []} recentAmounts={details.recentAmounts ?? []} onToggleFavorite={(amount) => void monopolyBankApi.toggleFavoriteAmount(gameId, amount).then((favoriteAmounts) => setDetails((current) => current === null ? current : { ...current, favoriteAmounts }))} onClose={() => setSelectedPlayer(null)} onBankrupt={() => { setBankruptPlayer(selectedPlayer); setSelectedPlayer(null); }} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action, amount) => { playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails({ ...details, players, recentAmounts: amount === null ? details.recentAmounts : [amount, ...(details.recentAmounts ?? []).filter((value) => value !== amount)].slice(0, 5) }); setSelectedPlayer(null); setNotice(action); }} />}
+    {bankruptPlayer !== null && <BankruptcyDialog gameId={gameId} player={bankruptPlayer} players={details.players} onClose={() => setBankruptPlayer(null)} onCompleted={(players) => { setDetails({ ...details, players }); setBankruptPlayer(null); }} />}
+    {finishing && <Dialog title="Finish Game" onClose={() => setFinishing(false)}><p className="dialog-intro">Finish this game and finalize the linked player statistics? Financial actions will become read-only.</p><div className="dialog-actions"><button className="button button-secondary" onClick={() => setFinishing(false)}>Cancel</button><button className="button button-danger" onClick={() => void monopolyBankApi.finishGame(gameId).then((finished) => { setDetails(finished); setFinishing(false); })}>Finish Game</button></div></Dialog>}
     {historyOpen && <HistoryDialog history={history} player={historyPlayer} players={details.players} currency={details.game.currency} error={historyError} language={language} locale={locale} onClose={() => { setHistoryOpen(false); setHistory(null); setHistoryError(null); }} onRetry={() => void loadHistory(historyPlayer)} />}
   </main>;
 }
 
-function BankingDialog({ gameId, player, players, passGoReward, currency, favoriteAmounts, recentAmounts, onToggleFavorite, onClose, onViewHistory, onCompleted }: {
+function BankingDialog({ gameId, player, players, passGoReward, currency, favoriteAmounts, recentAmounts, onToggleFavorite, onClose, onBankrupt, onViewHistory, onCompleted }: {
   gameId: string;
   player: Player;
   players: Player[];
@@ -91,6 +117,7 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
   recentAmounts: number[];
   onToggleFavorite: (amount: number) => void;
   onClose: () => void;
+  onBankrupt: () => void;
   onViewHistory: (player: Player) => void;
   onCompleted: (players: Player[], action: ActionType, amount: number | null) => void;
 }) {
@@ -144,7 +171,7 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
   return <Dialog title={title} onClose={onClose}>
     {transactionError !== null && <p className="notice notice-error" role="alert">{transactionError}</p>}
     {action === null ? <>
-      <div className="action-grid">{actions.map((item) => <button className="button button-secondary action-button" type="button" key={item} onClick={() => selectAction(item)}>{actionLabel(item, t)}</button>)}</div>
+      <div className="action-grid">{actions.map((item) => <button className="button button-secondary action-button" type="button" key={item} onClick={() => selectAction(item)}>{actionLabel(item, t)}</button>)}<button className="button button-danger" type="button" onClick={onBankrupt}>Declare Bankrupt</button></div>
       <button className="button button-quiet player-history-button" type="button" onClick={() => onViewHistory(player)}>{t('viewPlayerHistory', { name: player.name })}</button>
     </> : confirming ? <>
       <p className="dialog-intro">{t('confirmationIntro')}</p>
@@ -160,6 +187,13 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
       <div className="dialog-actions"><button className="button button-quiet" type="button" onClick={() => selectAction(null)}>{t('back')}</button><button className="button button-primary" type="button" disabled={!valid} onClick={() => setConfirming(true)}>{t('reviewTransaction')}</button></div>
     </>}
   </Dialog>;
+}
+
+function BankruptcyDialog({ gameId, player, players, onClose, onCompleted }: { gameId: string; player: Player; players: Player[]; onClose: () => void; onCompleted: (players: Player[]) => void }) {
+  const [creditorId, setCreditorId] = useState<string | null>(null); const [confirming, setConfirming] = useState(false); const [error, setError] = useState<string | null>(null);
+  const creditor = players.find((candidate) => candidate.id === creditorId) ?? null;
+  const submit = async () => { try { const result = await monopolyBankApi.declareBankruptcy(gameId, { playerId: player.id, ...(creditorId === null ? {} : { creditorPlayerId: creditorId }) }); onCompleted(result.players); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to declare bankruptcy.'); } };
+  return <Dialog title={`Declare ${player.name} bankrupt`} onClose={onClose}>{confirming ? <><p className="dialog-intro">{creditor === null ? 'Remaining money is returned to the Bank.' : `${player.name}'s remaining money will transfer to ${creditor.name}.`} This cannot be undone.</p>{error !== null && <p className="notice notice-error">{error}</p>}<div className="dialog-actions"><button className="button button-secondary" onClick={() => setConfirming(false)}>Back</button><button className="button button-danger" onClick={() => void submit()}>Confirm bankruptcy</button></div></> : <><p className="dialog-intro">Choose where {player.name}'s remaining balance goes.</p><div className="action-grid"><button className={`button button-secondary${creditorId === null ? ' selected' : ''}`} onClick={() => setCreditorId(null)}>To Bank</button>{players.filter((candidate) => candidate.id !== player.id && candidate.status !== 'BANKRUPT').map((candidate) => <button className={`button button-secondary${creditorId === candidate.id ? ' selected' : ''}`} key={candidate.id} onClick={() => setCreditorId(candidate.id)}>To {candidate.name}</button>)}</div><div className="dialog-actions"><button className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-danger" onClick={() => setConfirming(true)}>Review bankruptcy</button></div></>}</Dialog>;
 }
 
 function HistoryDialog({ history, player, players, currency, error, language, locale, onClose, onRetry }: {
@@ -181,6 +215,13 @@ function HistoryDialog({ history, player, players, currency, error, language, lo
         : history.length === 0 ? <p className="muted">{t('noTransactions')}</p>
           : <ol className="history-list">{history.map((transaction) => <li key={transaction.id}><strong>{transactionDescription(transaction, players, language)}</strong><span className={player === null ? '' : 'player-history-amount'}>{player === null ? transactionAmount(transaction, currency, language) : playerTransactionAmount(transaction, player.id, currency)}</span><small>{new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(transaction.createdAt))}</small>{transaction.comment !== null && <em>{transaction.comment}</em>}</li>)}</ol>}
   </Dialog>;
+}
+
+function applyLiveEvent(event: LiveServerEvent, setDetails: React.Dispatch<React.SetStateAction<GameDetails | null>>, setHistory: React.Dispatch<React.SetStateAction<Transaction[] | null>>) {
+  if (event.type === 'GAME_STATE') { setDetails(event.state.details); setHistory(event.state.transactions); return; }
+  if (event.type === 'BALANCES_UPDATED' || event.type === 'PLAYER_BANKRUPT') setDetails((current) => current === null ? current : { ...current, players: event.players });
+  if (event.type === 'GAME_FINISHED') setDetails(event.details);
+  if (event.type === 'TRANSACTION_CREATED') setHistory((current) => current === null ? current : [event.transaction, ...current.filter((transaction) => transaction.id !== event.transaction.id)]);
 }
 
 function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {

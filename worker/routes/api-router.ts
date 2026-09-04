@@ -8,7 +8,9 @@ import type { GameService } from '../services/game-service.js';
 import { AuthService, AuthenticationError } from '../services/auth-service.js';
 import { GameAccessService } from '../services/game-access-service.js';
 import { ProfileStatisticsService } from '../services/profile-statistics-service.js';
+import type { GameLiveGateway } from '../services/game-live-gateway.js';
 import { calculateWinners } from '../../shared/domain/winner-calculation.js';
+import { calculateFinalGameSummary } from '../../shared/domain/game-summary.js';
 import { PersistenceConsistencyError, ResourceNotFoundError } from '../services/errors.js';
 import {
   ApiValidationError,
@@ -28,6 +30,7 @@ export interface ApiRouterDependencies {
   auth: AuthService;
   access: GameAccessService;
   profileStatistics: ProfileStatisticsService;
+  live?: GameLiveGateway;
 }
 
 export function createApiRouter(dependencies: ApiRouterDependencies) {
@@ -49,6 +52,8 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
   const finishMatch = /^\/api\/games\/([^/]+)\/finish$/.exec(pathname);
   const favoriteMatch = /^\/api\/games\/([^/]+)\/favorite-amounts$/.exec(pathname);
   const bankruptcyMatch = /^\/api\/games\/([^/]+)\/bankruptcy$/.exec(pathname);
+  const summaryMatch = /^\/api\/games\/([^/]+)\/summary$/.exec(pathname);
+  const liveMatch = /^\/api\/games\/([^/]+)\/live$/.exec(pathname);
 
   if (pathname === '/api/auth/register' && request.method === 'POST') {
     const result = await dependencies.auth.register(...Object.values(await parseRegisterRequest(request)) as [string, string, string]);
@@ -83,14 +88,27 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
   }
 
   if (gameMatch !== null && request.method === 'GET') {
-    const gameId = parseResourceId(gameMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id); return success(await dependencies.games.getGame(gameId));
+    const gameId = parseResourceId(gameMatch[1], 'gameId'); const role = await dependencies.access.requireMember(gameId, actor.id); return success({ ...(await dependencies.games.getGame(gameId)), canManage: role === 'OWNER' });
+  }
+
+  if (liveMatch !== null && request.method === 'GET') {
+    const gameId = parseResourceId(liveMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const details = await dependencies.games.getGame(gameId);
+    if (details.game.status !== 'ACTIVE') return failure(409, 'GAME_NOT_ACTIVE', 'This game is not active.');
+    return dependencies.live === undefined ? failure(503, 'LIVE_UNAVAILABLE', 'Live games are not configured.') : dependencies.live.connect(gameId, actor, request);
   }
 
   if (gameMatch !== null && request.method === 'DELETE') {
     const gameId = parseResourceId(gameMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.deleteGame(gameId));
   }
+  if (summaryMatch !== null && request.method === 'GET') {
+    const gameId = parseResourceId(summaryMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id);
+    const details = await dependencies.games.getGame(gameId); const transactions = await dependencies.banking.listTransactions(gameId, 100);
+    return success({ game: details.game, winners: calculateWinners(details.players), ...calculateFinalGameSummary(details.players, transactions) });
+  }
   if (duplicateMatch !== null && request.method === 'POST') { const gameId = parseResourceId(duplicateMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.duplicateGame(gameId), 201); }
-  if (finishMatch !== null && request.method === 'POST') { const gameId = parseResourceId(finishMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); const details = await dependencies.games.finishGame(gameId); const winnerIds = new Set(calculateWinners(details.players).map((player) => player.id)); const participants = (await dependencies.access.linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) })); await dependencies.profileStatistics.recordCompletedGame(gameId, participants); return success(details); }
+  if (finishMatch !== null && request.method === 'POST') { const gameId = parseResourceId(finishMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'FINISH_GAME', commandId: readCommandId(request) }); const details = await dependencies.games.finishGame(gameId); const winnerIds = new Set(calculateWinners(details.players).map((player) => player.id)); const participants = (await dependencies.access.linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) })); await dependencies.profileStatistics.recordCompletedGame(gameId, participants); return success(details); }
   if (favoriteMatch !== null && request.method === 'POST') {
     const body = await request.json() as { amount?: unknown };
     if (typeof body.amount !== 'number' || !Number.isSafeInteger(body.amount) || body.amount <= 0) throw new ApiValidationError('amount must be a positive integer.');
@@ -100,18 +118,17 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
   if (bankruptcyMatch !== null && request.method === 'POST') {
     const gameId = parseResourceId(bankruptcyMatch[1], 'gameId');
     await dependencies.access.requireMember(gameId, actor.id);
-    return success(await dependencies.banking.declareBankruptcy(gameId, await parseBankruptcyRequest(request)), 201);
+    const body = await parseBankruptcyRequest(request);
+    if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'DECLARE_BANKRUPTCY', commandId: readCommandId(request), request: body });
+    return success(await dependencies.banking.declareBankruptcy(gameId, body), 201);
   }
 
   if (transactionMatch !== null) {
     if (request.method === 'POST') {
-      const gameId = parseResourceId(transactionMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id); return success(
-        await dependencies.banking.createTransaction(
-          gameId,
-          await parseCreateTransactionRequest(request),
-        ),
-        201,
-      );
+      const gameId = parseResourceId(transactionMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id);
+      const body = await parseCreateTransactionRequest(request);
+      if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'CREATE_TRANSACTION', commandId: readCommandId(request), request: body });
+      return success(await dependencies.banking.createTransaction(gameId, body), 201);
     }
     if (request.method === 'GET') {
       const gameId = parseResourceId(transactionMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id); return success(
@@ -134,6 +151,12 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
   }
 
   return failure(404, 'NOT_FOUND', 'Endpoint not found.');
+}
+
+function readCommandId(request: Request): string {
+  const commandId = request.headers.get('x-command-id');
+  if (commandId === null || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(commandId)) throw new ApiValidationError('x-command-id must be a UUID v4.');
+  return commandId;
 }
 
 function readHistoryLimit(request: Request): number {
