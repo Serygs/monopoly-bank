@@ -21,6 +21,7 @@ export class GameAccessService {
 
   async grantPlayer(gameId: string, userId: string, playerId?: string): Promise<void> { await this.access.addMember(gameId, userId, 'PLAYER', playerId); }
   async getJoinCredentials(joinCode: string): Promise<{ gameId: string; passwordHash: string; passwordSalt: string } | null> { return this.access.getGameAccessCredentials(joinCode); }
+  async ownerJoinCode(gameId: string, userId: string): Promise<string> { const joinCode = await this.access.getOwnerJoinCode(gameId, userId); if (joinCode === null) throw new ResourceNotFoundError('Game'); return joinCode; }
   async verifyGamePassword(password: string, credentials: { passwordHash: string; passwordSalt: string }): Promise<boolean> { return verifyPassword(password, { hash: credentials.passwordHash, salt: credentials.passwordSalt }); }
   async linkedMembers(gameId: string): Promise<Array<{ userId: string; playerId: string | null }>> { return this.access.listLinkedMembers(gameId); }
 }

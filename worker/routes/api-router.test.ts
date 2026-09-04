@@ -193,6 +193,22 @@ describe('API router', () => {
     expect(response.status).toBe(404);
   });
 
+  it('exposes an invitation code only to the game owner', async () => {
+    const games: GameService = { listGames: async () => [], listGamesForUser: async () => [], createGameForOwner: async () => gameDetails, getGame: async () => gameDetails, deleteGame: async () => ({ gameId }), duplicateGameForOwner: async () => gameDetails, finishGame: async () => gameDetails, toggleFavoriteAmount: async () => [] };
+    const banking: BankingService = { createTransaction: async () => transactionResponse(), listTransactions: async () => [], listPlayerTransactions: async () => [] };
+    const router = createApiRouter({ games, banking, auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Owner', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never, access: { requireMember: async () => 'OWNER', ownerJoinCode: async () => 'TABLE42' } as never, profileStatistics: { recordCompletedGame: async () => undefined } as never });
+
+    const response = await router(new Request(`https://example.test/api/games/${gameId}`));
+
+    await expect(response.json()).resolves.toMatchObject({ data: { canManage: true, joinCode: 'TABLE42' } });
+  });
+
+  it('does not expose an invitation code to a player member', async () => {
+    const response = await createTestRouter()(new Request(`https://example.test/api/games/${gameId}`));
+
+    await expect(response.json()).resolves.toEqual({ data: { ...gameDetails, canManage: false } });
+  });
+
   it('deletes a saved game', async () => {
     let deletedGameId: string | undefined;
     const router = createTestRouter({

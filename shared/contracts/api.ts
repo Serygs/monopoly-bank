@@ -25,6 +25,8 @@ export interface GameDetails {
   favoriteAmounts?: number[];
   recentAmounts?: number[];
   canManage?: boolean;
+  /** Present only for the game's owner; never expose the password hash. */
+  joinCode?: string;
 }
 
 export interface DeleteGameResponse {

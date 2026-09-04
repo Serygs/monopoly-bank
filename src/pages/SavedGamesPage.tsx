@@ -6,10 +6,11 @@ import { useLanguage } from '../i18n/language-context';
 
 interface Props {
   onCreateGame: () => void;
+  onJoinGame: () => void;
   onOpenGame: (gameId: string) => void;
 }
 
-export function SavedGamesPage({ onCreateGame, onOpenGame }: Props) {
+export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) {
   const { locale, t } = useLanguage();
   const [games, setGames] = useState<GameSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,7 +80,7 @@ export function SavedGamesPage({ onCreateGame, onOpenGame }: Props) {
         <h1>{t('savedGames')}</h1>
         <p className="lede">{t('savedGamesLede')}</p>
       </div>
-      <button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button>
+      <div className="header-actions"><button className="button button-secondary" type="button" onClick={onJoinGame}>Join game</button><button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button></div>
     </section>
 
     {notice !== null && <section className="notice notice-success" role="status">

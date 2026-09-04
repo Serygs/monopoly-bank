@@ -89,7 +89,8 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
   }
 
   if (gameMatch !== null && request.method === 'GET') {
-    const gameId = parseResourceId(gameMatch[1], 'gameId'); const role = await dependencies.access.requireMember(gameId, actor.id); return success({ ...(await dependencies.games.getGame(gameId)), canManage: role === 'OWNER' });
+    const gameId = parseResourceId(gameMatch[1], 'gameId'); const role = await dependencies.access.requireMember(gameId, actor.id);
+    return success({ ...(await dependencies.games.getGame(gameId)), canManage: role === 'OWNER', ...(role === 'OWNER' ? { joinCode: await dependencies.access.ownerJoinCode(gameId, actor.id) } : {}) });
   }
 
   if (liveMatch !== null && request.method === 'GET') {

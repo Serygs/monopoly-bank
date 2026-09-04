@@ -22,10 +22,10 @@ export interface CreateGameInput {
   passGoReward: number;
   currency: Currency;
   status?: GameStatus;
-  ownerUserId?: string;
-  joinCode?: string;
-  gameAccessPasswordHash?: string;
-  gameAccessPasswordSalt?: string;
+  ownerUserId: string;
+  joinCode: string;
+  gameAccessPasswordHash: string;
+  gameAccessPasswordSalt: string;
 }
 
 export interface UpdateGameMetadataInput {
@@ -35,7 +35,6 @@ export interface UpdateGameMetadataInput {
 }
 
 export interface GameRepository {
-  create(input: CreateGameInput): Promise<Game>;
   createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void>;
   getById(id: string): Promise<Game | null>;
   list(): Promise<Game[]>;
@@ -56,37 +55,13 @@ export class D1GameRepository implements GameRepository {
     this.database = database;
   }
 
-  async create(input: CreateGameInput): Promise<Game> {
-    const row = await this.database
-      .prepare(
-        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status, started_at)
-         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-         RETURNING id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at, started_at, finished_at`,
-      )
-      .bind(
-        input.id,
-        input.name,
-        input.startingBalance,
-        input.passGoReward,
-        input.currency,
-        input.status ?? 'ACTIVE',
-      )
-      .first<GameRow>();
-
-    if (row === null) {
-      throw new Error('D1 did not return the created game.');
-    }
-
-    return mapGame(row);
-  }
-
   async createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void> {
     const gameStatement = this.database
       .prepare(
         `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status, owner_user_id, join_code, game_access_password_hash, game_access_password_salt, started_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
       )
-      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.status ?? 'ACTIVE', input.ownerUserId ?? null, input.joinCode ?? null, input.gameAccessPasswordHash ?? null, input.gameAccessPasswordSalt ?? null);
+      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.status ?? 'ACTIVE', input.ownerUserId, input.joinCode, input.gameAccessPasswordHash, input.gameAccessPasswordSalt);
     const playerStatements = players.map((player) =>
       this.database
         .prepare(
@@ -96,7 +71,7 @@ export class D1GameRepository implements GameRepository {
         .bind(player.id, player.gameId, player.name, player.color, player.balance),
     );
 
-    const memberStatement = input.ownerUserId === undefined ? [] : [this.database.prepare("INSERT INTO game_members (game_id, user_id, role, player_id) VALUES (?, ?, 'OWNER', ?)").bind(input.id, input.ownerUserId, players[0]?.id ?? null)];
+    const memberStatement = [this.database.prepare("INSERT INTO game_members (game_id, user_id, role, player_id) VALUES (?, ?, 'OWNER', ?)").bind(input.id, input.ownerUserId, players[0]?.id ?? null)];
     await this.database.batch([gameStatement, ...playerStatements, ...memberStatement]);
   }
 
