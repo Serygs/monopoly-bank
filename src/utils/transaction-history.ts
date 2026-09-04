@@ -1,6 +1,6 @@
-import type { Player, Transaction } from '../../shared/types/monopoly';
-import { languageLocale, type Language } from '../i18n/translations';
-import { formatThousands } from './money';
+import type { Currency, Player, Transaction } from '../../shared/types/monopoly';
+import type { Language } from '../i18n/translations';
+import { formatMoney, formatMoneyDelta } from './money';
 
 const labels: Record<Language, { player: string; rent: string; bank: string; everyone: string; passGo: string; each: string; total: string }> = {
   en: { player: 'Player', rent: 'Rent', bank: 'Bank', everyone: 'Everyone', passGo: 'Pass GO', each: 'each', total: 'total' },
@@ -25,16 +25,16 @@ export function transactionDescription(transaction: Transaction, players: Player
   }
 }
 
-export function transactionAmount(transaction: Transaction, language: Language = 'en'): string {
+export function transactionAmount(transaction: Transaction, currency: Currency, language: Language = 'en'): string {
   const text = labels[language];
-  const money = (value: number) => `${formatThousands(value, languageLocale(language))}k`;
+  const money = (value: number) => formatMoney(value, currency);
   if (transaction.type === 'PLAYER_TO_ALL' || transaction.type === 'ALL_TO_PLAYER') return `${money(transaction.amount)} ${text.each} · ${money(transaction.totalAmount)} ${text.total}`;
   if (transaction.type === 'PASS_GO') return `+${money(transaction.amount)}`;
   return money(transaction.amount);
 }
 
-export function playerTransactionAmount(transaction: Transaction, playerId: string, language: Language = 'en'): string | null {
+export function playerTransactionAmount(transaction: Transaction, playerId: string, currency: Currency): string | null {
   const delta = transaction.participants.find((participant) => participant.playerId === playerId)?.balanceDelta;
   if (delta === undefined) return null;
-  return `${delta >= 0 ? '+' : '-'}${formatThousands(Math.abs(delta), languageLocale(language))}k`;
+  return formatMoneyDelta(delta, currency);
 }
