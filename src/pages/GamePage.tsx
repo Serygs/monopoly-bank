@@ -20,8 +20,8 @@ type ActionType = CreateTransactionRequest['type'];
 interface Props { gameId: string; onBack: () => void; preferences: DevicePreferences; }
 
 const actions: ActionType[] = [
-  'PLAYER_TO_PLAYER',
   'PASS_GO',
+  'PLAYER_TO_PLAYER',
   'BANK_TO_PLAYER',
   'PLAYER_TO_BANK',
   'ALL_TO_PLAYER',
