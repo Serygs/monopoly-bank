@@ -10,6 +10,7 @@ import { JoinGamePage } from './pages/JoinGamePage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SavedGamesPage } from './pages/SavedGamesPage';
 import { applyTheme, readPreferences, writePreferences, type DevicePreferences } from './utils/preferences';
+import { currentRoute, routePath } from './utils/client-route';
 import './App.css';
 
 function App() {
@@ -39,10 +40,13 @@ function App() {
     return () => document.removeEventListener('pointerdown', closeWhenClickingOutside);
   }, [settingsOpen]);
 
-  const navigate = (target: string) => { setSettingsOpen(false); window.history.pushState({}, '', target); setPath(target); };
+  const navigate = (target: string) => { setSettingsOpen(false); window.history.pushState({}, '', target); setPath(routePath(target)); };
   const gameMatch = /^\/games\/([^/]+)$/.exec(path);
   if (profile === undefined) return <main className="page"><p className="status">{t('loadingAccount')}</p></main>;
-  if (profile === null) return <AuthPage onAuthenticated={(user) => { setProfile(user); navigate('/'); }} />;
+  if (profile === null) {
+    const returnRoute = currentRoute(window.location.pathname, window.location.search, window.location.hash);
+    return <AuthPage onAuthenticated={(user) => { setProfile(user); navigate(returnRoute); }} />;
+  }
 
   const joinCode = path === '/games/join' ? new URLSearchParams(window.location.search).get('code') ?? '' : '';
   const invitationToken = path === '/games/join' ? new URLSearchParams(window.location.search).get('invite') ?? '' : '';

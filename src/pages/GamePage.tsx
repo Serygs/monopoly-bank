@@ -12,6 +12,7 @@ import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import type { Language, Translate } from '../i18n/translations';
 import { formatMoney, formatMoneyDelta } from '../utils/money';
+import { playerNameWithGameId } from '../utils/player-display';
 import { playerTransactionAmount, transactionAmount, transactionDescription } from '../utils/transaction-history';
 import { isLiveServerEvent, type LiveServerEvent } from '../../shared/contracts/live';
 
@@ -20,12 +21,18 @@ interface Props { gameId: string; onBack: () => void; preferences: DevicePrefere
 
 const actions: ActionType[] = [
   'PLAYER_TO_PLAYER',
-  'PLAYER_TO_BANK',
-  'BANK_TO_PLAYER',
-  'PLAYER_TO_ALL',
-  'ALL_TO_PLAYER',
   'PASS_GO',
+  'BANK_TO_PLAYER',
+  'PLAYER_TO_BANK',
+  'ALL_TO_PLAYER',
+  'PLAYER_TO_ALL',
 ];
+
+function walletActionTone(action: ActionType): 'income' | 'expense' {
+  return action === 'BANK_TO_PLAYER' || action === 'ALL_TO_PLAYER' || action === 'PASS_GO'
+    ? 'income'
+    : 'expense';
+}
 
 export function GamePage({ gameId, onBack, preferences }: Props) {
   const { language, locale, t } = useLanguage();
@@ -125,7 +132,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
     {details.game.status === 'LOBBY' && <section className="notice notice-success" role="status"><p>{t('waitingForPlayers')} — {t('startGameHint')}</p>{details.canManage && <button className="button button-primary" type="button" disabled={details.players.length < 2} onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}>{t('startGame')}</button>}</section>}
     {notice !== null && <section className="notice notice-success" role="status"><p>{t('recorded', { action: actionLabel(notice, t) })}</p><button className="button button-quiet" type="button" onClick={() => setNotice(null)}>{t('dismiss')}</button></section>}
     <section className="wallet-grid" aria-label={t('playerWallets')}>
-      {details.players.map((player) => <button className="wallet-card wallet-card-button" type="button" disabled={details.game.status !== 'ACTIVE' || player.status === 'BANKRUPT'} key={player.id} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: player.name, balance: formatMoney(player.balance, details.game.currency) })} onClick={() => setSelectedPlayer(player)}><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{player.name}{player.status === 'BANKRUPT' ? ' · Bankrupt' : ''}</span><strong>{formatMoney(player.balance, details.game.currency)}</strong><span className="wallet-action">{t('walletAction')}</span></button>)}
+      {details.players.map((player) => { const playerName = playerNameWithGameId(player, details.players); return <button className="wallet-card wallet-card-button" type="button" disabled={details.game.status !== 'ACTIVE' || player.status === 'BANKRUPT'} key={player.id} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: playerName, balance: formatMoney(player.balance, details.game.currency) })} onClick={() => setSelectedPlayer(player)}><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{playerName}{player.status === 'BANKRUPT' ? ' · Bankrupt' : ''}</span><strong>{formatMoney(player.balance, details.game.currency)}</strong><span className="wallet-action">{t('walletAction')}</span></button>; })}
     </section>
     {details.game.status === 'ACTIVE' && <div className="game-tools"><DiceRoller /><TableCalculator /></div>}
     {summary !== null && <GameSummaryScreen summary={summary} players={details.players} currency={details.game.currency} onClose={() => setSummary(null)} />}
@@ -201,7 +208,7 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
   return <Dialog title={title} onClose={onClose}>
     {transactionError !== null && <p className="notice notice-error" role="alert">{transactionError}</p>}
     {action === null ? <>
-      <div className="action-grid">{actions.map((item) => <button className="button button-secondary action-button" type="button" key={item} onClick={() => selectAction(item)}>{actionLabel(item, t)}</button>)}<button className="button button-danger" type="button" onClick={onBankrupt}>Declare Bankrupt</button></div>
+      <div className="action-grid wallet-action-grid">{actions.map((item) => <button className={`button wallet-action-button wallet-action-${walletActionTone(item)} action-button`} type="button" key={item} onClick={() => selectAction(item)}>{actionLabel(item, t)}</button>)}<button className="button button-danger bankruptcy-action" type="button" onClick={onBankrupt}>Declare Bankrupt</button></div>
       <button className="button button-quiet player-history-button" type="button" onClick={() => onViewHistory(player)}>{t('viewPlayerHistory', { name: player.name })}</button>
     </> : confirming ? <>
       <p className="dialog-intro">{t('confirmationIntro')}</p>
@@ -209,7 +216,7 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
       <div className="dialog-actions"><button className="button button-secondary" type="button" disabled={submitting} onClick={onClose}>{t('cancel')}</button><button className="button button-primary" type="button" disabled={submitting} onClick={() => void submit()}>{submitting ? t('recording') : t('confirmTransaction')}</button></div>
     </> : <>
       <p className="dialog-intro">{actionDescription(action, player.name, t)}</p>
-      {targetRequired && <PlayerPicker label={t('chooseRecipient')} players={players.filter((candidate) => candidate.id !== player.id)} value={targetId} currency={currency} onChange={setTargetId} />}
+      {targetRequired && <PlayerPicker label={t('chooseRecipient')} players={players.filter((candidate) => candidate.id !== player.id)} gamePlayers={players} value={targetId} currency={currency} onChange={setTargetId} />}
       {amountRequired && <><AmountSelector value={amount} onChange={setAmount} currency={currency} favorites={favoriteAmounts} recent={recentAmounts} onToggleFavorite={onToggleFavorite} /><span className="field-hint">{isPositiveInteger(amount) ? formatMoney(amountValue, currency) : t('enterPositiveInteger')}</span></>}
       {fundsError !== null && <p className="field-error" role="alert">{fundsError}</p>}
       {action === 'PASS_GO' && <p className="pass-go-value">{t('passGoReceives', { amount: formatMoney(passGoReward, currency) })}</p>}
@@ -265,8 +272,8 @@ function Dialog({ title, onClose, children }: { title: string; onClose: () => vo
   return <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}><section ref={dialog} className="dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }} onMouseDown={(event) => event.stopPropagation()}><header><h2>{title}</h2><button className="button button-quiet" type="button" onClick={onClose} aria-label={t('closeDialog', { title })}>{t('close')}</button></header>{children}</section></div>;
 }
 
-function PlayerPicker({ label, players, value, currency, onChange }: { label: string; players: Player[]; value: string; currency: Currency; onChange: (id: string) => void }) {
-  return <fieldset className="player-picker"><legend>{label}</legend><div>{players.map((candidate) => <button className={`player-choice${value === candidate.id ? ' selected' : ''}`} type="button" key={candidate.id} aria-pressed={value === candidate.id} onClick={() => onChange(candidate.id)}><span className="player-color" style={{ backgroundColor: candidate.color }} />{candidate.name}<small>{formatMoney(candidate.balance, currency)}</small></button>)}</div></fieldset>;
+function PlayerPicker({ label, players, gamePlayers, value, currency, onChange }: { label: string; players: Player[]; gamePlayers: Player[]; value: string; currency: Currency; onChange: (id: string) => void }) {
+  return <fieldset className="player-picker"><legend>{label}</legend><div>{players.map((candidate) => <button className={`player-choice${value === candidate.id ? ' selected' : ''}`} type="button" key={candidate.id} aria-pressed={value === candidate.id} onClick={() => onChange(candidate.id)}><span className="player-color" style={{ backgroundColor: candidate.color }} /><span>{playerNameWithGameId(candidate, gamePlayers)}</span><small>{formatMoney(candidate.balance, currency)}</small></button>)}</div></fieldset>;
 }
 
 function Confirmation({ action, player, target, amount, passGoReward, currency, preview, comment }: { action: ActionType; player: Player; target: Player | null; amount: number; passGoReward: number; currency: Currency; preview: { player: Player; after: number; delta: number }[]; comment: string }) {
