@@ -1,16 +1,10 @@
 import type { BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, JoinGameRequest, LoginRequest, RegisterRequest, UpdateProfileRequest } from '../../shared/contracts/api.js';
 import { currencies, transactionTypes, type Currency, type TransactionType } from '../../shared/types/monopoly.js';
+import { ValidationError } from '../services/errors.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export class ApiValidationError extends Error {
-  readonly details: Record<string, string | number>;
-
-  constructor(message: string, details: Record<string, string | number> = {}) {
-    super(message);
-    this.details = details;
-  }
-}
+export class ApiValidationError extends ValidationError { constructor(message: string, details: Record<string, unknown> = {}) { super(message, details); } }
 
 export function parseResourceId(value: string, field: string): string {
   if (!uuidPattern.test(value)) {

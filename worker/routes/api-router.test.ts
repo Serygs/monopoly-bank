@@ -165,10 +165,11 @@ describe('API router', () => {
     const response = await router(jsonRequest('POST', `/api/games/${gameId}/transactions`, { type, ...fields }));
 
     expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       error: {
         code: 'INSUFFICIENT_FUNDS',
-        message: 'Insufficient funds.',
+        message: 'Player does not have enough funds.',
+        requestId: expect.any(String),
         details: { playerId: firstPlayerId, currentBalance: 50, requiredAmount: 200, shortfall: 150 },
       },
     });

@@ -1,17 +1,14 @@
-import type { ApiError, ApiSuccess } from '../../shared/contracts/api.js';
-import {
-  BankingDomainError,
-  InsufficientFundsError,
-} from '../../shared/domain/banking.js';
+import type { ApiSuccess } from '../../shared/contracts/api.js';
 import type { BankingService } from '../services/banking-service.js';
 import type { GameService } from '../services/game-service.js';
-import { AuthService, AuthenticationError } from '../services/auth-service.js';
+import { AuthService } from '../services/auth-service.js';
 import { GameAccessService } from '../services/game-access-service.js';
 import { ProfileStatisticsService } from '../services/profile-statistics-service.js';
 import type { GameLiveGateway } from '../services/game-live-gateway.js';
 import { calculateWinners } from '../../shared/domain/winner-calculation.js';
 import { calculateFinalGameSummary } from '../../shared/domain/game-summary.js';
-import { PersistenceConsistencyError, ResourceNotFoundError } from '../services/errors.js';
+import { InvalidJoinCodeError, NotFoundError } from '../services/errors.js';
+import { handleError } from '../services/error-handler.js';
 import {
   ApiValidationError,
   parseCreateGameRequest,
@@ -36,15 +33,20 @@ export interface ApiRouterDependencies {
 
 export function createApiRouter(dependencies: ApiRouterDependencies) {
   return async (request: Request): Promise<Response> => {
+    const requestId = readRequestId(request);
+    const path = new URL(request.url).pathname;
     try {
-      return await route(request, dependencies);
+      const response = await route(request, dependencies, requestId);
+      const headers = new Headers(response.headers);
+      headers.set('x-request-id', requestId);
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     } catch (error) {
-      return mapError(error);
+      return handleError(error, { requestId, method: request.method, path, cloudflareRayId: request.headers.get('cf-ray') });
     }
   };
 }
 
-async function route(request: Request, dependencies: ApiRouterDependencies): Promise<Response> {
+async function route(request: Request, dependencies: ApiRouterDependencies, requestId: string): Promise<Response> {
   const pathname = new URL(request.url).pathname;
   const gameMatch = /^\/api\/games\/([^/]+)$/.exec(pathname);
   const transactionMatch = /^\/api\/games\/([^/]+)\/transactions$/.exec(pathname);
@@ -74,7 +76,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
   if (pathname === '/api/games/join' && request.method === 'POST') {
     const body = await parseJoinGameRequest(request);
     const credentials = await dependencies.access.getJoinCredentials(body.joinCode);
-    if (credentials === null || !(await dependencies.access.verifyGamePassword(body.gameAccessPassword, credentials))) throw new ResourceNotFoundError('Game');
+    if (credentials === null || !(await dependencies.access.verifyGamePassword(body.gameAccessPassword, credentials))) throw new InvalidJoinCodeError();
     await dependencies.access.grantPlayer(credentials.gameId, actor.id, body.playerId);
     return success(await dependencies.games.getGame(credentials.gameId));
   }
@@ -97,8 +99,8 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
     const gameId = parseResourceId(liveMatch[1], 'gameId');
     await dependencies.access.requireMember(gameId, actor.id);
     const details = await dependencies.games.getGame(gameId);
-    if (details.game.status !== 'ACTIVE') return failure(409, 'GAME_NOT_ACTIVE', 'This game is not active.');
-    return dependencies.live === undefined ? failure(503, 'LIVE_UNAVAILABLE', 'Live games are not configured.') : dependencies.live.connect(gameId, actor, request);
+    if (details.game.status !== 'ACTIVE') return failure(409, 'GAME_FINISHED', 'This game is finished.', requestId);
+    return dependencies.live === undefined ? failure(503, 'LIVE_UNAVAILABLE', 'Live games are not configured.', requestId) : dependencies.live.connect(gameId, actor, request);
   }
 
   if (gameMatch !== null && request.method === 'DELETE') {
@@ -152,7 +154,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
     );
   }
 
-  return failure(404, 'NOT_FOUND', 'Endpoint not found.');
+  throw new NotFoundError('NOT_FOUND', 'Endpoint not found.');
 }
 
 function readCommandId(request: Request): string {
@@ -181,39 +183,13 @@ function failure(
   status: number,
   code: string,
   message: string,
+  requestId: string,
   details?: Record<string, string | number>,
 ): Response {
-  const error: ApiError = {
-    error: {
-      code,
-      message,
-      ...(details === undefined ? {} : { details }),
-    },
-  };
-  return Response.json(error, { status });
+  return Response.json({ error: { code, message, requestId, ...(details === undefined ? {} : { details }) } }, { status });
 }
 
-function mapError(error: unknown): Response {
-  if (error instanceof ApiValidationError) {
-    return failure(400, 'VALIDATION_ERROR', error.message, error.details);
-  }
-  if (error instanceof AuthenticationError) return failure(401, 'UNAUTHENTICATED', 'Authentication is required.');
-  if (error instanceof ResourceNotFoundError) {
-    return failure(404, 'NOT_FOUND', `${error.resource} not found.`);
-  }
-  if (error instanceof InsufficientFundsError) {
-    return failure(409, error.code, 'Insufficient funds.', {
-      playerId: error.playerId,
-      currentBalance: error.currentBalance,
-      requiredAmount: error.requiredAmount,
-      shortfall: error.shortfall,
-    });
-  }
-  if (error instanceof BankingDomainError) {
-    return failure(400, error.code, 'The banking operation is invalid.');
-  }
-  if (error instanceof PersistenceConsistencyError) {
-    return failure(500, 'PERSISTENCE_ERROR', 'The operation could not be completed.');
-  }
-  return failure(500, 'INTERNAL_ERROR', 'The request could not be completed.');
+function readRequestId(request: Request): string {
+  const candidate = request.headers.get('x-request-id');
+  return candidate !== null && /^[A-Za-z0-9][A-Za-z0-9._-]{7,127}$/u.test(candidate) ? candidate : crypto.randomUUID();
 }

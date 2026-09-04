@@ -5,12 +5,14 @@ import type { Player, Game } from '../../shared/types/monopoly.js';
 
 export class MonopolyBankApiError extends Error {
   readonly code: string;
-  readonly details: Record<string, string | number> | undefined;
+  readonly details: Record<string, unknown> | undefined;
+  readonly requestId: string | undefined;
 
   constructor(error: ApiError['error']) {
     super(error.message);
     this.code = error.code;
     this.details = error.details;
+    this.requestId = error.requestId;
   }
 }
 
