@@ -49,7 +49,7 @@ interface TransactionRequestBase {
 }
 
 export interface PlayerToPlayerTransactionRequest extends TransactionRequestBase {
-  type: 'PLAYER_TO_PLAYER' | 'PAY_RENT';
+  type: 'PLAYER_TO_PLAYER';
   sourcePlayerId: string;
   destinationPlayerId: string;
   amount: number;

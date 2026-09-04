@@ -73,3 +73,67 @@ button:focus-visible, input:focus-visible { outline: 3px solid #174a31; outline-
   .calculator-operations { flex: 0 0 auto; }
   .calculator-controls output { flex: 1 0 100%; text-align: left; }
 }
+
+/* Large-phone layout: safe areas, compact wallets, and payment controls that stay reachable. */
+.app-shell { min-height: 100dvh; }
+.app-header { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+.page { padding-left: max(18px, calc(env(safe-area-inset-left) + 12px)); padding-right: max(18px, calc(env(safe-area-inset-right) + 12px)); padding-bottom: max(40px, calc(env(safe-area-inset-bottom) + 24px)); }
+input, select, textarea { font-size: 16px; }
+.game-tools { display: grid; gap: 16px; }
+
+@media (max-width: 767px) {
+  .app-header-inner { min-height: 60px; }
+  .brand { min-height: 44px; }
+  .settings-button { min-width: 44px; min-height: 44px; padding: 7px 9px; }
+  .settings-button span { display: none; }
+  .settings-panel { right: max(12px, env(safe-area-inset-right)); top: calc(60px + env(safe-area-inset-top)); }
+  .page { padding-top: 20px; }
+  .page-heading { gap: 14px; margin-bottom: 20px; }
+  .page h1 { font-size: clamp(1.75rem, 8vw, 2.3rem); }
+  .game-page .game-heading { align-items: center; }
+  .game-page .header-actions { width: auto; flex: 0 0 auto; }
+  .game-page .header-actions .button { width: auto; min-width: 44px; padding-inline: 10px; }
+  .game-page .wallet-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .game-page .wallet-card { min-width: 0; min-height: 112px; padding: 12px; }
+  .game-page .wallet-card .player-color { width: 16px; height: 16px; }
+  .game-page .wallet-name { margin: 9px 0 4px; font-size: .95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game-page .wallet-card strong { font-size: clamp(1.4rem, 7vw, 1.9rem); white-space: nowrap; }
+  .game-page .wallet-action { display: none; }
+  .dice-roller, .table-calculator { margin-top: 14px; padding: 16px; }
+  .dialog-backdrop { place-items: end center; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left)); }
+  .dialog { max-height: calc(100dvh - env(safe-area-inset-top) - 8px); padding: 18px max(18px, env(safe-area-inset-right)) max(18px, calc(env(safe-area-inset-bottom) + 12px)) max(18px, env(safe-area-inset-left)); }
+  .dialog-actions { position: sticky; bottom: -18px; z-index: 1; margin-bottom: -18px; padding: 12px 0 max(12px, env(safe-area-inset-bottom)); background: #fff; }
+  [data-theme='dark'] .dialog-actions { background: #193229; }
+  .action-button { min-height: 52px; }
+  .player-choice { min-height: 48px; }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .app-header-inner { min-height: 52px; }
+  .brand-mark { width: 30px; height: 30px; }
+  .page { padding-top: 12px; padding-bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px)); }
+  .page-heading { margin-bottom: 12px; }
+  .game-page .game-heading .lede { display: none; }
+  .game-page .wallet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .game-page .wallet-card { min-height: 86px; padding: 9px 11px; border-top-width: 4px; }
+  .game-page .wallet-name { margin: 5px 0 2px; font-size: .86rem; }
+  .game-page .wallet-card strong { font-size: 1.35rem; }
+  .game-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .dice-roller, .table-calculator { min-height: 0; margin-top: 10px; padding: 12px; }
+  .dice-roller { grid-template-columns: 1fr auto; gap: 12px; }
+  .dice-roller .dice-results { display: none; }
+  .dice-button { min-width: 94px; min-height: 44px; }
+  .table-calculator { grid-template-columns: 1fr; gap: 8px; }
+  .table-calculator .calculator-controls { gap: 5px; }
+  .dialog-backdrop { place-items: center; padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .dialog { width: min(100%, 900px); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px); border-radius: 14px; padding: 14px 18px; }
+  .dialog header { margin-bottom: 10px; }
+  .dialog-intro, .player-picker, .dialog-field, .pass-go-value { margin-block: 10px; }
+  .action-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .action-button, .numeric-keypad button { min-height: 40px; }
+  .player-picker > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .amount-selector { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; }
+  .amount-selector .dialog-field, .amount-selector .amount-section:first-of-type { grid-column: 1 / -1; }
+  .numeric-keypad { gap: 5px; }
+  .dialog-actions { bottom: -14px; margin-top: 14px; margin-bottom: -14px; padding: 8px 0; }
+}

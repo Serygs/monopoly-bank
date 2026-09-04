@@ -242,17 +242,6 @@ export function allToPlayer(command: AllToPlayerCommand): BankingOperationResult
   );
 }
 
-export function payRent(command: PlayerToPlayerCommand): BankingOperationResult {
-  const result = playerToPlayer(command);
-  return {
-    ...result,
-    transaction: {
-      ...result.transaction,
-      type: 'PAY_RENT',
-    },
-  };
-}
-
 export function passGo(command: PassGoCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
   validateAmount(command.game.passGoReward);

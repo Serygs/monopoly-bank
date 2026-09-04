@@ -6,7 +6,6 @@ import {
   allToPlayer,
   bankToPlayer,
   passGo,
-  payRent,
   playerToAll,
   playerToBank,
   playerToPlayer,
@@ -110,8 +109,6 @@ function executeOperation(
   switch (request.type) {
     case 'PLAYER_TO_PLAYER':
       return playerToPlayer({ ...request, game, players });
-    case 'PAY_RENT':
-      return payRent({ ...request, game, players });
     case 'PLAYER_TO_BANK':
       return playerToBank({ ...request, game, players });
     case 'BANK_TO_PLAYER':

@@ -18,7 +18,6 @@ interface Props { gameId: string; onBack: () => void; preferences: DevicePrefere
 
 const actions: ActionType[] = [
   'PLAYER_TO_PLAYER',
-  'PAY_RENT',
   'PLAYER_TO_BANK',
   'BANK_TO_PLAYER',
   'PLAYER_TO_ALL',
@@ -67,7 +66,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
     return <main className="page"><p className="status" role="status">{t('loadingGame')}</p></main>;
   }
 
-  return <main className="page">
+  return <main className="page game-page">
     <section className="page-heading game-heading">
       <div><p className="eyebrow">{t('activeGame')}</p><h1>{details.game.name}</h1><p className="lede">{t('configuredPassGoReward', { amount: formatMoney(details.game.passGoReward, details.game.currency) })}</p></div>
       <div className="header-actions"><button className="button button-secondary" type="button" onClick={() => void loadHistory()}>{t('history')}</button><button className="button button-quiet" type="button" onClick={onBack}>{t('savedGames')}</button></div>
@@ -76,8 +75,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
     <section className="wallet-grid" aria-label={t('playerWallets')}>
       {details.players.map((player) => <button className="wallet-card wallet-card-button" type="button" key={player.id} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: player.name, balance: formatMoney(player.balance, details.game.currency) })} onClick={() => setSelectedPlayer(player)}><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{player.name}</span><strong>{formatMoney(player.balance, details.game.currency)}</strong><span className="wallet-action">{t('walletAction')}</span></button>)}
     </section>
-    <DiceRoller />
-    <TableCalculator />
+    <div className="game-tools"><DiceRoller /><TableCalculator /></div>
     {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} currency={details.game.currency} favoriteAmounts={details.favoriteAmounts ?? []} recentAmounts={details.recentAmounts ?? []} onToggleFavorite={(amount) => void monopolyBankApi.toggleFavoriteAmount(gameId, amount).then((favoriteAmounts) => setDetails((current) => current === null ? current : { ...current, favoriteAmounts }))} onClose={() => setSelectedPlayer(null)} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action, amount) => { playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails({ ...details, players, recentAmounts: amount === null ? details.recentAmounts : [amount, ...(details.recentAmounts ?? []).filter((value) => value !== amount)].slice(0, 5) }); setSelectedPlayer(null); setNotice(action); }} />}
     {historyOpen && <HistoryDialog history={history} player={historyPlayer} players={details.players} currency={details.game.currency} error={historyError} language={language} locale={locale} onClose={() => { setHistoryOpen(false); setHistory(null); setHistoryError(null); }} onRetry={() => void loadHistory(historyPlayer)} />}
   </main>;
@@ -108,7 +106,7 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
   const amountValue = Number(amount);
   const request = action === null ? null : buildRequest(action, player.id, targetId, amountValue, comment);
   const preview = request === null ? [] : previewBalances(request, players, passGoReward);
-  const targetRequired = action === 'PLAYER_TO_PLAYER' || action === 'PAY_RENT';
+  const targetRequired = action === 'PLAYER_TO_PLAYER';
   const amountRequired = action !== 'PASS_GO';
   const fundsError = preflightFundsError(action, player, players, amountValue, currency, t);
   const valid = request !== null
@@ -205,8 +203,7 @@ function Confirmation({ action, player, target, amount, passGoReward, currency, 
 function buildRequest(action: ActionType, playerId: string, targetId: string, amount: number, comment: string): CreateTransactionRequest | null {
   const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
   switch (action) {
-    case 'PLAYER_TO_PLAYER':
-    case 'PAY_RENT': return targetId === '' ? null : { type: action, sourcePlayerId: playerId, destinationPlayerId: targetId, amount, ...optionalComment };
+    case 'PLAYER_TO_PLAYER': return targetId === '' ? null : { type: action, sourcePlayerId: playerId, destinationPlayerId: targetId, amount, ...optionalComment };
     case 'PLAYER_TO_BANK':
     case 'BANK_TO_PLAYER': return { type: action, playerId, amount, ...optionalComment };
     case 'PLAYER_TO_ALL': return { type: action, payerPlayerId: playerId, amountPerPlayer: amount, ...optionalComment };
@@ -219,8 +216,7 @@ function previewBalances(request: CreateTransactionRequest, players: Player[], p
   return players.map((player) => {
     let delta = 0;
     switch (request.type) {
-      case 'PLAYER_TO_PLAYER':
-      case 'PAY_RENT': if (player.id === request.sourcePlayerId) delta = -request.amount; if (player.id === request.destinationPlayerId) delta = request.amount; break;
+      case 'PLAYER_TO_PLAYER': if (player.id === request.sourcePlayerId) delta = -request.amount; if (player.id === request.destinationPlayerId) delta = request.amount; break;
       case 'PLAYER_TO_BANK': if (player.id === request.playerId) delta = -request.amount; break;
       case 'BANK_TO_PLAYER': if (player.id === request.playerId) delta = request.amount; break;
       case 'PLAYER_TO_ALL': if (player.id === request.payerPlayerId) delta = -request.amountPerPlayer * (players.length - 1); else delta = request.amountPerPlayer; break;
@@ -232,11 +228,11 @@ function previewBalances(request: CreateTransactionRequest, players: Player[], p
 }
 
 function actionLabel(type: ActionType, t: Translate): string {
-  return ({ PLAYER_TO_PLAYER: t('payPlayer'), PAY_RENT: t('payRent'), PLAYER_TO_BANK: t('payBank'), BANK_TO_PLAYER: t('receiveFromBank'), PLAYER_TO_ALL: t('payEveryone'), ALL_TO_PLAYER: t('everyonePaysMe'), PASS_GO: t('passGo') })[type];
+  return ({ PLAYER_TO_PLAYER: t('payPlayer'), PLAYER_TO_BANK: t('payBank'), BANK_TO_PLAYER: t('receiveFromBank'), PLAYER_TO_ALL: t('payEveryone'), ALL_TO_PLAYER: t('everyonePaysMe'), PASS_GO: t('passGo') })[type];
 }
 
 function actionDescription(action: ActionType, name: string, t: Translate): string {
-  const key = ({ PLAYER_TO_PLAYER: 'actionPayPlayer', PAY_RENT: 'actionPayRent', PLAYER_TO_BANK: 'actionPayBank', BANK_TO_PLAYER: 'actionReceiveBank', PLAYER_TO_ALL: 'actionPayEveryone', ALL_TO_PLAYER: 'actionEveryonePays', PASS_GO: 'actionPassGo' } as const)[action];
+  const key = ({ PLAYER_TO_PLAYER: 'actionPayPlayer', PLAYER_TO_BANK: 'actionPayBank', BANK_TO_PLAYER: 'actionReceiveBank', PLAYER_TO_ALL: 'actionPayEveryone', ALL_TO_PLAYER: 'actionEveryonePays', PASS_GO: 'actionPassGo' } as const)[action];
   return t(key, { name });
 }
 
@@ -249,7 +245,7 @@ function sourceFor(action: ActionType, player: Player, t: Translate): string {
 function destinationFor(action: ActionType, player: Player, target: Player | null, t: Translate): string {
   if (action === 'PLAYER_TO_BANK') return t('bank');
   if (action === 'PLAYER_TO_ALL') return t('allOtherPlayers');
-  if (action === 'PLAYER_TO_PLAYER' || action === 'PAY_RENT') return target?.name ?? t('selectedPlayer');
+  if (action === 'PLAYER_TO_PLAYER') return target?.name ?? t('selectedPlayer');
   return player.name;
 }
 
@@ -269,7 +265,7 @@ function preflightFundsError(action: ActionType | null, player: Player, players:
     const payers = players.filter((candidate) => candidate.id !== player.id && candidate.balance < amount);
     return payers.length === 0 ? null : t('cannotAfford', { names: payers.map((payer) => payer.name).join(', '), amount: formatMoney(amount, currency) });
   }
-  if (action === 'PLAYER_TO_PLAYER' || action === 'PAY_RENT' || action === 'PLAYER_TO_BANK') {
+  if (action === 'PLAYER_TO_PLAYER' || action === 'PLAYER_TO_BANK') {
     return player.balance < amount ? `${t('insufficientFunds')} ${t('balanceRequirement', { current: formatMoney(player.balance, currency), required: formatMoney(amount, currency) })}` : null;
   }
   return null;

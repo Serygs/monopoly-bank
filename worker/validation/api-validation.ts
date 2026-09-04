@@ -61,7 +61,6 @@ export async function parseCreateTransactionRequest(
 
   switch (type) {
     case 'PLAYER_TO_PLAYER':
-    case 'PAY_RENT':
       return {
         type,
         sourcePlayerId: readUuid(body, 'sourcePlayerId'),
@@ -97,8 +96,6 @@ export async function parseCreateTransactionRequest(
         playerId: readUuid(body, 'playerId'),
         ...(comment === undefined ? {} : { comment }),
       };
-    case 'BANKRUPTCY_TRANSFER':
-      throw new ApiValidationError('BANKRUPTCY_TRANSFER must use the bankruptcy endpoint.');
   }
 }
 
@@ -152,12 +149,12 @@ function readPositiveInteger(body: Record<string, unknown>, key: string): number
   return value;
 }
 
-function readTransactionType(body: Record<string, unknown>): TransactionType {
+function readTransactionType(body: Record<string, unknown>): Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'> {
   const value = body.type;
-  if (typeof value !== 'string' || !transactionTypes.includes(value as TransactionType)) {
+  if (typeof value !== 'string' || !transactionTypes.includes(value as TransactionType) || value === 'PAY_RENT' || value === 'BANKRUPTCY_TRANSFER') {
     throw new ApiValidationError('type must be a supported transaction type.');
   }
-  return value as TransactionType;
+  return value as Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'>;
 }
 
 function readOptionalComment(body: Record<string, unknown>): string | undefined {

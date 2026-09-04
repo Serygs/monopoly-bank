@@ -125,6 +125,17 @@ describe('API router', () => {
     expect(received).toMatchObject({ type: 'PLAYER_TO_PLAYER', amount: 100 });
   });
 
+  it('rejects retired PAY_RENT creation requests', async () => {
+    const response = await createTestRouter()(jsonRequest('POST', `/api/games/${gameId}/transactions`, {
+      type: 'PAY_RENT',
+      sourcePlayerId: firstPlayerId,
+      destinationPlayerId: secondPlayerId,
+      amount: 100,
+    }));
+
+    expect(response.status).toBe(400);
+  });
+
   it('rejects malformed player IDs in a payment request', async () => {
     const response = await createTestRouter()(jsonRequest('POST', `/api/games/${gameId}/transactions`, {
       type: 'PLAYER_TO_BANK',
