@@ -1,4 +1,4 @@
-import type { ApiError, ApiResponse, CreateGameRequest, CreateTransactionRequest, CreateTransactionResponse, DeleteGameResponse, GameDetails, GameSummary } from '../../shared/contracts/api.js';
+import type { ApiError, ApiResponse, CreateGameRequest, CreateTransactionRequest, CreateTransactionResponse, DeleteGameResponse, GameDetails, GameSummary, LoginRequest, RegisterRequest, UpdateProfileRequest, UserProfile } from '../../shared/contracts/api.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 
 export class MonopolyBankApiError extends Error {
@@ -13,6 +13,7 @@ export class MonopolyBankApiError extends Error {
 }
 
 export interface MonopolyBankApi {
+  currentProfile(): Promise<UserProfile>; register(input: RegisterRequest): Promise<UserProfile>; login(input: LoginRequest): Promise<UserProfile>; logout(): Promise<void>; updateProfile(input: UpdateProfileRequest): Promise<UserProfile>;
   listGames(): Promise<GameSummary[]>;
   createGame(request: CreateGameRequest): Promise<GameDetails>;
   getGame(gameId: string): Promise<GameDetails>;
@@ -26,6 +27,11 @@ export interface MonopolyBankApi {
 }
 
 class FetchMonopolyBankApi implements MonopolyBankApi {
+  async currentProfile(): Promise<UserProfile> { return request<UserProfile>('/api/profile'); }
+  async register(input: RegisterRequest): Promise<UserProfile> { return request<UserProfile>('/api/auth/register', { method: 'POST', body: JSON.stringify(input) }); }
+  async login(input: LoginRequest): Promise<UserProfile> { return request<UserProfile>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }); }
+  async logout(): Promise<void> { await request<null>('/api/auth/logout', { method: 'POST' }); }
+  async updateProfile(input: UpdateProfileRequest): Promise<UserProfile> { return request<UserProfile>('/api/profile', { method: 'PATCH', body: JSON.stringify(input) }); }
   async listGames(): Promise<GameSummary[]> { return request<GameSummary[]>('/api/games'); }
   async createGame(input: CreateGameRequest): Promise<GameDetails> { return request<GameDetails>('/api/games', { method: 'POST', body: JSON.stringify(input) }); }
   async getGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}`); }

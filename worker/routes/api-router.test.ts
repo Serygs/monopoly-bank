@@ -44,6 +44,7 @@ describe('API router', () => {
       startingBalance: 1500,
       passGoReward: 200,
       currency: 'K',
+      gameAccessPassword: 'table-password',
       players: [
         { name: ' Ada ', color: '#123456' },
         { name: 'Lin', color: '#654321' },
@@ -56,6 +57,7 @@ describe('API router', () => {
       startingBalance: 1500,
       passGoReward: 200,
       currency: 'K',
+      gameAccessPassword: 'table-password',
       players: [
         { name: 'Ada', color: '#123456' },
         { name: 'Lin', color: '#654321' },
@@ -99,6 +101,7 @@ describe('API router', () => {
       startingBalance: 1500,
       passGoReward: 200,
       currency: 'GBP',
+      gameAccessPassword: 'table-password',
       players: [{ name: 'Ada', color: '#123456' }, { name: 'Lin', color: '#654321' }],
     }));
 
@@ -182,6 +185,14 @@ describe('API router', () => {
     expect(response.status).toBe(404);
   });
 
+  it('does not expose an unowned legacy game through a normal authenticated API', async () => {
+    const games: GameService = { listGames: async () => [], listGamesForUser: async () => [], createGame: async () => gameDetails, createGameForOwner: async () => gameDetails, getGame: async () => gameDetails, deleteGame: async () => ({ gameId }), duplicateGame: async () => gameDetails, finishGame: async () => gameDetails, toggleFavoriteAmount: async () => [] };
+    const banking: BankingService = { createTransaction: async () => transactionResponse(), listTransactions: async () => [], listPlayerTransactions: async () => [] };
+    const router = createApiRouter({ games, banking, auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Test', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never, access: { requireMember: async () => { throw new ResourceNotFoundError('Game'); } } as never, profileStatistics: { recordCompletedGame: async () => undefined } as never });
+    const response = await router(new Request(`https://example.test/api/games/${gameId}`));
+    expect(response.status).toBe(404);
+  });
+
   it('deletes a saved game', async () => {
     let deletedGameId: string | undefined;
     const router = createTestRouter({
@@ -233,7 +244,9 @@ describe('API router', () => {
 function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {
   const games: GameService = {
     listGames: async (): Promise<GameSummary[]> => [],
+    listGamesForUser: async (): Promise<GameSummary[]> => [],
     createGame: async () => gameDetails,
+    createGameForOwner: async (_userId, request) => games.createGame(request),
     getGame: async () => gameDetails,
     deleteGame: async (requestedGameId) => ({ gameId: requestedGameId }),
     ...pickGameOverrides(overrides),
@@ -244,7 +257,10 @@ function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {
     listPlayerTransactions: async () => [],
     ...pickBankingOverrides(overrides),
   };
-  return createApiRouter({ games, banking });
+  const auth = { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Test', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) };
+  const access = { requireMember: async () => 'PLAYER' as const, requireOwner: async () => undefined };
+  const profileStatistics = { recordCompletedGame: async () => undefined };
+  return createApiRouter({ games, banking, auth: auth as never, access: access as never, profileStatistics: profileStatistics as never });
 }
 
 interface TestServiceOverrides {

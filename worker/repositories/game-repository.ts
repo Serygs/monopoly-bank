@@ -20,6 +20,10 @@ export interface CreateGameInput {
   passGoReward: number;
   currency: Currency;
   status?: GameStatus;
+  ownerUserId?: string;
+  joinCode?: string;
+  gameAccessPasswordHash?: string;
+  gameAccessPasswordSalt?: string;
 }
 
 export interface UpdateGameMetadataInput {
@@ -34,6 +38,7 @@ export interface GameRepository {
   getById(id: string): Promise<Game | null>;
   list(): Promise<Game[]>;
   listSummaries(): Promise<GameSummary[]>;
+  listSummariesForUser(userId: string): Promise<GameSummary[]>;
   updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null>;
   delete(id: string): Promise<boolean>;
   listFavoriteAmounts(gameId: string): Promise<number[]>;
@@ -76,10 +81,10 @@ export class D1GameRepository implements GameRepository {
   async createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void> {
     const gameStatement = this.database
       .prepare(
-        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status, owner_user_id, join_code, game_access_password_hash, game_access_password_salt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.status ?? 'ACTIVE');
+      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.status ?? 'ACTIVE', input.ownerUserId ?? null, input.joinCode ?? null, input.gameAccessPasswordHash ?? null, input.gameAccessPasswordSalt ?? null);
     const playerStatements = players.map((player) =>
       this.database
         .prepare(
@@ -89,7 +94,8 @@ export class D1GameRepository implements GameRepository {
         .bind(player.id, player.gameId, player.name, player.color, player.balance),
     );
 
-    await this.database.batch([gameStatement, ...playerStatements]);
+    const memberStatement = input.ownerUserId === undefined ? [] : [this.database.prepare("INSERT INTO game_members (game_id, user_id, role) VALUES (?, ?, 'OWNER')").bind(input.id, input.ownerUserId)];
+    await this.database.batch([gameStatement, ...playerStatements, ...memberStatement]);
   }
 
   async getById(id: string): Promise<Game | null> {
@@ -134,6 +140,15 @@ export class D1GameRepository implements GameRepository {
       game: mapGame(row),
       playerCount: row.player_count,
     }));
+  }
+
+  async listSummariesForUser(userId: string): Promise<GameSummary[]> {
+    const result = await this.database.prepare(
+      `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.status, games.created_at, games.updated_at, COUNT(players.id) AS player_count
+       FROM games INNER JOIN game_members ON game_members.game_id = games.id LEFT JOIN players ON players.game_id = games.id
+       WHERE game_members.user_id = ? AND games.owner_user_id IS NOT NULL GROUP BY games.id ORDER BY games.updated_at DESC, games.id DESC`,
+    ).bind(userId).all<GameSummaryRow>();
+    return result.results.map((row) => ({ game: mapGame(row), playerCount: row.player_count }));
   }
 
   async updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null> {

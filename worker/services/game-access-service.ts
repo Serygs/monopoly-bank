@@ -1,5 +1,6 @@
 import type { GameMemberRole, GameAccessRepository } from '../repositories/game-access-repository.js';
 import { ResourceNotFoundError } from './errors.js';
+import { verifyPassword } from './password-security.js';
 
 export class GameAccessService {
   private readonly access: GameAccessRepository;
@@ -17,4 +18,9 @@ export class GameAccessService {
   async requireOwner(gameId: string, userId: string): Promise<void> {
     if (await this.requireMember(gameId, userId) !== 'OWNER') throw new ResourceNotFoundError('Game');
   }
+
+  async grantPlayer(gameId: string, userId: string, playerId?: string): Promise<void> { await this.access.addMember(gameId, userId, 'PLAYER', playerId); }
+  async getJoinCredentials(joinCode: string): Promise<{ gameId: string; passwordHash: string; passwordSalt: string } | null> { return this.access.getGameAccessCredentials(joinCode); }
+  async verifyGamePassword(password: string, credentials: { passwordHash: string; passwordSalt: string }): Promise<boolean> { return verifyPassword(password, { hash: credentials.passwordHash, salt: credentials.passwordSalt }); }
+  async linkedMembers(gameId: string): Promise<Array<{ userId: string; playerId: string | null }>> { return this.access.listLinkedMembers(gameId); }
 }
