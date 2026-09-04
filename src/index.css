@@ -24,6 +24,12 @@
   --color-expense-surface: #f8e3e3;
   --color-expense-border: #b9464d;
   --color-expense-text: #682128;
+  --color-paper: #fff9e9;
+  --color-paper-rule: rgb(31 107 69 / .11);
+  --color-felt-deep: #0f3828;
+  --color-felt-mid: #1d6748;
+  --color-rail: #c83d3f;
+  --color-gold-light: #f3dda0;
   --shadow-surface: 0 8px 22px rgb(37 54 44 / .08);
   --radius-panel: 12px;
   --radius-panel-large: 18px;
@@ -58,6 +64,12 @@
   --color-expense-surface: #572a31;
   --color-expense-border: #f08a90;
   --color-expense-text: #fff2f2;
+  --color-paper: #1b392c;
+  --color-paper-rule: rgb(215 236 218 / .09);
+  --color-felt-deep: #091c15;
+  --color-felt-mid: #174b35;
+  --color-rail: #d85b62;
+  --color-gold-light: #ebd881;
   --shadow-surface: 0 12px 28px rgb(0 0 0 / .24);
 }
 * { box-sizing: border-box; }
