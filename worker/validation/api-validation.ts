@@ -1,5 +1,5 @@
 import type { CreateGameRequest, CreateTransactionRequest } from '../../shared/contracts/api.js';
-import { transactionTypes, type TransactionType } from '../../shared/types/monopoly.js';
+import { currencies, transactionTypes, type Currency, type TransactionType } from '../../shared/types/monopoly.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -39,8 +39,17 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     name: readRequiredString(body, 'name', 'name'),
     startingBalance: readPositiveInteger(body, 'startingBalance'),
     passGoReward: readPositiveInteger(body, 'passGoReward'),
+    currency: readCurrency(body),
     players,
   };
+}
+
+function readCurrency(body: Record<string, unknown>): Currency {
+  const value = body.currency;
+  if (typeof value !== 'string' || !currencies.includes(value as Currency)) {
+    throw new ApiValidationError('currency must be one of USD, EUR, UAH, or K.');
+  }
+  return value as Currency;
 }
 
 export async function parseCreateTransactionRequest(
