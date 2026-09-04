@@ -36,6 +36,12 @@ npm run build
 
 `npm run build` includes the TypeScript project build; there is no separate typecheck script.
 
+## Lobby invitations
+
+Lobby owners create a secure invitation link from the lobby screen. The link contains a random bearer token, never the game password; only its SHA-256 hash is persisted. Tokens expire after seven days and cannot join a game after the lobby has started.
+
+The Invite dialog can copy the link or open the device's default mail client with a populated invitation. No email address is sent to or stored by Monopoly Bank. SMS/phone delivery is not configured in the current Worker because there is no SMS provider binding; add a provider-specific Worker binding and delivery service before offering server-sent SMS.
+
 ## API errors and request correlation
 
 Every API response includes `X-Request-ID`. Error responses use one contract: `{ "error": { "code", "message", "requestId", "details?" } }`. Codes are stable machine identifiers (for example `VALIDATION_ERROR`, `UNAUTHORIZED`, `INSUFFICIENT_FUNDS`, `GAME_FINISHED`, and `INTERNAL_ERROR`); the HTTP status carries the error category. `details` is present only for safe, structured information such as an invalid field or a required balance.

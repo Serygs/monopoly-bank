@@ -6,7 +6,7 @@ import { useLanguage } from '../i18n/language-context';
 
 interface Props {
   onCreateGame: () => void;
-  onJoinGame: () => void;
+  onJoinGame: (joinCode?: string) => void;
   onOpenGame: (gameId: string) => void;
 }
 
@@ -69,6 +69,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   const duplicateGame = async (game: GameSummary) => {
     const gameAccessPassword = window.prompt(t('copyGamePasswordPrompt'));
     if (gameAccessPassword === null) return;
+    if (gameAccessPassword.length < 4) { window.alert(t('gamePasswordMinLength')); return; }
     setDuplicating(game.game.id);
     try { onOpenGame((await monopolyBankApi.duplicateGame(game.game.id, gameAccessPassword)).game.id); } finally { setDuplicating(null); }
   };
@@ -80,7 +81,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
         <h1>{t('savedGames')}</h1>
         <p className="lede">{t('savedGamesLede')}</p>
       </div>
-      <div className="header-actions"><button className="button button-secondary" type="button" onClick={onJoinGame}>{t('joinGame')}</button><button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button></div>
+      <div className="header-actions"><button className="button button-secondary" type="button" onClick={() => onJoinGame()}>{t('joinGame')}</button><button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button></div>
     </section>
 
     {notice !== null && <section className="notice notice-success" role="status">
@@ -109,7 +110,9 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
           </div>
         </div>
         <div className="game-card-actions">
-          <button className="button button-secondary" type="button" onClick={() => onOpenGame(summary.game.id)}>{t('openGame')}</button>
+          {summary.isPublicLobby && summary.joinCode !== undefined
+            ? <button className="button button-secondary" type="button" onClick={() => onJoinGame(summary.joinCode)}>{t('joinOpenLobby')}</button>
+            : <button className="button button-secondary" type="button" onClick={() => onOpenGame(summary.game.id)}>{t('openGame')}</button>}
           <button className="button button-quiet" type="button" disabled={duplicating === summary.game.id} onClick={() => void duplicateGame(summary)}>{duplicating === summary.game.id ? 'Copying…' : 'Duplicate'}</button>
           <button className="button button-danger-quiet" type="button" aria-label={t('removeGameAria', { name: summary.game.name })} onClick={() => requestRemoval(summary)}>{t('removeGame')}</button>
         </div>

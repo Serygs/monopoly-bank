@@ -7,7 +7,7 @@ import { ProfileStatisticsService } from '../services/profile-statistics-service
 import type { GameLiveGateway } from '../services/game-live-gateway.js';
 import { calculateWinners } from '../../shared/domain/winner-calculation.js';
 import { calculateFinalGameSummary } from '../../shared/domain/game-summary.js';
-import { InvalidJoinCodeError, NotFoundError } from '../services/errors.js';
+import { ConflictError, InvalidJoinCodeError, NotFoundError } from '../services/errors.js';
 import { handleError } from '../services/error-handler.js';
 import {
   ApiValidationError,
@@ -37,6 +37,9 @@ export function createApiRouter(dependencies: ApiRouterDependencies) {
     const path = new URL(request.url).pathname;
     try {
       const response = await route(request, dependencies, requestId);
+      // Re-wrapping an HTTP 101 response drops Cloudflare's `webSocket` field.
+      // Return the Durable Object response intact so the browser upgrade completes.
+      if (response.status === 101) return response;
       const headers = new Headers(response.headers);
       headers.set('x-request-id', requestId);
       return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
@@ -53,6 +56,8 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   const playerTransactionMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)\/transactions$/.exec(pathname);
   const duplicateMatch = /^\/api\/games\/([^/]+)\/duplicate$/.exec(pathname);
   const finishMatch = /^\/api\/games\/([^/]+)\/finish$/.exec(pathname);
+  const startMatch = /^\/api\/games\/([^/]+)\/start$/.exec(pathname);
+  const invitationMatch = /^\/api\/games\/([^/]+)\/invitations$/.exec(pathname);
   const favoriteMatch = /^\/api\/games\/([^/]+)\/favorite-amounts$/.exec(pathname);
   const bankruptcyMatch = /^\/api\/games\/([^/]+)\/bankruptcy$/.exec(pathname);
   const summaryMatch = /^\/api\/games\/([^/]+)\/summary$/.exec(pathname);
@@ -75,10 +80,14 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   }
   if (pathname === '/api/games/join' && request.method === 'POST') {
     const body = await parseJoinGameRequest(request);
-    const credentials = await dependencies.access.getJoinCredentials(body.joinCode);
-    if (credentials === null || !(await dependencies.access.verifyGamePassword(body.gameAccessPassword, credentials))) throw new InvalidJoinCodeError();
-    await dependencies.access.grantPlayer(credentials.gameId, actor.id, body.playerId);
-    return success(await dependencies.games.getGame(credentials.gameId));
+    const access = 'invitationToken' in body
+      ? await dependencies.access.invitation(body.invitationToken)
+      : await joinCodeAccess(dependencies.access, body.joinCode, body.gameAccessPassword);
+    if (access === null) throw new InvalidJoinCodeError();
+    if (access.status !== 'LOBBY') throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
+    const details = await dependencies.games.getGame(access.gameId);
+    await dependencies.access.joinLobby({ gameId: access.gameId, userId: actor.id, nickname: actor.nickname, playerId: crypto.randomUUID(), color: nextPlayerColor(details.players), startingBalance: details.game.startingBalance });
+    return success(await dependencies.games.getGame(access.gameId));
   }
 
   if (pathname === '/api/games') {
@@ -106,12 +115,14 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   if (gameMatch !== null && request.method === 'DELETE') {
     const gameId = parseResourceId(gameMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.deleteGame(gameId));
   }
+  if (invitationMatch !== null && request.method === 'POST') { const gameId = parseResourceId(invitationMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success({ invitationToken: await dependencies.access.createInvitation(gameId, actor.id) }, 201); }
   if (summaryMatch !== null && request.method === 'GET') {
     const gameId = parseResourceId(summaryMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id);
     const details = await dependencies.games.getGame(gameId); const transactions = await dependencies.banking.listTransactions(gameId, 100);
     return success({ game: details.game, winners: calculateWinners(details.players), ...calculateFinalGameSummary(details.players, transactions) });
   }
   if (duplicateMatch !== null && request.method === 'POST') { const gameId = parseResourceId(duplicateMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.duplicateGameForOwner(actor.id, gameId, (await parseDuplicateGameRequest(request)).gameAccessPassword), 201); }
+  if (startMatch !== null && request.method === 'POST') { const gameId = parseResourceId(startMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.startGame(gameId)); }
   if (finishMatch !== null && request.method === 'POST') { const gameId = parseResourceId(finishMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'FINISH_GAME', commandId: readCommandId(request) }); const details = await dependencies.games.finishGame(gameId); const winnerIds = new Set(calculateWinners(details.players).map((player) => player.id)); const participants = (await dependencies.access.linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) })); await dependencies.profileStatistics.recordCompletedGame(gameId, participants); return success(details); }
   if (favoriteMatch !== null && request.method === 'POST') {
     const body = await request.json() as { amount?: unknown };
@@ -192,4 +203,15 @@ function failure(
 function readRequestId(request: Request): string {
   const candidate = request.headers.get('x-request-id');
   return candidate !== null && /^[A-Za-z0-9][A-Za-z0-9._-]{7,127}$/u.test(candidate) ? candidate : crypto.randomUUID();
+}
+
+function nextPlayerColor(players: readonly { color: string }[]): string {
+  const colors = ['#e05263', '#2f80ed', '#27ae60', '#f2994a', '#9b51e0', '#14b8a6'];
+  return colors.find((color) => !players.some((player) => player.color === color)) ?? colors[players.length % colors.length];
+}
+
+async function joinCodeAccess(access: GameAccessService, joinCode: string, gameAccessPassword: string | undefined): Promise<{ gameId: string; status: string } | null> {
+  const credentials = await access.getJoinCredentials(joinCode);
+  if (credentials === null || !(await access.verifyGamePassword(gameAccessPassword, credentials))) return null;
+  return { gameId: credentials.gameId, status: credentials.status };
 }

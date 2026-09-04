@@ -3,7 +3,7 @@ import type { SessionRepository } from '../repositories/session-repository.js';
 import { hashPassword, randomToken, tokenHash, verifyPassword } from './password-security.js';
 import { AuthenticationRequiredError, ConflictError, InvalidCredentialsError, ResourceNotFoundError } from './errors.js';
 
-export type PublicProfile = Pick<UserRecord, 'id' | 'nickname' | 'avatar' | 'gamesPlayed' | 'gamesWon' | 'createdAt' | 'updatedAt'> & { winRate: number };
+export type PublicProfile = Pick<UserRecord, 'id' | 'nickname' | 'avatar' | 'gamesPlayed' | 'gamesWon' | 'gamesLost' | 'createdAt' | 'updatedAt'> & { winRate: number };
 export class AuthenticationError extends AuthenticationRequiredError {}
 export class AuthService {
   private readonly users: UserRepository; private readonly sessions: SessionRepository; private readonly createId: () => string;
@@ -15,7 +15,7 @@ export class AuthService {
   async logout(request: Request): Promise<string> { const token = cookieValue(request.headers.get('cookie'), 'monopoly_bank_session'); if (token !== null) await this.sessions.delete(await tokenHash(token)); return expiredCookie(); }
   private async createSession(userId: string): Promise<string> { const token = randomToken(); await this.sessions.create(this.createId(), userId, await tokenHash(token), new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString()); return sessionCookie(token); }
 }
-function profile(user: UserRecord): PublicProfile { return { id: user.id, nickname: user.nickname, avatar: user.avatar, gamesPlayed: user.gamesPlayed, gamesWon: user.gamesWon, winRate: user.gamesPlayed === 0 ? 0 : user.gamesWon / user.gamesPlayed, createdAt: user.createdAt, updatedAt: user.updatedAt }; }
+function profile(user: UserRecord): PublicProfile { return { id: user.id, nickname: user.nickname, avatar: user.avatar, gamesPlayed: user.gamesPlayed, gamesWon: user.gamesWon, gamesLost: user.gamesLost, winRate: user.gamesPlayed === 0 ? 0 : user.gamesWon / user.gamesPlayed, createdAt: user.createdAt, updatedAt: user.updatedAt }; }
 function cookieValue(value: string | null, name: string): string | null { return value?.split(';').map((item) => item.trim()).find((item) => item.startsWith(`${name}=`))?.slice(name.length + 1) ?? null; }
 function sessionCookie(token: string): string { return `monopoly_bank_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=1209600`; }
 function expiredCookie(): string { return 'monopoly_bank_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0'; }

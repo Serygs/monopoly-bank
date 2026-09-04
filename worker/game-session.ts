@@ -41,7 +41,7 @@ export class GameSession {
     this.ctx.acceptWebSocket(server, [userId]);
     server.send(JSON.stringify({ type: 'GAME_STATE', state: await this.state(gameId, details) } satisfies LiveServerEvent));
     await this.broadcast({ type: 'MEMBER_JOINED', version: await this.version(), connectedMembers: this.ctx.getWebSockets().length });
-    return new Response(null, { status: 101, webSocket: client });
+    return new Response(null, { status: 101, headers: { 'x-request-id': requestId }, webSocket: client });
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {

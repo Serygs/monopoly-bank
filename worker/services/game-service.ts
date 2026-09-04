@@ -1,7 +1,7 @@
 import type { CreateGameRequest, DeleteGameResponse, GameDetails, GameSummary } from '../../shared/contracts/api.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { CreatePlayerInput, PlayerRepository } from '../repositories/player-repository.js';
-import { ResourceNotFoundError } from './errors.js';
+import { ConflictError, ResourceNotFoundError } from './errors.js';
 import { hashPassword, randomToken } from './password-security.js';
 
 export interface GameService {
@@ -11,6 +11,7 @@ export interface GameService {
   getGame(gameId: string): Promise<GameDetails>;
   deleteGame(gameId: string): Promise<DeleteGameResponse>;
   duplicateGameForOwner(userId: string, gameId: string, gameAccessPassword: string): Promise<GameDetails>;
+  startGame(gameId: string): Promise<GameDetails>;
   finishGame(gameId: string): Promise<GameDetails>;
   toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
 }
@@ -38,11 +39,11 @@ export class DefaultGameService implements GameService {
   async listGamesForUser(userId: string): Promise<GameSummary[]> { return this.games.listSummariesForUser(userId); }
 
   async createGameForOwner(userId: string, request: CreateGameRequest): Promise<GameDetails> {
-    const gameAccessCredentials = await hashPassword(request.gameAccessPassword);
-    return this.createGameInternal(request, { userId, joinCode: randomToken(5).toUpperCase().replace(/[^A-Z0-9]/gu, 'X').slice(0, 8), ...gameAccessCredentials });
+    const gameAccessCredentials = request.gameAccessPassword === undefined ? { hash: '', salt: '' } : await hashPassword(request.gameAccessPassword);
+    return this.createGameInternal(request, { userId, joinCode: randomToken(5).toUpperCase().replace(/[^A-Z0-9]/gu, 'X').slice(0, 8), ...gameAccessCredentials, hasPassword: request.gameAccessPassword !== undefined });
   }
 
-  private async createGameInternal(request: CreateGameRequest, owner: { userId: string; joinCode: string; hash: string; salt: string }): Promise<GameDetails> {
+  private async createGameInternal(request: CreateGameRequest, owner: { userId: string; joinCode: string; hash: string; salt: string; hasPassword: boolean }): Promise<GameDetails> {
     const gameId = this.createId();
     const playerInputs: CreatePlayerInput[] = request.players.map((player) => ({
       id: this.createId(),
@@ -59,7 +60,7 @@ export class DefaultGameService implements GameService {
         startingBalance: request.startingBalance,
         passGoReward: request.passGoReward,
         currency: request.currency,
-        ownerUserId: owner.userId, joinCode: owner.joinCode, gameAccessPasswordHash: owner.hash, gameAccessPasswordSalt: owner.salt,
+        status: 'LOBBY', ownerUserId: owner.userId, joinCode: owner.joinCode, gameAccessPasswordHash: owner.hasPassword ? owner.hash : null, gameAccessPasswordSalt: owner.hasPassword ? owner.salt : null,
       },
       playerInputs,
     );
@@ -101,8 +102,19 @@ export class DefaultGameService implements GameService {
     });
   }
 
+  async startGame(gameId: string): Promise<GameDetails> {
+    const details = await this.getGame(gameId);
+    if (details.game.status !== 'LOBBY') throw new ConflictError('INVALID_GAME_STATE', 'Only a lobby can be started.');
+    if (details.players.length < 2) throw new ConflictError('INSUFFICIENT_PLAYERS', 'At least two players are required to start a game.');
+    if ((await this.games.transitionStatus(gameId, 'LOBBY', 'ACTIVE')) === null) throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer available.');
+    return this.getGame(gameId);
+  }
+
   async finishGame(gameId: string): Promise<GameDetails> {
-    if ((await this.games.updateMetadata({ id: gameId, status: 'FINISHED' })) === null) throw new ResourceNotFoundError('Game');
+    const game = await this.games.getById(gameId);
+    if (game === null) throw new ResourceNotFoundError('Game');
+    if (game.status !== 'ACTIVE') throw new ConflictError('INVALID_GAME_STATE', 'Only an active game can be finished.');
+    if ((await this.games.transitionStatus(gameId, 'ACTIVE', 'FINISHED')) === null) throw new ConflictError('INVALID_GAME_STATE', 'This game is no longer active.');
     return this.getGame(gameId);
   }
 
