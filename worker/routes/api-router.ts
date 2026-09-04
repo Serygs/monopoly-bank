@@ -14,6 +14,7 @@ import {
   ApiValidationError,
   parseCreateGameRequest,
   parseCreateTransactionRequest,
+  parseBankruptcyRequest,
   parseResourceId,
   parseJoinGameRequest,
   parseLoginRequest,
@@ -47,6 +48,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
   const duplicateMatch = /^\/api\/games\/([^/]+)\/duplicate$/.exec(pathname);
   const finishMatch = /^\/api\/games\/([^/]+)\/finish$/.exec(pathname);
   const favoriteMatch = /^\/api\/games\/([^/]+)\/favorite-amounts$/.exec(pathname);
+  const bankruptcyMatch = /^\/api\/games\/([^/]+)\/bankruptcy$/.exec(pathname);
 
   if (pathname === '/api/auth/register' && request.method === 'POST') {
     const result = await dependencies.auth.register(...Object.values(await parseRegisterRequest(request)) as [string, string, string]);
@@ -93,6 +95,12 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
     const body = await request.json() as { amount?: unknown };
     if (typeof body.amount !== 'number' || !Number.isSafeInteger(body.amount) || body.amount <= 0) throw new ApiValidationError('amount must be a positive integer.');
     const gameId = parseResourceId(favoriteMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id); return success(await dependencies.games.toggleFavoriteAmount(gameId, body.amount));
+  }
+
+  if (bankruptcyMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(bankruptcyMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    return success(await dependencies.banking.declareBankruptcy(gameId, await parseBankruptcyRequest(request)), 201);
   }
 
   if (transactionMatch !== null) {

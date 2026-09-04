@@ -27,6 +27,8 @@ export interface Game {
   status: GameStatus;
   createdAt: string;
   updatedAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
 }
 
 export interface Player {

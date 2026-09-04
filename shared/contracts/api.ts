@@ -93,7 +93,7 @@ export interface PassGoTransactionRequest extends TransactionRequestBase {
 
 export interface BankruptcyRequest {
   playerId: string;
-  creditorPlayerId: string;
+  creditorPlayerId?: string;
 }
 
 export interface SetJailRequest { isInJail: boolean; }
