@@ -1,4 +1,5 @@
 import type { Game, Player, TransactionParticipant, TransactionType } from '../types/monopoly.js';
+import { AppError } from '../../worker/services/errors.js';
 
 export interface PlayerToPlayerCommand extends BankingCommand {
   sourcePlayerId: string;
@@ -70,18 +71,17 @@ export type BankingErrorCode =
   | 'PLAYER_NOT_FOUND'
   | 'SAME_SOURCE_AND_DESTINATION'
   | 'INSUFFICIENT_FUNDS'
-  | 'INVALID_GAME_STATE';
+  | 'GAME_FINISHED'
+  | 'PLAYER_BANKRUPT';
 
-export abstract class BankingDomainError extends Error {
-  abstract readonly code: BankingErrorCode;
-}
+export abstract class BankingDomainError extends AppError {}
 
 export class InvalidAmountError extends BankingDomainError {
   readonly code = 'INVALID_AMOUNT' as const;
   readonly amount: number;
 
   constructor(amount: number) {
-    super('Amount must be a positive safe integer.');
+    super({ code: 'INVALID_AMOUNT', message: 'Amount must be a positive safe integer.', status: 400, details: { field: 'amount' } });
     this.amount = amount;
   }
 }
@@ -91,7 +91,7 @@ export class PlayerNotFoundError extends BankingDomainError {
   readonly playerId: string;
 
   constructor(playerId: string) {
-    super(`Player "${playerId}" was not found in the game.`);
+    super({ code: 'PLAYER_NOT_FOUND', message: 'Player not found.', status: 404 });
     this.playerId = playerId;
   }
 }
@@ -101,7 +101,7 @@ export class SameSourceAndDestinationError extends BankingDomainError {
   readonly playerId: string;
 
   constructor(playerId: string) {
-    super('The source and destination players must be different.');
+    super({ code: 'SAME_SOURCE_AND_DESTINATION', message: 'The source and destination players must be different.', status: 400 });
     this.playerId = playerId;
   }
 }
@@ -118,7 +118,7 @@ export class InsufficientFundsError extends BankingDomainError {
     currentBalance: number,
     requiredAmount: number,
   ) {
-    super(`Player "${playerId}" has insufficient funds.`);
+    super({ code: 'INSUFFICIENT_FUNDS', message: 'Player does not have enough funds.', status: 409, details: { playerId, currentBalance, requiredAmount, shortfall: requiredAmount - currentBalance } });
     this.playerId = playerId;
     this.currentBalance = currentBalance;
     this.requiredAmount = requiredAmount;
@@ -127,13 +127,18 @@ export class InsufficientFundsError extends BankingDomainError {
 }
 
 export class InvalidGameStateError extends BankingDomainError {
-  readonly code = 'INVALID_GAME_STATE' as const;
+  readonly code = 'GAME_FINISHED' as const;
   readonly reason: string;
 
   constructor(reason: string) {
-    super(`The game cannot accept banking operations: ${reason}`);
+    super({ code: 'GAME_FINISHED', message: 'This game is finished.', status: 409 });
     this.reason = reason;
   }
+}
+
+export class PlayerBankruptError extends BankingDomainError {
+  readonly code = 'PLAYER_BANKRUPT' as const;
+  constructor(playerId: string) { super({ code: 'PLAYER_BANKRUPT', message: 'This player is bankrupt.', status: 409, details: { playerId } }); }
 }
 
 export function playerToPlayer(command: PlayerToPlayerCommand): BankingOperationResult {
@@ -327,7 +332,7 @@ function ensureSufficientFunds(player: Player, requiredAmount: number): void {
 
 function ensureActive(player: Player): void {
   if (player.status === 'BANKRUPT') {
-    throw new InvalidGameStateError(`player "${player.id}" is bankrupt`);
+    throw new PlayerBankruptError(player.id);
   }
 }
 

@@ -13,7 +13,7 @@ export class DurableObjectGameLiveGateway implements GameLiveGateway {
 
   connect(gameId: string, actor: UserProfile, request: Request): Promise<Response> {
     return this.session(gameId).fetch(new Request('https://game-session/connect', {
-      headers: { upgrade: request.headers.get('upgrade') ?? '', 'x-game-id': gameId, 'x-user-id': actor.id },
+      headers: { upgrade: request.headers.get('upgrade') ?? '', 'x-game-id': gameId, 'x-user-id': actor.id, 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() },
     }));
   }
 

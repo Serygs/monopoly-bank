@@ -1,4 +1,5 @@
 import type { PlayerBalanceChange, PendingTransaction } from '../../shared/domain/banking.js';
+import { DatabaseError } from '../services/errors.js';
 
 export interface PersistBankingOperationInput {
   transactionId: string;
@@ -48,7 +49,11 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
     );
 
     const statusStatement = input.bankruptPlayerId === undefined ? [] : [this.database.prepare("UPDATE players SET status = 'BANKRUPT', balance = 0 WHERE id = ? AND game_id = ? AND status = 'ACTIVE'").bind(input.bankruptPlayerId, input.transaction.gameId)];
-    await this.database.batch([balanceStatement, transactionStatement, ...participantStatements, ...statusStatement]);
+    try {
+      await this.database.batch([balanceStatement, transactionStatement, ...participantStatements, ...statusStatement]);
+    } catch (cause) {
+      throw new DatabaseError({ operation: 'persistBankingOperation', cause });
+    }
   }
 }
 

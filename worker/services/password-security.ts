@@ -1,11 +1,12 @@
 const textEncoder = new TextEncoder();
-const iterations = 310_000;
+// Cloudflare Workers rejects PBKDF2 requests above 100,000 iterations.
+export const passwordHashIterations = 100_000;
 
 export interface PasswordHash { hash: string; salt: string; }
 
 export async function hashPassword(password: string, salt = randomToken(16)): Promise<PasswordHash> {
   const material = await crypto.subtle.importKey('raw', textEncoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: decode(salt), iterations }, material, 256);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: decode(salt), iterations: passwordHashIterations }, material, 256);
   return { hash: encode(new Uint8Array(bits)), salt };
 }
 

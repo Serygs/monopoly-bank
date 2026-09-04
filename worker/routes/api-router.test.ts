@@ -165,10 +165,11 @@ describe('API router', () => {
     const response = await router(jsonRequest('POST', `/api/games/${gameId}/transactions`, { type, ...fields }));
 
     expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       error: {
         code: 'INSUFFICIENT_FUNDS',
-        message: 'Insufficient funds.',
+        message: 'Player does not have enough funds.',
+        requestId: expect.any(String),
         details: { playerId: firstPlayerId, currentBalance: 50, requiredAmount: 200, shortfall: 150 },
       },
     });
@@ -207,6 +208,37 @@ describe('API router', () => {
     const response = await createTestRouter()(new Request(`https://example.test/api/games/${gameId}`));
 
     await expect(response.json()).resolves.toEqual({ data: { ...gameDetails, canManage: false } });
+  });
+
+  it('creates a secure lobby invitation only through the owner route', async () => {
+    let invitationInput: { gameId: string; userId: string } | undefined;
+    const router = createApiRouter({
+      games: {} as GameService,
+      banking: {} as BankingService,
+      auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Owner', avatar: '🎩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: { requireOwner: async (requestedGameId: string) => { invitationInput = { gameId: requestedGameId, userId: '00000000-0000-4000-8000-000000000099' }; }, createInvitation: async () => 'secure-token' } as never,
+      profileStatistics: { recordCompletedGame: async () => undefined } as never,
+    });
+
+    const response = await router(new Request(`https://example.test/api/games/${gameId}/invitations`, { method: 'POST' }));
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({ data: { invitationToken: 'secure-token' } });
+    expect(invitationInput).toEqual({ gameId, userId: '00000000-0000-4000-8000-000000000099' });
+  });
+
+  it('preserves the Durable Object WebSocket upgrade response', async () => {
+    const upgrade = { status: 101, headers: new Headers({ 'x-request-id': 'live-request-id' }), body: null, statusText: '' } as Response;
+    const router = createApiRouter({
+      games: { getGame: async () => gameDetails } as never,
+      banking: {} as BankingService,
+      auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Member', avatar: '🎩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: { requireMember: async () => 'PLAYER' } as never,
+      profileStatistics: {} as never,
+      live: { connect: async () => upgrade, mutate: async () => new Response() },
+    });
+
+    await expect(router(new Request(`https://example.test/api/games/${gameId}/live`, { headers: { upgrade: 'websocket' } }))).resolves.toBe(upgrade);
   });
 
   it('deletes a saved game', async () => {

@@ -83,17 +83,18 @@ export class DefaultBankingService implements BankingService {
   }
 
   async listTransactions(gameId: string, limit: number): Promise<Transaction[]> {
-    await this.ensureGameExists(gameId);
     return this.transactions.listByGameId(gameId, limit);
   }
 
   async listPlayerTransactions(gameId: string, playerId: string, limit: number): Promise<Transaction[]> {
-    await this.ensureGameExists(gameId);
-    const players = await this.players.listByGameId(gameId);
+    const [players, transactions] = await Promise.all([
+      this.players.listByGameId(gameId),
+      this.transactions.listByPlayerId(gameId, playerId, limit),
+    ]);
     if (!players.some((player) => player.id === playerId)) {
       throw new ResourceNotFoundError('Player');
     }
-    return this.transactions.listByPlayerId(gameId, playerId, limit);
+    return transactions;
   }
 
   async declareBankruptcy(gameId: string, request: import('../../shared/contracts/api.js').BankruptcyRequest): Promise<CreateTransactionResponse> {
@@ -104,12 +105,6 @@ export class DefaultBankingService implements BankingService {
     await this.operations.persist({ transactionId, transaction: result.transaction, balanceChanges: result.affectedPlayers, bankruptPlayerId: request.playerId });
     const transaction = await this.transactions.getById(gameId, transactionId); if (transaction === null) throw new PersistenceConsistencyError();
     return { transaction, players: await this.players.listByGameId(gameId) };
-  }
-
-  private async ensureGameExists(gameId: string): Promise<void> {
-    if ((await this.games.getById(gameId)) === null) {
-      throw new ResourceNotFoundError('Game');
-    }
   }
 }
 
