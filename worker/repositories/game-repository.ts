@@ -24,8 +24,8 @@ export interface CreateGameInput {
   status?: GameStatus;
   ownerUserId: string;
   joinCode: string;
-  gameAccessPasswordHash: string;
-  gameAccessPasswordSalt: string;
+  gameAccessPasswordHash: string | null;
+  gameAccessPasswordSalt: string | null;
 }
 
 export interface UpdateGameMetadataInput {
@@ -41,6 +41,7 @@ export interface GameRepository {
   listSummaries(): Promise<GameSummary[]>;
   listSummariesForUser(userId: string): Promise<GameSummary[]>;
   updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null>;
+  transitionStatus(id: string, from: GameStatus, to: GameStatus): Promise<Game | null>;
   delete(id: string): Promise<boolean>;
   listFavoriteAmounts(gameId: string): Promise<number[]>;
   toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
@@ -58,10 +59,10 @@ export class D1GameRepository implements GameRepository {
   async createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void> {
     const gameStatement = this.database
       .prepare(
-        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status, owner_user_id, join_code, game_access_password_hash, game_access_password_salt, started_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status, owner_user_id, join_code, game_access_password_hash, game_access_password_salt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.status ?? 'ACTIVE', input.ownerUserId, input.joinCode, input.gameAccessPasswordHash, input.gameAccessPasswordSalt);
+      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.status ?? 'LOBBY', input.ownerUserId, input.joinCode, input.gameAccessPasswordHash, input.gameAccessPasswordSalt);
     const playerStatements = players.map((player) =>
       this.database
         .prepare(
@@ -121,11 +122,14 @@ export class D1GameRepository implements GameRepository {
 
   async listSummariesForUser(userId: string): Promise<GameSummary[]> {
     const result = await this.database.prepare(
-      `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, COUNT(players.id) AS player_count
-       FROM games INNER JOIN game_members ON game_members.game_id = games.id LEFT JOIN players ON players.game_id = games.id
-       WHERE game_members.user_id = ? AND games.owner_user_id IS NOT NULL GROUP BY games.id ORDER BY games.updated_at DESC, games.id DESC`,
+      `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, COUNT(players.id) AS player_count,
+              CASE WHEN games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN 1 ELSE 0 END AS is_public_lobby,
+              CASE WHEN games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN games.join_code ELSE NULL END AS public_join_code
+       FROM games LEFT JOIN game_members ON game_members.game_id = games.id AND game_members.user_id = ? LEFT JOIN players ON players.game_id = games.id
+       WHERE games.owner_user_id IS NOT NULL AND (game_members.user_id IS NOT NULL OR (games.status = 'LOBBY' AND games.game_access_password_hash IS NULL))
+       GROUP BY games.id ORDER BY games.updated_at DESC, games.id DESC`,
     ).bind(userId).all<GameSummaryRow>();
-    return result.results.map((row) => ({ game: mapGame(row), playerCount: row.player_count }));
+    return result.results.map((row) => ({ game: mapGame(row), playerCount: row.player_count, ...(row.is_public_lobby === 1 ? { isPublicLobby: true, joinCode: row.public_join_code ?? undefined } : {}) }));
   }
 
   async updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null> {
@@ -160,6 +164,20 @@ export class D1GameRepository implements GameRepository {
       .bind(...values)
       .first<GameRow>();
 
+    return row === null ? null : mapGame(row);
+  }
+
+  async transitionStatus(id: string, from: GameStatus, to: GameStatus): Promise<Game | null> {
+    const storedFrom = from === 'FINISHED' ? 'ARCHIVED' : from;
+    const storedTo = to === 'FINISHED' ? 'ARCHIVED' : to;
+    const row = await this.database.prepare(
+      `UPDATE games
+       SET status = ?, updated_at = CURRENT_TIMESTAMP,
+           started_at = CASE WHEN ? = 'ACTIVE' THEN CURRENT_TIMESTAMP ELSE started_at END,
+           finished_at = CASE WHEN ? = 'ARCHIVED' THEN CURRENT_TIMESTAMP ELSE finished_at END
+       WHERE id = ? AND status = ?
+       RETURNING id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at, started_at, finished_at`,
+    ).bind(storedTo, storedTo, storedTo, id, storedFrom).first<GameRow>();
     return row === null ? null : mapGame(row);
   }
 
@@ -199,6 +217,8 @@ export class D1GameRepository implements GameRepository {
 
 interface GameSummaryRow extends GameRow {
   player_count: number;
+  is_public_lobby?: number;
+  public_join_code?: string | null;
 }
 
 function mapGame(row: GameRow): Game {
@@ -208,7 +228,7 @@ function mapGame(row: GameRow): Game {
     startingBalance: row.starting_balance,
     passGoReward: row.pass_go_reward,
     currency: row.currency,
-    status: row.status === 'ARCHIVED' ? 'FINISHED' : 'ACTIVE',
+    status: row.status === 'ARCHIVED' ? 'FINISHED' : row.status === 'LOBBY' ? 'LOBBY' : 'ACTIVE',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     startedAt: row.started_at,

@@ -1,17 +1,14 @@
-import type { ApiError, ApiSuccess } from '../../shared/contracts/api.js';
-import {
-  BankingDomainError,
-  InsufficientFundsError,
-} from '../../shared/domain/banking.js';
+import type { ApiSuccess } from '../../shared/contracts/api.js';
 import type { BankingService } from '../services/banking-service.js';
 import type { GameService } from '../services/game-service.js';
-import { AuthService, AuthenticationError } from '../services/auth-service.js';
+import { AuthService } from '../services/auth-service.js';
 import { GameAccessService } from '../services/game-access-service.js';
 import { ProfileStatisticsService } from '../services/profile-statistics-service.js';
 import type { GameLiveGateway } from '../services/game-live-gateway.js';
 import { calculateWinners } from '../../shared/domain/winner-calculation.js';
 import { calculateFinalGameSummary } from '../../shared/domain/game-summary.js';
-import { PersistenceConsistencyError, ResourceNotFoundError } from '../services/errors.js';
+import { ConflictError, InvalidJoinCodeError, NotFoundError } from '../services/errors.js';
+import { handleError } from '../services/error-handler.js';
 import {
   ApiValidationError,
   parseCreateGameRequest,
@@ -36,21 +33,31 @@ export interface ApiRouterDependencies {
 
 export function createApiRouter(dependencies: ApiRouterDependencies) {
   return async (request: Request): Promise<Response> => {
+    const requestId = readRequestId(request);
+    const path = new URL(request.url).pathname;
     try {
-      return await route(request, dependencies);
+      const response = await route(request, dependencies, requestId);
+      // Re-wrapping an HTTP 101 response drops Cloudflare's `webSocket` field.
+      // Return the Durable Object response intact so the browser upgrade completes.
+      if (response.status === 101) return response;
+      const headers = new Headers(response.headers);
+      headers.set('x-request-id', requestId);
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     } catch (error) {
-      return mapError(error);
+      return handleError(error, { requestId, method: request.method, path, cloudflareRayId: request.headers.get('cf-ray') });
     }
   };
 }
 
-async function route(request: Request, dependencies: ApiRouterDependencies): Promise<Response> {
+async function route(request: Request, dependencies: ApiRouterDependencies, requestId: string): Promise<Response> {
   const pathname = new URL(request.url).pathname;
   const gameMatch = /^\/api\/games\/([^/]+)$/.exec(pathname);
   const transactionMatch = /^\/api\/games\/([^/]+)\/transactions$/.exec(pathname);
   const playerTransactionMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)\/transactions$/.exec(pathname);
   const duplicateMatch = /^\/api\/games\/([^/]+)\/duplicate$/.exec(pathname);
   const finishMatch = /^\/api\/games\/([^/]+)\/finish$/.exec(pathname);
+  const startMatch = /^\/api\/games\/([^/]+)\/start$/.exec(pathname);
+  const invitationMatch = /^\/api\/games\/([^/]+)\/invitations$/.exec(pathname);
   const favoriteMatch = /^\/api\/games\/([^/]+)\/favorite-amounts$/.exec(pathname);
   const bankruptcyMatch = /^\/api\/games\/([^/]+)\/bankruptcy$/.exec(pathname);
   const summaryMatch = /^\/api\/games\/([^/]+)\/summary$/.exec(pathname);
@@ -73,10 +80,14 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
   }
   if (pathname === '/api/games/join' && request.method === 'POST') {
     const body = await parseJoinGameRequest(request);
-    const credentials = await dependencies.access.getJoinCredentials(body.joinCode);
-    if (credentials === null || !(await dependencies.access.verifyGamePassword(body.gameAccessPassword, credentials))) throw new ResourceNotFoundError('Game');
-    await dependencies.access.grantPlayer(credentials.gameId, actor.id, body.playerId);
-    return success(await dependencies.games.getGame(credentials.gameId));
+    const access = 'invitationToken' in body
+      ? await dependencies.access.invitation(body.invitationToken)
+      : await joinCodeAccess(dependencies.access, body.joinCode, body.gameAccessPassword);
+    if (access === null) throw new InvalidJoinCodeError();
+    if (access.status !== 'LOBBY') throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
+    const details = await dependencies.games.getGame(access.gameId);
+    await dependencies.access.joinLobby({ gameId: access.gameId, userId: actor.id, nickname: actor.nickname, playerId: crypto.randomUUID(), color: nextPlayerColor(details.players), startingBalance: details.game.startingBalance });
+    return success(await dependencies.games.getGame(access.gameId));
   }
 
   if (pathname === '/api/games') {
@@ -97,19 +108,21 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
     const gameId = parseResourceId(liveMatch[1], 'gameId');
     await dependencies.access.requireMember(gameId, actor.id);
     const details = await dependencies.games.getGame(gameId);
-    if (details.game.status !== 'ACTIVE') return failure(409, 'GAME_NOT_ACTIVE', 'This game is not active.');
-    return dependencies.live === undefined ? failure(503, 'LIVE_UNAVAILABLE', 'Live games are not configured.') : dependencies.live.connect(gameId, actor, request);
+    if (details.game.status !== 'ACTIVE') return failure(409, 'GAME_FINISHED', 'This game is finished.', requestId);
+    return dependencies.live === undefined ? failure(503, 'LIVE_UNAVAILABLE', 'Live games are not configured.', requestId) : dependencies.live.connect(gameId, actor, request);
   }
 
   if (gameMatch !== null && request.method === 'DELETE') {
     const gameId = parseResourceId(gameMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.deleteGame(gameId));
   }
+  if (invitationMatch !== null && request.method === 'POST') { const gameId = parseResourceId(invitationMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success({ invitationToken: await dependencies.access.createInvitation(gameId, actor.id) }, 201); }
   if (summaryMatch !== null && request.method === 'GET') {
     const gameId = parseResourceId(summaryMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id);
     const details = await dependencies.games.getGame(gameId); const transactions = await dependencies.banking.listTransactions(gameId, 100);
     return success({ game: details.game, winners: calculateWinners(details.players), ...calculateFinalGameSummary(details.players, transactions) });
   }
   if (duplicateMatch !== null && request.method === 'POST') { const gameId = parseResourceId(duplicateMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.duplicateGameForOwner(actor.id, gameId, (await parseDuplicateGameRequest(request)).gameAccessPassword), 201); }
+  if (startMatch !== null && request.method === 'POST') { const gameId = parseResourceId(startMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.startGame(gameId)); }
   if (finishMatch !== null && request.method === 'POST') { const gameId = parseResourceId(finishMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'FINISH_GAME', commandId: readCommandId(request) }); const details = await dependencies.games.finishGame(gameId); const winnerIds = new Set(calculateWinners(details.players).map((player) => player.id)); const participants = (await dependencies.access.linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) })); await dependencies.profileStatistics.recordCompletedGame(gameId, participants); return success(details); }
   if (favoriteMatch !== null && request.method === 'POST') {
     const body = await request.json() as { amount?: unknown };
@@ -152,7 +165,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
     );
   }
 
-  return failure(404, 'NOT_FOUND', 'Endpoint not found.');
+  throw new NotFoundError('NOT_FOUND', 'Endpoint not found.');
 }
 
 function readCommandId(request: Request): string {
@@ -181,39 +194,24 @@ function failure(
   status: number,
   code: string,
   message: string,
+  requestId: string,
   details?: Record<string, string | number>,
 ): Response {
-  const error: ApiError = {
-    error: {
-      code,
-      message,
-      ...(details === undefined ? {} : { details }),
-    },
-  };
-  return Response.json(error, { status });
+  return Response.json({ error: { code, message, requestId, ...(details === undefined ? {} : { details }) } }, { status });
 }
 
-function mapError(error: unknown): Response {
-  if (error instanceof ApiValidationError) {
-    return failure(400, 'VALIDATION_ERROR', error.message, error.details);
-  }
-  if (error instanceof AuthenticationError) return failure(401, 'UNAUTHENTICATED', 'Authentication is required.');
-  if (error instanceof ResourceNotFoundError) {
-    return failure(404, 'NOT_FOUND', `${error.resource} not found.`);
-  }
-  if (error instanceof InsufficientFundsError) {
-    return failure(409, error.code, 'Insufficient funds.', {
-      playerId: error.playerId,
-      currentBalance: error.currentBalance,
-      requiredAmount: error.requiredAmount,
-      shortfall: error.shortfall,
-    });
-  }
-  if (error instanceof BankingDomainError) {
-    return failure(400, error.code, 'The banking operation is invalid.');
-  }
-  if (error instanceof PersistenceConsistencyError) {
-    return failure(500, 'PERSISTENCE_ERROR', 'The operation could not be completed.');
-  }
-  return failure(500, 'INTERNAL_ERROR', 'The request could not be completed.');
+function readRequestId(request: Request): string {
+  const candidate = request.headers.get('x-request-id');
+  return candidate !== null && /^[A-Za-z0-9][A-Za-z0-9._-]{7,127}$/u.test(candidate) ? candidate : crypto.randomUUID();
+}
+
+function nextPlayerColor(players: readonly { color: string }[]): string {
+  const colors = ['#e05263', '#2f80ed', '#27ae60', '#f2994a', '#9b51e0', '#14b8a6'];
+  return colors.find((color) => !players.some((player) => player.color === color)) ?? colors[players.length % colors.length];
+}
+
+async function joinCodeAccess(access: GameAccessService, joinCode: string, gameAccessPassword: string | undefined): Promise<{ gameId: string; status: string } | null> {
+  const credentials = await access.getJoinCredentials(joinCode);
+  if (credentials === null || !(await access.verifyGamePassword(gameAccessPassword, credentials))) return null;
+  return { gameId: credentials.gameId, status: credentials.status };
 }

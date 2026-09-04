@@ -1,6 +1,6 @@
 import type { GameMemberRole, GameAccessRepository } from '../repositories/game-access-repository.js';
-import { ResourceNotFoundError } from './errors.js';
-import { verifyPassword } from './password-security.js';
+import { ConflictError, ResourceNotFoundError } from './errors.js';
+import { randomToken, tokenHash, verifyPassword } from './password-security.js';
 
 export class GameAccessService {
   private readonly access: GameAccessRepository;
@@ -19,9 +19,15 @@ export class GameAccessService {
     if (await this.requireMember(gameId, userId) !== 'OWNER') throw new ResourceNotFoundError('Game');
   }
 
-  async grantPlayer(gameId: string, userId: string, playerId?: string): Promise<void> { await this.access.addMember(gameId, userId, 'PLAYER', playerId); }
-  async getJoinCredentials(joinCode: string): Promise<{ gameId: string; passwordHash: string; passwordSalt: string } | null> { return this.access.getGameAccessCredentials(joinCode); }
+  async joinLobby(input: { gameId: string; userId: string; nickname: string; playerId: string; color: string; startingBalance: number }): Promise<void> {
+    if (await this.access.joinLobby(input)) return;
+    if (await this.access.getRole(input.gameId, input.userId) !== null) return;
+    throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
+  }
+  async getJoinCredentials(joinCode: string): Promise<{ gameId: string; passwordHash: string | null; passwordSalt: string | null; status: string } | null> { return this.access.getGameAccessCredentials(joinCode); }
   async ownerJoinCode(gameId: string, userId: string): Promise<string> { const joinCode = await this.access.getOwnerJoinCode(gameId, userId); if (joinCode === null) throw new ResourceNotFoundError('Game'); return joinCode; }
-  async verifyGamePassword(password: string, credentials: { passwordHash: string; passwordSalt: string }): Promise<boolean> { return verifyPassword(password, { hash: credentials.passwordHash, salt: credentials.passwordSalt }); }
+  async createInvitation(gameId: string, ownerUserId: string): Promise<string> { const invitationToken = randomToken(); const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); if (!(await this.access.createInvitation(gameId, ownerUserId, await tokenHash(invitationToken), expiresAt))) throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.'); return invitationToken; }
+  async invitation(token: string): Promise<{ gameId: string; status: string } | null> { return this.access.findInvitation(await tokenHash(token)); }
+  async verifyGamePassword(password: string | undefined, credentials: { passwordHash: string | null; passwordSalt: string | null }): Promise<boolean> { return credentials.passwordHash === null || credentials.passwordSalt === null ? true : password !== undefined && verifyPassword(password, { hash: credentials.passwordHash, salt: credentials.passwordSalt }); }
   async linkedMembers(gameId: string): Promise<Array<{ userId: string; playerId: string | null }>> { return this.access.listLinkedMembers(gameId); }
 }

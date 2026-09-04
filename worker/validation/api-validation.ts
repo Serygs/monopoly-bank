@@ -1,16 +1,10 @@
 import type { BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, JoinGameRequest, LoginRequest, RegisterRequest, UpdateProfileRequest } from '../../shared/contracts/api.js';
 import { currencies, transactionTypes, type Currency, type TransactionType } from '../../shared/types/monopoly.js';
+import { ValidationError } from '../services/errors.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export class ApiValidationError extends Error {
-  readonly details: Record<string, string | number>;
-
-  constructor(message: string, details: Record<string, string | number> = {}) {
-    super(message);
-    this.details = details;
-  }
-}
+export class ApiValidationError extends ValidationError { constructor(message: string, details: Record<string, unknown> = {}) { super(message, details); } }
 
 export function parseResourceId(value: string, field: string): string {
   if (!uuidPattern.test(value)) {
@@ -29,8 +23,8 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     };
   });
 
-  if (players.length < 2 || players.length > 6) {
-    throw new ApiValidationError('A game must have between 2 and 6 players.', {
+  if (players.length < 1 || players.length > 6) {
+    throw new ApiValidationError('A lobby must have between 1 and 6 players.', {
       playerCount: players.length,
     });
   }
@@ -40,16 +34,16 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     startingBalance: readPositiveInteger(body, 'startingBalance'),
     passGoReward: readPositiveInteger(body, 'passGoReward'),
     currency: readCurrency(body),
-    gameAccessPassword: readPassword(body, 'gameAccessPassword'),
+    ...(body.gameAccessPassword === undefined ? {} : { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }),
     players,
   };
 }
 
-export async function parseRegisterRequest(request: Request): Promise<RegisterRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body), password: readPassword(body, 'password') }; }
-export async function parseLoginRequest(request: Request): Promise<LoginRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), password: readPassword(body, 'password') }; }
+export async function parseRegisterRequest(request: Request): Promise<RegisterRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body), password: readAccountPassword(body, 'password') }; }
+export async function parseLoginRequest(request: Request): Promise<LoginRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), password: readAccountPassword(body, 'password') }; }
 export async function parseUpdateProfileRequest(request: Request): Promise<UpdateProfileRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body) }; }
-export async function parseJoinGameRequest(request: Request): Promise<JoinGameRequest> { const body = await parseJsonObject(request); const playerId = body.playerId === undefined ? undefined : readUuid(body, 'playerId'); return { joinCode: readJoinCode(body), gameAccessPassword: readPassword(body, 'gameAccessPassword'), ...(playerId === undefined ? {} : { playerId }) }; }
-export async function parseDuplicateGameRequest(request: Request): Promise<DuplicateGameRequest> { const body = await parseJsonObject(request); return { gameAccessPassword: readPassword(body, 'gameAccessPassword') }; }
+export async function parseJoinGameRequest(request: Request): Promise<JoinGameRequest> { const body = await parseJsonObject(request); if (body.invitationToken !== undefined) return { invitationToken: readInvitationToken(body) }; return { joinCode: readJoinCode(body), ...(body.gameAccessPassword === undefined || body.gameAccessPassword === '' ? {} : { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }) }; }
+export async function parseDuplicateGameRequest(request: Request): Promise<DuplicateGameRequest> { const body = await parseJsonObject(request); return { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }; }
 export async function parseBankruptcyRequest(request: Request): Promise<BankruptcyRequest> { const body = await parseJsonObject(request); const creditorPlayerId = body.creditorPlayerId === undefined ? undefined : readUuid(body, 'creditorPlayerId'); return { playerId: readUuid(body, 'playerId'), ...(creditorPlayerId === undefined ? {} : { creditorPlayerId }) }; }
 
 function readCurrency(body: Record<string, unknown>): Currency {
@@ -146,9 +140,16 @@ function readRequiredString(
 }
 
 function readNickname(body: Record<string, unknown>): string { const value = readRequiredString(body, 'nickname', 'nickname'); if (value.length < 2 || value.length > 40) throw new ApiValidationError('nickname must be between 2 and 40 characters.'); return value; }
-function readAvatar(body: Record<string, unknown>): string { const value = readRequiredString(body, 'avatar', 'avatar'); if (value.length > 32) throw new ApiValidationError('avatar must be at most 32 characters.'); return value; }
-function readPassword(body: Record<string, unknown>, field: string): string { const value = readRequiredString(body, field, field); if (value.length < 10 || value.length > 256) throw new ApiValidationError(`${field} must be between 10 and 256 characters.`); return value; }
+function readAvatar(body: Record<string, unknown>): string {
+  const value = readRequiredString(body, 'avatar', 'avatar');
+  if (value.length <= 32) return value;
+  if (value.length <= 100_000 && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/u.test(value)) return value;
+  throw new ApiValidationError('avatar must be an emoji or a JPG, PNG, or WebP image smaller than 100 KB.');
+}
+function readAccountPassword(body: Record<string, unknown>, field: string): string { const value = readRequiredString(body, field, field); if (value.length < 6 || value.length > 256) throw new ApiValidationError(`${field} must be between 6 and 256 characters.`); return value; }
+function readGamePassword(body: Record<string, unknown>, field: string): string { const value = readRequiredString(body, field, field); if (value.length < 4 || value.length > 256) throw new ApiValidationError(`${field} must be between 4 and 256 characters.`); return value; }
 function readJoinCode(body: Record<string, unknown>): string { const value = readRequiredString(body, 'joinCode', 'joinCode').toUpperCase(); if (!/^[A-Z0-9]{6,12}$/u.test(value)) throw new ApiValidationError('joinCode must contain 6 to 12 letters or digits.'); return value; }
+function readInvitationToken(body: Record<string, unknown>): string { const value = readRequiredString(body, 'invitationToken', 'invitationToken'); if (!/^[A-Za-z0-9_-]{32,128}$/u.test(value)) throw new ApiValidationError('invitationToken is invalid.'); return value; }
 
 function readUuid(body: Record<string, unknown>, key: string): string {
   return parseResourceId(readRequiredString(body, key, key), key);

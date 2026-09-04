@@ -60,6 +60,24 @@ describe('D1BankingOperationRepository', () => {
       null,
     ]);
   });
+
+  it('persists bankruptcy transfers using the database-supported operation type', async () => {
+    const database = new FakeDatabase();
+    const repository = new D1BankingOperationRepository(database as unknown as D1Database);
+
+    await repository.persist({
+      transactionId: 'transaction-1',
+      transaction: { gameId: 'game-1', type: 'BANKRUPTCY_TRANSFER', amount: 400, totalAmount: 400, comment: null, participants: [{ playerId: 'bankrupt-player', balanceDelta: -400 }, { playerId: 'creditor', balanceDelta: 400 }] },
+      balanceChanges: [
+        { player: { id: 'bankrupt-player', gameId: 'game-1', name: 'Bankrupt', color: '#111', balance: 400 }, balanceBefore: 400, balanceAfter: 0, balanceDelta: -400 },
+        { player: { id: 'creditor', gameId: 'game-1', name: 'Creditor', color: '#222', balance: 600 }, balanceBefore: 600, balanceAfter: 1000, balanceDelta: 400 },
+      ],
+      bankruptPlayerId: 'bankrupt-player',
+    });
+
+    expect(database.batches[0][1].values).toEqual(['transaction-1', 'game-1', 'BANKRUPTCY_TRANSFER', 400, 400, null]);
+    expect(database.batches[0][4].values).toEqual(['bankrupt-player', 'game-1']);
+  });
 });
 
 class FakeDatabase {

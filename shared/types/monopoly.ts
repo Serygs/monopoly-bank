@@ -1,4 +1,4 @@
-export const gameStatuses = ['ACTIVE', 'FINISHED'] as const;
+export const gameStatuses = ['LOBBY', 'ACTIVE', 'FINISHED'] as const;
 
 export type GameStatus = (typeof gameStatuses)[number];
 
@@ -40,6 +40,8 @@ export interface Player {
   status?: PlayerStatus;
   isInJail?: boolean;
   consecutiveDoubles?: number;
+  /** Set when this wallet belongs to a registered Monopoly Bank account. */
+  userId?: string | null;
   createdAt: string;
 }
 

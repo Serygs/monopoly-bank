@@ -8,7 +8,8 @@ export interface ApiError {
   error: {
     code: string;
     message: string;
-    details?: Record<string, string | number>;
+    requestId?: string;
+    details?: Record<string, unknown>;
   };
 }
 
@@ -17,6 +18,10 @@ export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 export interface GameSummary {
   game: Game;
   playerCount: number;
+  /** Public lobbies can be joined without a table password. */
+  isPublicLobby?: boolean;
+  /** Exposed only for public lobbies; private invitation codes remain owner-only. */
+  joinCode?: string;
 }
 
 export interface GameDetails {
@@ -38,16 +43,19 @@ export interface CreateGameRequest {
   startingBalance: number;
   passGoReward: number;
   currency: Currency;
-  gameAccessPassword: string;
+  gameAccessPassword?: string;
   players: CreateGamePlayerRequest[];
 }
 
 export interface RegisterRequest { nickname: string; avatar: string; password: string; }
 export interface LoginRequest { nickname: string; password: string; }
 export interface UpdateProfileRequest { nickname: string; avatar: string; }
-export interface JoinGameRequest { joinCode: string; gameAccessPassword: string; playerId?: string; }
+export type JoinGameRequest =
+  | { joinCode: string; gameAccessPassword?: string }
+  | { invitationToken: string };
+export interface CreateInvitationResponse { invitationToken: string; }
 export interface DuplicateGameRequest { gameAccessPassword: string; }
-export interface UserProfile { id: string; nickname: string; avatar: string; gamesPlayed: number; gamesWon: number; winRate: number; createdAt: string; updatedAt: string; }
+export interface UserProfile { id: string; nickname: string; avatar: string; gamesPlayed: number; gamesWon: number; gamesLost: number; winRate: number; createdAt: string; updatedAt: string; }
 
 export interface CreateGamePlayerRequest {
   name: string;

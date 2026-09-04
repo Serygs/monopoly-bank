@@ -11,7 +11,8 @@ import { D1GameCompletionRepository } from './repositories/game-completion-repos
 import { GameAccessService } from './services/game-access-service.js';
 import { ProfileStatisticsService } from './services/profile-statistics-service.js';
 import { calculateWinners } from '../shared/domain/winner-calculation.js';
-import { BankingDomainError, InsufficientFundsError } from '../shared/domain/banking.js';
+import { handleError } from './services/error-handler.js';
+import { ValidationError } from './services/errors.js';
 
 /** One instance per game: serializes writes and keeps hibernatable member sockets. */
 export class GameSession {
@@ -22,23 +23,25 @@ export class GameSession {
   async fetch(request: Request): Promise<Response> {
     const gameId = request.headers.get('x-game-id');
     const userId = request.headers.get('x-user-id');
-    if (gameId === null || userId === null) return new Response('Forbidden', { status: 403 });
+    const requestId = request.headers.get('x-request-id') ?? crypto.randomUUID();
+    if (gameId === null || userId === null) return Response.json({ error: { code: 'FORBIDDEN', message: 'You are not allowed to perform this operation.', requestId } }, { status: 403, headers: { 'x-request-id': requestId } });
     if (new URL(request.url).pathname === '/connect') return this.acceptConnection(gameId, userId, request);
-    if (new URL(request.url).pathname === '/mutation') return this.mutate(gameId, request);
-    return new Response('Not found', { status: 404 });
+    if (new URL(request.url).pathname === '/mutation') return this.mutate(gameId, userId, request);
+    return Response.json({ error: { code: 'NOT_FOUND', message: 'Endpoint not found.', requestId } }, { status: 404, headers: { 'x-request-id': requestId } });
   }
 
   private async acceptConnection(gameId: string, userId: string, request: Request): Promise<Response> {
-    if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return new Response('WebSocket upgrade required', { status: 426 });
+    const requestId = request.headers.get('x-request-id') ?? crypto.randomUUID();
+    if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return Response.json({ error: { code: 'VALIDATION_ERROR', message: 'WebSocket upgrade required.', requestId } }, { status: 426, headers: { 'x-request-id': requestId } });
     const details = await this.gameService().getGame(gameId);
-    if (details.game.status !== 'ACTIVE') return new Response('Game is not active', { status: 409 });
+    if (details.game.status !== 'ACTIVE') return Response.json({ error: { code: 'GAME_FINISHED', message: 'This game is finished.', requestId } }, { status: 409, headers: { 'x-request-id': requestId } });
     const pair = new WebSocketPair();
     const client = pair[0]; const server = pair[1];
     server.serializeAttachment({ userId });
     this.ctx.acceptWebSocket(server, [userId]);
     server.send(JSON.stringify({ type: 'GAME_STATE', state: await this.state(gameId, details) } satisfies LiveServerEvent));
     await this.broadcast({ type: 'MEMBER_JOINED', version: await this.version(), connectedMembers: this.ctx.getWebSockets().length });
-    return new Response(null, { status: 101, webSocket: client });
+    return new Response(null, { status: 101, headers: { 'x-request-id': requestId }, webSocket: client });
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
@@ -50,9 +53,12 @@ export class GameSession {
     await this.broadcast({ type: 'MEMBER_JOINED', version: await this.version(), connectedMembers: this.ctx.getWebSockets().length });
   }
 
-  private async mutate(gameId: string, request: Request): Promise<Response> {
+  private async mutate(gameId: string, userIdOrRequest: string | Request, maybeRequest?: Request): Promise<Response> {
+    const request = typeof userIdOrRequest === 'string' ? maybeRequest : userIdOrRequest;
+    if (request === undefined) throw new Error('Mutation request is required.');
+    const userId = typeof userIdOrRequest === 'string' ? userIdOrRequest : request.headers.get('x-user-id') ?? undefined;
     const command: unknown = await request.json().catch(() => null);
-    if (!isLiveMutationCommand(command)) return jsonError(400, 'VALIDATION_ERROR', 'Invalid live mutation command.');
+    if (!isLiveMutationCommand(command)) return handleError(new ValidationError('Invalid live mutation command.'), { requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(), method: request.method, path: '/mutation', gameId, ...(userId === undefined ? {} : { userId }) });
     const replay = await this.ctx.storage.get<ResponsePayload>(`command:${command.commandId}`);
     if (replay !== undefined) return Response.json(replay, { status: replay.status });
     try {
@@ -60,8 +66,8 @@ export class GameSession {
       const version = await this.incrementVersion();
       await this.ctx.storage.put(`command:${command.commandId}`, response);
       await this.publish(command, response.data, version);
-      return Response.json(response, { status: response.status });
-    } catch (error) { return mapError(error); }
+      return Response.json(response, { status: response.status, headers: { 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() } });
+    } catch (error) { return handleError(error, { requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(), method: request.method, path: '/mutation', gameId, ...(userId === undefined ? {} : { userId }) }); }
   }
 
   private async execute(gameId: string, command: LiveMutationCommand): Promise<ResponsePayload> {
@@ -80,7 +86,7 @@ export class GameSession {
   }
 
   private async state(gameId: string, details?: GameDetails): Promise<LiveGameState> {
-    return { version: await this.version(), details: details ?? await this.gameService().getGame(gameId), transactions: await this.transactions().listByGameId(gameId, 100) };
+    return { version: await this.version(), details: details ?? await this.gameService().getGame(gameId), transactions: await this.transactions().listByGameId(gameId, 50) };
   }
   private async broadcast(event: LiveServerEvent): Promise<void> { const encoded = JSON.stringify(event); for (const ws of this.ctx.getWebSockets()) ws.send(encoded); }
   private version(): Promise<number> { return this.ctx.storage.get<number>('version').then((value) => value ?? 0); }
@@ -99,9 +105,3 @@ export class GameSession {
 }
 
 interface ResponsePayload { status: number; data: unknown; }
-function jsonError(status: number, code: string, message: string): Response { return Response.json({ error: { code, message } }, { status }); }
-function mapError(error: unknown): Response {
-  if (error instanceof InsufficientFundsError) return jsonError(409, error.code, 'Insufficient funds.');
-  if (error instanceof BankingDomainError) return jsonError(400, error.code, 'The banking operation is invalid.');
-  return jsonError(500, 'INTERNAL_ERROR', 'The operation could not be completed.');
-}
