@@ -24,6 +24,9 @@ export interface GameDetails {
   players: Player[];
   favoriteAmounts?: number[];
   recentAmounts?: number[];
+  canManage?: boolean;
+  /** Present only for the game's owner; never expose the password hash. */
+  joinCode?: string;
 }
 
 export interface DeleteGameResponse {
@@ -35,8 +38,16 @@ export interface CreateGameRequest {
   startingBalance: number;
   passGoReward: number;
   currency: Currency;
+  gameAccessPassword: string;
   players: CreateGamePlayerRequest[];
 }
+
+export interface RegisterRequest { nickname: string; avatar: string; password: string; }
+export interface LoginRequest { nickname: string; password: string; }
+export interface UpdateProfileRequest { nickname: string; avatar: string; }
+export interface JoinGameRequest { joinCode: string; gameAccessPassword: string; playerId?: string; }
+export interface DuplicateGameRequest { gameAccessPassword: string; }
+export interface UserProfile { id: string; nickname: string; avatar: string; gamesPlayed: number; gamesWon: number; winRate: number; createdAt: string; updatedAt: string; }
 
 export interface CreateGamePlayerRequest {
   name: string;
@@ -49,7 +60,7 @@ interface TransactionRequestBase {
 }
 
 export interface PlayerToPlayerTransactionRequest extends TransactionRequestBase {
-  type: 'PLAYER_TO_PLAYER' | 'PAY_RENT';
+  type: 'PLAYER_TO_PLAYER';
   sourcePlayerId: string;
   destinationPlayerId: string;
   amount: number;
@@ -86,7 +97,7 @@ export interface PassGoTransactionRequest extends TransactionRequestBase {
 
 export interface BankruptcyRequest {
   playerId: string;
-  creditorPlayerId: string;
+  creditorPlayerId?: string;
 }
 
 export interface SetJailRequest { isInJail: boolean; }
@@ -101,6 +112,7 @@ export interface GameSummaryStatistics {
   lowestActiveBalance: number | null;
   players: Array<{ player: Player; totalReceived: number; totalPaid: number; passGoCount: number; transactionCount: number }>;
 }
+export interface FinalGameSummaryResponse extends GameSummaryStatistics { playerToPlayerTotal: number; paidToBank: number; receivedFromBank: number; largestTransaction: number; biggestSenderId: string | null; leastSenderId: string | null; biggestPayerRecipient: { payerId: string; recipientId: string; amount: number; transactionCount: number } | null; }
 
 export type CreateTransactionRequest =
   | PlayerToPlayerTransactionRequest

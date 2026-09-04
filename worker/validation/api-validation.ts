@@ -1,4 +1,4 @@
-import type { CreateGameRequest, CreateTransactionRequest } from '../../shared/contracts/api.js';
+import type { BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, JoinGameRequest, LoginRequest, RegisterRequest, UpdateProfileRequest } from '../../shared/contracts/api.js';
 import { currencies, transactionTypes, type Currency, type TransactionType } from '../../shared/types/monopoly.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,9 +40,17 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     startingBalance: readPositiveInteger(body, 'startingBalance'),
     passGoReward: readPositiveInteger(body, 'passGoReward'),
     currency: readCurrency(body),
+    gameAccessPassword: readPassword(body, 'gameAccessPassword'),
     players,
   };
 }
+
+export async function parseRegisterRequest(request: Request): Promise<RegisterRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body), password: readPassword(body, 'password') }; }
+export async function parseLoginRequest(request: Request): Promise<LoginRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), password: readPassword(body, 'password') }; }
+export async function parseUpdateProfileRequest(request: Request): Promise<UpdateProfileRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body) }; }
+export async function parseJoinGameRequest(request: Request): Promise<JoinGameRequest> { const body = await parseJsonObject(request); const playerId = body.playerId === undefined ? undefined : readUuid(body, 'playerId'); return { joinCode: readJoinCode(body), gameAccessPassword: readPassword(body, 'gameAccessPassword'), ...(playerId === undefined ? {} : { playerId }) }; }
+export async function parseDuplicateGameRequest(request: Request): Promise<DuplicateGameRequest> { const body = await parseJsonObject(request); return { gameAccessPassword: readPassword(body, 'gameAccessPassword') }; }
+export async function parseBankruptcyRequest(request: Request): Promise<BankruptcyRequest> { const body = await parseJsonObject(request); const creditorPlayerId = body.creditorPlayerId === undefined ? undefined : readUuid(body, 'creditorPlayerId'); return { playerId: readUuid(body, 'playerId'), ...(creditorPlayerId === undefined ? {} : { creditorPlayerId }) }; }
 
 function readCurrency(body: Record<string, unknown>): Currency {
   const value = body.currency;
@@ -61,7 +69,6 @@ export async function parseCreateTransactionRequest(
 
   switch (type) {
     case 'PLAYER_TO_PLAYER':
-    case 'PAY_RENT':
       return {
         type,
         sourcePlayerId: readUuid(body, 'sourcePlayerId'),
@@ -97,8 +104,6 @@ export async function parseCreateTransactionRequest(
         playerId: readUuid(body, 'playerId'),
         ...(comment === undefined ? {} : { comment }),
       };
-    case 'BANKRUPTCY_TRANSFER':
-      throw new ApiValidationError('BANKRUPTCY_TRANSFER must use the bankruptcy endpoint.');
   }
 }
 
@@ -140,6 +145,11 @@ function readRequiredString(
   return value.trim();
 }
 
+function readNickname(body: Record<string, unknown>): string { const value = readRequiredString(body, 'nickname', 'nickname'); if (value.length < 2 || value.length > 40) throw new ApiValidationError('nickname must be between 2 and 40 characters.'); return value; }
+function readAvatar(body: Record<string, unknown>): string { const value = readRequiredString(body, 'avatar', 'avatar'); if (value.length > 32) throw new ApiValidationError('avatar must be at most 32 characters.'); return value; }
+function readPassword(body: Record<string, unknown>, field: string): string { const value = readRequiredString(body, field, field); if (value.length < 10 || value.length > 256) throw new ApiValidationError(`${field} must be between 10 and 256 characters.`); return value; }
+function readJoinCode(body: Record<string, unknown>): string { const value = readRequiredString(body, 'joinCode', 'joinCode').toUpperCase(); if (!/^[A-Z0-9]{6,12}$/u.test(value)) throw new ApiValidationError('joinCode must contain 6 to 12 letters or digits.'); return value; }
+
 function readUuid(body: Record<string, unknown>, key: string): string {
   return parseResourceId(readRequiredString(body, key, key), key);
 }
@@ -152,12 +162,12 @@ function readPositiveInteger(body: Record<string, unknown>, key: string): number
   return value;
 }
 
-function readTransactionType(body: Record<string, unknown>): TransactionType {
+function readTransactionType(body: Record<string, unknown>): Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'> {
   const value = body.type;
-  if (typeof value !== 'string' || !transactionTypes.includes(value as TransactionType)) {
+  if (typeof value !== 'string' || !transactionTypes.includes(value as TransactionType) || value === 'PAY_RENT' || value === 'BANKRUPTCY_TRANSFER') {
     throw new ApiValidationError('type must be a supported transaction type.');
   }
-  return value as TransactionType;
+  return value as Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'>;
 }
 
 function readOptionalComment(body: Record<string, unknown>): string | undefined {

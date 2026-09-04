@@ -11,6 +11,8 @@ interface GameRow {
   status: string;
   created_at: string;
   updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export interface CreateGameInput {
@@ -20,6 +22,10 @@ export interface CreateGameInput {
   passGoReward: number;
   currency: Currency;
   status?: GameStatus;
+  ownerUserId: string;
+  joinCode: string;
+  gameAccessPasswordHash: string;
+  gameAccessPasswordSalt: string;
 }
 
 export interface UpdateGameMetadataInput {
@@ -29,11 +35,11 @@ export interface UpdateGameMetadataInput {
 }
 
 export interface GameRepository {
-  create(input: CreateGameInput): Promise<Game>;
   createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void>;
   getById(id: string): Promise<Game | null>;
   list(): Promise<Game[]>;
   listSummaries(): Promise<GameSummary[]>;
+  listSummariesForUser(userId: string): Promise<GameSummary[]>;
   updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null>;
   delete(id: string): Promise<boolean>;
   listFavoriteAmounts(gameId: string): Promise<number[]>;
@@ -49,37 +55,13 @@ export class D1GameRepository implements GameRepository {
     this.database = database;
   }
 
-  async create(input: CreateGameInput): Promise<Game> {
-    const row = await this.database
-      .prepare(
-        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status)
-         VALUES (?, ?, ?, ?, ?, ?)
-         RETURNING id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at`,
-      )
-      .bind(
-        input.id,
-        input.name,
-        input.startingBalance,
-        input.passGoReward,
-        input.currency,
-        input.status ?? 'ACTIVE',
-      )
-      .first<GameRow>();
-
-    if (row === null) {
-      throw new Error('D1 did not return the created game.');
-    }
-
-    return mapGame(row);
-  }
-
   async createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void> {
     const gameStatement = this.database
       .prepare(
-        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status, owner_user_id, join_code, game_access_password_hash, game_access_password_salt, started_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
       )
-      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.status ?? 'ACTIVE');
+      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.status ?? 'ACTIVE', input.ownerUserId, input.joinCode, input.gameAccessPasswordHash, input.gameAccessPasswordSalt);
     const playerStatements = players.map((player) =>
       this.database
         .prepare(
@@ -89,13 +71,14 @@ export class D1GameRepository implements GameRepository {
         .bind(player.id, player.gameId, player.name, player.color, player.balance),
     );
 
-    await this.database.batch([gameStatement, ...playerStatements]);
+    const memberStatement = [this.database.prepare("INSERT INTO game_members (game_id, user_id, role, player_id) VALUES (?, ?, 'OWNER', ?)").bind(input.id, input.ownerUserId, players[0]?.id ?? null)];
+    await this.database.batch([gameStatement, ...playerStatements, ...memberStatement]);
   }
 
   async getById(id: string): Promise<Game | null> {
     const row = await this.database
       .prepare(
-        `SELECT id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at
+        `SELECT id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at, started_at, finished_at
          FROM games
          WHERE id = ?`,
       )
@@ -108,7 +91,7 @@ export class D1GameRepository implements GameRepository {
   async list(): Promise<Game[]> {
     const result = await this.database
       .prepare(
-        `SELECT id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at
+        `SELECT id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at, started_at, finished_at
          FROM games
          ORDER BY updated_at DESC, id DESC`,
       )
@@ -121,7 +104,7 @@ export class D1GameRepository implements GameRepository {
     const result = await this.database
       .prepare(
         `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency,
-                games.status, games.created_at, games.updated_at,
+                games.status, games.created_at, games.updated_at, games.started_at, games.finished_at,
                 COUNT(players.id) AS player_count
          FROM games
          LEFT JOIN players ON players.game_id = games.id
@@ -136,6 +119,15 @@ export class D1GameRepository implements GameRepository {
     }));
   }
 
+  async listSummariesForUser(userId: string): Promise<GameSummary[]> {
+    const result = await this.database.prepare(
+      `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, COUNT(players.id) AS player_count
+       FROM games INNER JOIN game_members ON game_members.game_id = games.id LEFT JOIN players ON players.game_id = games.id
+       WHERE game_members.user_id = ? AND games.owner_user_id IS NOT NULL GROUP BY games.id ORDER BY games.updated_at DESC, games.id DESC`,
+    ).bind(userId).all<GameSummaryRow>();
+    return result.results.map((row) => ({ game: mapGame(row), playerCount: row.player_count }));
+  }
+
   async updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null> {
     const assignments: string[] = [];
     const values: (string | GameStatus)[] = [];
@@ -146,8 +138,9 @@ export class D1GameRepository implements GameRepository {
     }
 
     if (input.status !== undefined) {
-      assignments.push('status = ?');
+      assignments.push('status = ?', "finished_at = CASE WHEN ? = 'FINISHED' THEN CURRENT_TIMESTAMP ELSE finished_at END");
       values.push(input.status === 'FINISHED' ? 'ARCHIVED' : input.status);
+      values.push(input.status);
     }
 
     if (assignments.length === 0) {
@@ -162,7 +155,7 @@ export class D1GameRepository implements GameRepository {
         `UPDATE games
          SET ${assignments.join(', ')}
          WHERE id = ?
-         RETURNING id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at`,
+         RETURNING id, name, starting_balance, pass_go_reward, currency, status, created_at, updated_at, started_at, finished_at`,
       )
       .bind(...values)
       .first<GameRow>();
@@ -218,5 +211,7 @@ function mapGame(row: GameRow): Game {
     status: row.status === 'ARCHIVED' ? 'FINISHED' : 'ACTIVE',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
   };
 }

@@ -6,7 +6,6 @@ import {
   InsufficientFundsError,
   InvalidAmountError,
   passGo,
-  payRent,
   playerToAll,
   playerToBank,
   playerToPlayer,
@@ -178,19 +177,6 @@ describe('banking domain operations', () => {
       }),
     ).toThrow(InsufficientFundsError);
     expect(players.map((player) => player.balance)).toEqual([1500, 50, 1500]);
-  });
-
-  it('records rent as PAY_RENT while applying a player-to-player payment', () => {
-    const result = payRent({
-      game,
-      players: createPlayers(),
-      sourcePlayerId: 'player-1',
-      destinationPlayerId: 'player-2',
-      amount: 200,
-    });
-
-    expect(balances(result)).toEqual([1300, 1700]);
-    expect(result.transaction.type).toBe('PAY_RENT');
   });
 
   it('awards the configured Pass GO reward', () => {

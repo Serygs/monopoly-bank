@@ -35,7 +35,7 @@ export interface PassGoCommand {
 
 export interface BankruptcyCommand extends BankingCommand {
   playerId: string;
-  creditorPlayerId: string;
+  creditorPlayerId?: string;
 }
 
 interface BankingCommand {
@@ -242,17 +242,6 @@ export function allToPlayer(command: AllToPlayerCommand): BankingOperationResult
   );
 }
 
-export function payRent(command: PlayerToPlayerCommand): BankingOperationResult {
-  const result = playerToPlayer(command);
-  return {
-    ...result,
-    transaction: {
-      ...result.transaction,
-      type: 'PAY_RENT',
-    },
-  };
-}
-
 export function passGo(command: PassGoCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
   validateAmount(command.game.passGoReward);
@@ -272,16 +261,15 @@ export function passGo(command: PassGoCommand): BankingOperationResult {
 export function declareBankruptcy(command: BankruptcyCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
   const bankruptPlayer = findPlayer(players, command.playerId);
-  const creditor = findPlayer(players, command.creditorPlayerId);
   ensureActive(bankruptPlayer);
-  ensureActive(creditor);
-  ensureDifferentPlayers(bankruptPlayer, creditor);
+  const creditor = command.creditorPlayerId === undefined ? null : findPlayer(players, command.creditorPlayerId);
+  if (creditor !== null) { ensureActive(creditor); ensureDifferentPlayers(bankruptPlayer, creditor); }
   if (bankruptPlayer.balance === 0) {
     return createResult(command.game.id, 'BANKRUPTCY_TRANSFER', 1, 1, null, []);
   }
   return createResult(command.game.id, 'BANKRUPTCY_TRANSFER', bankruptPlayer.balance, bankruptPlayer.balance, null, [
     createBalanceChange(bankruptPlayer, -bankruptPlayer.balance),
-    createBalanceChange(creditor, bankruptPlayer.balance),
+    ...(creditor === null ? [] : [createBalanceChange(creditor, bankruptPlayer.balance)]),
   ]);
 }
 
