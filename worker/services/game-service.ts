@@ -12,6 +12,7 @@ export interface GameService {
   getGame(gameId: string): Promise<GameDetails>;
   deleteGame(gameId: string): Promise<DeleteGameResponse>;
   duplicateGame(gameId: string): Promise<GameDetails>;
+  duplicateGameForOwner(userId: string, gameId: string, gameAccessPassword: string): Promise<GameDetails>;
   finishGame(gameId: string): Promise<GameDetails>;
   toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
 }
@@ -102,6 +103,18 @@ export class DefaultGameService implements GameService {
       await this.games.toggleFavoriteAmount(copyId, amount);
     }
     return this.getGame(copyId);
+  }
+
+  async duplicateGameForOwner(userId: string, gameId: string, gameAccessPassword: string): Promise<GameDetails> {
+    const source = await this.getGame(gameId);
+    return this.createGameForOwner(userId, {
+      name: `${source.game.name} (Copy)`,
+      startingBalance: source.game.startingBalance,
+      passGoReward: source.game.passGoReward,
+      currency: source.game.currency,
+      gameAccessPassword,
+      players: source.players.map((player) => ({ name: player.name, color: player.color })),
+    });
   }
 
   async finishGame(gameId: string): Promise<GameDetails> {

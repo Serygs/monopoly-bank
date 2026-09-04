@@ -66,8 +66,10 @@ export function SavedGamesPage({ onCreateGame, onOpenGame }: Props) {
     }
   };
   const duplicateGame = async (game: GameSummary) => {
+    const gameAccessPassword = window.prompt('Choose a new access password for the copied game (10+ characters).');
+    if (gameAccessPassword === null) return;
     setDuplicating(game.game.id);
-    try { onOpenGame((await monopolyBankApi.duplicateGame(game.game.id)).game.id); } finally { setDuplicating(null); }
+    try { onOpenGame((await monopolyBankApi.duplicateGame(game.game.id, gameAccessPassword)).game.id); } finally { setDuplicating(null); }
   };
 
   return <main className="page saved-games-page">

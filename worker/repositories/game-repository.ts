@@ -96,7 +96,7 @@ export class D1GameRepository implements GameRepository {
         .bind(player.id, player.gameId, player.name, player.color, player.balance),
     );
 
-    const memberStatement = input.ownerUserId === undefined ? [] : [this.database.prepare("INSERT INTO game_members (game_id, user_id, role) VALUES (?, ?, 'OWNER')").bind(input.id, input.ownerUserId)];
+    const memberStatement = input.ownerUserId === undefined ? [] : [this.database.prepare("INSERT INTO game_members (game_id, user_id, role, player_id) VALUES (?, ?, 'OWNER', ?)").bind(input.id, input.ownerUserId, players[0]?.id ?? null)];
     await this.database.batch([gameStatement, ...playerStatements, ...memberStatement]);
   }
 

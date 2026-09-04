@@ -57,6 +57,9 @@ function createBalanceUpdateStatement(
   balanceChanges: readonly PlayerBalanceChange[],
 ): D1PreparedStatement {
   const gameId = balanceChanges[0]?.player.gameId;
+  if (gameId === undefined && balanceChanges.length === 0) {
+    return database.prepare('SELECT 1');
+  }
   if (gameId === undefined || balanceChanges.some((change) => change.player.gameId !== gameId)) {
     throw new Error('All balance changes must belong to the same game.');
   }

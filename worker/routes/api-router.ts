@@ -16,6 +16,7 @@ import {
   ApiValidationError,
   parseCreateGameRequest,
   parseCreateTransactionRequest,
+  parseDuplicateGameRequest,
   parseBankruptcyRequest,
   parseResourceId,
   parseJoinGameRequest,
@@ -107,7 +108,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies): Pro
     const details = await dependencies.games.getGame(gameId); const transactions = await dependencies.banking.listTransactions(gameId, 100);
     return success({ game: details.game, winners: calculateWinners(details.players), ...calculateFinalGameSummary(details.players, transactions) });
   }
-  if (duplicateMatch !== null && request.method === 'POST') { const gameId = parseResourceId(duplicateMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.duplicateGame(gameId), 201); }
+  if (duplicateMatch !== null && request.method === 'POST') { const gameId = parseResourceId(duplicateMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.duplicateGameForOwner(actor.id, gameId, (await parseDuplicateGameRequest(request)).gameAccessPassword), 201); }
   if (finishMatch !== null && request.method === 'POST') { const gameId = parseResourceId(finishMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'FINISH_GAME', commandId: readCommandId(request) }); const details = await dependencies.games.finishGame(gameId); const winnerIds = new Set(calculateWinners(details.players).map((player) => player.id)); const participants = (await dependencies.access.linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) })); await dependencies.profileStatistics.recordCompletedGame(gameId, participants); return success(details); }
   if (favoriteMatch !== null && request.method === 'POST') {
     const body = await request.json() as { amount?: unknown };

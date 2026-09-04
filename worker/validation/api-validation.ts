@@ -1,4 +1,4 @@
-import type { BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, JoinGameRequest, LoginRequest, RegisterRequest, UpdateProfileRequest } from '../../shared/contracts/api.js';
+import type { BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, JoinGameRequest, LoginRequest, RegisterRequest, UpdateProfileRequest } from '../../shared/contracts/api.js';
 import { currencies, transactionTypes, type Currency, type TransactionType } from '../../shared/types/monopoly.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,6 +49,7 @@ export async function parseRegisterRequest(request: Request): Promise<RegisterRe
 export async function parseLoginRequest(request: Request): Promise<LoginRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), password: readPassword(body, 'password') }; }
 export async function parseUpdateProfileRequest(request: Request): Promise<UpdateProfileRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body) }; }
 export async function parseJoinGameRequest(request: Request): Promise<JoinGameRequest> { const body = await parseJsonObject(request); const playerId = body.playerId === undefined ? undefined : readUuid(body, 'playerId'); return { joinCode: readJoinCode(body), gameAccessPassword: readPassword(body, 'gameAccessPassword'), ...(playerId === undefined ? {} : { playerId }) }; }
+export async function parseDuplicateGameRequest(request: Request): Promise<DuplicateGameRequest> { const body = await parseJsonObject(request); return { gameAccessPassword: readPassword(body, 'gameAccessPassword') }; }
 export async function parseBankruptcyRequest(request: Request): Promise<BankruptcyRequest> { const body = await parseJsonObject(request); const creditorPlayerId = body.creditorPlayerId === undefined ? undefined : readUuid(body, 'creditorPlayerId'); return { playerId: readUuid(body, 'playerId'), ...(creditorPlayerId === undefined ? {} : { creditorPlayerId }) }; }
 
 function readCurrency(body: Record<string, unknown>): Currency {

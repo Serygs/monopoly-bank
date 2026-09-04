@@ -44,6 +44,7 @@ export interface RegisterRequest { nickname: string; avatar: string; password: s
 export interface LoginRequest { nickname: string; password: string; }
 export interface UpdateProfileRequest { nickname: string; avatar: string; }
 export interface JoinGameRequest { joinCode: string; gameAccessPassword: string; playerId?: string; }
+export interface DuplicateGameRequest { gameAccessPassword: string; }
 export interface UserProfile { id: string; nickname: string; avatar: string; gamesPlayed: number; gamesWon: number; winRate: number; createdAt: string; updatedAt: string; }
 
 export interface CreateGamePlayerRequest {

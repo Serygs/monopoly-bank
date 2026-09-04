@@ -20,7 +20,7 @@ export interface MonopolyBankApi {
   createGame(request: CreateGameRequest): Promise<GameDetails>;
   getGame(gameId: string): Promise<GameDetails>;
   deleteGame(gameId: string): Promise<DeleteGameResponse>;
-  duplicateGame(gameId: string): Promise<GameDetails>;
+  duplicateGame(gameId: string, gameAccessPassword: string): Promise<GameDetails>;
   finishGame(gameId: string): Promise<GameDetails>;
   toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
   createTransaction(gameId: string, request: CreateTransactionRequest): Promise<CreateTransactionResponse>;
@@ -40,7 +40,7 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   async createGame(input: CreateGameRequest): Promise<GameDetails> { return request<GameDetails>('/api/games', { method: 'POST', body: JSON.stringify(input) }); }
   async getGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}`); }
   async deleteGame(gameId: string): Promise<DeleteGameResponse> { return request<DeleteGameResponse>(`/api/games/${encodeURIComponent(gameId)}`, { method: 'DELETE' }); }
-  async duplicateGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}/duplicate`, { method: 'POST' }); }
+  async duplicateGame(gameId: string, gameAccessPassword: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}/duplicate`, { method: 'POST', body: JSON.stringify({ gameAccessPassword }) }); }
   async finishGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}/finish`, commandInit({ method: 'POST' })); }
   async toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]> { return request<number[]>(`/api/games/${encodeURIComponent(gameId)}/favorite-amounts`, { method: 'POST', body: JSON.stringify({ amount }) }); }
   async createTransaction(gameId: string, input: CreateTransactionRequest): Promise<CreateTransactionResponse> { return request<CreateTransactionResponse>(`/api/games/${encodeURIComponent(gameId)}/transactions`, commandInit({ method: 'POST', body: JSON.stringify(input) })); }
