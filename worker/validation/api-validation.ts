@@ -140,7 +140,12 @@ function readRequiredString(
 }
 
 function readNickname(body: Record<string, unknown>): string { const value = readRequiredString(body, 'nickname', 'nickname'); if (value.length < 2 || value.length > 40) throw new ApiValidationError('nickname must be between 2 and 40 characters.'); return value; }
-function readAvatar(body: Record<string, unknown>): string { const value = readRequiredString(body, 'avatar', 'avatar'); if (value.length > 32) throw new ApiValidationError('avatar must be at most 32 characters.'); return value; }
+function readAvatar(body: Record<string, unknown>): string {
+  const value = readRequiredString(body, 'avatar', 'avatar');
+  if (value.length <= 32) return value;
+  if (value.length <= 100_000 && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/u.test(value)) return value;
+  throw new ApiValidationError('avatar must be an emoji or a JPG, PNG, or WebP image smaller than 100 KB.');
+}
 function readPassword(body: Record<string, unknown>, field: string): string { const value = readRequiredString(body, field, field); if (value.length < 10 || value.length > 256) throw new ApiValidationError(`${field} must be between 10 and 256 characters.`); return value; }
 function readJoinCode(body: Record<string, unknown>): string { const value = readRequiredString(body, 'joinCode', 'joinCode').toUpperCase(); if (!/^[A-Z0-9]{6,12}$/u.test(value)) throw new ApiValidationError('joinCode must contain 6 to 12 letters or digits.'); return value; }
 

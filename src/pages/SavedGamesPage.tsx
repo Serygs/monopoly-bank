@@ -67,7 +67,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
     }
   };
   const duplicateGame = async (game: GameSummary) => {
-    const gameAccessPassword = window.prompt('Choose a new access password for the copied game (10+ characters).');
+    const gameAccessPassword = window.prompt(t('copyGamePasswordPrompt'));
     if (gameAccessPassword === null) return;
     setDuplicating(game.game.id);
     try { onOpenGame((await monopolyBankApi.duplicateGame(game.game.id, gameAccessPassword)).game.id); } finally { setDuplicating(null); }
@@ -80,7 +80,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
         <h1>{t('savedGames')}</h1>
         <p className="lede">{t('savedGamesLede')}</p>
       </div>
-      <div className="header-actions"><button className="button button-secondary" type="button" onClick={onJoinGame}>Join game</button><button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button></div>
+      <div className="header-actions"><button className="button button-secondary" type="button" onClick={onJoinGame}>{t('joinGame')}</button><button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button></div>
     </section>
 
     {notice !== null && <section className="notice notice-success" role="status">
