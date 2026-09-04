@@ -1,4 +1,4 @@
-.app-shell { min-height: 100vh; }.app-header { max-width: 1120px; margin: auto; padding: 20px 28px; }.brand { color: #174a31; background: none; border: 0; font-weight: 800; font-size: 1.05rem; padding: 8px 0; }.page { max-width: 1120px; margin: auto; padding: 36px 28px 64px; }.page-narrow { max-width: 880px; }.page-heading { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 36px; }.eyebrow { color: #397653; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; font-size: .75rem; margin: 0 0 8px; }.page h1 { font-size: clamp(2rem, 5vw, 3.5rem); margin: 0; letter-spacing: -.04em; }.page h2 { margin: 0 0 8px; }.lede, .muted, .field-hint { color: #64746c; }.lede { margin: 10px 0 0; }
+.app-shell { min-height: 100vh; }.app-header { max-width: 1120px; margin: auto; padding: 20px 28px; }.brand { color: #174a31; background: none; border: 0; font-weight: 800; font-size: 1.05rem; padding: 8px 0; }.page { max-width: 1120px; margin: auto; padding: 36px 28px 64px; }.page-narrow { max-width: 880px; }.page-heading { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 36px; }.eyebrow { color: #397653; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; font-size: .75rem; margin: 0 0 8px; }.page h1 { font-size: clamp(2rem, 5vw, 3.5rem); margin: 0; letter-spacing: -.04em; }.page h2 { margin: 0 0 8px; }.lede, .muted, .field-hint { color: #455e51; }.lede { margin: 10px 0 0; }
 .button { min-height: 44px; border-radius: 8px; padding: 9px 16px; font-weight: 700; border: 1px solid transparent; }.button-primary { background: #1f6b45; color: white; }.button-secondary { background: #fff; color: #174a31; border-color: #b7c6bc; }.button-quiet { background: transparent; color: #315b43; }.status, .empty-state, .notice { background: #fff; border: 1px solid #dce4dc; border-radius: 12px; padding: 24px; }.empty-state { text-align: center; margin-top: 40px; }.empty-state .button { margin-top: 12px; }.notice { display: flex; gap: 16px; align-items: center; justify-content: space-between; }.notice-error { color: #8b2430; background: #fff6f6; border-color: #f0c7cb; }
 button:focus-visible, input:focus-visible { outline: 3px solid #174a31; outline-offset: 2px; }
 .game-grid, .wallet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }.game-card, .wallet-card { background: #fff; border: 1px solid #dce4dc; border-radius: 12px; padding: 20px; }.game-card { display: flex; justify-content: space-between; gap: 14px; align-items: center; }.game-card p { margin: 6px 0 0; }.wallet-card { position: relative; min-height: 140px; border-top: 6px solid #397653; }.wallet-card p { margin: 14px 0 8px; }.wallet-card strong { font-size: clamp(2rem, 5vw, 2.5rem); letter-spacing: -.04em; }.player-color { width: 20px; height: 20px; border-radius: 50%; display: block; border: 2px solid white; box-shadow: 0 0 0 1px #b7c6bc; }
@@ -143,6 +143,17 @@ input, select, textarea { font-size: 16px; }
 [data-theme='dark'] .profile-statistics dd { color: #fff6cb; }
 [data-theme='dark'] .summary-metrics > div, [data-theme='dark'] .summary-extremes > div, [data-theme='dark'] .summary-player-results li { border-color: #52695e; background: rgb(0 0 0 / .12); } [data-theme='dark'] .summary-metrics dd, [data-theme='dark'] .summary-extremes dd { color: #fff6cb; } [data-theme='dark'] .summary-metrics dt, [data-theme='dark'] .summary-extremes dt, [data-theme='dark'] .summary-player-results dt { color: #c3d5c7; }
 [data-theme='dark'] .avatar-picker legend { color: #e2eee4; }
+
+/* Keep form surfaces and controls legible when the application theme is dark. */
+[data-theme='dark'] .game-form fieldset { color: #edf5ee; border-color: #52695e; background: #193229; }
+[data-theme='dark'] .game-form input, [data-theme='dark'] .game-form select, [data-theme='dark'] .table-calculator, [data-theme='dark'] .calculator-controls input, [data-theme='dark'] .calculator-operations button { color: #edf5ee; border-color: #5a7968; background: #10271e; }
+[data-theme='dark'] .game-form .field-hint, [data-theme='dark'] .game-form .field-note, [data-theme='dark'] .table-calculator .muted { color: #c7dccc; }
+[data-theme='dark'] .player-editor { border-color: #3d5e4d; }
+[data-theme='dark'] .calculator-operations button.selected { color: #fff; background: #1c6947; }
+[data-theme='dark'] .settings-panel .button-quiet { color: #f8edbc; }
+
+/* The summary intentionally uses the sharp-edged game-board treatment. */
+.summary-screen { border-radius: 0; }
 
 @media (max-width: 767px) {
   .app-header-inner { min-height: 60px; }

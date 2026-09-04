@@ -131,8 +131,8 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
     {summary !== null && <GameSummaryScreen summary={summary} players={details.players} currency={details.game.currency} onClose={() => setSummary(null)} />}
     {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} currency={details.game.currency} favoriteAmounts={details.favoriteAmounts ?? []} recentAmounts={details.recentAmounts ?? []} onToggleFavorite={(amount) => void monopolyBankApi.toggleFavoriteAmount(gameId, amount).then((favoriteAmounts) => setDetails((current) => current === null ? current : { ...current, favoriteAmounts }))} onClose={() => setSelectedPlayer(null)} onBankrupt={() => { setBankruptPlayer(selectedPlayer); setSelectedPlayer(null); }} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action, amount) => { historyCache.current.clear(); playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails({ ...details, players, recentAmounts: amount === null ? details.recentAmounts : [amount, ...(details.recentAmounts ?? []).filter((value) => value !== amount)].slice(0, 5) }); setSelectedPlayer(null); setNotice(action); }} />}
     {bankruptPlayer !== null && <BankruptcyDialog gameId={gameId} player={bankruptPlayer} players={details.players} onClose={() => setBankruptPlayer(null)} onCompleted={(players) => { historyCache.current.clear(); setDetails({ ...details, players }); setBankruptPlayer(null); }} />}
-    {inviteOpen && <InviteDialog gameId={gameId} gameName={details.game.name} onClose={() => setInviteOpen(false)} />}
-    {finishing && <Dialog title="Finish Game" onClose={() => setFinishing(false)}><p className="dialog-intro">Finish this game and finalize the linked player statistics? Financial actions will become read-only.</p><div className="dialog-actions"><button className="button button-secondary" onClick={() => setFinishing(false)}>Cancel</button><button className="button button-danger" onClick={() => void monopolyBankApi.finishGame(gameId).then((finished) => { setDetails(finished); setFinishing(false); })}>Finish Game</button></div></Dialog>}
+    {inviteOpen && <InviteDialog gameId={gameId} onClose={() => setInviteOpen(false)} />}
+    {finishing && <Dialog title="Finish Game" onClose={() => setFinishing(false)}><p className="dialog-intro">Finish this game and finalize the linked player statistics? Financial actions will become read-only.</p><div className="dialog-actions"><button className="button button-secondary" onClick={() => setFinishing(false)}>Cancel</button><button className="button button-danger" onClick={() => void monopolyBankApi.finishGame(gameId).then((finished) => { setDetails((current) => withClientGameDetails(finished, current)); setFinishing(false); })}>Finish Game</button></div></Dialog>}
     {historyOpen && <HistoryDialog history={history} player={historyPlayer} players={details.players} currency={details.game.currency} error={historyError} language={language} locale={locale} onClose={() => { setHistoryOpen(false); setHistory(null); setHistoryError(null); }} onRetry={() => void loadHistory(historyPlayer)} />}
   </main>;
 }
@@ -248,10 +248,14 @@ function HistoryDialog({ history, player, players, currency, error, language, lo
 }
 
 function applyLiveEvent(event: LiveServerEvent, setDetails: React.Dispatch<React.SetStateAction<GameDetails | null>>, setHistory: React.Dispatch<React.SetStateAction<Transaction[] | null>>, historyCache: MutableRefObject<Map<string, Transaction[]>>) {
-  if (event.type === 'GAME_STATE') { historyCache.current.set('all', event.state.transactions); setDetails(event.state.details); setHistory(event.state.transactions); return; }
+  if (event.type === 'GAME_STATE') { historyCache.current.set('all', event.state.transactions); setDetails((current) => withClientGameDetails(event.state.details, current)); setHistory(event.state.transactions); return; }
   if (event.type === 'BALANCES_UPDATED' || event.type === 'PLAYER_BANKRUPT') { historyCache.current.clear(); setDetails((current) => current === null ? current : { ...current, players: event.players }); }
-  if (event.type === 'GAME_FINISHED') setDetails(event.details);
+  if (event.type === 'GAME_FINISHED') setDetails((current) => withClientGameDetails(event.details, current));
   if (event.type === 'TRANSACTION_CREATED') { historyCache.current.clear(); setHistory((current) => current === null ? current : [event.transaction, ...current.filter((transaction) => transaction.id !== event.transaction.id)]); }
+}
+
+function withClientGameDetails(details: GameDetails, current: GameDetails | null): GameDetails {
+  return current === null ? details : { ...details, canManage: current.canManage, joinCode: current.joinCode };
 }
 
 function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -326,13 +330,12 @@ function transactionLabel(type: TransactionType, t: Translate): string {
 
 function isPositiveInteger(value: string) { return /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0; }
 
-function InviteDialog({ gameId, gameName, onClose }: { gameId: string; gameName: string; onClose: () => void }) {
+function InviteDialog({ gameId, onClose }: { gameId: string; onClose: () => void }) {
   const { t } = useLanguage();
-  const [email, setEmail] = useState(''); const [link, setLink] = useState<string | null>(null); const [error, setError] = useState<unknown>(null); const [creating, setCreating] = useState(false); const [copied, setCopied] = useState(false);
+  const [link, setLink] = useState<string | null>(null); const [error, setError] = useState<unknown>(null); const [creating, setCreating] = useState(false); const [copied, setCopied] = useState(false);
   const createLink = async () => { setCreating(true); setError(null); try { const { invitationToken } = await monopolyBankApi.createInvitation(gameId); setLink(`${window.location.origin}/games/join?invite=${encodeURIComponent(invitationToken)}`); } catch (caught) { setError(caught); } finally { setCreating(false); } };
   const copy = async () => { if (link === null) return; if (navigator.clipboard !== undefined) await navigator.clipboard.writeText(link); else window.prompt(t('copyInviteLink'), link); setCopied(true); };
-  const emailInvite = () => { if (link === null) return; const recipient = email.trim(); window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(t('invitePlayers'))}&body=${encodeURIComponent(`${gameName}\n${link}`)}`; };
-  return <Dialog title={t('invitePlayers')} onClose={onClose}><p className="dialog-intro">{t('inviteDescription')}</p>{link === null ? <button className="button button-primary" type="button" disabled={creating} onClick={() => void createLink()}>{creating ? t('pleaseWait') : t('createInviteLink')}</button> : <><label className="dialog-field">{t('inviteEmail')}<input type="email" value={email} autoComplete="email" onChange={(event) => setEmail(event.target.value)} /><span className="field-hint">{t('inviteEmailHint')}</span></label><div className="dialog-actions"><button className="button button-secondary" type="button" onClick={() => void copy()}>{t('copyInviteLink')}</button><button className="button button-primary" type="button" onClick={emailInvite}>{t('emailInvite')}</button></div>{copied && <p className="notice notice-success" role="status">{t('inviteLinkCopied')}</p>}</>}{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableJoinGame')}</p>}</Dialog>;
+  return <Dialog title={t('invitePlayers')} onClose={onClose}><p className="dialog-intro">{t('inviteDescription')}</p>{link === null ? <button className="button button-primary" type="button" disabled={creating} onClick={() => void createLink()}>{creating ? t('pleaseWait') : t('createInviteLink')}</button> : <><div className="dialog-actions"><button className="button button-primary" type="button" onClick={() => void copy()}>{t('copyInviteLink')}</button></div>{copied && <p className="notice notice-success" role="status">{t('inviteLinkCopied')}</p>}</>}{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableJoinGame')}</p>}</Dialog>;
 }
 
 function GameSummaryScreen({ summary, players, currency, onClose }: { summary: ({ game: Game; winners: Player[] } & FinalGameSummary); players: Player[]; currency: Currency; onClose: () => void }) {
