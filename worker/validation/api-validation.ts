@@ -1,4 +1,4 @@
-import type { BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, JoinGameRequest, LoginRequest, RegisterRequest, UpdateProfileRequest } from '../../shared/contracts/api.js';
+import type { AddAccountEmailRequest, AuthTokenRequest, BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, GuestJoinGameRequest, JoinGameRequest, LoginRequest, PasswordResetConfirmationRequest, PasswordResetRequest, RegisterRequest, UpdateProfileRequest, UpgradeGuestRequest } from '../../shared/contracts/api.js';
 import { currencies, transactionTypes, type Currency, type TransactionType } from '../../shared/types/monopoly.js';
 import { ValidationError } from '../services/errors.js';
 
@@ -39,10 +39,16 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
   };
 }
 
-export async function parseRegisterRequest(request: Request): Promise<RegisterRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body), password: readAccountPassword(body, 'password') }; }
-export async function parseLoginRequest(request: Request): Promise<LoginRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), password: readAccountPassword(body, 'password') }; }
+export async function parseRegisterRequest(request: Request): Promise<RegisterRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body), email: readEmail(body), password: readAccountPassword(body, 'password') }; }
+export async function parseLoginRequest(request: Request): Promise<LoginRequest> { const body = await parseJsonObject(request); const password = readAccountPassword(body, 'password'); return body.email === undefined ? { nickname: readNickname(body), password } : { email: readEmail(body), password }; }
 export async function parseUpdateProfileRequest(request: Request): Promise<UpdateProfileRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body) }; }
 export async function parseJoinGameRequest(request: Request): Promise<JoinGameRequest> { const body = await parseJsonObject(request); if (body.invitationToken !== undefined) return { invitationToken: readInvitationToken(body) }; return { joinCode: readJoinCode(body), ...(body.gameAccessPassword === undefined || body.gameAccessPassword === '' ? {} : { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }) }; }
+export async function parseGuestJoinGameRequest(request: Request): Promise<GuestJoinGameRequest> { const body = await parseJsonObject(request); const credentials = await parseJoinGameBody(body); return { nickname: readNickname(body), avatar: readAvatar(body), ...credentials }; }
+export async function parseUpgradeGuestRequest(request: Request): Promise<UpgradeGuestRequest> { const body = await parseJsonObject(request); return { email: readEmail(body), password: readAccountPassword(body, 'password') }; }
+export async function parseAddAccountEmailRequest(request: Request): Promise<AddAccountEmailRequest> { const body = await parseJsonObject(request); return { email: readEmail(body) }; }
+export async function parseAuthTokenRequest(request: Request): Promise<AuthTokenRequest> { const body = await parseJsonObject(request); return { token: readAuthToken(body) }; }
+export async function parsePasswordResetRequest(request: Request): Promise<PasswordResetRequest> { const body = await parseJsonObject(request); return { email: readEmail(body) }; }
+export async function parsePasswordResetConfirmationRequest(request: Request): Promise<PasswordResetConfirmationRequest> { const body = await parseJsonObject(request); return { token: readAuthToken(body), password: readAccountPassword(body, 'password') }; }
 export async function parseDuplicateGameRequest(request: Request): Promise<DuplicateGameRequest> { const body = await parseJsonObject(request); return { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }; }
 export async function parseBankruptcyRequest(request: Request): Promise<BankruptcyRequest> { const body = await parseJsonObject(request); const creditorPlayerId = body.creditorPlayerId === undefined ? undefined : readUuid(body, 'creditorPlayerId'); return { playerId: readUuid(body, 'playerId'), ...(creditorPlayerId === undefined ? {} : { creditorPlayerId }) }; }
 
@@ -140,6 +146,7 @@ function readRequiredString(
 }
 
 function readNickname(body: Record<string, unknown>): string { const value = readRequiredString(body, 'nickname', 'nickname'); if (value.length < 2 || value.length > 40) throw new ApiValidationError('nickname must be between 2 and 40 characters.'); return value; }
+function readEmail(body: Record<string, unknown>): string { const value = readRequiredString(body, 'email', 'email').toLowerCase(); if (value.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value)) throw new ApiValidationError('email must be a valid email address.'); return value; }
 function readAvatar(body: Record<string, unknown>): string {
   const value = readRequiredString(body, 'avatar', 'avatar');
   if (value.length <= 32) return value;
@@ -150,6 +157,8 @@ function readAccountPassword(body: Record<string, unknown>, field: string): stri
 function readGamePassword(body: Record<string, unknown>, field: string): string { const value = readRequiredString(body, field, field); if (value.length < 4 || value.length > 256) throw new ApiValidationError(`${field} must be between 4 and 256 characters.`); return value; }
 function readJoinCode(body: Record<string, unknown>): string { const value = readRequiredString(body, 'joinCode', 'joinCode').toUpperCase(); if (!/^[A-Z0-9]{6,12}$/u.test(value)) throw new ApiValidationError('joinCode must contain 6 to 12 letters or digits.'); return value; }
 function readInvitationToken(body: Record<string, unknown>): string { const value = readRequiredString(body, 'invitationToken', 'invitationToken'); if (!/^[A-Za-z0-9_-]{32,128}$/u.test(value)) throw new ApiValidationError('invitationToken is invalid.'); return value; }
+function readAuthToken(body: Record<string, unknown>): string { const value = readRequiredString(body, 'token', 'token'); if (!/^[A-Za-z0-9_-]{32,128}$/u.test(value)) throw new ApiValidationError('token is invalid.'); return value; }
+async function parseJoinGameBody(body: Record<string, unknown>): Promise<JoinGameRequest> { if (body.invitationToken !== undefined) return { invitationToken: readInvitationToken(body) }; return { joinCode: readJoinCode(body), ...(body.gameAccessPassword === undefined || body.gameAccessPassword === '' ? {} : { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }) }; }
 
 function readUuid(body: Record<string, unknown>, key: string): string {
   return parseResourceId(readRequiredString(body, key, key), key);

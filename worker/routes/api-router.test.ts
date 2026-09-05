@@ -30,6 +30,26 @@ const gameDetails: GameDetails = {
 };
 
 describe('API router', () => {
+  it('uses the same generic response for known and unknown password-reset requests', async () => {
+    const requestedEmails: string[] = [];
+    const router = createApiRouter({
+      games: {} as GameService,
+      banking: {} as BankingService,
+      auth: { requestPasswordReset: async (email: string) => { requestedEmails.push(email); } } as never,
+      access: {} as never,
+      profileStatistics: {} as never,
+    });
+
+    const known = await router(jsonRequest('POST', '/api/auth/password-reset', { email: 'known@example.test' }));
+    const unknown = await router(jsonRequest('POST', '/api/auth/password-reset', { email: 'unknown@example.test' }));
+
+    expect(known.status).toBe(202);
+    expect(unknown.status).toBe(202);
+    await expect(known.json()).resolves.toEqual({ data: { accepted: true } });
+    await expect(unknown.json()).resolves.toEqual({ data: { accepted: true } });
+    expect(requestedEmails).toEqual(['known@example.test', 'unknown@example.test']);
+  });
+
   it('creates a valid game with server-validated input', async () => {
     let received: CreateGameRequest | undefined;
     const router = createTestRouter({

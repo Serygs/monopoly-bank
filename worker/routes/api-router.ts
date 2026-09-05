@@ -21,6 +21,12 @@ import {
   parseLoginRequest,
   parseRegisterRequest,
   parseUpdateProfileRequest,
+  parseAuthTokenRequest,
+  parseGuestJoinGameRequest,
+  parsePasswordResetConfirmationRequest,
+  parsePasswordResetRequest,
+  parseUpgradeGuestRequest,
+  parseAddAccountEmailRequest,
 } from '../validation/api-validation.js';
 
 export interface ApiRouterDependencies {
@@ -65,16 +71,35 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   const liveMatch = /^\/api\/games\/([^/]+)\/live$/.exec(pathname);
 
   if (pathname === '/api/auth/register' && request.method === 'POST') {
-    const result = await dependencies.auth.register(...Object.values(await parseRegisterRequest(request)) as [string, string, string]);
+    const result = await dependencies.auth.register(await parseRegisterRequest(request));
     return success(result.profile, 201, result.cookie);
   }
   if (pathname === '/api/auth/login' && request.method === 'POST') {
-    const result = await dependencies.auth.login(...Object.values(await parseLoginRequest(request)) as [string, string]);
+    const result = await dependencies.auth.login(await parseLoginRequest(request));
     return success(result.profile, 200, result.cookie);
   }
+  if (pathname === '/api/auth/verify-email' && request.method === 'POST') return success(await dependencies.auth.verifyEmail((await parseAuthTokenRequest(request)).token));
+  if (pathname === '/api/auth/password-reset' && request.method === 'POST') { await dependencies.auth.requestPasswordReset((await parsePasswordResetRequest(request)).email); return success({ accepted: true }, 202); }
+  if (pathname === '/api/auth/password-reset/confirm' && request.method === 'POST') { const body = await parsePasswordResetConfirmationRequest(request); await dependencies.auth.resetPassword(body.token, body.password); return success(null); }
   if (pathname === '/api/auth/logout' && request.method === 'POST') return success(null, 200, await dependencies.auth.logout(request));
 
+  if (pathname === '/api/games/join/guest' && request.method === 'POST') {
+    const body = await parseGuestJoinGameRequest(request);
+    const access = 'invitationToken' in body
+      ? await dependencies.access.invitation(body.invitationToken)
+      : await joinCodeAccess(dependencies.access, body.joinCode, body.gameAccessPassword);
+    if (access === null) throw new InvalidJoinCodeError();
+    if (access.status !== 'LOBBY') throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
+    const profile = await dependencies.auth.createGuest(body.nickname, body.avatar);
+    const details = await dependencies.games.getGame(access.gameId);
+    await dependencies.access.joinLobby({ gameId: access.gameId, userId: profile.profile.id, nickname: profile.profile.nickname, playerId: crypto.randomUUID(), color: nextPlayerColor(details.players), startingBalance: details.game.startingBalance });
+    return success({ profile: profile.profile, game: await dependencies.games.getGame(access.gameId) }, 201, profile.cookie);
+  }
+
   const actor = await dependencies.auth.current(request);
+  if (pathname === '/api/auth/upgrade' && request.method === 'POST') { const body = await parseUpgradeGuestRequest(request); const result = await dependencies.auth.upgradeGuest(actor.id, body.email, body.password); return success(result.profile, 200, result.cookie); }
+  if (pathname === '/api/auth/email' && request.method === 'POST') return success(await dependencies.auth.addEmailToLegacyAccount(actor.id, (await parseAddAccountEmailRequest(request)).email));
+  if (pathname === '/api/auth/verification-email' && request.method === 'POST') { await dependencies.auth.resendVerification(actor.id); return success({ accepted: true }, 202); }
   if (pathname === '/api/profile') {
     if (request.method === 'GET') return success(actor);
     if (request.method === 'PATCH') { const body = await parseUpdateProfileRequest(request); return success(await dependencies.auth.update(actor.id, body.nickname, body.avatar)); }

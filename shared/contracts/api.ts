@@ -53,15 +53,24 @@ export interface CreateGameRequest {
   players: CreateGamePlayerRequest[];
 }
 
-export interface RegisterRequest { nickname: string; avatar: string; password: string; }
-export interface LoginRequest { nickname: string; password: string; }
+export type AccountType = 'REGISTERED' | 'GUEST';
+export interface RegisterRequest { nickname: string; avatar: string; email: string; password: string; }
+/** `nickname` remains available only for pre-email accounts created before migration 0012. */
+export type LoginRequest = { email: string; password: string } | { nickname: string; password: string };
+export type GuestJoinGameRequest = { nickname: string; avatar: string } & JoinGameRequest;
+export interface GuestJoinGameResponse { profile: UserProfile; game: GameDetails; }
+export interface UpgradeGuestRequest { email: string; password: string; }
+export interface AddAccountEmailRequest { email: string; }
+export interface AuthTokenRequest { token: string; }
+export interface PasswordResetRequest { email: string; }
+export interface PasswordResetConfirmationRequest { token: string; password: string; }
 export interface UpdateProfileRequest { nickname: string; avatar: string; }
 export type JoinGameRequest =
   | { joinCode: string; gameAccessPassword?: string }
   | { invitationToken: string };
 export interface CreateInvitationResponse { invitationToken: string; }
 export interface DuplicateGameRequest { gameAccessPassword: string; }
-export interface UserProfile { id: string; nickname: string; avatar: string; gamesPlayed: number; gamesWon: number; gamesLost: number; winRate: number; createdAt: string; updatedAt: string; }
+export interface UserProfile { id: string; nickname: string; avatar: string; accountType: AccountType; email: string | null; emailVerified: boolean; gamesPlayed: number; gamesWon: number; gamesLost: number; winRate: number; createdAt: string; updatedAt: string; }
 
 export interface CreateGamePlayerRequest {
   name: string;

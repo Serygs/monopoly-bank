@@ -4,6 +4,7 @@ import { monopolyBankApi } from './api/monopoly-bank-api';
 import { Avatar } from './components/AvatarPicker';
 import { useLanguage } from './i18n/language-context';
 import { AuthPage } from './pages/AuthPage';
+import { PasswordRecoveryPage, PasswordResetPage, VerifyEmailPage } from './pages/EmailTokenPage';
 import { CreateGamePage } from './pages/CreateGamePage';
 import { GamePage } from './pages/GamePage';
 import { JoinGamePage } from './pages/JoinGamePage';
@@ -54,11 +55,21 @@ function App() {
   }, [settingsOpen]);
 
   const navigate = (target: string) => { setSettingsOpen(false); window.history.pushState({}, '', target); setPath(routePath(target)); };
+  const emailToken = new URLSearchParams(window.location.search).get('token') ?? '';
+  if (path === '/verify-email') return <VerifyEmailPage token={emailToken} onVerified={setProfile} onBack={() => navigate('/')} />;
+  if (path === '/reset-password') return <PasswordResetPage token={emailToken} onBack={() => navigate('/')} />;
   const gameMatch = /^\/games\/([^/]+)$/.exec(path);
   if (profile === undefined) return <main className="page"><p className="status">{t('loadingAccount')}</p></main>;
   if (profile === null) {
+    const navigatePublic = (target: string) => { window.history.pushState({}, '', target); setPath(target); };
+    if (path === '/forgot-password') return <PasswordRecoveryPage onBack={() => navigatePublic('/')} />;
+    if (path === '/games/join') {
+      const guestJoinCode = new URLSearchParams(window.location.search).get('code') ?? '';
+      const guestInvitationToken = new URLSearchParams(window.location.search).get('invite') ?? '';
+      return <JoinGamePage initialJoinCode={guestJoinCode} invitationToken={guestInvitationToken} onJoined={() => undefined} onGuestJoined={(guest, gameId) => { setProfile(guest); window.history.pushState({}, '', `/games/${encodeURIComponent(gameId)}`); setPath(`/games/${encodeURIComponent(gameId)}`); }} onBack={() => { window.history.pushState({}, '', '/'); setPath('/'); }} />;
+    }
     const returnRoute = currentRoute(window.location.pathname, window.location.search, window.location.hash);
-    return <AuthPage onAuthenticated={(user) => { setProfile(user); navigate(returnRoute); }} />;
+    return <AuthPage onAuthenticated={(user) => { setProfile(user); navigate(returnRoute); }} onForgotPassword={() => navigatePublic('/forgot-password')} />;
   }
 
   const joinCode = path === '/games/join' ? new URLSearchParams(window.location.search).get('code') ?? '' : '';
