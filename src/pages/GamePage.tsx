@@ -21,14 +21,8 @@ import { createLocalQr } from '../utils/local-qr';
 type ActionType = CreateTransactionRequest['type'];
 interface Props { gameId: string; onBack: () => void; preferences: DevicePreferences; }
 
-const actions: ActionType[] = [
-  'PASS_GO',
-  'PLAYER_TO_PLAYER',
-  'BANK_TO_PLAYER',
-  'PLAYER_TO_BANK',
-  'ALL_TO_PLAYER',
-  'PLAYER_TO_ALL',
-];
+const primaryWalletActions: ActionType[] = ['PLAYER_TO_PLAYER', 'PLAYER_TO_BANK', 'BANK_TO_PLAYER', 'PASS_GO'];
+const advancedWalletActions: ActionType[] = ['PLAYER_TO_ALL', 'ALL_TO_PLAYER'];
 
 function walletActionTone(action: ActionType): 'income' | 'expense' {
   return action === 'BANK_TO_PLAYER' || action === 'ALL_TO_PLAYER' || action === 'PASS_GO'
@@ -121,6 +115,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
   }
   const controlledWallets = details.controlledWallets ?? [];
   const activeControlledWalletId = controlledWallets.some((wallet) => wallet.playerId === activeWalletId) ? activeWalletId : controlledWallets[0]?.playerId ?? null;
+  const activeWallet = details.players.find((player) => player.id === activeControlledWalletId) ?? null;
 
   return <main className="page game-page">
     <section className="page-heading game-heading">
@@ -130,8 +125,9 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
     {details.game.status === 'LOBBY' && <section className="notice notice-success" role="status"><p>{t('waitingForPlayers')} — {t('startGameHint')}</p>{details.canManage && <button className="button button-primary" type="button" disabled={details.players.length < 2} onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}>{t('startGame')}</button>}</section>}
     {notice !== null && <section className="notice notice-success" role="status"><p>{t('recorded', { action: actionLabel(notice, t) })}</p><button className="button button-quiet" type="button" onClick={() => setNotice(null)}>{t('dismiss')}</button></section>}
     {controlledWallets.length > 0 && <fieldset className="wallet-switcher"><legend>{t('walletSwitcher')}</legend><div>{controlledWallets.map((wallet) => { const player = details.players.find((candidate) => candidate.id === wallet.playerId); if (player === undefined) return null; return <button className="button button-secondary" type="button" key={wallet.playerId} aria-pressed={activeControlledWalletId === wallet.playerId} onClick={() => setActiveWalletId(wallet.playerId)}>{controllerLabel(wallet.kind, t)}: {player.name}</button>; })}</div></fieldset>}
+    {activeWallet !== null && <section className="primary-wallet" aria-label={t('walletTitle', { name: activeWallet.name })}><p>{t('yourWallet')}</p><WalletCard player={activeWallet} players={details.players} currency={details.game.currency} active gameActive={details.game.status === 'ACTIVE'} prominent onOpen={() => setSelectedPlayer(activeWallet)} /></section>}
     <section className="wallet-grid" aria-label={t('playerWallets')}>
-      {details.players.map((player) => <WalletCard key={player.id} player={player} players={details.players} currency={details.game.currency} active={player.id === activeControlledWalletId} gameActive={details.game.status === 'ACTIVE'} onOpen={() => setSelectedPlayer(player)} />)}
+      {details.players.filter((player) => player.id !== activeWallet?.id).map((player) => <WalletCard key={player.id} player={player} players={details.players} currency={details.game.currency} active={false} gameActive={details.game.status === 'ACTIVE'} onOpen={() => setSelectedPlayer(player)} />)}
     </section>
     {details.game.status === 'ACTIVE' && <div className="game-tools"><DiceRoller /><TableCalculator /></div>}
     {summary !== null && <GameSummaryScreen summary={summary} players={details.players} currency={details.game.currency} onClose={() => setSummary(null)} />}
@@ -165,6 +161,8 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown | null>(null);
+  const submittingRef = useRef(false);
+  const commandIdRef = useRef<string | null>(null);
   const target = players.find((candidate) => candidate.id === targetId) ?? null;
   const amountValue = Number(amount);
   const request = action === null ? null : buildRequest(action, player.id, targetId, amountValue, comment);
@@ -184,19 +182,48 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
     setComment('');
     setConfirming(false);
     setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeAmount = (nextAmount: string) => {
+    setAmount(nextAmount);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeTarget = (nextTargetId: string) => {
+    setTargetId(nextTargetId);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeComment = (nextComment: string) => {
+    setComment(nextComment);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const reviewQuickAmount = (nextAmount: number) => {
+    changeAmount(String(nextAmount));
+    if (action === 'PLAYER_TO_PLAYER' && target !== null && preflightFundsError(action, player, players, nextAmount, currency, t) === null) {
+      setConfirming(true);
+    }
   };
 
   const submit = async () => {
-    if (request === null || !valid || action === null) return;
+    if (submittingRef.current || request === null || !valid || action === null) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
-      const result = await monopolyBankApi.createTransaction(gameId, request);
+      const commandId = commandIdRef.current ?? crypto.randomUUID();
+      commandIdRef.current = commandId;
+      const result = await monopolyBankApi.createTransaction(gameId, request, commandId);
       onCompleted(result.players, action, action === 'PASS_GO' ? null : result.transaction.amount);
     } catch (caught) {
-      setConfirming(false);
       setError(caught);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -204,34 +231,38 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
   const title = action === null ? t('walletTitle', { name: player.name }) : actionLabel(action, t);
   const transactionError = error === null ? null : insufficientMessage(error, players, currency, t) ?? apiErrorMessage(error, t, 'unableRecordTransaction');
 
-  return <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
+  return <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose} className="banking-sheet">
     {transactionError !== null && <p className="notice notice-error" role="alert">{transactionError}</p>}
     {action === null ? <>
-      <div className="action-grid wallet-action-grid">{actions.map((item) => <button className={`button wallet-action-button wallet-action-${walletActionTone(item)} action-button`} type="button" key={item} onClick={() => selectAction(item)}>{actionLabel(item, t)}</button>)}<button className="button button-danger bankruptcy-action" type="button" onClick={onBankrupt}>{t('declareBankrupt')}</button></div>
-      <button className="button button-quiet player-history-button" type="button" onClick={() => onViewHistory(player)}>{t('viewPlayerHistory', { name: player.name })}</button>
+      <section className="wallet-sheet-balance" aria-label={t('walletBalanceAria', { name: player.name, balance: formatMoney(player.balance, currency) })}>
+        <span>{t('availableBalance')}</span><strong>{formatMoney(player.balance, currency)}</strong>
+      </section>
+      <p className="dialog-intro">{t('walletSheetIntro')}</p>
+      <div className="action-grid wallet-action-grid">{primaryWalletActions.map((item) => <button className={`button wallet-action-button wallet-action-${walletActionTone(item)} action-button`} type="button" key={item} onClick={() => selectAction(item)}>{actionLabel(item, t)}</button>)}</div>
+      <details className="wallet-advanced-actions"><summary>{t('advancedActions')}</summary><div className="action-grid">{advancedWalletActions.map((item) => <button className={`button wallet-action-button wallet-action-${walletActionTone(item)} action-button`} type="button" key={item} onClick={() => selectAction(item)}>{actionLabel(item, t)}</button>)}<button className="button button-danger bankruptcy-action" type="button" onClick={onBankrupt}>{t('declareBankrupt')}</button></div><button className="button button-quiet player-history-button" type="button" onClick={() => onViewHistory(player)}>{t('viewPlayerHistory', { name: player.name })}</button></details>
     </> : confirming ? <>
       <p className="dialog-intro">{t('confirmationIntro')}</p>
       <Confirmation action={action} player={player} target={target} amount={amountValue} passGoReward={passGoReward} currency={currency} preview={preview} comment={comment} />
-      <div className="dialog-actions"><button className="button button-secondary" type="button" disabled={submitting} onClick={onClose}>{t('cancel')}</button><button className="button button-primary" type="button" disabled={submitting} onClick={() => void submit()}>{submitting ? t('recording') : t('confirmTransaction')}</button></div>
+      <div className="dialog-actions"><button className="button button-secondary" type="button" disabled={submitting} onClick={() => setConfirming(false)}>{t('back')}</button><button className="button button-primary" type="button" disabled={submitting} onClick={() => void submit()}>{submitting ? t('recording') : transactionError === null ? t('confirmTransaction') : t('tryAgain')}</button></div>
     </> : <>
       <p className="dialog-intro">{actionDescription(action, player.name, t)}</p>
-      {targetRequired && <PlayerPicker label={t('chooseRecipient')} players={players.filter((candidate) => candidate.id !== player.id)} gamePlayers={players} value={targetId} currency={currency} onChange={setTargetId} />}
-      {amountRequired && <><AmountSelector value={amount} onChange={setAmount} currency={currency} favorites={favoriteAmounts} recent={recentAmounts} onToggleFavorite={onToggleFavorite} /><span className="field-hint">{isPositiveInteger(amount) ? formatMoney(amountValue, currency) : t('enterPositiveInteger')}</span></>}
+      {targetRequired && <PlayerPicker label={t('chooseRecipient')} players={players.filter((candidate) => candidate.id !== player.id)} gamePlayers={players} value={targetId} currency={currency} onChange={changeTarget} />}
+      {amountRequired && <><AmountSelector value={amount} onChange={changeAmount} currency={currency} favorites={favoriteAmounts} recent={recentAmounts} onToggleFavorite={onToggleFavorite} onQuickAmountSelect={reviewQuickAmount} /><span className="field-hint">{isPositiveInteger(amount) ? formatMoney(amountValue, currency) : t('enterPositiveInteger')}</span></>}
       {fundsError !== null && <p className="field-error" role="alert">{fundsError}</p>}
       {action === 'PASS_GO' && <p className="pass-go-value">{t('passGoReceives', { amount: formatMoney(passGoReward, currency) })}</p>}
-      <label className="dialog-field">{t('comment')} <span className="field-note">{t('optional')}</span><input value={comment} maxLength={500} onChange={(event) => setComment(event.target.value)} /></label>
+      <label className="dialog-field">{t('comment')} <span className="field-note">{t('optional')}</span><input value={comment} maxLength={500} onChange={(event) => changeComment(event.target.value)} /></label>
       <div className="dialog-actions"><button className="button button-quiet" type="button" onClick={() => selectAction(null)}>{t('back')}</button><button className="button button-primary" type="button" disabled={!valid} onClick={() => setConfirming(true)}>{t('reviewTransaction')}</button></div>
     </>}
   </Dialog>;
 }
 
-function WalletCard({ player, players, currency, active, gameActive, onOpen }: { player: Player; players: Player[]; currency: Currency; active: boolean; gameActive: boolean; onOpen: () => void }) {
+function WalletCard({ player, players, currency, active, gameActive, prominent = false, onOpen }: { player: Player; players: Player[]; currency: Currency; active: boolean; gameActive: boolean; prominent?: boolean; onOpen: () => void }) {
   const { t } = useLanguage();
   const playerName = playerNameWithGameId(player, players);
   const unavailable = !gameActive || player.status === 'BANKRUPT';
   const content = <><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{playerName}{player.status === 'BANKRUPT' ? ` · ${t('bankrupt')}` : ''}</span><strong>{formatMoney(player.balance, currency)}</strong><span className="wallet-action">{active ? t('walletAction') : t('walletReadOnly')}</span></>;
   if (!active) return <article className="wallet-card wallet-card-readonly" style={{ borderTopColor: player.color }} aria-label={t('walletReadOnlyAria', { name: playerName, balance: formatMoney(player.balance, currency) })}>{content}</article>;
-  return <button className="wallet-card wallet-card-button wallet-card-active" type="button" disabled={unavailable} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: playerName, balance: formatMoney(player.balance, currency) })} onClick={onOpen}>{content}<span className="wallet-active-indicator">{t('activeWallet')}</span></button>;
+  return <button className={`wallet-card wallet-card-button wallet-card-active${prominent ? ' wallet-card-prominent' : ''}`} type="button" disabled={unavailable} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: playerName, balance: formatMoney(player.balance, currency) })} onClick={onOpen}>{content}<span className="wallet-active-indicator">{t('activeWallet')}</span></button>;
 }
 
 function BankruptcyDialog({ gameId, player, players, onClose, onCompleted }: { gameId: string; player: Player; players: Player[]; onClose: () => void; onCompleted: (players: Player[]) => void }) {
@@ -285,7 +316,8 @@ function PlayerPicker({ label, players, gamePlayers, value, currency, onChange }
 function Confirmation({ action, player, target, amount, passGoReward, currency, preview, comment }: { action: ActionType; player: Player; target: Player | null; amount: number; passGoReward: number; currency: Currency; preview: { player: Player; after: number; delta: number }[]; comment: string }) {
   const { t } = useLanguage();
   const total = action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? amount * (preview.length - 1) : action === 'PASS_GO' ? passGoReward : amount;
-  return <section className="confirmation"><dl><div><dt>{t('operation')}</dt><dd>{transactionLabel(action, t)}</dd></div><div><dt>{t('source')}</dt><dd>{sourceFor(action, player, t)}</dd></div><div><dt>{t('destination')}</dt><dd>{destinationFor(action, player, target, t)}</dd></div><div><dt>{t('amount')}</dt><dd>{formatMoney(action === 'PASS_GO' ? passGoReward : amount, currency)}{action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? ` ${t('perPlayer')}` : ''}</dd></div><div><dt>{t('total')}</dt><dd>{formatMoney(total, currency)}</dd></div>{comment.trim() !== '' && <div><dt>{t('comment')}</dt><dd>{comment.trim()}</dd></div>}</dl><h3>{t('resultingBalances')}</h3><ul className="balance-preview">{preview.map(({ player: affected, after, delta }) => <li key={affected.id}><span><i style={{ backgroundColor: affected.color }} />{affected.name}</span><strong>{formatMoney(after, currency)} <small>({formatMoneyDelta(delta, currency)})</small></strong></li>)}</ul></section>;
+  const resultingBalance = preview.find(({ player: affected }) => affected.id === player.id)?.after ?? player.balance;
+  return <section className="confirmation"><dl><div><dt>{t('actor')}</dt><dd>{player.name}</dd></div><div><dt>{t('operation')}</dt><dd>{transactionLabel(action, t)}</dd></div><div><dt>{t('source')}</dt><dd>{sourceFor(action, player, t)}</dd></div><div><dt>{t('destination')}</dt><dd>{destinationFor(action, player, target, t)}</dd></div><div><dt>{t('amount')}</dt><dd>{formatMoney(action === 'PASS_GO' ? passGoReward : amount, currency)}{action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? ` ${t('perPlayer')}` : ''}</dd></div><div><dt>{t('total')}</dt><dd>{formatMoney(total, currency)}</dd></div><div className="confirmation-available"><dt>{t('resultingAvailableBalance')}</dt><dd>{formatMoney(resultingBalance, currency)}</dd></div>{comment.trim() !== '' && <div><dt>{t('comment')}</dt><dd>{comment.trim()}</dd></div>}</dl><h3>{t('resultingBalances')}</h3><ul className="balance-preview">{preview.map(({ player: affected, after, delta }) => <li key={affected.id}><span><i style={{ backgroundColor: affected.color }} />{affected.name}</span><strong>{formatMoney(after, currency)} <small>({formatMoneyDelta(delta, currency)})</small></strong></li>)}</ul></section>;
 }
 
 function buildRequest(action: ActionType, playerId: string, targetId: string, amount: number, comment: string): CreateTransactionRequest | null {
@@ -316,7 +348,7 @@ function previewBalances(request: CreateTransactionRequest, players: Player[], p
 }
 
 function actionLabel(type: ActionType, t: Translate): string {
-  return ({ PLAYER_TO_PLAYER: t('payPlayer'), PLAYER_TO_BANK: t('payBank'), BANK_TO_PLAYER: t('receiveFromBank'), PLAYER_TO_ALL: t('payEveryone'), ALL_TO_PLAYER: t('everyonePaysMe'), PASS_GO: t('passGo') })[type];
+  return ({ PLAYER_TO_PLAYER: t('payPlayer'), PLAYER_TO_BANK: t('payBank'), BANK_TO_PLAYER: t('bankPayment'), PLAYER_TO_ALL: t('payEveryone'), ALL_TO_PLAYER: t('everyonePaysMe'), PASS_GO: t('passGo') })[type];
 }
 
 function actionDescription(action: ActionType, name: string, t: Translate): string {
