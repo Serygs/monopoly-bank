@@ -7,6 +7,7 @@ import { ProfileStatisticsService } from '../services/profile-statistics-service
 import type { GameLiveGateway } from '../services/game-live-gateway.js';
 import { calculateWinners } from '../../shared/domain/winner-calculation.js';
 import { calculateFinalGameSummary } from '../../shared/domain/game-summary.js';
+import { controlledPlayerIdForBankingCommand } from '../../shared/domain/player-control.js';
 import { ConflictError, InvalidJoinCodeError, NotFoundError } from '../services/errors.js';
 import { handleError } from '../services/error-handler.js';
 import {
@@ -101,7 +102,8 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
 
   if (gameMatch !== null && request.method === 'GET') {
     const gameId = parseResourceId(gameMatch[1], 'gameId'); const role = await dependencies.access.requireMember(gameId, actor.id);
-    return success({ ...(await dependencies.games.getGame(gameId)), canManage: role === 'OWNER', ...(role === 'OWNER' ? { joinCode: await dependencies.access.ownerJoinCode(gameId, actor.id) } : {}) });
+    const controlledWallets = await dependencies.access.controlledWallets(gameId, actor.id);
+    return success({ ...(await dependencies.games.getGame(gameId)), controlledWallets, controlledPlayerIds: controlledWallets.map((wallet) => wallet.playerId), canManage: role === 'OWNER', ...(role === 'OWNER' ? { joinCode: await dependencies.access.ownerJoinCode(gameId, actor.id) } : {}) });
   }
 
   if (liveMatch !== null && request.method === 'GET') {
@@ -134,6 +136,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
     const gameId = parseResourceId(bankruptcyMatch[1], 'gameId');
     await dependencies.access.requireMember(gameId, actor.id);
     const body = await parseBankruptcyRequest(request);
+    await dependencies.access.requirePlayerController(gameId, actor.id, controlledPlayerIdForBankingCommand(body));
     if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'DECLARE_BANKRUPTCY', commandId: readCommandId(request), request: body });
     return success(await dependencies.banking.declareBankruptcy(gameId, body), 201);
   }
@@ -142,6 +145,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
     if (request.method === 'POST') {
       const gameId = parseResourceId(transactionMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id);
       const body = await parseCreateTransactionRequest(request);
+      await dependencies.access.requirePlayerController(gameId, actor.id, controlledPlayerIdForBankingCommand(body));
       if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'CREATE_TRANSACTION', commandId: readCommandId(request), request: body });
       return success(await dependencies.banking.createTransaction(gameId, body), 201);
     }
@@ -156,10 +160,10 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   }
 
   if (playerTransactionMatch !== null && request.method === 'GET') {
-    const gameId = parseResourceId(playerTransactionMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id); return success(
+    const gameId = parseResourceId(playerTransactionMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id); const playerId = parseResourceId(playerTransactionMatch[2], 'playerId'); await dependencies.access.requirePlayerController(gameId, actor.id, playerId); return success(
       await dependencies.banking.listPlayerTransactions(
         gameId,
-        parseResourceId(playerTransactionMatch[2], 'playerId'),
+        playerId,
         readHistoryLimit(request),
       ),
     );

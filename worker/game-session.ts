@@ -11,6 +11,7 @@ import { D1GameCompletionRepository } from './repositories/game-completion-repos
 import { GameAccessService } from './services/game-access-service.js';
 import { ProfileStatisticsService } from './services/profile-statistics-service.js';
 import { calculateWinners } from '../shared/domain/winner-calculation.js';
+import { controlledPlayerIdForBankingCommand } from '../shared/domain/player-control.js';
 import { handleError } from './services/error-handler.js';
 import { ValidationError } from './services/errors.js';
 
@@ -39,7 +40,7 @@ export class GameSession {
     const client = pair[0]; const server = pair[1];
     server.serializeAttachment({ userId });
     this.ctx.acceptWebSocket(server, [userId]);
-    server.send(JSON.stringify({ type: 'GAME_STATE', state: await this.state(gameId, details) } satisfies LiveServerEvent));
+    server.send(JSON.stringify({ type: 'GAME_STATE', state: await this.state(gameId, userId, details) } satisfies LiveServerEvent));
     await this.broadcast({ type: 'MEMBER_JOINED', version: await this.version(), connectedMembers: this.ctx.getWebSockets().length });
     return new Response(null, { status: 101, headers: { 'x-request-id': requestId }, webSocket: client });
   }
@@ -62,6 +63,7 @@ export class GameSession {
     const replay = await this.ctx.storage.get<ResponsePayload>(`command:${command.commandId}`);
     if (replay !== undefined) return Response.json(replay, { status: replay.status });
     try {
+      await this.authorizeMutation(gameId, userId, command);
       const response = await this.execute(gameId, command);
       const version = await this.incrementVersion();
       await this.ctx.storage.put(`command:${command.commandId}`, response);
@@ -77,6 +79,14 @@ export class GameSession {
     return { status: 200, data: await this.finishGame(gameId) };
   }
 
+  private async authorizeMutation(gameId: string, userId: string | undefined, command: LiveMutationCommand): Promise<void> {
+    if (userId === undefined) throw new ValidationError('Authenticated user is required.');
+    const access = this.access();
+    if (command.type === 'FINISH_GAME') return access.requireOwner(gameId, userId);
+    await access.requireMember(gameId, userId);
+    await access.requirePlayerController(gameId, userId, controlledPlayerIdForBankingCommand(command.request));
+  }
+
   private async publish(command: LiveMutationCommand, data: unknown, version: number): Promise<void> {
     if (command.type === 'FINISH_GAME') { await this.broadcast({ type: 'GAME_FINISHED', version, details: data as GameDetails }); return; }
     const result = data as { transaction: import('../shared/types/monopoly.js').Transaction; players: import('../shared/types/monopoly.js').Player[] };
@@ -85,14 +95,16 @@ export class GameSession {
     if (command.type === 'DECLARE_BANKRUPTCY') await this.broadcast({ type: 'PLAYER_BANKRUPT', version, playerId: command.request.playerId, players: result.players });
   }
 
-  private async state(gameId: string, details?: GameDetails): Promise<LiveGameState> {
-    return { version: await this.version(), details: details ?? await this.gameService().getGame(gameId), transactions: await this.transactions().listByGameId(gameId, 50) };
+  private async state(gameId: string, userId: string, details?: GameDetails): Promise<LiveGameState> {
+    const controlledWallets = await this.access().controlledWallets(gameId, userId);
+    return { version: await this.version(), details: { ...(details ?? await this.gameService().getGame(gameId)), controlledWallets, controlledPlayerIds: controlledWallets.map((wallet) => wallet.playerId) }, transactions: await this.transactions().listByGameId(gameId, 50) };
   }
   private async broadcast(event: LiveServerEvent): Promise<void> { const encoded = JSON.stringify(event); for (const ws of this.ctx.getWebSockets()) ws.send(encoded); }
   private version(): Promise<number> { return this.ctx.storage.get<number>('version').then((value) => value ?? 0); }
   private async incrementVersion(): Promise<number> { const value = (await this.version()) + 1; await this.ctx.storage.put('version', value); return value; }
   private transactions() { return new D1TransactionRepository(this.env.MONOPOLY_BANK_DB); }
   private gameService() { const database = this.env.MONOPOLY_BANK_DB; return new DefaultGameService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), createId: () => crypto.randomUUID() }); }
+  private access() { return new GameAccessService(new D1GameAccessRepository(this.env.MONOPOLY_BANK_DB)); }
   private banking(commandId: string) { const database = this.env.MONOPOLY_BANK_DB; return new DefaultBankingService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), transactions: new D1TransactionRepository(database), operations: new D1BankingOperationRepository(database), createId: () => commandId }); }
   private async finishGame(gameId: string): Promise<GameDetails> {
     const details = await this.gameService().finishGame(gameId);

@@ -29,10 +29,16 @@ export interface GameDetails {
   players: Player[];
   favoriteAmounts?: number[];
   recentAmounts?: number[];
+  /** Wallets the current actor can operate. All other wallets are read-only. */
+  controlledPlayerIds?: string[];
+  controlledWallets?: PlayerController[];
   canManage?: boolean;
   /** Present only for the game's owner; never expose the password hash. */
   joinCode?: string;
 }
+
+export type PlayerControllerKind = 'PRIMARY' | 'LOCAL';
+export interface PlayerController { playerId: string; kind: PlayerControllerKind; }
 
 export interface DeleteGameResponse {
   gameId: string;

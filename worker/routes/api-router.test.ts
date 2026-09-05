@@ -4,7 +4,7 @@ import type { CreateGameRequest, CreateTransactionRequest, GameDetails, GameSumm
 import { InsufficientFundsError } from '../../shared/domain/banking.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { BankingService } from '../services/banking-service.js';
-import { ResourceNotFoundError } from '../services/errors.js';
+import { ForbiddenError, ResourceNotFoundError } from '../services/errors.js';
 import type { GameService } from '../services/game-service.js';
 import { createApiRouter } from './api-router.js';
 
@@ -128,6 +128,26 @@ describe('API router', () => {
     expect(received).toMatchObject({ type: 'PLAYER_TO_PLAYER', amount: 100 });
   });
 
+  it('rejects a direct transaction for a foreign wallet before any banking service call', async () => {
+    let writes = 0;
+    let liveMutations = 0;
+    const router = createApiRouter({
+      games: {} as GameService,
+      banking: { createTransaction: async () => { writes += 1; return transactionResponse(); } } as BankingService,
+      auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Member', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: { requireMember: async () => 'OWNER', requirePlayerController: async () => { throw new ForbiddenError(); } } as never,
+      profileStatistics: {} as never,
+      live: { connect: async () => new Response(), mutate: async () => { liveMutations += 1; return new Response(); } },
+    });
+
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/transactions`, { type: 'PLAYER_TO_BANK', playerId: secondPlayerId, amount: 100 }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: { code: 'FORBIDDEN', message: 'You are not allowed to perform this operation.', requestId: expect.any(String) } });
+    expect(writes).toBe(0);
+    expect(liveMutations).toBe(0);
+  });
+
   it('rejects retired PAY_RENT creation requests', async () => {
     const response = await createTestRouter()(jsonRequest('POST', `/api/games/${gameId}/transactions`, {
       type: 'PAY_RENT',
@@ -189,7 +209,7 @@ describe('API router', () => {
   it('does not expose an unowned legacy game through a normal authenticated API', async () => {
     const games: GameService = { listGames: async () => [], listGamesForUser: async () => [], createGame: async () => gameDetails, createGameForOwner: async () => gameDetails, getGame: async () => gameDetails, deleteGame: async () => ({ gameId }), duplicateGame: async () => gameDetails, finishGame: async () => gameDetails, toggleFavoriteAmount: async () => [] };
     const banking: BankingService = { createTransaction: async () => transactionResponse(), listTransactions: async () => [], listPlayerTransactions: async () => [] };
-    const router = createApiRouter({ games, banking, auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Test', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never, access: { requireMember: async () => { throw new ResourceNotFoundError('Game'); } } as never, profileStatistics: { recordCompletedGame: async () => undefined } as never });
+    const router = createApiRouter({ games, banking, auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Test', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never, access: { requireMember: async () => { throw new ResourceNotFoundError('Game'); }, controlledWallets: async () => [] } as never, profileStatistics: { recordCompletedGame: async () => undefined } as never });
     const response = await router(new Request(`https://example.test/api/games/${gameId}`));
     expect(response.status).toBe(404);
   });
@@ -197,7 +217,7 @@ describe('API router', () => {
   it('exposes an invitation code only to the game owner', async () => {
     const games: GameService = { listGames: async () => [], listGamesForUser: async () => [], createGameForOwner: async () => gameDetails, getGame: async () => gameDetails, deleteGame: async () => ({ gameId }), duplicateGameForOwner: async () => gameDetails, finishGame: async () => gameDetails, toggleFavoriteAmount: async () => [] };
     const banking: BankingService = { createTransaction: async () => transactionResponse(), listTransactions: async () => [], listPlayerTransactions: async () => [] };
-    const router = createApiRouter({ games, banking, auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Owner', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never, access: { requireMember: async () => 'OWNER', ownerJoinCode: async () => 'TABLE42' } as never, profileStatistics: { recordCompletedGame: async () => undefined } as never });
+    const router = createApiRouter({ games, banking, auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Owner', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never, access: { requireMember: async () => 'OWNER', ownerJoinCode: async () => 'TABLE42', controlledWallets: async () => [] } as never, profileStatistics: { recordCompletedGame: async () => undefined } as never });
 
     const response = await router(new Request(`https://example.test/api/games/${gameId}`));
 
@@ -207,7 +227,7 @@ describe('API router', () => {
   it('does not expose an invitation code to a player member', async () => {
     const response = await createTestRouter()(new Request(`https://example.test/api/games/${gameId}`));
 
-    await expect(response.json()).resolves.toEqual({ data: { ...gameDetails, canManage: false } });
+    await expect(response.json()).resolves.toEqual({ data: { ...gameDetails, controlledWallets: [], controlledPlayerIds: [], canManage: false } });
   });
 
   it('creates a secure lobby invitation only through the owner route', async () => {
@@ -306,7 +326,7 @@ function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {
     ...pickBankingOverrides(overrides),
   };
   const auth = { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Test', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) };
-  const access = { requireMember: async () => 'PLAYER' as const, requireOwner: async () => undefined };
+  const access = { requireMember: async () => 'PLAYER' as const, requireOwner: async () => undefined, requirePlayerController: async () => undefined, controlledWallets: async () => [] };
   const profileStatistics = { recordCompletedGame: async () => undefined };
   return createApiRouter({ games, banking, auth: auth as never, access: access as never, profileStatistics: profileStatistics as never });
 }

@@ -13,18 +13,20 @@ describe('GameSession live coordinator', () => {
       getWebSockets: () => sent.map((messages) => ({ send: (message: string) => messages.push(message) })),
     };
     const session = new GameSession(context as never, {} as Env) as unknown as {
-      mutate(gameId: string, request: Request): Promise<Response>;
+      mutate(gameId: string, userId: string, request: Request): Promise<Response>;
       banking(command: string): { createTransaction(): Promise<unknown> };
+      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
     };
     let calls = 0;
     session.banking = () => ({ createTransaction: async () => {
       calls += 1;
       return { transaction: { id: commandId, gameId, type: 'PLAYER_TO_BANK', amount: 100, totalAmount: 100, comment: null, createdAt: '', participants: [] }, players: [] };
     } });
+    session.authorizeMutation = async () => undefined;
     const request = () => new Request('https://game-session/mutation', { method: 'POST', body: JSON.stringify({ type: 'CREATE_TRANSACTION', commandId, request: { type: 'PLAYER_TO_BANK', playerId: '00000000-0000-4000-8000-000000000003', amount: 100 } }) });
 
-    expect((await session.mutate(gameId, request())).status).toBe(201);
-    expect((await session.mutate(gameId, request())).status).toBe(201);
+    expect((await session.mutate(gameId, 'actor', request())).status).toBe(201);
+    expect((await session.mutate(gameId, 'actor', request())).status).toBe(201);
     expect(calls).toBe(1);
     expect(sent[0]).toHaveLength(2);
     expect(sent[0]).toEqual(sent[1]);

@@ -1,3 +1,5 @@
+import type { PlayerController, PlayerControllerKind } from '../../shared/contracts/api.js';
+
 export type GameMemberRole = 'OWNER' | 'PLAYER';
 
 export interface GameAccessRepository {
@@ -9,6 +11,8 @@ export interface GameAccessRepository {
   createInvitation(gameId: string, ownerUserId: string, tokenHash: string, expiresAt: string): Promise<boolean>;
   findInvitation(tokenHash: string): Promise<{ gameId: string; status: string } | null>;
   listLinkedMembers(gameId: string): Promise<Array<{ userId: string; playerId: string | null }>>;
+  listPlayerControllers(gameId: string, userId: string): Promise<PlayerController[]>;
+  isPlayerControlledBy(gameId: string, userId: string, playerId: string): Promise<boolean>;
 }
 
 export class D1GameAccessRepository implements GameAccessRepository {
@@ -41,7 +45,11 @@ export class D1GameAccessRepository implements GameAccessRepository {
       `INSERT INTO game_members (game_id, user_id, role, player_id)
        SELECT ?, ?, 'PLAYER', ? WHERE EXISTS (SELECT 1 FROM players WHERE id = ? AND game_id = ?)`,
     ).bind(input.gameId, input.userId, input.playerId, input.playerId, input.gameId);
-    const result = await this.database.batch([insertPlayer, insertMember]);
+    const insertController = this.database.prepare(
+      `INSERT INTO player_controllers (game_id, player_id, user_id, controller_kind)
+       SELECT ?, ?, ?, 'PRIMARY' WHERE EXISTS (SELECT 1 FROM players WHERE id = ? AND game_id = ?)`,
+    ).bind(input.gameId, input.playerId, input.userId, input.playerId, input.gameId);
+    const result = await this.database.batch([insertPlayer, insertMember, insertController]);
     return result[0].meta.changes === 1;
   }
   async getGameAccessCredentials(joinCode: string): Promise<{ gameId: string; passwordHash: string | null; passwordSalt: string | null; status: string } | null> { const row = await this.database.prepare('SELECT id, game_access_password_hash, game_access_password_salt, status FROM games WHERE join_code = ? AND owner_user_id IS NOT NULL').bind(joinCode).first<{ id: string; game_access_password_hash: string | null; game_access_password_salt: string | null; status: string }>(); return row === null ? null : { gameId: row.id, passwordHash: row.game_access_password_hash, passwordSalt: row.game_access_password_salt, status: row.status }; }
@@ -49,4 +57,16 @@ export class D1GameAccessRepository implements GameAccessRepository {
   async createInvitation(gameId: string, ownerUserId: string, tokenHash: string, expiresAt: string): Promise<boolean> { const result = await this.database.prepare(`INSERT INTO game_invitations (token_hash, game_id, created_by_user_id, expires_at) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM games WHERE id = ? AND status = 'LOBBY')`).bind(tokenHash, gameId, ownerUserId, expiresAt, gameId).run(); return result.meta.changes === 1; }
   async findInvitation(tokenHash: string): Promise<{ gameId: string; status: string } | null> { const row = await this.database.prepare(`SELECT games.id, games.status FROM game_invitations INNER JOIN games ON games.id = game_invitations.game_id WHERE game_invitations.token_hash = ? AND game_invitations.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).bind(tokenHash).first<{ id: string; status: string }>(); return row === null ? null : { gameId: row.id, status: row.status }; }
   async listLinkedMembers(gameId: string): Promise<Array<{ userId: string; playerId: string | null }>> { const result = await this.database.prepare('SELECT user_id, player_id FROM game_members WHERE game_id = ?').bind(gameId).all<{ user_id: string; player_id: string | null }>(); return result.results.map((row) => ({ userId: row.user_id, playerId: row.player_id })); }
+  async listPlayerControllers(gameId: string, userId: string): Promise<PlayerController[]> {
+    const result = await this.database.prepare(
+      `SELECT player_id, controller_kind
+       FROM player_controllers
+       WHERE game_id = ? AND user_id = ?
+       ORDER BY CASE controller_kind WHEN 'PRIMARY' THEN 0 ELSE 1 END`,
+    ).bind(gameId, userId).all<{ player_id: string; controller_kind: PlayerControllerKind }>();
+    return result.results.map((row) => ({ playerId: row.player_id, kind: row.controller_kind }));
+  }
+  async isPlayerControlledBy(gameId: string, userId: string, playerId: string): Promise<boolean> {
+    return (await this.database.prepare('SELECT 1 AS value FROM player_controllers WHERE game_id = ? AND user_id = ? AND player_id = ?').bind(gameId, userId, playerId).first<{ value: number }>()) !== null;
+  }
 }

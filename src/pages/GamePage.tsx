@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
-import type { CreateTransactionRequest, GameDetails } from '../../shared/contracts/api';
+import type { CreateTransactionRequest, GameDetails, PlayerControllerKind } from '../../shared/contracts/api';
 import type { Currency, Game, Player, Transaction, TransactionType } from '../../shared/types/monopoly';
 import type { FinalGameSummary } from '../../shared/domain/game-summary';
 import { MonopolyBankApiError, monopolyBankApi } from '../api/monopoly-bank-api';
@@ -50,6 +50,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
   const [bankruptPlayer, setBankruptPlayer] = useState<Player | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
   const [liveStatus, setLiveStatus] = useState<'connecting' | 'reconnecting' | 'live' | 'offline'>('connecting');
 
   useEffect(() => {
@@ -124,6 +125,8 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
   if (details === null) {
     return <main className="page"><p className="status" role="status">{t('loadingGame')}</p></main>;
   }
+  const controlledWallets = details.controlledWallets ?? [];
+  const activeControlledWalletId = controlledWallets.some((wallet) => wallet.playerId === activeWalletId) ? activeWalletId : controlledWallets[0]?.playerId ?? null;
 
   return <main className="page game-page">
     <section className="page-heading game-heading">
@@ -132,8 +135,9 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
     </section>
     {details.game.status === 'LOBBY' && <section className="notice notice-success" role="status"><p>{t('waitingForPlayers')} — {t('startGameHint')}</p>{details.canManage && <button className="button button-primary" type="button" disabled={details.players.length < 2} onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}>{t('startGame')}</button>}</section>}
     {notice !== null && <section className="notice notice-success" role="status"><p>{t('recorded', { action: actionLabel(notice, t) })}</p><button className="button button-quiet" type="button" onClick={() => setNotice(null)}>{t('dismiss')}</button></section>}
+    {controlledWallets.length > 0 && <fieldset className="wallet-switcher"><legend>{t('walletSwitcher')}</legend><div>{controlledWallets.map((wallet) => { const player = details.players.find((candidate) => candidate.id === wallet.playerId); if (player === undefined) return null; return <button className="button button-secondary" type="button" key={wallet.playerId} aria-pressed={activeControlledWalletId === wallet.playerId} onClick={() => setActiveWalletId(wallet.playerId)}>{controllerLabel(wallet.kind, t)}: {player.name}</button>; })}</div></fieldset>}
     <section className="wallet-grid" aria-label={t('playerWallets')}>
-      {details.players.map((player) => { const playerName = playerNameWithGameId(player, details.players); return <button className="wallet-card wallet-card-button" type="button" disabled={details.game.status !== 'ACTIVE' || player.status === 'BANKRUPT'} key={player.id} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: playerName, balance: formatMoney(player.balance, details.game.currency) })} onClick={() => setSelectedPlayer(player)}><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{playerName}{player.status === 'BANKRUPT' ? ' · Bankrupt' : ''}</span><strong>{formatMoney(player.balance, details.game.currency)}</strong><span className="wallet-action">{t('walletAction')}</span></button>; })}
+      {details.players.map((player) => <WalletCard key={player.id} player={player} players={details.players} currency={details.game.currency} active={player.id === activeControlledWalletId} gameActive={details.game.status === 'ACTIVE'} onOpen={() => setSelectedPlayer(player)} />)}
     </section>
     {details.game.status === 'ACTIVE' && <div className="game-tools"><DiceRoller /><TableCalculator /></div>}
     {summary !== null && <GameSummaryScreen summary={summary} players={details.players} currency={details.game.currency} onClose={() => setSummary(null)} />}
@@ -227,6 +231,15 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
   </Dialog>;
 }
 
+function WalletCard({ player, players, currency, active, gameActive, onOpen }: { player: Player; players: Player[]; currency: Currency; active: boolean; gameActive: boolean; onOpen: () => void }) {
+  const { t } = useLanguage();
+  const playerName = playerNameWithGameId(player, players);
+  const unavailable = !gameActive || player.status === 'BANKRUPT';
+  const content = <><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{playerName}{player.status === 'BANKRUPT' ? ` · ${t('bankrupt')}` : ''}</span><strong>{formatMoney(player.balance, currency)}</strong><span className="wallet-action">{active ? t('walletAction') : t('walletReadOnly')}</span></>;
+  if (!active) return <article className="wallet-card wallet-card-readonly" style={{ borderTopColor: player.color }} aria-label={t('walletReadOnlyAria', { name: playerName, balance: formatMoney(player.balance, currency) })}>{content}</article>;
+  return <button className="wallet-card wallet-card-button wallet-card-active" type="button" disabled={unavailable} style={{ borderTopColor: player.color }} aria-label={t('walletAria', { name: playerName, balance: formatMoney(player.balance, currency) })} onClick={onOpen}>{content}<span className="wallet-active-indicator">{t('activeWallet')}</span></button>;
+}
+
 function BankruptcyDialog({ gameId, player, players, onClose, onCompleted }: { gameId: string; player: Player; players: Player[]; onClose: () => void; onCompleted: (players: Player[]) => void }) {
   const { t } = useLanguage();
   const [creditorId, setCreditorId] = useState<string | null>(null); const [confirming, setConfirming] = useState(false); const [error, setError] = useState<string | null>(null);
@@ -265,8 +278,10 @@ function applyLiveEvent(event: LiveServerEvent, setDetails: React.Dispatch<React
 }
 
 function withClientGameDetails(details: GameDetails, current: GameDetails | null): GameDetails {
-  return current === null ? details : { ...details, canManage: current.canManage, joinCode: current.joinCode };
+  return current === null ? details : { ...details, canManage: current.canManage, joinCode: current.joinCode, controlledWallets: details.controlledWallets ?? current.controlledWallets, controlledPlayerIds: details.controlledPlayerIds ?? current.controlledPlayerIds };
 }
+
+function controllerLabel(kind: PlayerControllerKind, t: Translate): string { return kind === 'PRIMARY' ? t('primaryWallet') : t('localWallet'); }
 
 function PlayerPicker({ label, players, gamePlayers, value, currency, onChange }: { label: string; players: Player[]; gamePlayers: Player[]; value: string; currency: Currency; onChange: (id: string) => void }) {
   return <fieldset className="player-picker"><legend>{label}</legend><div>{players.map((candidate) => <button className={`player-choice${value === candidate.id ? ' selected' : ''}`} type="button" key={candidate.id} aria-pressed={value === candidate.id} onClick={() => onChange(candidate.id)}><span className="player-color" style={{ backgroundColor: candidate.color }} /><span>{playerNameWithGameId(candidate, gamePlayers)}</span><small>{formatMoney(candidate.balance, currency)}</small></button>)}</div></fieldset>;

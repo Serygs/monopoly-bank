@@ -72,8 +72,10 @@ export class D1GameRepository implements GameRepository {
         .bind(player.id, player.gameId, player.name, player.color, player.balance),
     );
 
-    const memberStatement = [this.database.prepare("INSERT INTO game_members (game_id, user_id, role, player_id) VALUES (?, ?, 'OWNER', ?)").bind(input.id, input.ownerUserId, players[0]?.id ?? null)];
-    await this.database.batch([gameStatement, ...playerStatements, ...memberStatement]);
+    const ownerPlayerId = players[0]?.id;
+    const memberStatement = this.database.prepare("INSERT INTO game_members (game_id, user_id, role, player_id) VALUES (?, ?, 'OWNER', ?)").bind(input.id, input.ownerUserId, ownerPlayerId ?? null);
+    const controllerStatement = ownerPlayerId === undefined ? [] : [this.database.prepare("INSERT INTO player_controllers (game_id, player_id, user_id, controller_kind) VALUES (?, ?, ?, 'PRIMARY')").bind(input.id, ownerPlayerId, input.ownerUserId)];
+    await this.database.batch([gameStatement, ...playerStatements, memberStatement, ...controllerStatement]);
   }
 
   async getById(id: string): Promise<Game | null> {

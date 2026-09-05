@@ -1,5 +1,6 @@
+import type { PlayerController } from '../../shared/contracts/api.js';
 import type { GameMemberRole, GameAccessRepository } from '../repositories/game-access-repository.js';
-import { ConflictError, ResourceNotFoundError } from './errors.js';
+import { ConflictError, ForbiddenError, ResourceNotFoundError } from './errors.js';
 import { randomToken, tokenHash, verifyPassword } from './password-security.js';
 
 export class GameAccessService {
@@ -17,6 +18,14 @@ export class GameAccessService {
 
   async requireOwner(gameId: string, userId: string): Promise<void> {
     if (await this.requireMember(gameId, userId) !== 'OWNER') throw new ResourceNotFoundError('Game');
+  }
+
+  async requirePlayerController(gameId: string, userId: string, playerId: string): Promise<void> {
+    if (!(await this.access.isPlayerControlledBy(gameId, userId, playerId))) throw new ForbiddenError();
+  }
+
+  async controlledWallets(gameId: string, userId: string): Promise<PlayerController[]> {
+    return this.access.listPlayerControllers(gameId, userId);
   }
 
   async joinLobby(input: { gameId: string; userId: string; nickname: string; playerId: string; color: string; startingBalance: number }): Promise<void> {
