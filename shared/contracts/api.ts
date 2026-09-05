@@ -68,7 +68,15 @@ export interface UpdateProfileRequest { nickname: string; avatar: string; }
 export type JoinGameRequest =
   | { joinCode: string; gameAccessPassword?: string }
   | { invitationToken: string };
-export interface CreateInvitationResponse { invitationToken: string; }
+export type InvitationVisibility = 'UNLISTED';
+/** The token is returned only when an invitation is created or rotated. */
+export interface CreateInvitationResponse {
+  invitationToken: string;
+  shortCode: string;
+  expiresAt: string;
+  visibility: InvitationVisibility;
+}
+export interface RevokeInvitationResponse { revoked: boolean; }
 export interface DuplicateGameRequest { gameAccessPassword: string; }
 export interface UserProfile { id: string; nickname: string; avatar: string; accountType: AccountType; email: string | null; emailVerified: boolean; gamesPlayed: number; gamesWon: number; gamesLost: number; winRate: number; createdAt: string; updatedAt: string; }
 

@@ -29,4 +29,14 @@ describe('authenticated game access', () => {
   it('returns the actor wallet controls independently of their membership role', async () => {
     await expect(accessFor('PLAYER').controlledWallets('game', 'user')).resolves.toEqual([{ playerId: 'wallet', kind: 'PRIMARY' }]);
   });
+
+  it('treats a duplicate concurrent join as an idempotent success', async () => {
+    const service = new GameAccessService({ joinLobby: async () => false, getRole: async () => 'PLAYER' } as GameAccessRepository);
+    await expect(service.joinLobby({ gameId: 'game', userId: 'user', nickname: 'Ada', playerId: 'player', color: '#123456', startingBalance: 1500 })).resolves.toBeUndefined();
+  });
+
+  it('rejects a full six-player lobby without creating an additional membership', async () => {
+    const service = new GameAccessService({ joinLobby: async () => false, getRole: async () => null } as GameAccessRepository);
+    await expect(service.joinLobby({ gameId: 'game', userId: 'seventh', nickname: 'Seventh', playerId: 'player', color: '#123456', startingBalance: 1500 })).rejects.toMatchObject({ code: 'LOBBY_CLOSED' });
+  });
 });

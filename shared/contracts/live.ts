@@ -19,6 +19,7 @@ export type LiveServerEvent =
   | { type: 'BALANCES_UPDATED'; version: number; players: Player[] }
   | { type: 'PLAYER_BANKRUPT'; version: number; playerId: string; players: Player[] }
   | { type: 'GAME_FINISHED'; version: number; details: GameDetails }
+  | { type: 'LOBBY_UPDATED'; version: number; details: Pick<GameDetails, 'game' | 'players'> }
   | { type: 'MEMBER_JOINED'; version: number; connectedMembers: number };
 
 export type LiveMutationResponse = CreateTransactionResponse | GameDetails;

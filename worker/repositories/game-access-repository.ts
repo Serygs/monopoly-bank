@@ -1,4 +1,4 @@
-import type { PlayerController, PlayerControllerKind } from '../../shared/contracts/api.js';
+import type { InvitationVisibility, PlayerController, PlayerControllerKind } from '../../shared/contracts/api.js';
 
 export type GameMemberRole = 'OWNER' | 'PLAYER';
 
@@ -8,7 +8,8 @@ export interface GameAccessRepository {
   joinLobby(input: { gameId: string; userId: string; nickname: string; playerId: string; color: string; startingBalance: number }): Promise<boolean>;
   getGameAccessCredentials(joinCode: string): Promise<{ gameId: string; passwordHash: string | null; passwordSalt: string | null; status: string } | null>;
   getOwnerJoinCode(gameId: string, userId: string): Promise<string | null>;
-  createInvitation(gameId: string, ownerUserId: string, tokenHash: string, expiresAt: string): Promise<boolean>;
+  createInvitation(input: { gameId: string; ownerUserId: string; tokenHash: string; shortCode: string; expiresAt: string; visibility: InvitationVisibility }): Promise<boolean>;
+  revokeInvitations(gameId: string, ownerUserId: string): Promise<boolean>;
   findInvitation(tokenHash: string): Promise<{ gameId: string; status: string } | null>;
   listLinkedMembers(gameId: string): Promise<Array<{ userId: string; playerId: string | null }>>;
   listPlayerControllers(gameId: string, userId: string): Promise<PlayerController[]>;
@@ -54,8 +55,20 @@ export class D1GameAccessRepository implements GameAccessRepository {
   }
   async getGameAccessCredentials(joinCode: string): Promise<{ gameId: string; passwordHash: string | null; passwordSalt: string | null; status: string } | null> { const row = await this.database.prepare('SELECT id, game_access_password_hash, game_access_password_salt, status FROM games WHERE join_code = ? AND owner_user_id IS NOT NULL').bind(joinCode).first<{ id: string; game_access_password_hash: string | null; game_access_password_salt: string | null; status: string }>(); return row === null ? null : { gameId: row.id, passwordHash: row.game_access_password_hash, passwordSalt: row.game_access_password_salt, status: row.status }; }
   async getOwnerJoinCode(gameId: string, userId: string): Promise<string | null> { const row = await this.database.prepare("SELECT games.join_code FROM games INNER JOIN game_members ON game_members.game_id = games.id WHERE games.id = ? AND games.owner_user_id IS NOT NULL AND game_members.user_id = ? AND game_members.role = 'OWNER'").bind(gameId, userId).first<{ join_code: string | null }>(); return row?.join_code ?? null; }
-  async createInvitation(gameId: string, ownerUserId: string, tokenHash: string, expiresAt: string): Promise<boolean> { const result = await this.database.prepare(`INSERT INTO game_invitations (token_hash, game_id, created_by_user_id, expires_at) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM games WHERE id = ? AND status = 'LOBBY')`).bind(tokenHash, gameId, ownerUserId, expiresAt, gameId).run(); return result.meta.changes === 1; }
-  async findInvitation(tokenHash: string): Promise<{ gameId: string; status: string } | null> { const row = await this.database.prepare(`SELECT games.id, games.status FROM game_invitations INNER JOIN games ON games.id = game_invitations.game_id WHERE game_invitations.token_hash = ? AND game_invitations.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).bind(tokenHash).first<{ id: string; status: string }>(); return row === null ? null : { gameId: row.id, status: row.status }; }
+  async createInvitation(input: { gameId: string; ownerUserId: string; tokenHash: string; shortCode: string; expiresAt: string; visibility: InvitationVisibility }): Promise<boolean> {
+    const now = new Date().toISOString();
+    const revoke = this.database.prepare('UPDATE game_invitations SET revoked_at = ? WHERE game_id = ? AND created_by_user_id = ? AND revoked_at IS NULL').bind(now, input.gameId, input.ownerUserId);
+    const insert = this.database.prepare(`INSERT INTO game_invitations (token_hash, game_id, created_by_user_id, expires_at, short_code, visibility)
+      SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM games WHERE id = ? AND status = 'LOBBY')`).bind(input.tokenHash, input.gameId, input.ownerUserId, input.expiresAt, input.shortCode, input.visibility, input.gameId);
+    const result = await this.database.batch([revoke, insert]);
+    return result[1].meta.changes === 1;
+  }
+  async revokeInvitations(gameId: string, ownerUserId: string): Promise<boolean> {
+    const result = await this.database.prepare(`UPDATE game_invitations SET revoked_at = ? WHERE game_id = ? AND created_by_user_id = ? AND revoked_at IS NULL
+      AND EXISTS (SELECT 1 FROM games WHERE id = ? AND status = 'LOBBY')`).bind(new Date().toISOString(), gameId, ownerUserId, gameId).run();
+    return result.meta.changes > 0;
+  }
+  async findInvitation(tokenHash: string): Promise<{ gameId: string; status: string } | null> { const row = await this.database.prepare(`SELECT games.id, games.status FROM game_invitations INNER JOIN games ON games.id = game_invitations.game_id WHERE game_invitations.token_hash = ? AND game_invitations.revoked_at IS NULL AND game_invitations.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).bind(tokenHash).first<{ id: string; status: string }>(); return row === null ? null : { gameId: row.id, status: row.status }; }
   async listLinkedMembers(gameId: string): Promise<Array<{ userId: string; playerId: string | null }>> { const result = await this.database.prepare('SELECT user_id, player_id FROM game_members WHERE game_id = ?').bind(gameId).all<{ user_id: string; player_id: string | null }>(); return result.results.map((row) => ({ userId: row.user_id, playerId: row.player_id })); }
   async listPlayerControllers(gameId: string, userId: string): Promise<PlayerController[]> {
     const result = await this.database.prepare(

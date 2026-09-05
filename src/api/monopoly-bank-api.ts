@@ -1,4 +1,4 @@
-import type { AddAccountEmailRequest, ApiError, ApiResponse, BankruptcyRequest, CreateGameRequest, CreateInvitationResponse, CreateTransactionRequest, CreateTransactionResponse, DeleteGameResponse, GameDetails, GameSummary, GuestJoinGameRequest, GuestJoinGameResponse, JoinGameRequest, LoginRequest, RegisterRequest, UpdateProfileRequest, UpgradeGuestRequest, UserProfile } from '../../shared/contracts/api.js';
+import type { AddAccountEmailRequest, ApiError, ApiResponse, BankruptcyRequest, CreateGameRequest, CreateInvitationResponse, CreateTransactionRequest, CreateTransactionResponse, DeleteGameResponse, GameDetails, GameSummary, GuestJoinGameRequest, GuestJoinGameResponse, JoinGameRequest, LoginRequest, RegisterRequest, RevokeInvitationResponse, UpdateProfileRequest, UpgradeGuestRequest, UserProfile } from '../../shared/contracts/api.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { FinalGameSummary } from '../../shared/domain/game-summary.js';
 import type { Player, Game } from '../../shared/types/monopoly.js';
@@ -26,6 +26,7 @@ export interface MonopolyBankApi {
   upgradeGuest(input: UpgradeGuestRequest): Promise<UserProfile>;
   addEmailToLegacyAccount(input: AddAccountEmailRequest): Promise<UserProfile>;
   createInvitation(gameId: string): Promise<CreateInvitationResponse>;
+  revokeInvitations(gameId: string): Promise<RevokeInvitationResponse>;
   getGame(gameId: string): Promise<GameDetails>;
   deleteGame(gameId: string): Promise<DeleteGameResponse>;
   duplicateGame(gameId: string, gameAccessPassword: string): Promise<GameDetails>;
@@ -56,6 +57,7 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   async upgradeGuest(input: UpgradeGuestRequest): Promise<UserProfile> { return request<UserProfile>('/api/auth/upgrade', { method: 'POST', body: JSON.stringify(input) }); }
   async addEmailToLegacyAccount(input: AddAccountEmailRequest): Promise<UserProfile> { return request<UserProfile>('/api/auth/email', { method: 'POST', body: JSON.stringify(input) }); }
   async createInvitation(gameId: string): Promise<CreateInvitationResponse> { return request<CreateInvitationResponse>(`/api/games/${encodeURIComponent(gameId)}/invitations`, commandInit({ method: 'POST' })); }
+  async revokeInvitations(gameId: string): Promise<RevokeInvitationResponse> { return request<RevokeInvitationResponse>(`/api/games/${encodeURIComponent(gameId)}/invitations`, commandInit({ method: 'DELETE' })); }
   async getGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}`); }
   async deleteGame(gameId: string): Promise<DeleteGameResponse> { return request<DeleteGameResponse>(`/api/games/${encodeURIComponent(gameId)}`, { method: 'DELETE' }); }
   async duplicateGame(gameId: string, gameAccessPassword: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}/duplicate`, { method: 'POST', body: JSON.stringify({ gameAccessPassword }) }); }

@@ -256,15 +256,28 @@ describe('API router', () => {
       games: {} as GameService,
       banking: {} as BankingService,
       auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Owner', avatar: '🎩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
-      access: { requireOwner: async (requestedGameId: string) => { invitationInput = { gameId: requestedGameId, userId: '00000000-0000-4000-8000-000000000099' }; }, createInvitation: async () => 'secure-token' } as never,
+      access: { requireOwner: async (requestedGameId: string) => { invitationInput = { gameId: requestedGameId, userId: '00000000-0000-4000-8000-000000000099' }; }, createInvitation: async () => ({ invitationToken: 'secure-token', shortCode: 'TABLE42', expiresAt: '2026-02-01T00:00:00.000Z', visibility: 'UNLISTED' }) } as never,
       profileStatistics: { recordCompletedGame: async () => undefined } as never,
     });
 
     const response = await router(new Request(`https://example.test/api/games/${gameId}/invitations`, { method: 'POST' }));
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toEqual({ data: { invitationToken: 'secure-token' } });
+    await expect(response.json()).resolves.toEqual({ data: { invitationToken: 'secure-token', shortCode: 'TABLE42', expiresAt: '2026-02-01T00:00:00.000Z', visibility: 'UNLISTED' } });
     expect(invitationInput).toEqual({ gameId, userId: '00000000-0000-4000-8000-000000000099' });
+  });
+
+  it('does not distinguish expired or revoked invitation tokens from an invalid token', async () => {
+    const router = createApiRouter({
+      games: {} as GameService,
+      banking: {} as BankingService,
+      auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Member', avatar: '🎩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: { invitation: async () => null } as never,
+      profileStatistics: {} as never,
+    });
+    const response = await router(jsonRequest('POST', '/api/games/join', { invitationToken: 'A'.repeat(43) }));
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'INVALID_JOIN_CODE' } });
   });
 
   it('preserves the Durable Object WebSocket upgrade response', async () => {

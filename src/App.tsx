@@ -65,7 +65,7 @@ function App() {
     if (path === '/forgot-password') return <PasswordRecoveryPage onBack={() => navigatePublic('/')} />;
     if (path === '/games/join') {
       const guestJoinCode = new URLSearchParams(window.location.search).get('code') ?? '';
-      const guestInvitationToken = new URLSearchParams(window.location.search).get('invite') ?? '';
+      const guestInvitationToken = invitationFromLocation();
       return <JoinGamePage initialJoinCode={guestJoinCode} invitationToken={guestInvitationToken} onJoined={() => undefined} onGuestJoined={(guest, gameId) => { setProfile(guest); window.history.pushState({}, '', `/games/${encodeURIComponent(gameId)}`); setPath(`/games/${encodeURIComponent(gameId)}`); }} onBack={() => { window.history.pushState({}, '', '/'); setPath('/'); }} />;
     }
     const returnRoute = currentRoute(window.location.pathname, window.location.search, window.location.hash);
@@ -73,7 +73,7 @@ function App() {
   }
 
   const joinCode = path === '/games/join' ? new URLSearchParams(window.location.search).get('code') ?? '' : '';
-  const invitationToken = path === '/games/join' ? new URLSearchParams(window.location.search).get('invite') ?? '' : '';
+  const invitationToken = path === '/games/join' ? invitationFromLocation() : '';
   return <div className="app-shell">
     <header className="app-header">
       <div className="app-header-inner">
@@ -88,6 +88,11 @@ function App() {
     </header>
     {path === '/profile' ? <ProfilePage profile={profile} onUpdated={setProfile} onBack={() => navigate('/')} /> : path === '/games/new' ? <CreateGamePage profile={profile} onCancel={() => navigate('/')} onCreated={(id) => navigate(`/games/${encodeURIComponent(id)}`)} /> : path === '/games/join' ? <JoinGamePage initialJoinCode={joinCode} invitationToken={invitationToken} onJoined={(id) => navigate(`/games/${encodeURIComponent(id)}`)} onBack={() => navigate('/')} /> : gameMatch !== null ? <GamePage gameId={gameMatch[1]} onBack={() => navigate('/')} preferences={preferences} /> : <SavedGamesPage onCreateGame={() => navigate('/games/new')} onJoinGame={(code) => navigate(`/games/join${code === undefined ? '' : `?code=${encodeURIComponent(code)}`}`)} onOpenGame={(id) => navigate('/games/' + encodeURIComponent(id))} />}
   </div>;
+}
+
+/** Hash fragments do not leave the device in a Referer header. */
+function invitationFromLocation(): string {
+  return new URLSearchParams(window.location.hash.slice(1)).get('invite') ?? '';
 }
 
 export default App;

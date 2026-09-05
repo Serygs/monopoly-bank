@@ -18,6 +18,7 @@
 .live-status { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 5px 9px; border: 1px solid var(--color-border-strong); border-radius: 999px; color: var(--color-text-muted); font-size: .82rem; font-weight: 750; }
 .live-status-live { border-color: var(--color-income-border); color: var(--color-income-text); background: var(--color-income-surface); }
 .live-status-offline { border-color: var(--color-expense-border); color: var(--color-expense-text); background: var(--color-expense-surface); }
+.invite-ticket { display: grid; grid-template-columns: minmax(0, 1fr) 136px; align-items: center; gap: 20px; margin-top: 18px; padding: 18px; border: 2px solid var(--color-brass); border-radius: 16px; background: linear-gradient(135deg, var(--color-surface-banknote), var(--color-surface-raised)); }.invite-ticket-copy { min-width: 0; }.invite-short-code { margin: 12px 0 4px; color: var(--color-text-heading); font-size: clamp(1.5rem, 6vw, 2.35rem); font-weight: 900; letter-spacing: .1em; }.invite-ticket-copy p:last-child { margin: 0; color: var(--color-text-muted); font-size: .88rem; }.invite-qr { width: 136px; height: 136px; padding: 7px; border-radius: 10px; color: var(--color-felt-deep); background: white; shape-rendering: crispEdges; }.invite-qr rect { fill: currentColor; }
 
 .wallet-card { position: relative; min-height: 164px; overflow: hidden; padding: 18px; border-top-width: 8px; border-radius: 16px; text-align: left; }
 .wallet-card::after { position: absolute; right: 10px; bottom: -30px; color: color-mix(in srgb, var(--color-text-accent) 13%, transparent); content: '$'; font-size: 7rem; font-weight: 900; pointer-events: none; transform: rotate(-16deg); }
@@ -78,7 +79,7 @@
 }
 
 @media (max-width: 640px) {
-  .game-card { align-items: flex-start; flex-direction: column; }.game-card-actions .button { width: 100%; }.action-grid, .wallet-action-grid { grid-template-columns: 1fr; }.bankruptcy-action { grid-column: auto; }.player-picker > div { grid-template-columns: 1fr; }.calculator-controls { grid-template-columns: 1fr; }.calculator-operations { grid-template-columns: repeat(4, 1fr); }.profile-statistics, .summary-player-results dl { grid-template-columns: 1fr; }.auth-card-footer { align-items: flex-start; flex-direction: column; }
+  .game-card { align-items: flex-start; flex-direction: column; }.game-card-actions .button { width: 100%; }.action-grid, .wallet-action-grid { grid-template-columns: 1fr; }.bankruptcy-action { grid-column: auto; }.player-picker > div { grid-template-columns: 1fr; }.calculator-controls { grid-template-columns: 1fr; }.calculator-operations { grid-template-columns: repeat(4, 1fr); }.profile-statistics, .summary-player-results dl { grid-template-columns: 1fr; }.auth-card-footer { align-items: flex-start; flex-direction: column; }.invite-ticket { grid-template-columns: 1fr; }.invite-qr { width: min(100%, 176px); height: auto; justify-self: start; }
 }
 
 @media (max-height: 500px) and (orientation: landscape) {

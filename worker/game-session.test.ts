@@ -37,4 +37,13 @@ describe('GameSession live coordinator', () => {
     const session = new GameSession({} as never, {} as Env);
     expect((await session.fetch(new Request('https://game-session/mutation'))).status).toBe(403);
   });
+
+  it('broadcasts the roster snapshot after a lobby join without polling clients', async () => {
+    const sent: string[] = [];
+    const context = { storage: { get: async () => 3, put: async () => undefined }, getWebSockets: () => [{ send: (message: string) => sent.push(message) }] };
+    const session = new GameSession(context as never, {} as Env) as unknown as { lobbyUpdated(gameId: string): Promise<Response>; gameService(): { getGame(): Promise<unknown> } };
+    session.gameService = () => ({ getGame: async () => ({ game: { id: gameId, status: 'LOBBY' }, players: [{ id: 'new-player' }] }) });
+    expect((await session.lobbyUpdated(gameId)).status).toBe(204);
+    expect(JSON.parse(sent[0])).toEqual({ type: 'LOBBY_UPDATED', version: 4, details: { game: { id: gameId, status: 'LOBBY' }, players: [{ id: 'new-player' }] } });
+  });
 });

@@ -25,7 +25,9 @@ export class GameSession {
     const gameId = request.headers.get('x-game-id');
     const userId = request.headers.get('x-user-id');
     const requestId = request.headers.get('x-request-id') ?? crypto.randomUUID();
-    if (gameId === null || userId === null) return Response.json({ error: { code: 'FORBIDDEN', message: 'You are not allowed to perform this operation.', requestId } }, { status: 403, headers: { 'x-request-id': requestId } });
+    if (gameId === null) return Response.json({ error: { code: 'FORBIDDEN', message: 'You are not allowed to perform this operation.', requestId } }, { status: 403, headers: { 'x-request-id': requestId } });
+    if (new URL(request.url).pathname === '/lobby-updated') return this.lobbyUpdated(gameId);
+    if (userId === null) return Response.json({ error: { code: 'FORBIDDEN', message: 'You are not allowed to perform this operation.', requestId } }, { status: 403, headers: { 'x-request-id': requestId } });
     if (new URL(request.url).pathname === '/connect') return this.acceptConnection(gameId, userId, request);
     if (new URL(request.url).pathname === '/mutation') return this.mutate(gameId, userId, request);
     return Response.json({ error: { code: 'NOT_FOUND', message: 'Endpoint not found.', requestId } }, { status: 404, headers: { 'x-request-id': requestId } });
@@ -35,7 +37,7 @@ export class GameSession {
     const requestId = request.headers.get('x-request-id') ?? crypto.randomUUID();
     if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return Response.json({ error: { code: 'VALIDATION_ERROR', message: 'WebSocket upgrade required.', requestId } }, { status: 426, headers: { 'x-request-id': requestId } });
     const details = await this.gameService().getGame(gameId);
-    if (details.game.status !== 'ACTIVE') return Response.json({ error: { code: 'GAME_FINISHED', message: 'This game is finished.', requestId } }, { status: 409, headers: { 'x-request-id': requestId } });
+    if (details.game.status === 'FINISHED') return Response.json({ error: { code: 'GAME_FINISHED', message: 'This game is finished.', requestId } }, { status: 409, headers: { 'x-request-id': requestId } });
     const pair = new WebSocketPair();
     const client = pair[0]; const server = pair[1];
     server.serializeAttachment({ userId });
@@ -77,6 +79,14 @@ export class GameSession {
     if (command.type === 'CREATE_TRANSACTION') return { status: 201, data: await banking.createTransaction(gameId, command.request) };
     if (command.type === 'DECLARE_BANKRUPTCY') return { status: 201, data: await banking.declareBankruptcy(gameId, command.request) };
     return { status: 200, data: await this.finishGame(gameId) };
+  }
+
+  private async lobbyUpdated(gameId: string): Promise<Response> {
+    const details = await this.gameService().getGame(gameId);
+    if (details.game.status === 'LOBBY') {
+      await this.broadcast({ type: 'LOBBY_UPDATED', version: await this.incrementVersion(), details: { game: details.game, players: details.players } });
+    }
+    return new Response(null, { status: 204 });
   }
 
   private async authorizeMutation(gameId: string, userId: string | undefined, command: LiveMutationCommand): Promise<void> {

@@ -93,6 +93,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
     const profile = await dependencies.auth.createGuest(body.nickname, body.avatar);
     const details = await dependencies.games.getGame(access.gameId);
     await dependencies.access.joinLobby({ gameId: access.gameId, userId: profile.profile.id, nickname: profile.profile.nickname, playerId: crypto.randomUUID(), color: nextPlayerColor(details.players), startingBalance: details.game.startingBalance });
+    await dependencies.live?.lobbyUpdated(access.gameId).catch(() => undefined);
     return success({ profile: profile.profile, game: await dependencies.games.getGame(access.gameId) }, 201, profile.cookie);
   }
 
@@ -113,6 +114,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
     if (access.status !== 'LOBBY') throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
     const details = await dependencies.games.getGame(access.gameId);
     await dependencies.access.joinLobby({ gameId: access.gameId, userId: actor.id, nickname: actor.nickname, playerId: crypto.randomUUID(), color: nextPlayerColor(details.players), startingBalance: details.game.startingBalance });
+    await dependencies.live?.lobbyUpdated(access.gameId).catch(() => undefined);
     return success(await dependencies.games.getGame(access.gameId));
   }
 
@@ -135,14 +137,15 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
     const gameId = parseResourceId(liveMatch[1], 'gameId');
     await dependencies.access.requireMember(gameId, actor.id);
     const details = await dependencies.games.getGame(gameId);
-    if (details.game.status !== 'ACTIVE') return failure(409, 'GAME_FINISHED', 'This game is finished.', requestId);
+    if (details.game.status === 'FINISHED') return failure(409, 'GAME_FINISHED', 'This game is finished.', requestId);
     return dependencies.live === undefined ? failure(503, 'LIVE_UNAVAILABLE', 'Live games are not configured.', requestId) : dependencies.live.connect(gameId, actor, request);
   }
 
   if (gameMatch !== null && request.method === 'DELETE') {
     const gameId = parseResourceId(gameMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.deleteGame(gameId));
   }
-  if (invitationMatch !== null && request.method === 'POST') { const gameId = parseResourceId(invitationMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success({ invitationToken: await dependencies.access.createInvitation(gameId, actor.id) }, 201); }
+  if (invitationMatch !== null && request.method === 'POST') { const gameId = parseResourceId(invitationMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.access.createInvitation(gameId, actor.id), 201); }
+  if (invitationMatch !== null && request.method === 'DELETE') { const gameId = parseResourceId(invitationMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); await dependencies.access.revokeInvitations(gameId, actor.id); return success({ revoked: true }); }
   if (summaryMatch !== null && request.method === 'GET') {
     const gameId = parseResourceId(summaryMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id);
     const details = await dependencies.games.getGame(gameId); const transactions = await dependencies.banking.listTransactions(gameId, 100);

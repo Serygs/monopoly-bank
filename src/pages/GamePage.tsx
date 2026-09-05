@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
-import type { CreateTransactionRequest, GameDetails, PlayerControllerKind } from '../../shared/contracts/api';
+import type { CreateInvitationResponse, CreateTransactionRequest, GameDetails, PlayerControllerKind } from '../../shared/contracts/api';
 import type { Currency, Game, Player, Transaction, TransactionType } from '../../shared/types/monopoly';
 import type { FinalGameSummary } from '../../shared/domain/game-summary';
 import { MonopolyBankApiError, monopolyBankApi } from '../api/monopoly-bank-api';
@@ -16,6 +16,7 @@ import { formatMoney, formatMoneyDelta } from '../utils/money';
 import { playerNameWithGameId } from '../utils/player-display';
 import { playerTransactionAmount, transactionAmount, transactionDescription } from '../utils/transaction-history';
 import { isLiveServerEvent, type LiveServerEvent } from '../../shared/contracts/live';
+import { createLocalQr } from '../utils/local-qr';
 
 type ActionType = CreateTransactionRequest['type'];
 interface Props { gameId: string; onBack: () => void; preferences: DevicePreferences; }
@@ -81,13 +82,6 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
     };
     connect();
     return () => { closed = true; if (retry !== undefined) window.clearTimeout(retry); socket?.close(); };
-  }, [gameId, details?.game.status]);
-
-  useEffect(() => {
-    if (details?.game.status !== 'LOBBY') return;
-    const refresh = () => { void monopolyBankApi.getGame(gameId).then(setDetails).catch(() => undefined); };
-    const interval = window.setInterval(refresh, 3_000);
-    return () => window.clearInterval(interval);
   }, [gameId, details?.game.status]);
 
   const loadHistory = async (player: Player | null = null) => {
@@ -272,6 +266,7 @@ function HistoryDialog({ history, player, players, currency, error, language, lo
 
 function applyLiveEvent(event: LiveServerEvent, setDetails: React.Dispatch<React.SetStateAction<GameDetails | null>>, setHistory: React.Dispatch<React.SetStateAction<Transaction[] | null>>, historyCache: MutableRefObject<Map<string, Transaction[]>>) {
   if (event.type === 'GAME_STATE') { historyCache.current.set('all', event.state.transactions); setDetails((current) => withClientGameDetails(event.state.details, current)); setHistory(event.state.transactions); return; }
+  if (event.type === 'LOBBY_UPDATED') { setDetails((current) => current === null ? current : { ...current, game: event.details.game, players: event.details.players }); return; }
   if (event.type === 'BALANCES_UPDATED' || event.type === 'PLAYER_BANKRUPT') { historyCache.current.clear(); setDetails((current) => current === null ? current : { ...current, players: event.players }); }
   if (event.type === 'GAME_FINISHED') setDetails((current) => withClientGameDetails(event.details, current));
   if (event.type === 'TRANSACTION_CREATED') { historyCache.current.clear(); setHistory((current) => current === null ? current : [event.transaction, ...current.filter((transaction) => transaction.id !== event.transaction.id)]); }
@@ -350,10 +345,23 @@ function isPositiveInteger(value: string) { return /^\d+$/.test(value) && Number
 
 function InviteDialog({ gameId, onClose }: { gameId: string; onClose: () => void }) {
   const { t } = useLanguage();
-  const [link, setLink] = useState<string | null>(null); const [error, setError] = useState<unknown>(null); const [creating, setCreating] = useState(false); const [copied, setCopied] = useState(false);
-  const createLink = async () => { setCreating(true); setError(null); try { const { invitationToken } = await monopolyBankApi.createInvitation(gameId); setLink(`${window.location.origin}/games/join?invite=${encodeURIComponent(invitationToken)}`); } catch (caught) { setError(caught); } finally { setCreating(false); } };
+  const [invite, setInvite] = useState<CreateInvitationResponse | null>(null); const [error, setError] = useState<unknown>(null); const [creating, setCreating] = useState(false); const [copied, setCopied] = useState(false); const [revoked, setRevoked] = useState(false);
+  const create = async () => {
+    if (window.location.protocol !== 'https:') { setError(new Error('HTTPS_REQUIRED')); return; }
+    setCreating(true); setError(null); setRevoked(false);
+    try { setInvite(await monopolyBankApi.createInvitation(gameId)); } catch (caught) { setError(caught); } finally { setCreating(false); }
+  };
+  const link = invite === null ? null : `${window.location.origin}/games/join#invite=${encodeURIComponent(invite.invitationToken)}`;
   const copy = async () => { if (link === null) return; if (navigator.clipboard !== undefined) await navigator.clipboard.writeText(link); else window.prompt(t('copyInviteLink'), link); setCopied(true); };
-  return <Dialog title={t('invitePlayers')} closeLabel={t('closeDialog', { title: t('invitePlayers') })} onClose={onClose}><p className="dialog-intro">{t('inviteDescription')}</p>{link === null ? <button className="button button-primary" type="button" disabled={creating} onClick={() => void createLink()}>{creating ? t('pleaseWait') : t('createInviteLink')}</button> : <><div className="dialog-actions"><button className="button button-primary" type="button" onClick={() => void copy()}>{t('copyInviteLink')}</button></div>{copied && <p className="notice notice-success" role="status">{t('inviteLinkCopied')}</p>}</>}{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableJoinGame')}</p>}</Dialog>;
+  const share = async () => { if (link !== null && typeof navigator.share === 'function') await navigator.share({ title: t('invitePlayers'), text: t('inviteShareText'), url: link }); };
+  const revoke = async () => { setCreating(true); setError(null); try { await monopolyBankApi.revokeInvitations(gameId); setInvite(null); setRevoked(true); } catch (caught) { setError(caught); } finally { setCreating(false); } };
+  const qr = link === null ? null : createLocalQr(link);
+  return <Dialog title={t('invitePlayers')} closeLabel={t('closeDialog', { title: t('invitePlayers') })} onClose={onClose}><p className="dialog-intro">{t('inviteDescription')}</p>{invite === null ? <button className="button button-primary" type="button" disabled={creating} onClick={() => void create()}>{creating ? t('pleaseWait') : revoked ? t('createNewInvite') : t('createInviteLink')}</button> : <section className="invite-ticket"><div className="invite-ticket-copy"><span className="status-pill">{t('inviteUnlisted')}</span><p className="invite-short-code">{invite.shortCode}</p><p>{t('inviteExpiresAt', { time: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(invite.expiresAt)) })}</p></div>{qr !== null && <LocalQr matrix={qr} label={t('inviteQrLabel')} />}<div className="dialog-actions"><button className="button button-primary" type="button" onClick={() => void copy()}>{t('copyInviteLink')}</button>{typeof navigator.share === 'function' && <button className="button button-secondary" type="button" onClick={() => void share()}>{t('shareInvite')}</button>}<button className="button button-secondary" type="button" disabled={creating} onClick={() => void create()}>{t('rotateInvite')}</button><button className="button button-danger" type="button" disabled={creating} onClick={() => void revoke()}>{t('revokeInvite')}</button></div>{copied && <p className="notice notice-success" role="status">{t('inviteLinkCopied')}</p>}</section>}{revoked && <p className="notice notice-success" role="status">{t('inviteRevoked')}</p>}{error !== null && <p className="notice notice-error" role="alert">{error instanceof Error && error.message === 'HTTPS_REQUIRED' ? t('inviteRequiresHttps') : apiErrorMessage(error, t, 'unableJoinGame')}</p>}</Dialog>;
+}
+
+function LocalQr({ matrix, label }: { matrix: boolean[][]; label: string }) {
+  const size = matrix.length;
+  return <svg className="invite-qr" viewBox={`0 0 ${size} ${size}`} role="img" aria-label={label}>{matrix.map((row, y) => row.map((dark, x) => dark && <rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" />))}</svg>;
 }
 
 function GameSummaryScreen({ summary, players, currency, onClose }: { summary: ({ game: Game; winners: Player[] } & FinalGameSummary); players: Player[]; currency: Currency; onClose: () => void }) {
