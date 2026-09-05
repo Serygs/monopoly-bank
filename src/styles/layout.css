@@ -1,0 +1,116 @@
+.app-shell {
+  min-height: 100dvh;
+  color: var(--color-text);
+  background:
+    radial-gradient(circle at 12% -8%, rgb(255 255 255 / .16), transparent 26rem),
+    linear-gradient(135deg, rgb(255 255 255 / .035), transparent 38%),
+    var(--color-canvas);
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));
+  border-bottom: 4px solid var(--color-brass);
+  color: var(--color-text-on-brand);
+  background: linear-gradient(105deg, var(--color-felt-deep), var(--color-felt-mid) 55%, var(--color-felt-deep));
+  box-shadow: 0 8px 24px rgb(5 30 20 / .22);
+}
+
+.app-header-inner, .page {
+  width: min(100%, 1120px);
+  margin-inline: auto;
+}
+
+.app-header-inner {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page {
+  padding: clamp(24px, 5vw, 56px) max(20px, env(safe-area-inset-right)) max(48px, calc(env(safe-area-inset-bottom) + 28px)) max(20px, env(safe-area-inset-left));
+}
+
+.page-narrow { max-width: 720px; }
+.auth-page { min-height: calc(100dvh - 68px); display: grid; place-items: start center; }
+
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: clamp(24px, 4vw, 42px);
+}
+
+.page h1, .page h2, .dialog h2 { color: var(--color-text-heading); }
+.page h1 { max-width: 18ch; margin: 0; font-size: clamp(2.2rem, 6vw, 4.25rem); line-height: .96; letter-spacing: -.065em; }
+.page h2 { margin: 0; }
+.lede { max-width: 62ch; margin: 14px 0 0; color: var(--color-text-muted); font-size: 1.04rem; line-height: 1.55; }
+.muted, .field-hint, .field-note { color: var(--color-text-muted); }
+.eyebrow { margin: 0 0 8px; color: var(--color-text-accent); font-size: .78rem; font-weight: 800; letter-spacing: .04em; }
+
+.header-actions, .header-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.header-tools { justify-content: flex-end; }
+
+.brand, .profile-menu-button, .settings-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: 760;
+}
+
+.brand { padding: 0; font-size: 1rem; letter-spacing: -.015em; }
+.brand-mark, .game-card-seal, .empty-state-token, .auth-card-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border: 2px solid var(--color-gold-light);
+  border-radius: 13px;
+  color: var(--color-felt-deep);
+  background: var(--color-paper);
+  box-shadow: inset 0 0 0 3px var(--color-felt-deep);
+  font-size: .76rem;
+  font-weight: 900;
+  letter-spacing: .03em;
+}
+
+.profile-menu-button { max-width: 220px; padding: 4px 8px 4px 4px; border-radius: 999px; }
+.profile-menu-button:hover { background: rgb(255 255 255 / .11); }
+.header-avatar { width: 34px; height: 34px; }
+.bank-status { display: inline-flex; align-items: center; gap: 7px; color: var(--color-gold-light); font-size: .84rem; font-weight: 700; }
+.bank-status i { width: 8px; height: 8px; border-radius: 999px; background: #75df99; box-shadow: 0 0 0 3px rgb(117 223 153 / .15); }
+
+.settings-button { padding: 7px 10px; border: 1px solid rgb(243 221 160 / .64); border-radius: 10px; }
+.settings-panel { position: absolute; z-index: 30; top: calc(68px + env(safe-area-inset-top)); right: max(16px, calc((100vw - 1120px) / 2)); width: min(calc(100vw - 32px), 360px); }
+
+@media (max-width: 767px) {
+  .app-header-inner { min-height: 60px; }
+  .settings-panel { top: calc(60px + env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
+  .bank-status, .profile-menu-button > span:last-child, .settings-button > span { display: none; }
+  .profile-menu-button { max-width: 44px; padding: 4px; }
+  .page { padding-top: 24px; }
+  .page-heading { gap: 16px; margin-bottom: 26px; }
+  .page h1 { font-size: clamp(2rem, 10vw, 3rem); }
+}
+
+@media (max-width: 640px) {
+  .page-heading { flex-direction: column; }
+  .page-heading > .header-actions { width: 100%; }
+  .page-heading > .header-actions .button { flex: 1; }
+}
+
+@media (max-width: 360px) {
+  .brand > span:last-child { display: none; }
+  .app-header-inner { gap: 8px; }
+}

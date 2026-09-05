@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import type { CreateTransactionRequest, GameDetails } from '../../shared/contracts/api';
 import type { Currency, Game, Player, Transaction, TransactionType } from '../../shared/types/monopoly';
 import type { FinalGameSummary } from '../../shared/domain/game-summary';
 import { MonopolyBankApiError, monopolyBankApi } from '../api/monopoly-bank-api';
 import { DiceRoller } from '../components/DiceRoller';
+import { Dialog } from '../components/Dialog';
 import { AmountSelector } from '../components/AmountSelector';
 import { TableCalculator } from '../components/TableCalculator';
 import type { DevicePreferences } from '../utils/preferences';
@@ -127,7 +128,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
   return <main className="page game-page">
     <section className="page-heading game-heading">
       <div><p className="eyebrow">{t('activeGame')}</p><h1>{details.game.name}</h1><p className="lede">{t('configuredPassGoReward', { amount: formatMoney(details.game.passGoReward, details.game.currency) })}</p>{details.game.status === 'ACTIVE' && <span className={`live-status live-status-${liveStatus}`} role="status">{liveStatus === 'live' ? t('connectionLive') : liveStatus === 'connecting' ? t('connectionConnecting') : liveStatus === 'reconnecting' ? t('connectionReconnecting') : t('connectionOffline')}</span>}</div>
-      <div className="header-actions">{details.canManage && details.game.status === 'LOBBY' && <button className="button button-secondary" type="button" onClick={() => setInviteOpen(true)}>{t('invitePlayers')}</button>}{details.canManage && details.game.status === 'ACTIVE' && <button className="button button-danger" type="button" onClick={() => setFinishing(true)}>Finish Game</button>}<button className="button button-secondary" type="button" onClick={() => void monopolyBankApi.getGameSummary(gameId).then(setSummary)}>{details.game.status === 'FINISHED' ? 'Final summary' : 'Game summary'}</button><button className="button button-secondary" type="button" onClick={() => void loadHistory()}>{t('history')}</button><button className="button button-quiet" type="button" onClick={onBack}>{t('savedGames')}</button></div>
+      <div className="header-actions">{details.canManage && details.game.status === 'LOBBY' && <button className="button button-secondary" type="button" onClick={() => setInviteOpen(true)}>{t('invitePlayers')}</button>}{details.canManage && details.game.status === 'ACTIVE' && <button className="button button-danger" type="button" onClick={() => setFinishing(true)}>{t('finishGame')}</button>}<button className="button button-secondary" type="button" onClick={() => void monopolyBankApi.getGameSummary(gameId).then(setSummary)}>{details.game.status === 'FINISHED' ? t('finalSummary') : t('gameSummary')}</button><button className="button button-secondary" type="button" onClick={() => void loadHistory()}>{t('history')}</button><button className="button button-quiet" type="button" onClick={onBack}>{t('savedGames')}</button></div>
     </section>
     {details.game.status === 'LOBBY' && <section className="notice notice-success" role="status"><p>{t('waitingForPlayers')} — {t('startGameHint')}</p>{details.canManage && <button className="button button-primary" type="button" disabled={details.players.length < 2} onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}>{t('startGame')}</button>}</section>}
     {notice !== null && <section className="notice notice-success" role="status"><p>{t('recorded', { action: actionLabel(notice, t) })}</p><button className="button button-quiet" type="button" onClick={() => setNotice(null)}>{t('dismiss')}</button></section>}
@@ -139,7 +140,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
     {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} currency={details.game.currency} favoriteAmounts={details.favoriteAmounts ?? []} recentAmounts={details.recentAmounts ?? []} onToggleFavorite={(amount) => void monopolyBankApi.toggleFavoriteAmount(gameId, amount).then((favoriteAmounts) => setDetails((current) => current === null ? current : { ...current, favoriteAmounts }))} onClose={() => setSelectedPlayer(null)} onBankrupt={() => { setBankruptPlayer(selectedPlayer); setSelectedPlayer(null); }} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action, amount) => { historyCache.current.clear(); playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails({ ...details, players, recentAmounts: amount === null ? details.recentAmounts : [amount, ...(details.recentAmounts ?? []).filter((value) => value !== amount)].slice(0, 5) }); setSelectedPlayer(null); setNotice(action); }} />}
     {bankruptPlayer !== null && <BankruptcyDialog gameId={gameId} player={bankruptPlayer} players={details.players} onClose={() => setBankruptPlayer(null)} onCompleted={(players) => { historyCache.current.clear(); setDetails({ ...details, players }); setBankruptPlayer(null); }} />}
     {inviteOpen && <InviteDialog gameId={gameId} onClose={() => setInviteOpen(false)} />}
-    {finishing && <Dialog title="Finish Game" onClose={() => setFinishing(false)}><p className="dialog-intro">Finish this game and finalize the linked player statistics? Financial actions will become read-only.</p><div className="dialog-actions"><button className="button button-secondary" onClick={() => setFinishing(false)}>Cancel</button><button className="button button-danger" onClick={() => void monopolyBankApi.finishGame(gameId).then((finished) => { setDetails((current) => withClientGameDetails(finished, current)); setFinishing(false); })}>Finish Game</button></div></Dialog>}
+    {finishing && <Dialog title={t('finishGame')} closeLabel={t('closeDialog', { title: t('finishGame') })} onClose={() => setFinishing(false)}><p className="dialog-intro">{t('finishGameDescription')}</p><div className="dialog-actions"><button className="button button-secondary" type="button" onClick={() => setFinishing(false)}>{t('cancel')}</button><button className="button button-danger" type="button" onClick={() => void monopolyBankApi.finishGame(gameId).then((finished) => { setDetails((current) => withClientGameDetails(finished, current)); setFinishing(false); })}>{t('finishGame')}</button></div></Dialog>}
     {historyOpen && <HistoryDialog history={history} player={historyPlayer} players={details.players} currency={details.game.currency} error={historyError} language={language} locale={locale} onClose={() => { setHistoryOpen(false); setHistory(null); setHistoryError(null); }} onRetry={() => void loadHistory(historyPlayer)} />}
   </main>;
 }
@@ -205,10 +206,10 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
   const title = action === null ? t('walletTitle', { name: player.name }) : actionLabel(action, t);
   const transactionError = error === null ? null : insufficientMessage(error, players, currency, t) ?? apiErrorMessage(error, t, 'unableRecordTransaction');
 
-  return <Dialog title={title} onClose={onClose}>
+  return <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
     {transactionError !== null && <p className="notice notice-error" role="alert">{transactionError}</p>}
     {action === null ? <>
-      <div className="action-grid wallet-action-grid">{actions.map((item) => <button className={`button wallet-action-button wallet-action-${walletActionTone(item)} action-button`} type="button" key={item} onClick={() => selectAction(item)}>{actionLabel(item, t)}</button>)}<button className="button button-danger bankruptcy-action" type="button" onClick={onBankrupt}>Declare Bankrupt</button></div>
+      <div className="action-grid wallet-action-grid">{actions.map((item) => <button className={`button wallet-action-button wallet-action-${walletActionTone(item)} action-button`} type="button" key={item} onClick={() => selectAction(item)}>{actionLabel(item, t)}</button>)}<button className="button button-danger bankruptcy-action" type="button" onClick={onBankrupt}>{t('declareBankrupt')}</button></div>
       <button className="button button-quiet player-history-button" type="button" onClick={() => onViewHistory(player)}>{t('viewPlayerHistory', { name: player.name })}</button>
     </> : confirming ? <>
       <p className="dialog-intro">{t('confirmationIntro')}</p>
@@ -227,10 +228,12 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
 }
 
 function BankruptcyDialog({ gameId, player, players, onClose, onCompleted }: { gameId: string; player: Player; players: Player[]; onClose: () => void; onCompleted: (players: Player[]) => void }) {
+  const { t } = useLanguage();
   const [creditorId, setCreditorId] = useState<string | null>(null); const [confirming, setConfirming] = useState(false); const [error, setError] = useState<string | null>(null);
   const creditor = players.find((candidate) => candidate.id === creditorId) ?? null;
-  const submit = async () => { try { const result = await monopolyBankApi.declareBankruptcy(gameId, { playerId: player.id, ...(creditorId === null ? {} : { creditorPlayerId: creditorId }) }); onCompleted(result.players); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to declare bankruptcy.'); } };
-  return <Dialog title={`Declare ${player.name} bankrupt`} onClose={onClose}>{confirming ? <><p className="dialog-intro">{creditor === null ? 'Remaining money is returned to the Bank.' : `${player.name}'s remaining money will transfer to ${creditor.name}.`} This cannot be undone.</p>{error !== null && <p className="notice notice-error">{error}</p>}<div className="dialog-actions"><button className="button button-secondary" onClick={() => setConfirming(false)}>Back</button><button className="button button-danger" onClick={() => void submit()}>Confirm bankruptcy</button></div></> : <><p className="dialog-intro">Choose where {player.name}'s remaining balance goes.</p><div className="action-grid"><button className={`button button-secondary${creditorId === null ? ' selected' : ''}`} onClick={() => setCreditorId(null)}>To Bank</button>{players.filter((candidate) => candidate.id !== player.id && candidate.status !== 'BANKRUPT').map((candidate) => <button className={`button button-secondary${creditorId === candidate.id ? ' selected' : ''}`} key={candidate.id} onClick={() => setCreditorId(candidate.id)}>To {candidate.name}</button>)}</div><div className="dialog-actions"><button className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-danger" onClick={() => setConfirming(true)}>Review bankruptcy</button></div></>}</Dialog>;
+  const title = t('declareBankruptcyTitle', { name: player.name });
+  const submit = async () => { try { const result = await monopolyBankApi.declareBankruptcy(gameId, { playerId: player.id, ...(creditorId === null ? {} : { creditorPlayerId: creditorId }) }); onCompleted(result.players); } catch (caught) { setError(apiErrorMessage(caught, t, 'unableRecordTransaction')); } };
+  return <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>{confirming ? <><p className="dialog-intro">{creditor === null ? t('bankruptcyToBank') : t('bankruptcyToPlayer', { name: player.name, creditor: creditor.name })} {t('bankruptcyIrreversible')}</p>{error !== null && <p className="notice notice-error" role="alert">{error}</p>}<div className="dialog-actions"><button className="button button-secondary" type="button" onClick={() => setConfirming(false)}>{t('back')}</button><button className="button button-danger" type="button" onClick={() => void submit()}>{t('confirmBankruptcy')}</button></div></> : <><p className="dialog-intro">{t('chooseBankruptcyDestination', { name: player.name })}</p><div className="action-grid"><button className={`button button-secondary${creditorId === null ? ' selected' : ''}`} type="button" onClick={() => setCreditorId(null)}>{t('toBank')}</button>{players.filter((candidate) => candidate.id !== player.id && candidate.status !== 'BANKRUPT').map((candidate) => <button className={`button button-secondary${creditorId === candidate.id ? ' selected' : ''}`} type="button" key={candidate.id} onClick={() => setCreditorId(candidate.id)}>{t('toPlayer', { name: candidate.name })}</button>)}</div><div className="dialog-actions"><button className="button button-secondary" type="button" onClick={onClose}>{t('cancel')}</button><button className="button button-danger" type="button" onClick={() => setConfirming(true)}>{t('reviewBankruptcy')}</button></div></>}</Dialog>;
 }
 
 function HistoryDialog({ history, player, players, currency, error, language, locale, onClose, onRetry }: {
@@ -246,7 +249,7 @@ function HistoryDialog({ history, player, players, currency, error, language, lo
 }) {
   const { t } = useLanguage();
   const title = player === null ? t('gameHistory') : t('playerHistory', { name: player.name });
-  return <Dialog title={title} onClose={onClose}>
+  return <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
     {error !== null ? <><p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableLoadHistory')}</p><button className="button button-secondary" type="button" onClick={onRetry}>{t('tryAgain')}</button></>
       : history === null ? <p className="status" role="status">{t('loadingHistory')}</p>
         : history.length === 0 ? <p className="muted">{t('noTransactions')}</p>
@@ -263,13 +266,6 @@ function applyLiveEvent(event: LiveServerEvent, setDetails: React.Dispatch<React
 
 function withClientGameDetails(details: GameDetails, current: GameDetails | null): GameDetails {
   return current === null ? details : { ...details, canManage: current.canManage, joinCode: current.joinCode };
-}
-
-function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const { t } = useLanguage();
-  const dialog = useRef<HTMLElement>(null);
-  useEffect(() => { dialog.current?.focus(); }, []);
-  return <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}><section ref={dialog} className="dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }} onMouseDown={(event) => event.stopPropagation()}><header><h2>{title}</h2><button className="button button-quiet" type="button" onClick={onClose} aria-label={t('closeDialog', { title })}>{t('close')}</button></header>{children}</section></div>;
 }
 
 function PlayerPicker({ label, players, gamePlayers, value, currency, onChange }: { label: string; players: Player[]; gamePlayers: Player[]; value: string; currency: Currency; onChange: (id: string) => void }) {
@@ -332,7 +328,7 @@ function destinationFor(action: ActionType, player: Player, target: Player | nul
 }
 
 function transactionLabel(type: TransactionType, t: Translate): string {
-  return ({ PLAYER_TO_PLAYER: t('playerPayment'), PLAYER_TO_BANK: t('paidBank'), BANK_TO_PLAYER: t('receivedFromBank'), PLAYER_TO_ALL: t('paidEveryone'), ALL_TO_PLAYER: t('everyonePaidPlayer'), PAY_RENT: t('paidRent'), PASS_GO: t('passedGo'), BANKRUPTCY_TRANSFER: 'Bankruptcy transfer' })[type];
+  return ({ PLAYER_TO_PLAYER: t('playerPayment'), PLAYER_TO_BANK: t('paidBank'), BANK_TO_PLAYER: t('receivedFromBank'), PLAYER_TO_ALL: t('paidEveryone'), ALL_TO_PLAYER: t('everyonePaidPlayer'), PAY_RENT: t('paidRent'), PASS_GO: t('passedGo'), BANKRUPTCY_TRANSFER: t('bankruptcyTransfer') })[type];
 }
 
 function isPositiveInteger(value: string) { return /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0; }
@@ -342,7 +338,7 @@ function InviteDialog({ gameId, onClose }: { gameId: string; onClose: () => void
   const [link, setLink] = useState<string | null>(null); const [error, setError] = useState<unknown>(null); const [creating, setCreating] = useState(false); const [copied, setCopied] = useState(false);
   const createLink = async () => { setCreating(true); setError(null); try { const { invitationToken } = await monopolyBankApi.createInvitation(gameId); setLink(`${window.location.origin}/games/join?invite=${encodeURIComponent(invitationToken)}`); } catch (caught) { setError(caught); } finally { setCreating(false); } };
   const copy = async () => { if (link === null) return; if (navigator.clipboard !== undefined) await navigator.clipboard.writeText(link); else window.prompt(t('copyInviteLink'), link); setCopied(true); };
-  return <Dialog title={t('invitePlayers')} onClose={onClose}><p className="dialog-intro">{t('inviteDescription')}</p>{link === null ? <button className="button button-primary" type="button" disabled={creating} onClick={() => void createLink()}>{creating ? t('pleaseWait') : t('createInviteLink')}</button> : <><div className="dialog-actions"><button className="button button-primary" type="button" onClick={() => void copy()}>{t('copyInviteLink')}</button></div>{copied && <p className="notice notice-success" role="status">{t('inviteLinkCopied')}</p>}</>}{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableJoinGame')}</p>}</Dialog>;
+  return <Dialog title={t('invitePlayers')} closeLabel={t('closeDialog', { title: t('invitePlayers') })} onClose={onClose}><p className="dialog-intro">{t('inviteDescription')}</p>{link === null ? <button className="button button-primary" type="button" disabled={creating} onClick={() => void createLink()}>{creating ? t('pleaseWait') : t('createInviteLink')}</button> : <><div className="dialog-actions"><button className="button button-primary" type="button" onClick={() => void copy()}>{t('copyInviteLink')}</button></div>{copied && <p className="notice notice-success" role="status">{t('inviteLinkCopied')}</p>}</>}{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableJoinGame')}</p>}</Dialog>;
 }
 
 function GameSummaryScreen({ summary, players, currency, onClose }: { summary: ({ game: Game; winners: Player[] } & FinalGameSummary); players: Player[]; currency: Currency; onClose: () => void }) {
