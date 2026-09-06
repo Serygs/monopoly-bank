@@ -10,9 +10,10 @@ export interface OperationalMetrics {
 }
 
 export class AnalyticsOperationalMetrics implements OperationalMetrics {
-  private readonly dataset: AnalyticsEngineDataset;
-  constructor(dataset: AnalyticsEngineDataset) { this.dataset = dataset; }
+  private readonly dataset?: AnalyticsEngineDataset;
+  constructor(dataset?: AnalyticsEngineDataset) { this.dataset = dataset; }
   record(component: OperationalComponent, operation: string, outcome: OperationalOutcome, durationMs = 0, status = 0): void {
+    if (!this.dataset) return;
     try {
       this.dataset.writeDataPoint({ blobs: [component, operation, outcome], doubles: [1, durationMs, status], indexes: ['all'] });
     } catch {
