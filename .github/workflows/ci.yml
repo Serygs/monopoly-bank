@@ -35,6 +35,9 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Verify migrations against local D1
+        run: npm run test:d1
+
       - name: Build production assets
         run: npm run build
 

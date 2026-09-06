@@ -10,6 +10,13 @@
     "check": "npm run lint && npm test",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --passWithNoTests",
+    "test:d1": "node scripts/test-d1-migrations.mjs",
+    "test:worker": "vitest run worker/game-session.test.ts worker/routes/api-router.test.ts",
+    "test:e2e": "playwright test",
+    "test:load": "node scripts/load/realtime-load.mjs",
+    "test:restore": "node scripts/rehearse-d1-restore.mjs",
+    "check:bindings": "node scripts/validate-deployment-bindings.mjs",
+    "smoke:deployment": "node scripts/smoke-deployment.mjs",
     "preview": "npm run build && vite preview",
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types"
@@ -21,6 +28,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.54.3",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.2",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
@@ -33,6 +41,7 @@
     "typescript-eslint": "^8.67.0",
     "vite": "^8.2.2",
     "vitest": "^5.0.0",
-    "wrangler": "^4.128.0"
+    "wrangler": "^4.128.0",
+    "ws": "^8.21.3"
   }
 }
