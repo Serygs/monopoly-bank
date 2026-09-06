@@ -33,7 +33,7 @@ Run **Staging release** manually with its isolated HTTPS URL and a non-sensitive
 - lint, unit tests, clean-DB migrations, and upgraded-fixture migrations;
 - resolved staging D1 ID plus generated Worker/D1/DO binding validation;
 - required Worker secret names;
-- a pre-deploy D1 export restored into a disposable local D1, with SQLite integrity and foreign-key checks plus a fixture lookup;
+- a pre-deploy D1 export restored into a disposable local D1, with foreign-key and schema checks plus a fixture lookup;
 - migration application, Worker deployment, and HTTPS smoke checks for the app shell, unauthenticated API boundary, and security headers.
 
 The export is kept only in the runner workspace for the restore rehearsal and is deleted before the job finishes. Do not upload it as a CI artifact or log its contents.

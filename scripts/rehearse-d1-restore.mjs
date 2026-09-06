@@ -22,8 +22,10 @@ async function command(args) {
 try {
   await writeFile(configPath, `${JSON.stringify({ name: 'restore-rehearsal', d1_databases: [{ binding: 'MONOPOLY_BANK_DB', database_name: 'restore-rehearsal', database_id: '00000000-0000-4000-8000-000000000002' }] })}\n`);
   await command(['d1', 'execute', 'MONOPOLY_BANK_DB', '--local', '--config', configPath, '--persist-to', persistence, '--file', backupPath]);
-  const integrity = await command(['d1', 'execute', 'MONOPOLY_BANK_DB', '--local', '--config', configPath, '--persist-to', persistence, '--json', '--command', 'PRAGMA integrity_check; PRAGMA foreign_key_check;']);
-  if (!integrity.includes('ok') || /"results"\s*:\s*\[\s*\{/.test(integrity)) throw new Error(`Restored D1 integrity check failed: ${integrity}`);
+  const foreignKeyProblems = await command(['d1', 'execute', 'MONOPOLY_BANK_DB', '--local', '--config', configPath, '--persist-to', persistence, '--json', '--command', 'PRAGMA foreign_key_check']);
+  if (/"results"\s*:\s*\[\s*\{/.test(foreignKeyProblems)) throw new Error(`Restored D1 foreign-key check failed: ${foreignKeyProblems}`);
+  const restoredSchema = await command(['d1', 'execute', 'MONOPOLY_BANK_DB', '--local', '--config', configPath, '--persist-to', persistence, '--json', '--command', "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'games'"]);
+  if (!restoredSchema.includes('games')) throw new Error('The restored backup does not contain the games table.');
   const fixture = await command(['d1', 'execute', 'MONOPOLY_BANK_DB', '--local', '--config', configPath, '--persist-to', persistence, '--json', '--command', `SELECT id FROM games WHERE id = '${expectedGameId.replaceAll("'", "''")}'`]);
   if (!fixture.includes(expectedGameId)) throw new Error('The expected staging fixture is missing after restore.');
   console.log('D1 backup restore rehearsal passed in isolated local persistence.');

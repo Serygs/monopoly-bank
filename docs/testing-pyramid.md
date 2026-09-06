@@ -26,10 +26,16 @@ minutes.
 LOAD_TEST_SCENARIO=./.private/load-scenario.json LOAD_TEST_DURATION_MINUTES=30 npm run test:load
 ```
 
+For the release-candidate 2x peak gate, use a separate 60-game scenario:
+
+```bash
+LOAD_TEST_SCENARIO=./.private/load-scenario-2x.json LOAD_TEST_GAME_COUNT=60 LOAD_TEST_DURATION_MINUTES=60 npm run test:load
+```
+
 The private JSON is intentionally not part of the repository. It contains a
-`baseUrl` and exactly 30 games, each with six `{ cookie, playerId }` participant
+`baseUrl` and exactly 30 (or 60 for 2x peak) games, each with six `{ cookie, playerId }` participant
 entries. Cookies are test sessions only. The runner opens 180 authenticated
-sockets, sends idempotent FAST bank payments with a unique command ID, then
+or 360 authenticated sockets respectively, sends idempotent FAST bank payments with a unique command ID, then
 audits every game for an HTTP failure or a negative balance. A pass is evidence
 of zero observed negative-balance violations; ledger duplicate checks remain
 covered deterministically by the Durable Object test suite and D1 unique

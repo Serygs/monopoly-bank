@@ -3,11 +3,13 @@ import WebSocket from 'ws';
 
 const scenarioPath = process.env.LOAD_TEST_SCENARIO;
 const durationMinutes = Number(process.env.LOAD_TEST_DURATION_MINUTES ?? '30');
+const gameCount = Number(process.env.LOAD_TEST_GAME_COUNT ?? '30');
 if (scenarioPath === undefined) throw new Error('LOAD_TEST_SCENARIO must point to a private, uncommitted scenario JSON file.');
 if (!Number.isInteger(durationMinutes) || durationMinutes < 30 || durationMinutes > 60) throw new Error('LOAD_TEST_DURATION_MINUTES must be an integer from 30 to 60.');
+if (gameCount !== 30 && gameCount !== 60) throw new Error('LOAD_TEST_GAME_COUNT must be 30 (peak) or 60 (2x peak).');
 
 const scenario = JSON.parse(await readFile(scenarioPath, 'utf8'));
-if (!Array.isArray(scenario.games) || scenario.games.length !== 30) throw new Error('Scenario must contain exactly 30 games.');
+if (!Array.isArray(scenario.games) || scenario.games.length !== gameCount) throw new Error(`Scenario must contain exactly ${gameCount} games.`);
 const sockets = [];
 const failures = [];
 const startedAt = Date.now();
