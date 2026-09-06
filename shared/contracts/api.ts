@@ -1,4 +1,4 @@
-import type { Currency, Game, Player, Transaction, TransactionType } from '../types/monopoly.js';
+import type { Currency, Game, PaymentMode, Player, Transaction, TransactionType } from '../types/monopoly.js';
 
 export interface ApiSuccess<T> {
   data: T;
@@ -49,6 +49,7 @@ export interface CreateGameRequest {
   startingBalance: number;
   passGoReward: number;
   currency: Currency;
+  paymentMode?: PaymentMode;
   gameAccessPassword?: string;
   players: CreateGamePlayerRequest[];
 }
@@ -157,3 +158,24 @@ export interface CreateTransactionResponse {
   transaction: Transaction;
   players: Player[];
 }
+
+export const paymentRequestStates = ['PENDING', 'ACCEPTED', 'DECLINED', 'CANCELLED', 'EXPIRED'] as const;
+export type PaymentRequestState = (typeof paymentRequestStates)[number];
+export interface PaymentRequest {
+  id: string;
+  gameId: string;
+  payerPlayerId: string;
+  recipientPlayerId: string;
+  creatorPlayerId: string;
+  approverPlayerId: string;
+  amount: number;
+  comment: string | null;
+  state: PaymentRequestState;
+  expiresAt: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  transactionId: string | null;
+}
+export interface CreatePaymentRequestResponse { paymentRequests: PaymentRequest[]; players: Player[]; }
+export type CreateBankingCommandResponse = CreateTransactionResponse | CreatePaymentRequestResponse;
+export interface PaymentRequestActionResponse { paymentRequest: PaymentRequest; players: Player[]; transaction?: Transaction; }

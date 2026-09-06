@@ -65,6 +65,7 @@
 .wallet-sheet-balance > * { position: relative; z-index: 1; }.wallet-sheet-balance span { color: var(--color-gold-light); font-size: .85rem; font-weight: 760; }.wallet-sheet-balance strong { color: var(--color-text-on-brand); font-size: clamp(2.2rem, 10vw, 3.25rem); line-height: .96; letter-spacing: -.06em; }
 .wallet-advanced-actions { margin-top: 16px; border-top: 1px solid var(--color-border); }.wallet-advanced-actions summary { padding: 16px 0 10px; color: var(--color-text-accent); cursor: pointer; font-weight: 800; }.wallet-advanced-actions[open] summary { color: var(--color-text-heading); }.wallet-advanced-actions .action-grid { margin-top: 4px; }
 .confirmation-available { margin-top: 8px; padding-top: 12px !important; border-top: 2px solid var(--color-brass); }.confirmation-available dd { color: var(--color-text-heading); font-size: 1.1rem; }
+.payment-inbox { margin-block: 16px; padding: 18px; border: 1px solid var(--color-brass); border-radius: 16px; }.payment-inbox > header, .payment-inbox li, .payment-inbox .dialog-actions { display: flex; align-items: center; gap: 10px; }.payment-inbox > header, .payment-inbox li { justify-content: space-between; }.payment-inbox > header h2 { margin: 0; }.payment-inbox > ol { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }.payment-inbox li { padding: 12px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-raised); }.payment-inbox li > div:first-child { display: grid; gap: 3px; }.payment-inbox small { color: var(--color-text-muted); }
 .player-picker { margin: 18px 0; padding: 0; border: 0; }
 .player-picker legend { margin-bottom: 10px; color: var(--color-text-heading); font-weight: 780; }
 .player-picker > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 8px; }
@@ -87,6 +88,7 @@
 
 @media (max-width: 640px) {
   .game-card { align-items: flex-start; flex-direction: column; }.game-card-actions .button { width: 100%; }.action-grid, .wallet-action-grid { grid-template-columns: 1fr; }.bankruptcy-action { grid-column: auto; }.player-picker > div { grid-template-columns: 1fr; }.calculator-controls { grid-template-columns: 1fr; }.calculator-operations { grid-template-columns: repeat(4, 1fr); }.profile-statistics, .summary-player-results dl { grid-template-columns: 1fr; }.auth-card-footer { align-items: flex-start; flex-direction: column; }.invite-ticket { grid-template-columns: 1fr; }.invite-qr { width: min(100%, 176px); height: auto; justify-self: start; }
+  .payment-inbox li { align-items: stretch; flex-direction: column; }.payment-inbox .dialog-actions .button { flex: 1; }
 }
 
 @media (max-height: 500px) and (orientation: landscape) {

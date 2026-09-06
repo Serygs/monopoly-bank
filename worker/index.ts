@@ -3,6 +3,7 @@ import { D1BankingOperationRepository } from './repositories/banking-operation-r
 import { D1GameRepository } from './repositories/game-repository.js';
 import { D1PlayerRepository } from './repositories/player-repository.js';
 import { D1TransactionRepository } from './repositories/transaction-repository.js';
+import { D1PaymentRequestRepository } from './repositories/payment-request-repository.js';
 import { DefaultBankingService } from './services/banking-service.js';
 import { DefaultGameService } from './services/game-service.js';
 import { D1UserRepository } from './repositories/user-repository.js';
@@ -39,6 +40,7 @@ export default {
         players,
         transactions,
         operations: new D1BankingOperationRepository(env.MONOPOLY_BANK_DB),
+        paymentRequests: new D1PaymentRequestRepository(env.MONOPOLY_BANK_DB),
         createId,
       }),
       live: new DurableObjectGameLiveGateway(env.GAME_SESSIONS),

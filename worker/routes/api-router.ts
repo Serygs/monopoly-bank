@@ -60,6 +60,8 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   const pathname = new URL(request.url).pathname;
   const gameMatch = /^\/api\/games\/([^/]+)$/.exec(pathname);
   const transactionMatch = /^\/api\/games\/([^/]+)\/transactions$/.exec(pathname);
+  const paymentRequestsMatch = /^\/api\/games\/([^/]+)\/payment-requests$/.exec(pathname);
+  const paymentRequestActionMatch = /^\/api\/games\/([^/]+)\/payment-requests\/([^/]+)\/(accept|decline|cancel)$/.exec(pathname);
   const playerTransactionMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)\/transactions$/.exec(pathname);
   const duplicateMatch = /^\/api\/games\/([^/]+)\/duplicate$/.exec(pathname);
   const finishMatch = /^\/api\/games\/([^/]+)\/finish$/.exec(pathname);
@@ -185,6 +187,35 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
         ),
       );
     }
+  }
+
+  if (paymentRequestsMatch !== null && request.method === 'GET') {
+    const gameId = parseResourceId(paymentRequestsMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const wallets = await dependencies.access.controlledWallets(gameId, actor.id);
+    return success(await dependencies.banking.listPaymentRequests(gameId, wallets.map((wallet) => wallet.playerId)));
+  }
+
+  if (paymentRequestActionMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(paymentRequestActionMatch[1], 'gameId');
+    const paymentRequestId = parseResourceId(paymentRequestActionMatch[2], 'paymentRequestId');
+    const action = paymentRequestActionMatch[3];
+    await dependencies.access.requireMember(gameId, actor.id);
+    const paymentRequest = await dependencies.banking.getPaymentRequest(gameId, paymentRequestId);
+    if (paymentRequest === null) throw new NotFoundError('PAYMENT_REQUEST_NOT_FOUND', 'Payment request not found.');
+    const controlledPlayerId = action === 'cancel' ? paymentRequest.creatorPlayerId : paymentRequest.approverPlayerId;
+    await dependencies.access.requirePlayerController(gameId, actor.id, controlledPlayerId);
+    const commandId = readCommandId(request);
+    if (dependencies.live !== undefined) {
+      const type = action === 'accept' ? 'ACCEPT_PAYMENT_REQUEST' : action === 'decline' ? 'DECLINE_PAYMENT_REQUEST' : 'CANCEL_PAYMENT_REQUEST';
+      return dependencies.live.mutate(gameId, actor, { type, commandId, paymentRequestId });
+    }
+    const result = action === 'accept'
+      ? await dependencies.banking.acceptPaymentRequest(gameId, paymentRequestId)
+      : action === 'decline'
+        ? await dependencies.banking.declinePaymentRequest(gameId, paymentRequestId)
+        : await dependencies.banking.cancelPaymentRequest(gameId, paymentRequestId);
+    return success(result);
   }
 
   if (playerTransactionMatch !== null && request.method === 'GET') {

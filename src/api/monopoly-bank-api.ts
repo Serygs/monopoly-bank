@@ -1,4 +1,4 @@
-import type { AddAccountEmailRequest, ApiError, ApiResponse, BankruptcyRequest, CreateGameRequest, CreateInvitationResponse, CreateTransactionRequest, CreateTransactionResponse, DeleteGameResponse, GameDetails, GameSummary, GuestJoinGameRequest, GuestJoinGameResponse, JoinGameRequest, LoginRequest, RegisterRequest, RevokeInvitationResponse, UpdateProfileRequest, UpgradeGuestRequest, UserProfile } from '../../shared/contracts/api.js';
+import type { AddAccountEmailRequest, ApiError, ApiResponse, BankruptcyRequest, CreateBankingCommandResponse, CreateGameRequest, CreateInvitationResponse, CreateTransactionRequest, CreateTransactionResponse, DeleteGameResponse, GameDetails, GameSummary, GuestJoinGameRequest, GuestJoinGameResponse, JoinGameRequest, LoginRequest, PaymentRequest, PaymentRequestActionResponse, RegisterRequest, RevokeInvitationResponse, UpdateProfileRequest, UpgradeGuestRequest, UserProfile } from '../../shared/contracts/api.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { FinalGameSummary } from '../../shared/domain/game-summary.js';
 import type { Player, Game } from '../../shared/types/monopoly.js';
@@ -33,7 +33,11 @@ export interface MonopolyBankApi {
   startGame(gameId: string): Promise<GameDetails>;
   finishGame(gameId: string): Promise<GameDetails>;
   toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
-  createTransaction(gameId: string, request: CreateTransactionRequest, commandId?: string): Promise<CreateTransactionResponse>;
+  createTransaction(gameId: string, request: CreateTransactionRequest, commandId?: string): Promise<CreateBankingCommandResponse>;
+  listPaymentRequests(gameId: string): Promise<PaymentRequest[]>;
+  acceptPaymentRequest(gameId: string, paymentRequestId: string, commandId?: string): Promise<PaymentRequestActionResponse>;
+  declinePaymentRequest(gameId: string, paymentRequestId: string, commandId?: string): Promise<PaymentRequestActionResponse>;
+  cancelPaymentRequest(gameId: string, paymentRequestId: string, commandId?: string): Promise<PaymentRequestActionResponse>;
   declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<CreateTransactionResponse>;
   getGameSummary(gameId: string): Promise<{ game: Game; winners: Player[] } & FinalGameSummary>;
   listTransactions(gameId: string, limit?: number): Promise<Transaction[]>;
@@ -64,7 +68,11 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   async startGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}/start`, commandInit({ method: 'POST' })); }
   async finishGame(gameId: string): Promise<GameDetails> { return request<GameDetails>(`/api/games/${encodeURIComponent(gameId)}/finish`, commandInit({ method: 'POST' })); }
   async toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]> { return request<number[]>(`/api/games/${encodeURIComponent(gameId)}/favorite-amounts`, { method: 'POST', body: JSON.stringify({ amount }) }); }
-  async createTransaction(gameId: string, input: CreateTransactionRequest, commandId?: string): Promise<CreateTransactionResponse> { return request<CreateTransactionResponse>(`/api/games/${encodeURIComponent(gameId)}/transactions`, commandInit({ method: 'POST', body: JSON.stringify(input) }, commandId)); }
+  async createTransaction(gameId: string, input: CreateTransactionRequest, commandId?: string): Promise<CreateBankingCommandResponse> { return request<CreateBankingCommandResponse>(`/api/games/${encodeURIComponent(gameId)}/transactions`, commandInit({ method: 'POST', body: JSON.stringify(input) }, commandId)); }
+  async listPaymentRequests(gameId: string): Promise<PaymentRequest[]> { return request<PaymentRequest[]>(`/api/games/${encodeURIComponent(gameId)}/payment-requests`); }
+  async acceptPaymentRequest(gameId: string, paymentRequestId: string, commandId?: string): Promise<PaymentRequestActionResponse> { return request<PaymentRequestActionResponse>(`/api/games/${encodeURIComponent(gameId)}/payment-requests/${encodeURIComponent(paymentRequestId)}/accept`, commandInit({ method: 'POST' }, commandId)); }
+  async declinePaymentRequest(gameId: string, paymentRequestId: string, commandId?: string): Promise<PaymentRequestActionResponse> { return request<PaymentRequestActionResponse>(`/api/games/${encodeURIComponent(gameId)}/payment-requests/${encodeURIComponent(paymentRequestId)}/decline`, commandInit({ method: 'POST' }, commandId)); }
+  async cancelPaymentRequest(gameId: string, paymentRequestId: string, commandId?: string): Promise<PaymentRequestActionResponse> { return request<PaymentRequestActionResponse>(`/api/games/${encodeURIComponent(gameId)}/payment-requests/${encodeURIComponent(paymentRequestId)}/cancel`, commandInit({ method: 'POST' }, commandId)); }
   async declareBankruptcy(gameId: string, input: BankruptcyRequest): Promise<CreateTransactionResponse> { return request<CreateTransactionResponse>(`/api/games/${encodeURIComponent(gameId)}/bankruptcy`, commandInit({ method: 'POST', body: JSON.stringify(input) })); }
   async getGameSummary(gameId: string): Promise<{ game: Game; winners: Player[] } & FinalGameSummary> { return request<{ game: Game; winners: Player[] } & FinalGameSummary>(`/api/games/${encodeURIComponent(gameId)}/summary`); }
   async listTransactions(gameId: string, limit = 50): Promise<Transaction[]> { return request<Transaction[]>(`/api/games/${encodeURIComponent(gameId)}/transactions?limit=${limit}`); }

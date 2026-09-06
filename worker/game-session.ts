@@ -4,6 +4,7 @@ import { D1BankingOperationRepository } from './repositories/banking-operation-r
 import { D1GameRepository } from './repositories/game-repository.js';
 import { D1PlayerRepository } from './repositories/player-repository.js';
 import { D1TransactionRepository } from './repositories/transaction-repository.js';
+import { D1PaymentRequestRepository } from './repositories/payment-request-repository.js';
 import { DefaultBankingService } from './services/banking-service.js';
 import { DefaultGameService } from './services/game-service.js';
 import { D1GameAccessRepository } from './repositories/game-access-repository.js';
@@ -19,6 +20,8 @@ import { ValidationError } from './services/errors.js';
 export class GameSession {
   private readonly ctx: DurableObjectState;
   private readonly env: Env;
+  /** Covers the gap before a completed command reaches durable storage. */
+  private readonly inFlightCommands = new Map<string, Promise<ResponsePayload>>();
   constructor(ctx: DurableObjectState, env: Env) { this.ctx = ctx; this.env = env; }
 
   async fetch(request: Request): Promise<Response> {
@@ -65,18 +68,35 @@ export class GameSession {
     const replay = await this.ctx.storage.get<ResponsePayload>(`command:${command.commandId}`);
     if (replay !== undefined) return Response.json(replay, { status: replay.status });
     try {
+      const pending = this.inFlightCommands.get(command.commandId) ?? this.startCommand(gameId, userId, command);
+      const response = await pending;
+      return Response.json(response, { status: response.status, headers: { 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() } });
+    } catch (error) { return handleError(error, { requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(), method: request.method, path: '/mutation', gameId, ...(userId === undefined ? {} : { userId }) }); }
+  }
+
+  private startCommand(gameId: string, userId: string | undefined, command: LiveMutationCommand): Promise<ResponsePayload> {
+    const pending = (async () => {
       await this.authorizeMutation(gameId, userId, command);
       const response = await this.execute(gameId, command);
       const version = await this.incrementVersion();
       await this.ctx.storage.put(`command:${command.commandId}`, response);
       await this.publish(command, response.data, version);
-      return Response.json(response, { status: response.status, headers: { 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() } });
-    } catch (error) { return handleError(error, { requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(), method: request.method, path: '/mutation', gameId, ...(userId === undefined ? {} : { userId }) }); }
+      return response;
+    })();
+    this.inFlightCommands.set(command.commandId, pending);
+    void pending.then(
+      () => { if (this.inFlightCommands.get(command.commandId) === pending) this.inFlightCommands.delete(command.commandId); },
+      () => { if (this.inFlightCommands.get(command.commandId) === pending) this.inFlightCommands.delete(command.commandId); },
+    );
+    return pending;
   }
 
   private async execute(gameId: string, command: LiveMutationCommand): Promise<ResponsePayload> {
     const banking = this.banking(command.commandId);
     if (command.type === 'CREATE_TRANSACTION') return { status: 201, data: await banking.createTransaction(gameId, command.request) };
+    if (command.type === 'ACCEPT_PAYMENT_REQUEST') return { status: 200, data: await banking.acceptPaymentRequest(gameId, command.paymentRequestId) };
+    if (command.type === 'DECLINE_PAYMENT_REQUEST') return { status: 200, data: await banking.declinePaymentRequest(gameId, command.paymentRequestId) };
+    if (command.type === 'CANCEL_PAYMENT_REQUEST') return { status: 200, data: await banking.cancelPaymentRequest(gameId, command.paymentRequestId) };
     if (command.type === 'DECLARE_BANKRUPTCY') return { status: 201, data: await banking.declareBankruptcy(gameId, command.request) };
     return { status: 200, data: await this.finishGame(gameId) };
   }
@@ -93,15 +113,29 @@ export class GameSession {
     if (userId === undefined) throw new ValidationError('Authenticated user is required.');
     const access = this.access();
     if (command.type === 'FINISH_GAME') return access.requireOwner(gameId, userId);
+    if (command.type === 'ACCEPT_PAYMENT_REQUEST' || command.type === 'DECLINE_PAYMENT_REQUEST') {
+      const paymentRequest = await this.banking(command.commandId).getPaymentRequest(gameId, command.paymentRequestId);
+      if (paymentRequest === null) throw new ValidationError('Payment request not found.');
+      return access.requirePlayerController(gameId, userId, paymentRequest.approverPlayerId);
+    }
+    if (command.type === 'CANCEL_PAYMENT_REQUEST') {
+      const paymentRequest = await this.banking(command.commandId).getPaymentRequest(gameId, command.paymentRequestId);
+      if (paymentRequest === null) throw new ValidationError('Payment request not found.');
+      return access.requirePlayerController(gameId, userId, paymentRequest.creatorPlayerId);
+    }
     await access.requireMember(gameId, userId);
     await access.requirePlayerController(gameId, userId, controlledPlayerIdForBankingCommand(command.request));
   }
 
   private async publish(command: LiveMutationCommand, data: unknown, version: number): Promise<void> {
     if (command.type === 'FINISH_GAME') { await this.broadcast({ type: 'GAME_FINISHED', version, details: data as GameDetails }); return; }
-    const result = data as { transaction: import('../shared/types/monopoly.js').Transaction; players: import('../shared/types/monopoly.js').Player[] };
-    await this.broadcast({ type: 'TRANSACTION_CREATED', version, transaction: result.transaction });
-    await this.broadcast({ type: 'BALANCES_UPDATED', version, players: result.players });
+    if (command.type === 'CREATE_TRANSACTION' && 'paymentRequests' in (data as object)) { await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', version }); return; }
+    if (command.type === 'ACCEPT_PAYMENT_REQUEST' || command.type === 'DECLINE_PAYMENT_REQUEST' || command.type === 'CANCEL_PAYMENT_REQUEST') {
+      await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', version });
+    }
+    const result = data as { transaction?: import('../shared/types/monopoly.js').Transaction; players: import('../shared/types/monopoly.js').Player[] };
+    if (result.transaction !== undefined) await this.broadcast({ type: 'TRANSACTION_CREATED', version, transaction: result.transaction });
+    if (result.transaction !== undefined) await this.broadcast({ type: 'BALANCES_UPDATED', version, players: result.players });
     if (command.type === 'DECLARE_BANKRUPTCY') await this.broadcast({ type: 'PLAYER_BANKRUPT', version, playerId: command.request.playerId, players: result.players });
   }
 
@@ -115,7 +149,7 @@ export class GameSession {
   private transactions() { return new D1TransactionRepository(this.env.MONOPOLY_BANK_DB); }
   private gameService() { const database = this.env.MONOPOLY_BANK_DB; return new DefaultGameService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), createId: () => crypto.randomUUID() }); }
   private access() { return new GameAccessService(new D1GameAccessRepository(this.env.MONOPOLY_BANK_DB)); }
-  private banking(commandId: string) { const database = this.env.MONOPOLY_BANK_DB; return new DefaultBankingService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), transactions: new D1TransactionRepository(database), operations: new D1BankingOperationRepository(database), createId: () => commandId }); }
+  private banking(commandId: string) { const database = this.env.MONOPOLY_BANK_DB; return new DefaultBankingService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), transactions: new D1TransactionRepository(database), operations: new D1BankingOperationRepository(database), paymentRequests: new D1PaymentRequestRepository(database), createId: () => commandId }); }
   private async finishGame(gameId: string): Promise<GameDetails> {
     const details = await this.gameService().finishGame(gameId);
     const winnerIds = new Set(calculateWinners(details.players).map((player) => player.id));

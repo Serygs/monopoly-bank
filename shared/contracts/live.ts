@@ -1,9 +1,12 @@
-import type { BankruptcyRequest, CreateTransactionRequest, CreateTransactionResponse, GameDetails } from './api.js';
+import type { BankruptcyRequest, CreateBankingCommandResponse, CreateTransactionRequest, GameDetails, PaymentRequestActionResponse } from './api.js';
 import type { Player, Transaction } from '../types/monopoly.js';
 
 /** Commands are accepted only by the game coordinator, never peer-to-peer. */
 export type LiveMutationCommand =
   | { type: 'CREATE_TRANSACTION'; commandId: string; request: CreateTransactionRequest }
+  | { type: 'ACCEPT_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
+  | { type: 'DECLINE_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
+  | { type: 'CANCEL_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
   | { type: 'DECLARE_BANKRUPTCY'; commandId: string; request: BankruptcyRequest }
   | { type: 'FINISH_GAME'; commandId: string };
 
@@ -20,15 +23,17 @@ export type LiveServerEvent =
   | { type: 'PLAYER_BANKRUPT'; version: number; playerId: string; players: Player[] }
   | { type: 'GAME_FINISHED'; version: number; details: GameDetails }
   | { type: 'LOBBY_UPDATED'; version: number; details: Pick<GameDetails, 'game' | 'players'> }
+  | { type: 'PAYMENT_REQUESTS_UPDATED'; version: number }
   | { type: 'MEMBER_JOINED'; version: number; connectedMembers: number };
 
-export type LiveMutationResponse = CreateTransactionResponse | GameDetails;
+export type LiveMutationResponse = CreateBankingCommandResponse | PaymentRequestActionResponse | GameDetails;
 
 export function isLiveMutationCommand(value: unknown): value is LiveMutationCommand {
   if (value === null || typeof value !== 'object' || !('type' in value) || !('commandId' in value)) return false;
   const command = value as { type?: unknown; commandId?: unknown };
   return typeof command.commandId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(command.commandId)
-    && (command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY' || command.type === 'FINISH_GAME');
+    && (command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY' || command.type === 'FINISH_GAME' || command.type === 'ACCEPT_PAYMENT_REQUEST' || command.type === 'DECLINE_PAYMENT_REQUEST' || command.type === 'CANCEL_PAYMENT_REQUEST')
+    && ((command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY') ? 'request' in value : command.type === 'FINISH_GAME' || typeof (value as { paymentRequestId?: unknown }).paymentRequestId === 'string');
 }
 
 export function isLiveServerEvent(value: unknown): value is LiveServerEvent {

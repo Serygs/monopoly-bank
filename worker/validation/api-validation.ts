@@ -1,5 +1,5 @@
 import type { AddAccountEmailRequest, AuthTokenRequest, BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, GuestJoinGameRequest, JoinGameRequest, LoginRequest, PasswordResetConfirmationRequest, PasswordResetRequest, RegisterRequest, UpdateProfileRequest, UpgradeGuestRequest } from '../../shared/contracts/api.js';
-import { currencies, transactionTypes, type Currency, type TransactionType } from '../../shared/types/monopoly.js';
+import { currencies, paymentModes, transactionTypes, type Currency, type PaymentMode, type TransactionType } from '../../shared/types/monopoly.js';
 import { ValidationError } from '../services/errors.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -34,6 +34,7 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     startingBalance: readPositiveInteger(body, 'startingBalance'),
     passGoReward: readPositiveInteger(body, 'passGoReward'),
     currency: readCurrency(body),
+    ...(body.paymentMode === undefined ? {} : { paymentMode: readPaymentMode(body) }),
     ...(body.gameAccessPassword === undefined ? {} : { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }),
     players,
   };
@@ -58,6 +59,12 @@ function readCurrency(body: Record<string, unknown>): Currency {
     throw new ApiValidationError('currency must be one of USD, EUR, UAH, or K.');
   }
   return value as Currency;
+}
+
+function readPaymentMode(body: Record<string, unknown>): PaymentMode {
+  const value = body.paymentMode;
+  if (typeof value !== 'string' || !paymentModes.includes(value as PaymentMode)) throw new ApiValidationError('paymentMode must be FAST or CONFIRMATION.');
+  return value as PaymentMode;
 }
 
 export async function parseCreateTransactionRequest(

@@ -38,6 +38,22 @@ describe('GameSession live coordinator', () => {
     expect((await session.fetch(new Request('https://game-session/mutation'))).status).toBe(403);
   });
 
+  it('serializes duplicate payment-request accept commands into one settlement', async () => {
+    const storage = new Map<string, unknown>();
+    const context = { storage: { get: async <T>(key: string) => storage.get(key) as T | undefined, put: async (key: string, value: unknown) => { storage.set(key, value); } }, getWebSockets: () => [] };
+    const session = new GameSession(context as never, {} as Env) as unknown as {
+      mutate(gameId: string, userId: string, request: Request): Promise<Response>;
+      banking(command: string): { acceptPaymentRequest(): Promise<unknown> };
+      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
+    };
+    let settlements = 0;
+    session.banking = () => ({ acceptPaymentRequest: async () => { settlements += 1; return { paymentRequest: { id: '00000000-0000-4000-8000-000000000003', state: 'ACCEPTED' }, transaction: { id: commandId, gameId, type: 'PLAYER_TO_PLAYER', amount: 100, totalAmount: 100, comment: null, createdAt: '', participants: [] }, players: [] }; } });
+    session.authorizeMutation = async () => undefined;
+    const request = () => new Request('https://game-session/mutation', { method: 'POST', body: JSON.stringify({ type: 'ACCEPT_PAYMENT_REQUEST', commandId, paymentRequestId: '00000000-0000-4000-8000-000000000003' }) });
+    await Promise.all([session.mutate(gameId, 'actor', request()), session.mutate(gameId, 'actor', request())]);
+    expect(settlements).toBe(1);
+  });
+
   it('broadcasts the roster snapshot after a lobby join without polling clients', async () => {
     const sent: string[] = [];
     const context = { storage: { get: async () => 3, put: async () => undefined }, getWebSockets: () => [{ send: (message: string) => sent.push(message) }] };
