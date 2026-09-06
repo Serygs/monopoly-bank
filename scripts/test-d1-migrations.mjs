@@ -11,6 +11,7 @@ const legacyMigrations = await mkdtemp(join(tmpdir(), 'monopoly-bank-d1-legacy-m
 const legacyPersistence = await mkdtemp(join(tmpdir(), 'monopoly-bank-d1-upgrade-'));
 const wranglerEntry = fileURLToPath(new URL('../node_modules/wrangler/bin/wrangler.js', import.meta.url));
 const legacyConfig = join(legacyMigrations, 'wrangler.json');
+const legacyMigrationBoundary = '0010_bankruptcy_transaction_type_and_history_index.sql';
 
 async function command(args, allowFailure = false) {
   try {
@@ -49,13 +50,19 @@ try {
   const foreignKeyProblems = await sql('PRAGMA foreign_key_check');
   if (/"results"\s*:\s*\[\s*\{/.test(foreignKeyProblems)) throw new Error(`Foreign-key check failed: ${foreignKeyProblems}`);
 
-  for (const migration of await readdir('migrations')) {
-    if (migration <= '0010_bankruptcy_transaction_type_and_history_index.sql') await cp(join('migrations', migration), join(legacyMigrations, migration));
+  const migrationFiles = (await readdir('migrations'))
+    .filter((migration) => migration.endsWith('.sql'))
+    .sort();
+  for (const migration of migrationFiles) {
+    if (migration <= legacyMigrationBoundary) await cp(join('migrations', migration), join(legacyMigrations, migration));
   }
   await writeFile(legacyConfig, `${JSON.stringify({ name: 'migration-upgrade-fixture', d1_databases: [{ binding: 'MONOPOLY_BANK_DB', database_name: 'migration-upgrade-fixture', database_id: '00000000-0000-4000-8000-000000000001', migrations_dir: legacyMigrations }] })}\n`);
   await command(['d1', 'migrations', 'apply', 'MONOPOLY_BANK_DB', '--local', '--config', legacyConfig, '--persist-to', legacyPersistence]);
   await legacySql("INSERT INTO users (id, nickname, avatar, password_hash, password_salt) VALUES ('user-upgrade-1', 'Existing player', '😀', 'fixture-password-hash', 'fixture-password-salt'); INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status) VALUES ('game-upgrade-1', 'Existing game', 1500, 200, 'K', 'ACTIVE'); INSERT INTO players (id, game_id, name, color, balance) VALUES ('player-upgrade-1', 'game-upgrade-1', 'Existing player', '#123456', 1500); INSERT INTO game_members (game_id, user_id, role, player_id) VALUES ('game-upgrade-1', 'user-upgrade-1', 'PLAYER', 'player-upgrade-1');");
-  await command(['d1', 'migrations', 'apply', 'MONOPOLY_BANK_DB', '--local', '--persist-to', legacyPersistence]);
+  for (const migration of migrationFiles) {
+    if (migration > legacyMigrationBoundary) await cp(join('migrations', migration), join(legacyMigrations, migration));
+  }
+  await command(['d1', 'migrations', 'apply', 'MONOPOLY_BANK_DB', '--local', '--config', legacyConfig, '--persist-to', legacyPersistence]);
   const upgradedFixture = await legacySql("SELECT pc.player_id, pc.user_id FROM player_controllers pc JOIN users u ON u.id = pc.user_id WHERE pc.game_id = 'game-upgrade-1' AND pc.player_id = 'player-upgrade-1' AND pc.controller_kind = 'PRIMARY'");
   if (!upgradedFixture.includes('player-upgrade-1') || !upgradedFixture.includes('user-upgrade-1')) throw new Error('Upgrade migrations did not preserve the production-like player fixture.');
   const upgradedForeignKeys = await legacySql('PRAGMA foreign_key_check');
