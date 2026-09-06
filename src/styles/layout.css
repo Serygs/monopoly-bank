@@ -6,6 +6,7 @@
     linear-gradient(135deg, rgb(255 255 255 / .035), transparent 38%),
     var(--color-canvas);
 }
+.offline-shell { min-height: 100dvh; display: grid; align-content: center; justify-items: start; gap: 16px; padding: max(32px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); color: var(--color-text-on-brand); background: var(--color-felt-deep); }.offline-shell .brand-mark { width: 56px; height: 56px; }.offline-shell h1, .offline-shell p { max-width: 34rem; margin: 0; }.offline-shell p { color: var(--color-gold-light); line-height: 1.55; }.offline-banner, .update-banner { position: fixed; z-index: 40; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); left: max(12px, env(safe-area-inset-left)); width: min(720px, calc(100% - 24px)); margin: auto; padding: 12px 14px; border: 1px solid var(--color-brass); border-radius: 12px; color: var(--color-text-on-brand); background: var(--color-felt-deep); box-shadow: var(--shadow-surface); }.update-banner { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }.update-banner span { margin-right: auto; }
 
 .app-header {
   position: sticky;

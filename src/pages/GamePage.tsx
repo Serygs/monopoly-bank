@@ -21,7 +21,7 @@ import { isLiveServerEvent, type LiveServerEvent } from '../../shared/contracts/
 import { createLocalQr } from '../utils/local-qr';
 
 type ActionType = CreateTransactionRequest['type'];
-interface Props { gameId: string; onBack: () => void; preferences: DevicePreferences; }
+interface Props { gameId: string; onBack: () => void; preferences: DevicePreferences; offline: boolean; onPaymentFlowChange: (open: boolean) => void; }
 
 const primaryWalletActions: ActionType[] = ['PLAYER_TO_PLAYER', 'PLAYER_TO_BANK', 'BANK_TO_PLAYER', 'PASS_GO'];
 const advancedWalletActions: ActionType[] = ['PLAYER_TO_ALL', 'ALL_TO_PLAYER'];
@@ -32,7 +32,7 @@ function walletActionTone(action: ActionType): 'income' | 'expense' {
     : 'expense';
 }
 
-export function GamePage({ gameId, onBack, preferences }: Props) {
+export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowChange }: Props) {
   const { language, locale, t } = useLanguage();
   const [details, setDetails] = useState<GameDetails | null>(null);
   const [error, setError] = useState<unknown | null>(null);
@@ -54,6 +54,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [paymentRequestNotice, setPaymentRequestNotice] = useState(false);
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
+  useEffect(() => { onPaymentFlowChange(selectedPlayer !== null || bankruptPlayer !== null); return () => onPaymentFlowChange(false); }, [selectedPlayer, bankruptPlayer, onPaymentFlowChange]);
 
   useEffect(() => {
     let active = true;
@@ -65,10 +66,10 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
   }, [gameId]);
 
   const loadPaymentRequests = useCallback(() => void monopolyBankApi.listPaymentRequests(gameId).then(setPaymentRequests, () => undefined), [gameId]);
-  useEffect(() => { if (details?.game.status === 'ACTIVE') loadPaymentRequests(); }, [details?.game.status, loadPaymentRequests]);
+  useEffect(() => { if (details?.game.status === 'ACTIVE' && !offline) loadPaymentRequests(); }, [details?.game.status, loadPaymentRequests, offline]);
 
   useEffect(() => {
-    if (details?.game.status !== 'ACTIVE') {
+    if (details?.game.status !== 'ACTIVE' || offline) {
       return;
     }
     let closed = false; let retry: number | undefined; let socket: WebSocket | null = null; let attempts = 0;
@@ -86,7 +87,7 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
     };
     connect();
     return () => { closed = true; if (retry !== undefined) window.clearTimeout(retry); socket?.close(); };
-  }, [gameId, details?.game.status, loadPaymentRequests]);
+  }, [gameId, details?.game.status, loadPaymentRequests, offline]);
 
   const loadHistory = async (player: Player | null = null) => {
     const scope = player === null ? 'all' : `player:${player.id}`;
@@ -126,21 +127,22 @@ export function GamePage({ gameId, onBack, preferences }: Props) {
   const controlledWallets = details.controlledWallets ?? [];
   const activeControlledWalletId = controlledWallets.some((wallet) => wallet.playerId === activeWalletId) ? activeWalletId : controlledWallets[0]?.playerId ?? null;
   const activeWallet = details.players.find((player) => player.id === activeControlledWalletId) ?? null;
+  const canMutate = details.game.status === 'ACTIVE' && !offline;
 
   return <main className="page game-page">
     <section className="page-heading game-heading">
       <div><p className="eyebrow">{t('activeGame')}</p><h1>{details.game.name}</h1><p className="lede">{t('configuredPassGoReward', { amount: formatMoney(details.game.passGoReward, details.game.currency) })}</p>{details.game.status === 'ACTIVE' && <span className={`live-status live-status-${liveStatus}`} role="status">{liveStatus === 'live' ? t('connectionLive') : liveStatus === 'connecting' ? t('connectionConnecting') : liveStatus === 'reconnecting' ? t('connectionReconnecting') : t('connectionOffline')}</span>}</div>
-      <div className="header-actions">{details.canManage && details.game.status === 'LOBBY' && <button className="button button-secondary" type="button" onClick={() => setInviteOpen(true)}>{t('invitePlayers')}</button>}{details.canManage && details.game.status === 'ACTIVE' && <button className="button button-danger" type="button" onClick={() => setFinishing(true)}>{t('finishGame')}</button>}<button className="button button-secondary" type="button" onClick={() => setActivityOpen(true)}>{t('activity')}</button><button className="button button-secondary" type="button" onClick={() => void monopolyBankApi.getGameSummary(gameId).then((result) => { setSummary(result); setStatisticsOpen(true); })}>{t('statistics')}</button><button className="button button-quiet" type="button" onClick={onBack}>{t('savedGames')}</button></div>
+      <div className="header-actions">{details.canManage && details.game.status === 'LOBBY' && <button className="button button-secondary" type="button" disabled={offline} onClick={() => setInviteOpen(true)}>{t('invitePlayers')}</button>}{details.canManage && details.game.status === 'ACTIVE' && <button className="button button-danger" type="button" disabled={offline} onClick={() => setFinishing(true)}>{t('finishGame')}</button>}<button className="button button-secondary" type="button" disabled={offline} onClick={() => setActivityOpen(true)}>{t('activity')}</button><button className="button button-secondary" type="button" disabled={offline} onClick={() => void monopolyBankApi.getGameSummary(gameId).then((result) => { setSummary(result); setStatisticsOpen(true); })}>{t('statistics')}</button><button className="button button-quiet" type="button" onClick={onBack}>{t('savedGames')}</button></div>
     </section>
     {details.game.status === 'LOBBY' && <section className="notice notice-success" role="status"><p>{t('waitingForPlayers')} — {t('startGameHint')}</p>{details.canManage && <button className="button button-primary" type="button" disabled={details.players.length < 2} onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}>{t('startGame')}</button>}</section>}
     {notice !== null && <section className="notice notice-success" role="status"><p>{t('recorded', { action: actionLabel(notice, t) })}</p><button className="button button-quiet" type="button" onClick={() => setNotice(null)}>{t('dismiss')}</button></section>}
     {paymentRequestNotice && <section className="notice notice-success" role="status"><p>{t('paymentRequestCreated')}</p><button className="button button-quiet" type="button" onClick={() => setPaymentRequestNotice(false)}>{t('dismiss')}</button></section>}
     {controlledWallets.length > 0 && <fieldset className="wallet-switcher"><legend>{t('walletSwitcher')}</legend><div>{controlledWallets.map((wallet) => { const player = details.players.find((candidate) => candidate.id === wallet.playerId); if (player === undefined) return null; return <button className="button button-secondary" type="button" key={wallet.playerId} aria-pressed={activeControlledWalletId === wallet.playerId} onClick={() => setActiveWalletId(wallet.playerId)}>{controllerLabel(wallet.kind, t)}: {player.name}</button>; })}</div></fieldset>}
-    {activeWallet !== null && <section className="primary-wallet" aria-label={t('walletTitle', { name: activeWallet.name })}><p>{t('yourWallet')}</p><WalletCard player={activeWallet} players={details.players} currency={details.game.currency} active gameActive={details.game.status === 'ACTIVE'} prominent onOpen={() => setSelectedPlayer(activeWallet)} /></section>}
+    {activeWallet !== null && <section className="primary-wallet" aria-label={t('walletTitle', { name: activeWallet.name })}><p>{t('yourWallet')}</p><WalletCard player={activeWallet} players={details.players} currency={details.game.currency} active gameActive={canMutate} prominent onOpen={() => setSelectedPlayer(activeWallet)} /></section>}
     <section className="wallet-grid" aria-label={t('playerWallets')}>
-      {details.players.filter((player) => player.id !== activeWallet?.id).map((player) => <WalletCard key={player.id} player={player} players={details.players} currency={details.game.currency} active={false} gameActive={details.game.status === 'ACTIVE'} onOpen={() => setSelectedPlayer(player)} />)}
+      {details.players.filter((player) => player.id !== activeWallet?.id).map((player) => <WalletCard key={player.id} player={player} players={details.players} currency={details.game.currency} active={false} gameActive={canMutate} onOpen={() => setSelectedPlayer(player)} />)}
     </section>
-    {details.game.status === 'ACTIVE' && <PaymentInbox requests={paymentRequests} players={details.players} currency={details.game.currency} onAction={async (request, action) => { const commandId = crypto.randomUUID(); const result = action === 'accept' ? await monopolyBankApi.acceptPaymentRequest(gameId, request.id, commandId) : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId); setPaymentRequests((current) => current.filter((item) => item.id !== request.id)); if (result.transaction !== undefined) { historyCache.current.clear(); playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails((current) => current === null ? current : { ...current, players: result.players }); } }} />}
+    {canMutate && <PaymentInbox requests={paymentRequests} players={details.players} currency={details.game.currency} onAction={async (request, action) => { const commandId = crypto.randomUUID(); const result = action === 'accept' ? await monopolyBankApi.acceptPaymentRequest(gameId, request.id, commandId) : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId); setPaymentRequests((current) => current.filter((item) => item.id !== request.id)); if (result.transaction !== undefined) { historyCache.current.clear(); playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails((current) => current === null ? current : { ...current, players: result.players }); } }} />}
     {details.game.status === 'ACTIVE' && <div className="game-tools"><DiceRoller /><TableCalculator /></div>}
     {activityOpen && <ActivityScreen gameId={gameId} players={details.players} currency={details.game.currency} liveTransactions={liveTransactions} onClose={() => setActivityOpen(false)} />}
     {statisticsOpen && summary !== null && <StatisticsScreen summary={summary} currency={details.game.currency} onClose={() => setStatisticsOpen(false)} />}
