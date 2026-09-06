@@ -43,6 +43,10 @@
   --radius-panel-large: 18px;
   --focus-ring: 3px solid var(--color-brass);
   --motion-fast: .16s ease;
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-right: env(safe-area-inset-right, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-safe-left: env(safe-area-inset-left, 0px);
 
   font-family: var(--font-ui);
   color: var(--color-text);
