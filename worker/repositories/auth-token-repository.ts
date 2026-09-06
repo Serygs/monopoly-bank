@@ -6,6 +6,7 @@ export interface AuthTokenRepository {
   issue(input: { id: string; userId: string; purpose: AuthTokenPurpose; tokenHash: string; expiresAt: string }): Promise<boolean>;
   consume(tokenHash: string, purpose: AuthTokenPurpose): Promise<string | null>;
   discard(tokenHash: string): Promise<void>;
+  deleteExpired(): Promise<void>;
 }
 
 export class D1AuthTokenRepository implements AuthTokenRepository {
@@ -40,5 +41,8 @@ export class D1AuthTokenRepository implements AuthTokenRepository {
   }
   async discard(tokenHash: string): Promise<void> {
     try { await this.database.prepare('DELETE FROM auth_email_tokens WHERE token_hash = ? AND consumed_at IS NULL').bind(tokenHash).run(); } catch (cause) { throw new DatabaseError({ operation: 'discardAuthToken', cause }); }
+  }
+  async deleteExpired(): Promise<void> {
+    try { await this.database.prepare("DELETE FROM auth_email_tokens WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') OR (consumed_at IS NOT NULL AND consumed_at <= datetime('now', '-7 days'))").run(); } catch (cause) { throw new DatabaseError({ operation: 'deleteExpiredAuthTokens', cause }); }
   }
 }

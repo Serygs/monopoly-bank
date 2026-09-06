@@ -61,7 +61,7 @@ function App() {
   }, [settingsOpen]);
 
   const navigate = (target: string) => { setSettingsOpen(false); window.history.pushState({}, '', target); setPath(routePath(target)); };
-  const emailToken = new URLSearchParams(window.location.search).get('token') ?? '';
+  const emailToken = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
   if (path === '/verify-email') return <VerifyEmailPage token={emailToken} onVerified={setProfile} onBack={() => navigate('/')} />;
   if (path === '/reset-password') return <PasswordResetPage token={emailToken} onBack={() => navigate('/')} />;
   const gameMatch = /^\/games\/([^/]+)$/.exec(path);

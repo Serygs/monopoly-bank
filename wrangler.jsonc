@@ -13,6 +13,7 @@
 	"observability": {
 		"enabled": true
 	},
+	"triggers": { "crons": ["0 3 * * *"] },
 	"upload_source_maps": true,
 	"durable_objects": {
 		"bindings": [{ "name": "GAME_SESSIONS", "class_name": "GameSession" }]

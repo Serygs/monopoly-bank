@@ -39,6 +39,7 @@ export class AuthService {
   async login(input: LoginRequest): Promise<{ profile: PublicProfile; cookie: string }> {
     const user = 'email' in input ? await this.users.findByNormalizedEmail(normalizeEmail(input.email)) : await this.users.findByNickname(input.nickname);
     if (user === null || user.accountType !== 'REGISTERED' || !(await verifyPassword(input.password, { hash: user.passwordHash, salt: user.passwordSalt }))) throw new InvalidCredentialsError();
+    await this.sessions.deleteAllForUser(user.id);
     return { profile: profile(user), cookie: await this.createSession(user.id) };
   }
 
@@ -62,6 +63,7 @@ export class AuthService {
     const user = await this.users.upgradeGuest({ id: userId, email, normalizedEmail, passwordHash: credentials.hash, passwordSalt: credentials.salt });
     if (user === null) throw new ConflictError('GUEST_UPGRADE_UNAVAILABLE', 'This guest account can no longer be upgraded.');
     await this.issueEmailToken(user, 'VERIFY_EMAIL');
+    await this.sessions.deleteAllForUser(user.id);
     return { profile: profile(user), cookie: await this.createSession(user.id) };
   }
   async addEmailToLegacyAccount(userId: string, email: string): Promise<PublicProfile> {
@@ -71,6 +73,8 @@ export class AuthService {
     return profile(user);
   }
   async logout(request: Request): Promise<string> { const token = cookieValue(request.headers.get('cookie'), 'monopoly_bank_session'); if (token !== null) await this.sessions.delete(await tokenHash(token)); return expiredCookie(); }
+  async revokeAll(userId: string): Promise<string> { await this.sessions.deleteAllForUser(userId); return expiredCookie(); }
+  async cleanupExpired(): Promise<void> { await Promise.all([this.sessions.deleteExpired(), this.tokens.deleteExpired()]); }
 
   private async issueEmailToken(user: UserRecord, purpose: AuthTokenPurpose): Promise<void> {
     if (user.email === null) return;
@@ -79,7 +83,8 @@ export class AuthService {
     if (!issued) return;
     const verify = purpose === 'VERIFY_EMAIL';
     const url = new URL(verify ? '/verify-email' : '/reset-password', this.appOrigin);
-    url.searchParams.set('token', token);
+    // Fragments are never sent in HTTP requests or Referer headers.
+    url.hash = new URLSearchParams({ token }).toString();
     const subject = verify ? 'Verify your Monopoly Bank email' : 'Reset your Monopoly Bank password';
     const text = `${verify ? 'Verify your email' : 'Reset your password'}: ${url}`;
     try {

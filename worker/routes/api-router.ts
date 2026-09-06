@@ -7,8 +7,12 @@ import { ProfileStatisticsService } from '../services/profile-statistics-service
 import type { GameStatisticsRepository } from '../repositories/game-statistics-repository.js';
 import type { GameLiveGateway } from '../services/game-live-gateway.js';
 import { controlledPlayerIdForBankingCommand } from '../../shared/domain/player-control.js';
-import { ConflictError, InvalidJoinCodeError, NotFoundError } from '../services/errors.js';
+import { ConflictError, InvalidJoinCodeError, NotFoundError, RateLimitError } from '../services/errors.js';
 import { handleError } from '../services/error-handler.js';
+import { requireSameOriginForMutation, requireSameOriginWebSocket, securityHeaders } from '../services/request-security.js';
+import { securityEvent } from '../services/security-events.js';
+import type { SecurityRateLimitRepository } from '../repositories/security-rate-limit-repository.js';
+import { tokenHash } from '../services/password-security.js';
 import {
   ApiValidationError,
   parseCreateGameRequest,
@@ -37,6 +41,7 @@ export interface ApiRouterDependencies {
   profileStatistics: ProfileStatisticsService;
   statistics?: GameStatisticsRepository;
   live?: GameLiveGateway;
+  rateLimits?: SecurityRateLimitRepository;
 }
 
 export function createApiRouter(dependencies: ApiRouterDependencies) {
@@ -44,15 +49,20 @@ export function createApiRouter(dependencies: ApiRouterDependencies) {
     const requestId = readRequestId(request);
     const path = new URL(request.url).pathname;
     try {
+      try { requireSameOriginForMutation(request); } catch (error) { securityEvent('csrf_rejected', { requestId }); throw error; }
+      await enforceRateLimit(request, dependencies.rateLimits, requestId);
       const response = await route(request, dependencies, requestId);
       // Re-wrapping an HTTP 101 response drops Cloudflare's `webSocket` field.
       // Return the Durable Object response intact so the browser upgrade completes.
       if (response.status === 101) return response;
       const headers = new Headers(response.headers);
       headers.set('x-request-id', requestId);
+      securityHeaders(request, headers);
       return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     } catch (error) {
-      return handleError(error, { requestId, method: request.method, path, cloudflareRayId: request.headers.get('cf-ray') });
+      const response = handleError(error, { requestId, method: request.method, path, cloudflareRayId: request.headers.get('cf-ray') });
+      const headers = new Headers(response.headers); securityHeaders(request, headers);
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     }
   };
 }
@@ -108,6 +118,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   }
 
   const actor = await dependencies.auth.current(request);
+  if (pathname === '/api/auth/sessions/revoke-all' && request.method === 'POST') return success(null, 200, await dependencies.auth.revokeAll(actor.id));
   if (pathname === '/api/auth/upgrade' && request.method === 'POST') { const body = await parseUpgradeGuestRequest(request); const result = await dependencies.auth.upgradeGuest(actor.id, body.email, body.password); return success(result.profile, 200, result.cookie); }
   if (pathname === '/api/auth/email' && request.method === 'POST') return success(await dependencies.auth.addEmailToLegacyAccount(actor.id, (await parseAddAccountEmailRequest(request)).email));
   if (pathname === '/api/auth/verification-email' && request.method === 'POST') { await dependencies.auth.resendVerification(actor.id); return success({ accepted: true }, 202); }
@@ -146,6 +157,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
 
   if (liveMatch !== null && request.method === 'GET') {
     const gameId = parseResourceId(liveMatch[1], 'gameId');
+    try { requireSameOriginWebSocket(request); } catch (error) { securityEvent('websocket_origin_rejected', { requestId, gameId }); throw error; }
     await dependencies.access.requireMember(gameId, actor.id);
     const details = await dependencies.games.getGame(gameId);
     if (details.game.status === 'FINISHED') return failure(409, 'GAME_FINISHED', 'This game is finished.', requestId);
@@ -266,6 +278,22 @@ function readActivityCursor(value: string | null): { createdAt: string; id: stri
 
 function success<T>(data: T, status = 200, cookie?: string): Response {
   return Response.json({ data } satisfies ApiSuccess<T>, { status, ...(cookie === undefined ? {} : { headers: { 'set-cookie': cookie } }) });
+}
+
+async function enforceRateLimit(request: Request, repository: SecurityRateLimitRepository | undefined, requestId: string): Promise<void> {
+  if (repository === undefined) return;
+  const pathname = new URL(request.url).pathname;
+  const rule = pathname === '/api/auth/login' || pathname === '/api/auth/register' ? { category: 'auth', limit: 10, seconds: 600 }
+    : pathname === '/api/auth/password-reset' || pathname === '/api/auth/verification-email' ? { category: 'email', limit: 5, seconds: 3600 }
+      : pathname === '/api/games/join/guest' ? { category: 'guest-join', limit: 12, seconds: 600 }
+        : /^\/api\/games\/[^/]+\/invitations$/.test(pathname) && request.method === 'POST' ? { category: 'invite', limit: 12, seconds: 3600 }
+          : undefined;
+  if (rule === undefined) return;
+  const source = request.headers.get('cf-connecting-ip') ?? request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const bucket = `${rule.category}:${await tokenHash(source)}`;
+  if (await repository.take(bucket, rule.limit, rule.seconds)) return;
+  securityEvent('rate_limited', { requestId });
+  throw new RateLimitError();
 }
 
 function failure(

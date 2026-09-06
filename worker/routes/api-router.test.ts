@@ -30,6 +30,15 @@ const gameDetails: GameDetails = {
 };
 
 describe('API router', () => {
+  it('rejects cross-origin mutations before a service can write and attaches security headers', async () => {
+    let writes = 0;
+    const router = createTestRouter({ createGame: async () => { writes += 1; return gameDetails; } });
+    const response = await router(new Request('https://example.test/api/games', { method: 'POST', headers: { origin: 'https://attacker.test', 'content-type': 'application/json' }, body: JSON.stringify({}) }));
+    expect(response.status).toBe(403);
+    expect(writes).toBe(0);
+    expect(response.headers.get('content-security-policy')).toContain("default-src 'self'");
+    expect(response.headers.get('x-frame-options')).toBe('DENY');
+  });
   it('uses the same generic response for known and unknown password-reset requests', async () => {
     const requestedEmails: string[] = [];
     const router = createApiRouter({

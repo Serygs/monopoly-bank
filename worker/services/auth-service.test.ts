@@ -15,7 +15,7 @@ describe('AuthService email accounts and guests', () => {
     expect(result.profile).toMatchObject({ accountType: 'REGISTERED', email: ' Ada@Example.TEST ', emailVerified: false });
     expect(fixture.users.byEmail.get('ada@example.test')?.email).toBe(' Ada@Example.TEST ');
     expect(fixture.email.messages).toHaveLength(1);
-    const rawToken = new URL(fixture.email.messages[0].text.split(': ')[1]).searchParams.get('token');
+    const rawToken = new URL(fixture.email.messages[0].text.split(': ')[1]).hash.split('=')[1] ?? null;
     expect(rawToken).not.toBeNull();
     expect(fixture.tokens.issued[0].tokenHash).not.toBe(rawToken);
   });
@@ -89,6 +89,6 @@ class MemoryUsers implements UserRepository {
   private save(user: UserRecord): void { this.byId.set(user.id, user); this.byNickname.set(user.nickname, user); if (user.normalizedEmail !== null) this.byEmail.set(user.normalizedEmail, user); }
 }
 
-class MemorySessions implements SessionRepository { readonly revokedUserIds: string[] = []; async create(): Promise<void> {} async findUserId(): Promise<string | null> { return null; } async delete(): Promise<void> {} async deleteAllForUser(userId: string): Promise<void> { this.revokedUserIds.push(userId); } }
-class MemoryTokens implements AuthTokenRepository { readonly issued: Array<{ userId: string; purpose: AuthTokenPurpose; tokenHash: string }> = []; readonly active = new Set<string>(); nextConsumedUserId: string | null = null; async issue(input: { id: string; userId: string; purpose: AuthTokenPurpose; tokenHash: string }): Promise<boolean> { const key = `${input.userId}:${input.purpose}`; if (this.active.has(key)) return false; this.active.add(key); this.issued.push(input); return true; } async consume(_tokenHash: string, purpose: AuthTokenPurpose): Promise<string | null> { const userId = this.nextConsumedUserId; if (userId !== null) this.active.delete(`${userId}:${purpose}`); this.nextConsumedUserId = null; return userId; } async discard(): Promise<void> {} }
+class MemorySessions implements SessionRepository { readonly revokedUserIds: string[] = []; async create(): Promise<void> {} async findUserId(): Promise<string | null> { return null; } async delete(): Promise<void> {} async deleteAllForUser(userId: string): Promise<void> { this.revokedUserIds.push(userId); } async deleteExpired(): Promise<void> {} }
+class MemoryTokens implements AuthTokenRepository { readonly issued: Array<{ userId: string; purpose: AuthTokenPurpose; tokenHash: string }> = []; readonly active = new Set<string>(); nextConsumedUserId: string | null = null; async issue(input: { id: string; userId: string; purpose: AuthTokenPurpose; tokenHash: string }): Promise<boolean> { const key = `${input.userId}:${input.purpose}`; if (this.active.has(key)) return false; this.active.add(key); this.issued.push(input); return true; } async consume(_tokenHash: string, purpose: AuthTokenPurpose): Promise<string | null> { const userId = this.nextConsumedUserId; if (userId !== null) this.active.delete(`${userId}:${purpose}`); this.nextConsumedUserId = null; return userId; } async discard(): Promise<void> {} async deleteExpired(): Promise<void> {} }
 class MemoryEmail implements TransactionalEmailProvider { readonly messages: TransactionalEmail[] = []; async send(message: TransactionalEmail): Promise<void> { this.messages.push(message); } }

@@ -17,6 +17,7 @@ import { ProfileStatisticsService } from './services/profile-statistics-service.
 import { D1GameStatisticsRepository } from './repositories/game-statistics-repository.js';
 import { DurableObjectGameLiveGateway } from './services/game-live-gateway.js';
 import { ResendTransactionalEmailProvider } from './services/transactional-email.js';
+import { D1SecurityRateLimitRepository } from './repositories/security-rate-limit-repository.js';
 export { GameSession } from './game-session.js';
 
 export default {
@@ -46,7 +47,14 @@ export default {
         createId,
       }),
       live: new DurableObjectGameLiveGateway(env.GAME_SESSIONS),
+      rateLimits: new D1SecurityRateLimitRepository(env.MONOPOLY_BANK_DB),
     });
     return router(request);
+  },
+  scheduled(_controller, env, ctx) {
+    const authEnv = env as Env & { RESEND_API_KEY: string; RESEND_FROM_EMAIL: string; APP_ORIGIN: string };
+    const auth = new AuthService(new D1UserRepository(env.MONOPOLY_BANK_DB), new D1SessionRepository(env.MONOPOLY_BANK_DB), new D1AuthTokenRepository(env.MONOPOLY_BANK_DB), new ResendTransactionalEmailProvider(authEnv.RESEND_API_KEY, authEnv.RESEND_FROM_EMAIL), () => crypto.randomUUID(), authEnv.APP_ORIGIN);
+    const rateLimits = new D1SecurityRateLimitRepository(env.MONOPOLY_BANK_DB);
+    ctx.waitUntil(Promise.all([auth.cleanupExpired(), rateLimits.cleanup()]).then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;
