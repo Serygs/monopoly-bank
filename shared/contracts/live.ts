@@ -8,7 +8,7 @@ export type LiveMutationCommand =
   | { type: 'DECLINE_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
   | { type: 'CANCEL_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
   | { type: 'DECLARE_BANKRUPTCY'; commandId: string; request: BankruptcyRequest }
-  | { type: 'FINISH_GAME'; commandId: string };
+  | { type: 'FINISH_GAME'; commandId: string; winnerPlayerIds: string[] };
 
 export interface LiveGameState {
   version: number;
@@ -33,7 +33,7 @@ export function isLiveMutationCommand(value: unknown): value is LiveMutationComm
   const command = value as { type?: unknown; commandId?: unknown };
   return typeof command.commandId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(command.commandId)
     && (command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY' || command.type === 'FINISH_GAME' || command.type === 'ACCEPT_PAYMENT_REQUEST' || command.type === 'DECLINE_PAYMENT_REQUEST' || command.type === 'CANCEL_PAYMENT_REQUEST')
-    && ((command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY') ? 'request' in value : command.type === 'FINISH_GAME' || typeof (value as { paymentRequestId?: unknown }).paymentRequestId === 'string');
+    && ((command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY') ? 'request' in value : command.type === 'FINISH_GAME' ? Array.isArray((value as { winnerPlayerIds?: unknown }).winnerPlayerIds) && ((value as { winnerPlayerIds?: unknown[] }).winnerPlayerIds ?? []).every((id) => typeof id === 'string') : typeof (value as { paymentRequestId?: unknown }).paymentRequestId === 'string');
 }
 
 export function isLiveServerEvent(value: unknown): value is LiveServerEvent {

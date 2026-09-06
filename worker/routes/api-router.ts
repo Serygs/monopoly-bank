@@ -4,9 +4,8 @@ import type { GameService } from '../services/game-service.js';
 import { AuthService } from '../services/auth-service.js';
 import { GameAccessService } from '../services/game-access-service.js';
 import { ProfileStatisticsService } from '../services/profile-statistics-service.js';
+import type { GameStatisticsRepository } from '../repositories/game-statistics-repository.js';
 import type { GameLiveGateway } from '../services/game-live-gateway.js';
-import { calculateWinners } from '../../shared/domain/winner-calculation.js';
-import { calculateFinalGameSummary } from '../../shared/domain/game-summary.js';
 import { controlledPlayerIdForBankingCommand } from '../../shared/domain/player-control.js';
 import { ConflictError, InvalidJoinCodeError, NotFoundError } from '../services/errors.js';
 import { handleError } from '../services/error-handler.js';
@@ -27,6 +26,7 @@ import {
   parsePasswordResetRequest,
   parseUpgradeGuestRequest,
   parseAddAccountEmailRequest,
+  parseFinishGameRequest,
 } from '../validation/api-validation.js';
 
 export interface ApiRouterDependencies {
@@ -35,6 +35,7 @@ export interface ApiRouterDependencies {
   auth: AuthService;
   access: GameAccessService;
   profileStatistics: ProfileStatisticsService;
+  statistics?: GameStatisticsRepository;
   live?: GameLiveGateway;
 }
 
@@ -70,6 +71,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   const favoriteMatch = /^\/api\/games\/([^/]+)\/favorite-amounts$/.exec(pathname);
   const bankruptcyMatch = /^\/api\/games\/([^/]+)\/bankruptcy$/.exec(pathname);
   const summaryMatch = /^\/api\/games\/([^/]+)\/summary$/.exec(pathname);
+  const activityMatch = /^\/api\/games\/([^/]+)\/activity$/.exec(pathname);
   const liveMatch = /^\/api\/games\/([^/]+)\/live$/.exec(pathname);
 
   if (pathname === '/api/auth/register' && request.method === 'POST') {
@@ -150,12 +152,17 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   if (invitationMatch !== null && request.method === 'DELETE') { const gameId = parseResourceId(invitationMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); await dependencies.access.revokeInvitations(gameId, actor.id); return success({ revoked: true }); }
   if (summaryMatch !== null && request.method === 'GET') {
     const gameId = parseResourceId(summaryMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id);
-    const details = await dependencies.games.getGame(gameId); const transactions = await dependencies.banking.listTransactions(gameId, 100);
-    return success({ game: details.game, winners: calculateWinners(details.players), ...calculateFinalGameSummary(details.players, transactions) });
+    const details = await dependencies.games.getGame(gameId);
+    if (dependencies.statistics === undefined) throw new ConflictError('STATISTICS_UNAVAILABLE', 'Statistics are not configured.');
+    const snapshot = details.game.status === 'FINISHED' ? await dependencies.statistics.getFinalSnapshot(gameId) : null;
+    const summary = snapshot?.summary ?? await dependencies.statistics.calculate(details.game, details.players);
+    const winners = (snapshot?.winnerPlayerIds ?? []).map((id) => details.players.find((player) => player.id === id)).filter((player): player is typeof details.players[number] => player !== undefined);
+    return success({ game: details.game, winners, ...summary });
   }
   if (duplicateMatch !== null && request.method === 'POST') { const gameId = parseResourceId(duplicateMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.duplicateGameForOwner(actor.id, gameId, (await parseDuplicateGameRequest(request)).gameAccessPassword), 201); }
   if (startMatch !== null && request.method === 'POST') { const gameId = parseResourceId(startMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.startGame(gameId)); }
-  if (finishMatch !== null && request.method === 'POST') { const gameId = parseResourceId(finishMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'FINISH_GAME', commandId: readCommandId(request) }); const details = await dependencies.games.finishGame(gameId); const winnerIds = new Set(calculateWinners(details.players).map((player) => player.id)); const participants = (await dependencies.access.linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) })); await dependencies.profileStatistics.recordCompletedGame(gameId, participants); return success(details); }
+  if (finishMatch !== null && request.method === 'POST') { const gameId = parseResourceId(finishMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); const body = await parseFinishGameRequest(request); const existing = await dependencies.games.getGame(gameId); if (body.winnerPlayerIds.some((id) => !existing.players.some((player) => player.id === id))) throw new ApiValidationError('winnerPlayerIds must belong to this game.'); if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'FINISH_GAME', commandId: readCommandId(request), winnerPlayerIds: body.winnerPlayerIds }); if (dependencies.statistics === undefined) throw new ConflictError('STATISTICS_UNAVAILABLE', 'Statistics are not configured.'); await dependencies.statistics.saveFinalSnapshot(gameId, body.winnerPlayerIds, await dependencies.statistics.calculate(existing.game, existing.players)); const details = await dependencies.games.finishGame(gameId); const winnerIds = new Set(body.winnerPlayerIds); const participants = (await dependencies.access.linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) })); await dependencies.profileStatistics.recordCompletedGame(gameId, participants); return success(details); }
+  if (activityMatch !== null && request.method === 'GET') { const gameId = parseResourceId(activityMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id); if (dependencies.statistics === undefined) throw new ConflictError('STATISTICS_UNAVAILABLE', 'Statistics are not configured.'); const query = new URL(request.url).searchParams; const scope = query.get('scope') ?? 'ALL'; if (scope !== 'ALL' && scope !== 'MINE' && scope !== 'PENDING') throw new ApiValidationError('scope must be ALL, MINE, or PENDING.'); const limit = readHistoryLimit(request); const cursor = readActivityCursor(query.get('cursor')); const wallets = await dependencies.access.controlledWallets(gameId, actor.id); return success(scope === 'PENDING' ? await dependencies.statistics.pending(gameId, wallets.map((wallet) => wallet.playerId), cursor, limit) : await dependencies.statistics.activity(gameId, scope, wallets.map((wallet) => wallet.playerId), cursor, limit)); }
   if (favoriteMatch !== null && request.method === 'POST') {
     const body = await request.json() as { amount?: unknown };
     if (typeof body.amount !== 'number' || !Number.isSafeInteger(body.amount) || body.amount <= 0) throw new ApiValidationError('amount must be a positive integer.');
@@ -248,6 +255,7 @@ function readHistoryLimit(request: Request): number {
   }
   return limit;
 }
+function readActivityCursor(value: string | null): { createdAt: string; id: string } | null { if (value === null) return null; try { const parsed: unknown = JSON.parse(atob(value)); if (parsed === null || typeof parsed !== 'object' || typeof (parsed as { createdAt?: unknown }).createdAt !== 'string' || !/^[0-9a-f-]{36}$/iu.test(String((parsed as { id?: unknown }).id))) throw new Error(); return { createdAt: (parsed as { createdAt: string }).createdAt, id: String((parsed as { id: string }).id) }; } catch { throw new ApiValidationError('cursor is invalid.'); } }
 
 function success<T>(data: T, status = 200, cookie?: string): Response {
   return Response.json({ data } satisfies ApiSuccess<T>, { status, ...(cookie === undefined ? {} : { headers: { 'set-cookie': cookie } }) });

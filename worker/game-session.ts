@@ -11,7 +11,7 @@ import { D1GameAccessRepository } from './repositories/game-access-repository.js
 import { D1GameCompletionRepository } from './repositories/game-completion-repository.js';
 import { GameAccessService } from './services/game-access-service.js';
 import { ProfileStatisticsService } from './services/profile-statistics-service.js';
-import { calculateWinners } from '../shared/domain/winner-calculation.js';
+import { D1GameStatisticsRepository } from './repositories/game-statistics-repository.js';
 import { controlledPlayerIdForBankingCommand } from '../shared/domain/player-control.js';
 import { handleError } from './services/error-handler.js';
 import { ValidationError } from './services/errors.js';
@@ -98,7 +98,7 @@ export class GameSession {
     if (command.type === 'DECLINE_PAYMENT_REQUEST') return { status: 200, data: await banking.declinePaymentRequest(gameId, command.paymentRequestId) };
     if (command.type === 'CANCEL_PAYMENT_REQUEST') return { status: 200, data: await banking.cancelPaymentRequest(gameId, command.paymentRequestId) };
     if (command.type === 'DECLARE_BANKRUPTCY') return { status: 201, data: await banking.declareBankruptcy(gameId, command.request) };
-    return { status: 200, data: await this.finishGame(gameId) };
+    return { status: 200, data: await this.finishGame(gameId, command.winnerPlayerIds) };
   }
 
   private async lobbyUpdated(gameId: string): Promise<Response> {
@@ -150,9 +150,13 @@ export class GameSession {
   private gameService() { const database = this.env.MONOPOLY_BANK_DB; return new DefaultGameService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), createId: () => crypto.randomUUID() }); }
   private access() { return new GameAccessService(new D1GameAccessRepository(this.env.MONOPOLY_BANK_DB)); }
   private banking(commandId: string) { const database = this.env.MONOPOLY_BANK_DB; return new DefaultBankingService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), transactions: new D1TransactionRepository(database), operations: new D1BankingOperationRepository(database), paymentRequests: new D1PaymentRequestRepository(database), createId: () => commandId }); }
-  private async finishGame(gameId: string): Promise<GameDetails> {
+  private async finishGame(gameId: string, winnerPlayerIds: readonly string[]): Promise<GameDetails> {
+    const beforeFinish = await this.gameService().getGame(gameId);
+    if (winnerPlayerIds.some((id) => !beforeFinish.players.some((player) => player.id === id))) throw new ValidationError('winnerPlayerIds must belong to this game.');
+    const winnerIds = new Set(winnerPlayerIds);
+    const statistics = new D1GameStatisticsRepository(this.env.MONOPOLY_BANK_DB);
+    await statistics.saveFinalSnapshot(gameId, winnerPlayerIds, await statistics.calculate(beforeFinish.game, beforeFinish.players));
     const details = await this.gameService().finishGame(gameId);
-    const winnerIds = new Set(calculateWinners(details.players).map((player) => player.id));
     const access = new GameAccessService(new D1GameAccessRepository(this.env.MONOPOLY_BANK_DB));
     const participants = (await access.linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) }));
     await new ProfileStatisticsService(new D1GameCompletionRepository(this.env.MONOPOLY_BANK_DB)).recordCompletedGame(gameId, participants);

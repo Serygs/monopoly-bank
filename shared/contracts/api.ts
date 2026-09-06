@@ -145,6 +145,12 @@ export interface GameSummaryStatistics {
   players: Array<{ player: Player; totalReceived: number; totalPaid: number; passGoCount: number; transactionCount: number }>;
 }
 export interface FinalGameSummaryResponse extends GameSummaryStatistics { playerToPlayerTotal: number; paidToBank: number; receivedFromBank: number; largestTransaction: number; biggestSenderId: string | null; leastSenderId: string | null; biggestPayerRecipient: { payerId: string; recipientId: string; amount: number; transactionCount: number } | null; }
+export interface FinishGameRequest { winnerPlayerIds: string[]; }
+export type ActivityScope = 'ALL' | 'MINE' | 'PENDING';
+export interface ActivityCursor { createdAt: string; id: string; }
+export interface ActivityPage { transactions: Transaction[]; paymentRequests: PaymentRequest[]; nextCursor: ActivityCursor | null; }
+export interface CashLeaderboardEntry { player: Player; sent: number; received: number; passGoCount: number; transactionCount: number; }
+export interface LedgerStatistics extends FinalGameSummaryResponse { cashLeaderboard: CashLeaderboardEntry[]; }
 
 export type CreateTransactionRequest =
   | PlayerToPlayerTransactionRequest

@@ -1,4 +1,4 @@
-import type { AddAccountEmailRequest, AuthTokenRequest, BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, GuestJoinGameRequest, JoinGameRequest, LoginRequest, PasswordResetConfirmationRequest, PasswordResetRequest, RegisterRequest, UpdateProfileRequest, UpgradeGuestRequest } from '../../shared/contracts/api.js';
+import type { AddAccountEmailRequest, AuthTokenRequest, BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, FinishGameRequest, GuestJoinGameRequest, JoinGameRequest, LoginRequest, PasswordResetConfirmationRequest, PasswordResetRequest, RegisterRequest, UpdateProfileRequest, UpgradeGuestRequest } from '../../shared/contracts/api.js';
 import { currencies, paymentModes, transactionTypes, type Currency, type PaymentMode, type TransactionType } from '../../shared/types/monopoly.js';
 import { ValidationError } from '../services/errors.js';
 
@@ -52,6 +52,7 @@ export async function parsePasswordResetRequest(request: Request): Promise<Passw
 export async function parsePasswordResetConfirmationRequest(request: Request): Promise<PasswordResetConfirmationRequest> { const body = await parseJsonObject(request); return { token: readAuthToken(body), password: readAccountPassword(body, 'password') }; }
 export async function parseDuplicateGameRequest(request: Request): Promise<DuplicateGameRequest> { const body = await parseJsonObject(request); return { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }; }
 export async function parseBankruptcyRequest(request: Request): Promise<BankruptcyRequest> { const body = await parseJsonObject(request); const creditorPlayerId = body.creditorPlayerId === undefined ? undefined : readUuid(body, 'creditorPlayerId'); return { playerId: readUuid(body, 'playerId'), ...(creditorPlayerId === undefined ? {} : { creditorPlayerId }) }; }
+export async function parseFinishGameRequest(request: Request): Promise<FinishGameRequest> { const body = await parseJsonObject(request); const winnerPlayerIds = readArray(body, 'winnerPlayerIds').map((value, index) => parseResourceId(readRequiredString({ value }, 'value', `winnerPlayerIds[${index}]`), `winnerPlayerIds[${index}]`)); if (new Set(winnerPlayerIds).size !== winnerPlayerIds.length) throw new ApiValidationError('winnerPlayerIds must not contain duplicates.'); return { winnerPlayerIds }; }
 
 function readCurrency(body: Record<string, unknown>): Currency {
   const value = body.currency;
