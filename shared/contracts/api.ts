@@ -80,6 +80,7 @@ export interface CreateInvitationResponse {
 export interface RevokeInvitationResponse { revoked: boolean; }
 export interface DuplicateGameRequest { gameAccessPassword: string; }
 export interface UserProfile { id: string; nickname: string; avatar: string; accountType: AccountType; email: string | null; emailVerified: boolean; gamesPlayed: number; gamesWon: number; gamesLost: number; winRate: number; createdAt: string; updatedAt: string; }
+export interface AccountExport { exportedAt: string; profile: Pick<UserProfile, 'id' | 'nickname' | 'avatar' | 'accountType' | 'email' | 'emailVerified' | 'createdAt' | 'updatedAt'>; memberships: Array<{ gameId: string; gameName: string; gameStatus: string; role: 'OWNER' | 'PLAYER'; playerId: string | null }>; }
 
 export interface CreateGamePlayerRequest {
   name: string;

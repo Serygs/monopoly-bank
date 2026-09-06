@@ -1,4 +1,4 @@
-import type { ActivityPage, ActivityScope, AddAccountEmailRequest, ApiError, ApiResponse, BankruptcyRequest, CreateBankingCommandResponse, CreateGameRequest, CreateInvitationResponse, CreateTransactionRequest, CreateTransactionResponse, DeleteGameResponse, FinishGameRequest, GameDetails, GameSummary, GuestJoinGameRequest, GuestJoinGameResponse, JoinGameRequest, LedgerStatistics, LoginRequest, PaymentRequest, PaymentRequestActionResponse, RegisterRequest, RevokeInvitationResponse, UpdateProfileRequest, UpgradeGuestRequest, UserProfile } from '../../shared/contracts/api.js';
+import type { AccountExport, ActivityPage, ActivityScope, AddAccountEmailRequest, ApiError, ApiResponse, BankruptcyRequest, CreateBankingCommandResponse, CreateGameRequest, CreateInvitationResponse, CreateTransactionRequest, CreateTransactionResponse, DeleteGameResponse, FinishGameRequest, GameDetails, GameSummary, GuestJoinGameRequest, GuestJoinGameResponse, JoinGameRequest, LedgerStatistics, LoginRequest, PaymentRequest, PaymentRequestActionResponse, RegisterRequest, RevokeInvitationResponse, UpdateProfileRequest, UpgradeGuestRequest, UserProfile } from '../../shared/contracts/api.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { Player, Game } from '../../shared/types/monopoly.js';
 
@@ -54,6 +54,8 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   async resendVerification(): Promise<void> { await request<{ accepted: boolean }>('/api/auth/verification-email', { method: 'POST' }); }
   async logout(): Promise<void> { await request<null>('/api/auth/logout', { method: 'POST' }); }
   async updateProfile(input: UpdateProfileRequest): Promise<UserProfile> { return request<UserProfile>('/api/profile', { method: 'PATCH', body: JSON.stringify(input) }); }
+  async exportAccount(): Promise<AccountExport> { return request<AccountExport>('/api/account/export'); }
+  async deleteAccount(): Promise<void> { await request<null>('/api/account', { method: 'DELETE' }); }
   async listGames(): Promise<GameSummary[]> { return request<GameSummary[]>('/api/games'); }
   async createGame(input: CreateGameRequest): Promise<GameDetails> { return request<GameDetails>('/api/games', { method: 'POST', body: JSON.stringify(input) }); }
   async joinGame(input: JoinGameRequest): Promise<GameDetails> { return request<GameDetails>('/api/games/join', { method: 'POST', body: JSON.stringify(input) }); }

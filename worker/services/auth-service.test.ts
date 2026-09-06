@@ -69,6 +69,14 @@ describe('AuthService email accounts and guests', () => {
     expect(upgraded.profile).toMatchObject({ id: guest.profile.id, accountType: 'REGISTERED', email: 'guest@example.test', emailVerified: false });
     expect(fixture.users.byId.get(guest.profile.id)?.accountType).toBe('REGISTERED');
   });
+
+  it('keeps registration and guest play available when email delivery is unavailable', async () => {
+    const fixture = createFixture();
+    fixture.email.fail = true;
+
+    await expect(fixture.auth.register({ nickname: 'Ada', avatar: 'рџЋ©', email: 'ada@example.test', password: 'secure-password' })).resolves.toMatchObject({ profile: { accountType: 'REGISTERED' } });
+    await expect(fixture.auth.createGuest('Guest', 'рџЋІ')).resolves.toMatchObject({ profile: { accountType: 'GUEST' } });
+  });
 });
 
 function createFixture() {
@@ -91,4 +99,4 @@ class MemoryUsers implements UserRepository {
 
 class MemorySessions implements SessionRepository { readonly revokedUserIds: string[] = []; async create(): Promise<void> {} async findUserId(): Promise<string | null> { return null; } async delete(): Promise<void> {} async deleteAllForUser(userId: string): Promise<void> { this.revokedUserIds.push(userId); } async deleteExpired(): Promise<void> {} }
 class MemoryTokens implements AuthTokenRepository { readonly issued: Array<{ userId: string; purpose: AuthTokenPurpose; tokenHash: string }> = []; readonly active = new Set<string>(); nextConsumedUserId: string | null = null; async issue(input: { id: string; userId: string; purpose: AuthTokenPurpose; tokenHash: string }): Promise<boolean> { const key = `${input.userId}:${input.purpose}`; if (this.active.has(key)) return false; this.active.add(key); this.issued.push(input); return true; } async consume(_tokenHash: string, purpose: AuthTokenPurpose): Promise<string | null> { const userId = this.nextConsumedUserId; if (userId !== null) this.active.delete(`${userId}:${purpose}`); this.nextConsumedUserId = null; return userId; } async discard(): Promise<void> {} async deleteExpired(): Promise<void> {} }
-class MemoryEmail implements TransactionalEmailProvider { readonly messages: TransactionalEmail[] = []; async send(message: TransactionalEmail): Promise<void> { this.messages.push(message); } }
+class MemoryEmail implements TransactionalEmailProvider { readonly messages: TransactionalEmail[] = []; fail = false; async send(message: TransactionalEmail): Promise<void> { if (this.fail) throw new Error('provider unavailable'); this.messages.push(message); } }

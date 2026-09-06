@@ -18,14 +18,17 @@ import { D1GameStatisticsRepository } from './repositories/game-statistics-repos
 import { DurableObjectGameLiveGateway } from './services/game-live-gateway.js';
 import { ResendTransactionalEmailProvider } from './services/transactional-email.js';
 import { D1SecurityRateLimitRepository } from './repositories/security-rate-limit-repository.js';
+import { AnalyticsOperationalMetrics } from './services/operational-metrics.js';
+import { D1PrivacyRepository } from './repositories/privacy-repository.js';
 export { GameSession } from './game-session.js';
 
 export default {
-  fetch(request, env) {
+  async fetch(request, env) {
     if (!new URL(request.url).pathname.startsWith('/api/')) {
       return new Response(null, { status: 404 });
     }
 
+    const startedAt = Date.now(); const metrics = new AnalyticsOperationalMetrics(env.OPERATIONAL_METRICS);
     const games = new D1GameRepository(env.MONOPOLY_BANK_DB);
     const players = new D1PlayerRepository(env.MONOPOLY_BANK_DB);
     const transactions = new D1TransactionRepository(env.MONOPOLY_BANK_DB);
@@ -34,7 +37,7 @@ export default {
     const access = new GameAccessService(new D1GameAccessRepository(env.MONOPOLY_BANK_DB));
     const router = createApiRouter({
       games: new DefaultGameService({ games, players, createId }),
-      auth: new AuthService(new D1UserRepository(env.MONOPOLY_BANK_DB), new D1SessionRepository(env.MONOPOLY_BANK_DB), new D1AuthTokenRepository(env.MONOPOLY_BANK_DB), new ResendTransactionalEmailProvider(authEnv.RESEND_API_KEY, authEnv.RESEND_FROM_EMAIL), createId, authEnv.APP_ORIGIN),
+      auth: new AuthService(new D1UserRepository(env.MONOPOLY_BANK_DB), new D1SessionRepository(env.MONOPOLY_BANK_DB), new D1AuthTokenRepository(env.MONOPOLY_BANK_DB), new ResendTransactionalEmailProvider(authEnv.RESEND_API_KEY, authEnv.RESEND_FROM_EMAIL, fetch, metrics), createId, authEnv.APP_ORIGIN, new D1PrivacyRepository(env.MONOPOLY_BANK_DB)),
       access,
       profileStatistics: new ProfileStatisticsService(new D1GameCompletionRepository(env.MONOPOLY_BANK_DB)),
       statistics: new D1GameStatisticsRepository(env.MONOPOLY_BANK_DB),
@@ -48,13 +51,26 @@ export default {
       }),
       live: new DurableObjectGameLiveGateway(env.GAME_SESSIONS),
       rateLimits: new D1SecurityRateLimitRepository(env.MONOPOLY_BANK_DB),
+      metrics,
     });
-    return router(request);
+    try { const response = await router(request); metrics.record('api', apiOperation(request), response.ok ? 'success' : 'failure', Date.now() - startedAt, response.status); return response; }
+    catch (error) { metrics.record('api', apiOperation(request), 'unavailable', Date.now() - startedAt, 500); throw error; }
   },
   scheduled(_controller, env, ctx) {
     const authEnv = env as Env & { RESEND_API_KEY: string; RESEND_FROM_EMAIL: string; APP_ORIGIN: string };
-    const auth = new AuthService(new D1UserRepository(env.MONOPOLY_BANK_DB), new D1SessionRepository(env.MONOPOLY_BANK_DB), new D1AuthTokenRepository(env.MONOPOLY_BANK_DB), new ResendTransactionalEmailProvider(authEnv.RESEND_API_KEY, authEnv.RESEND_FROM_EMAIL), () => crypto.randomUUID(), authEnv.APP_ORIGIN);
+    const metrics = new AnalyticsOperationalMetrics(env.OPERATIONAL_METRICS);
+    const privacy = new D1PrivacyRepository(env.MONOPOLY_BANK_DB);
+    const auth = new AuthService(new D1UserRepository(env.MONOPOLY_BANK_DB), new D1SessionRepository(env.MONOPOLY_BANK_DB), new D1AuthTokenRepository(env.MONOPOLY_BANK_DB), new ResendTransactionalEmailProvider(authEnv.RESEND_API_KEY, authEnv.RESEND_FROM_EMAIL, fetch, metrics), () => crypto.randomUUID(), authEnv.APP_ORIGIN, privacy);
     const rateLimits = new D1SecurityRateLimitRepository(env.MONOPOLY_BANK_DB);
-    ctx.waitUntil(Promise.all([auth.cleanupExpired(), rateLimits.cleanup()]).then(() => undefined));
+    ctx.waitUntil(Promise.all([auth.cleanupExpired(), rateLimits.cleanup(), privacy.cleanupExpiredGuests(), privacy.cleanupExpiredOperationalData()]).then(() => metrics.record('cleanup', 'scheduled', 'success')).catch(() => metrics.record('cleanup', 'scheduled', 'failure')));
   },
 } satisfies ExportedHandler<Env>;
+
+function apiOperation(request: Request): string {
+  const path = new URL(request.url).pathname;
+  if (path.startsWith('/api/auth/')) return 'auth';
+  if (path.includes('/live')) return 'live';
+  if (path.includes('/transactions') || path.includes('/payment-requests')) return 'banking';
+  if (path.startsWith('/api/games')) return 'games';
+  return 'other';
+}

@@ -12,6 +12,7 @@ import { handleError } from '../services/error-handler.js';
 import { requireSameOriginForMutation, requireSameOriginWebSocket, securityHeaders } from '../services/request-security.js';
 import { securityEvent } from '../services/security-events.js';
 import type { SecurityRateLimitRepository } from '../repositories/security-rate-limit-repository.js';
+import type { OperationalMetrics } from '../services/operational-metrics.js';
 import { tokenHash } from '../services/password-security.js';
 import {
   ApiValidationError,
@@ -42,6 +43,7 @@ export interface ApiRouterDependencies {
   statistics?: GameStatisticsRepository;
   live?: GameLiveGateway;
   rateLimits?: SecurityRateLimitRepository;
+  metrics?: OperationalMetrics;
 }
 
 export function createApiRouter(dependencies: ApiRouterDependencies) {
@@ -122,6 +124,12 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   if (pathname === '/api/auth/upgrade' && request.method === 'POST') { const body = await parseUpgradeGuestRequest(request); const result = await dependencies.auth.upgradeGuest(actor.id, body.email, body.password); return success(result.profile, 200, result.cookie); }
   if (pathname === '/api/auth/email' && request.method === 'POST') return success(await dependencies.auth.addEmailToLegacyAccount(actor.id, (await parseAddAccountEmailRequest(request)).email));
   if (pathname === '/api/auth/verification-email' && request.method === 'POST') { await dependencies.auth.resendVerification(actor.id); return success({ accepted: true }, 202); }
+  if (pathname === '/api/telemetry/pwa' && request.method === 'POST') {
+    const body = await request.json() as { event?: unknown };
+    if (body.event !== 'UPDATE_AVAILABLE' && body.event !== 'UPDATE_APPLIED' && body.event !== 'OFFLINE_SHELL') throw new ApiValidationError('Unsupported PWA telemetry event.');
+    dependencies.metrics?.record('pwa', body.event.toLowerCase(), 'success', 0, 202);
+    return success({ accepted: true }, 202);
+  }
   if (pathname === '/api/profile') {
     if (request.method === 'GET') return success(actor);
     if (request.method === 'PATCH') { const body = await parseUpdateProfileRequest(request); return success(await dependencies.auth.update(actor.id, body.nickname, body.avatar)); }
@@ -178,6 +186,8 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
     const winners = (snapshot?.winnerPlayerIds ?? []).map((id) => details.players.find((player) => player.id === id)).filter((player): player is typeof details.players[number] => player !== undefined);
     return success({ game: details.game, winners, ...summary });
   }
+  if (pathname === '/api/account/export' && request.method === 'GET') return success(await dependencies.auth.exportAccount(actor.id));
+  if (pathname === '/api/account' && request.method === 'DELETE') return success(null, 200, await dependencies.auth.deleteAccount(actor.id));
   if (duplicateMatch !== null && request.method === 'POST') { const gameId = parseResourceId(duplicateMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.duplicateGameForOwner(actor.id, gameId, (await parseDuplicateGameRequest(request)).gameAccessPassword), 201); }
   if (startMatch !== null && request.method === 'POST') { const gameId = parseResourceId(startMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'START_GAME', commandId: readCommandId(request) }); return success(await dependencies.games.startGame(gameId)); }
   if (finishMatch !== null && request.method === 'POST') { const gameId = parseResourceId(finishMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); const body = await parseFinishGameRequest(request); const existing = await dependencies.games.getGame(gameId); if (body.winnerPlayerIds.some((id) => !existing.players.some((player) => player.id === id))) throw new ApiValidationError('winnerPlayerIds must belong to this game.'); if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'FINISH_GAME', commandId: readCommandId(request), winnerPlayerIds: body.winnerPlayerIds }); if (dependencies.statistics === undefined) throw new ConflictError('STATISTICS_UNAVAILABLE', 'Statistics are not configured.'); await dependencies.statistics.saveFinalSnapshot(gameId, body.winnerPlayerIds, await dependencies.statistics.calculate(existing.game, existing.players)); const details = await dependencies.games.finishGame(gameId); const winnerIds = new Set(body.winnerPlayerIds); const participants = (await dependencies.access.linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) })); await dependencies.profileStatistics.recordCompletedGame(gameId, participants); return success(details); }

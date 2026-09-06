@@ -13,6 +13,9 @@
 	"observability": {
 		"enabled": true
 	},
+	"analytics_engine_datasets": [
+		{ "binding": "OPERATIONAL_METRICS", "dataset": "monopoly_bank_operational" }
+	],
 	"triggers": { "crons": ["0 3 * * *"] },
 	"upload_source_maps": true,
 	"durable_objects": {
