@@ -24,7 +24,7 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
 
   async create(input: Omit<PaymentRequest, 'createdAt' | 'resolvedAt' | 'transactionId'>): Promise<void> {
     await this.database.prepare(`INSERT INTO payment_requests (id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(input.id, input.gameId, input.payerPlayerId, input.recipientPlayerId, input.creatorPlayerId, input.approverPlayerId, input.amount, input.comment, input.state, input.expiresAt).run();
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`).bind(input.id, input.gameId, input.payerPlayerId, input.recipientPlayerId, input.creatorPlayerId, input.approverPlayerId, input.amount, input.comment, input.state, input.expiresAt).run();
   }
 
   async getById(gameId: string, id: string): Promise<PaymentRequest | null> {
@@ -62,7 +62,8 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
       .bind(input.transactionId, input.transaction.gameId, participant.playerId, participant.balanceDelta));
     const requestStatement = this.database.prepare(`UPDATE payment_requests SET state = 'ACCEPTED', resolved_at = CURRENT_TIMESTAMP, transaction_id = ?
       WHERE id = ? AND state = 'PENDING' AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).bind(input.transactionId, input.requestId);
-    try { await this.database.batch([balanceStatement, transactionStatement, ...participants, requestStatement]); }
+    const recentStatements = [this.database.prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?').bind(input.transaction.gameId, input.transaction.amount), this.database.prepare('INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES (?, ?, CURRENT_TIMESTAMP)').bind(input.transaction.gameId, input.transaction.amount), this.database.prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount NOT IN (SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5)').bind(input.transaction.gameId, input.transaction.gameId)];
+    try { await this.database.batch([balanceStatement, transactionStatement, ...participants, requestStatement, ...recentStatements]); }
     catch (cause) { throw new DatabaseError({ operation: 'settlePaymentRequest', cause }); }
   }
 

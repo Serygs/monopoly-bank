@@ -65,26 +65,24 @@ export class DefaultBankingService implements BankingService {
     gameId: string,
     request: CreateTransactionRequest,
   ): Promise<CreateBankingCommandResponse> {
+    const transactionId = this.createId();
+    const existing = await this.transactions.getById(gameId, transactionId);
+    if (existing !== null) return { transaction: existing, players: await this.players.listByGameId(gameId) };
     const game = await this.games.getById(gameId);
     if (game === null) {
       throw new ResourceNotFoundError('Game');
     }
     const players = await this.players.listByGameId(gameId);
     if (game.paymentMode === 'CONFIRMATION' && (request.type === 'PLAYER_TO_PLAYER' || request.type === 'ALL_TO_PLAYER')) {
-      return this.createConfirmationRequests(gameId, request, players);
+      return this.createConfirmationRequests(gameId, request, players, transactionId);
     }
     const result = executeOperation(game, players, request);
-    const transactionId = this.createId();
-
     await this.operations.persist({
       transactionId,
       transaction: result.transaction,
       balanceChanges: result.affectedPlayers,
+      ...(request.type === 'PASS_GO' ? {} : { recentAmount: result.transaction.amount }),
     });
-
-    if (request.type !== 'PASS_GO') {
-      await this.games.recordRecentAmount(gameId, result.transaction.amount);
-    }
 
     const transaction = await this.transactions.getById(gameId, transactionId);
     if (transaction === null) {
@@ -122,7 +120,6 @@ export class DefaultBankingService implements BankingService {
     await this.paymentRequests.settle({ requestId, transactionId, transaction: result.transaction, balanceChanges: result.affectedPlayers });
     const transaction = await this.transactions.getById(gameId, transactionId); if (transaction === null) throw new PersistenceConsistencyError();
     const accepted = await this.requirePaymentRequest(gameId, requestId);
-    await this.games.recordRecentAmount(gameId, paymentRequest.amount);
     return { paymentRequest: accepted, transaction, players: await this.players.listByGameId(gameId) };
   }
 
@@ -149,12 +146,13 @@ export class DefaultBankingService implements BankingService {
     const players = await this.players.listByGameId(gameId);
     const result = declareBankruptcy({ game, players, ...request });
     const transactionId = this.createId();
+    const existing = await this.transactions.getById(gameId, transactionId); if (existing !== null) return { transaction: existing, players: await this.players.listByGameId(gameId) };
     await this.operations.persist({ transactionId, transaction: result.transaction, balanceChanges: result.affectedPlayers, bankruptPlayerId: request.playerId });
     const transaction = await this.transactions.getById(gameId, transactionId); if (transaction === null) throw new PersistenceConsistencyError();
     return { transaction, players: await this.players.listByGameId(gameId) };
   }
 
-  private async createConfirmationRequests(gameId: string, request: Extract<CreateTransactionRequest, { type: 'PLAYER_TO_PLAYER' | 'ALL_TO_PLAYER' }>, players: Awaited<ReturnType<PlayerRepository['listByGameId']>>): Promise<import('../../shared/contracts/api.js').CreatePaymentRequestResponse> {
+  private async createConfirmationRequests(gameId: string, request: Extract<CreateTransactionRequest, { type: 'PLAYER_TO_PLAYER' | 'ALL_TO_PLAYER' }>, players: Awaited<ReturnType<PlayerRepository['listByGameId']>>, commandId: string): Promise<import('../../shared/contracts/api.js').CreatePaymentRequestResponse> {
     const pairs = request.type === 'PLAYER_TO_PLAYER'
       ? [{ payerPlayerId: request.sourcePlayerId, recipientPlayerId: request.destinationPlayerId, creatorPlayerId: request.sourcePlayerId, approverPlayerId: request.destinationPlayerId, amount: request.amount, comment: request.comment ?? null }]
       : players.filter((player) => player.id !== request.recipientPlayerId).map((player) => ({ payerPlayerId: player.id, recipientPlayerId: request.recipientPlayerId, creatorPlayerId: request.recipientPlayerId, approverPlayerId: player.id, amount: request.amountPerPlayer, comment: request.comment ?? null }));
@@ -165,8 +163,8 @@ export class DefaultBankingService implements BankingService {
       if (payer.balance - reserved < pair.amount) throw new ConflictError('INSUFFICIENT_AVAILABLE_FUNDS', 'Player does not have enough available funds.');
     }
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    const paymentRequests = await Promise.all(pairs.map(async (pair) => {
-      const id = this.createId();
+    const paymentRequests = await Promise.all(pairs.map(async (pair, index) => {
+      const id = commandScopedId(commandId, index);
       const paymentRequest: Omit<PaymentRequest, 'createdAt' | 'resolvedAt' | 'transactionId'> = { id, gameId, ...pair, state: 'PENDING', expiresAt };
       await this.paymentRequests.create(paymentRequest);
       return (await this.paymentRequests.getById(gameId, id)) as PaymentRequest;
@@ -187,6 +185,8 @@ export class DefaultBankingService implements BankingService {
     return paymentRequest;
   }
 }
+
+function commandScopedId(commandId: string, index: number): string { return `${commandId.slice(0, -1)}${index.toString(16)}`; }
 
 function executeOperation(
   game: Parameters<typeof playerToPlayer>[0]['game'],

@@ -12,16 +12,17 @@ import { D1GameCompletionRepository } from './repositories/game-completion-repos
 import { GameAccessService } from './services/game-access-service.js';
 import { ProfileStatisticsService } from './services/profile-statistics-service.js';
 import { D1GameStatisticsRepository } from './repositories/game-statistics-repository.js';
+import { D1CommandLedgerRepository, type CommandLedgerRepository } from './repositories/command-ledger-repository.js';
 import { controlledPlayerIdForBankingCommand } from '../shared/domain/player-control.js';
 import { handleError } from './services/error-handler.js';
-import { ValidationError } from './services/errors.js';
+import { ConflictError, ValidationError } from './services/errors.js';
 
 /** One instance per game: serializes writes and keeps hibernatable member sockets. */
 export class GameSession {
   private readonly ctx: DurableObjectState;
   private readonly env: Env;
   /** Covers the gap before a completed command reaches durable storage. */
-  private readonly inFlightCommands = new Map<string, Promise<ResponsePayload>>();
+  private readonly inFlightCommands = new Map<string, { actorId: string; payloadHash: string; response: Promise<ResponsePayload> }>();
   constructor(ctx: DurableObjectState, env: Env) { this.ctx = ctx; this.env = env; }
 
   async fetch(request: Request): Promise<Response> {
@@ -65,28 +66,36 @@ export class GameSession {
     const userId = typeof userIdOrRequest === 'string' ? userIdOrRequest : request.headers.get('x-user-id') ?? undefined;
     const command: unknown = await request.json().catch(() => null);
     if (!isLiveMutationCommand(command)) return handleError(new ValidationError('Invalid live mutation command.'), { requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(), method: request.method, path: '/mutation', gameId, ...(userId === undefined ? {} : { userId }) });
-    const replay = await this.ctx.storage.get<ResponsePayload>(`command:${command.commandId}`);
-    if (replay !== undefined) return Response.json(replay, { status: replay.status });
     try {
-      const pending = this.inFlightCommands.get(command.commandId) ?? this.startCommand(gameId, userId, command);
-      const response = await pending;
+      if (userId === undefined) throw new ValidationError('Authenticated user is required.');
+      const payloadHash = await commandPayloadHash(command);
+      const existing = this.inFlightCommands.get(command.commandId);
+      if (existing !== undefined && (existing.actorId !== userId || existing.payloadHash !== payloadHash)) throw new ConflictError('COMMAND_ID_REUSED', 'This command ID belongs to a different command.');
+      const response = await (existing?.response ?? this.startCommand(gameId, userId, command, payloadHash));
       return Response.json(response, { status: response.status, headers: { 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() } });
     } catch (error) { return handleError(error, { requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(), method: request.method, path: '/mutation', gameId, ...(userId === undefined ? {} : { userId }) }); }
   }
 
-  private startCommand(gameId: string, userId: string | undefined, command: LiveMutationCommand): Promise<ResponsePayload> {
+  private startCommand(gameId: string, userId: string, command: LiveMutationCommand, payloadHash: string): Promise<ResponsePayload> {
     const pending = (async () => {
+      const ledger = this.commandLedger();
+      const entry = await ledger.claim({ gameId, commandId: command.commandId, actorId: userId, commandType: command.type, payloadHash });
+      if (entry.status === 'COMPLETED') return replay(entry);
       await this.authorizeMutation(gameId, userId, command);
       const response = await this.execute(gameId, command);
+      await this.afterCommit('executed');
+      await ledger.complete({ gameId, commandId: command.commandId, status: response.status, result: response.data, transactionId: transactionIdFor(response.data) });
+      await this.afterCommit('ledger-completed');
       const version = await this.incrementVersion();
-      await this.ctx.storage.put(`command:${command.commandId}`, response);
+      await this.afterCommit('version-incremented');
       await this.publish(command, response.data, version);
+      await this.afterCommit('published');
       return response;
     })();
-    this.inFlightCommands.set(command.commandId, pending);
+    this.inFlightCommands.set(command.commandId, { actorId: userId, payloadHash, response: pending });
     void pending.then(
-      () => { if (this.inFlightCommands.get(command.commandId) === pending) this.inFlightCommands.delete(command.commandId); },
-      () => { if (this.inFlightCommands.get(command.commandId) === pending) this.inFlightCommands.delete(command.commandId); },
+      () => { if (this.inFlightCommands.get(command.commandId)?.response === pending) this.inFlightCommands.delete(command.commandId); },
+      () => { if (this.inFlightCommands.get(command.commandId)?.response === pending) this.inFlightCommands.delete(command.commandId); },
     );
     return pending;
   }
@@ -100,6 +109,9 @@ export class GameSession {
     if (command.type === 'DECLARE_BANKRUPTCY') return { status: 201, data: await banking.declareBankruptcy(gameId, command.request) };
     return { status: 200, data: await this.finishGame(gameId, command.winnerPlayerIds) };
   }
+
+  /** Test seam for failures after a durable financial commit; production is a no-op. */
+  private async afterCommit(stage: 'executed' | 'ledger-completed' | 'version-incremented' | 'published'): Promise<void> { void stage; }
 
   private async lobbyUpdated(gameId: string): Promise<Response> {
     const details = await this.gameService().getGame(gameId);
@@ -147,6 +159,7 @@ export class GameSession {
   private version(): Promise<number> { return this.ctx.storage.get<number>('version').then((value) => value ?? 0); }
   private async incrementVersion(): Promise<number> { const value = (await this.version()) + 1; await this.ctx.storage.put('version', value); return value; }
   private transactions() { return new D1TransactionRepository(this.env.MONOPOLY_BANK_DB); }
+  private commandLedger(): CommandLedgerRepository { return new D1CommandLedgerRepository(this.env.MONOPOLY_BANK_DB); }
   private gameService() { const database = this.env.MONOPOLY_BANK_DB; return new DefaultGameService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), createId: () => crypto.randomUUID() }); }
   private access() { return new GameAccessService(new D1GameAccessRepository(this.env.MONOPOLY_BANK_DB)); }
   private banking(commandId: string) { const database = this.env.MONOPOLY_BANK_DB; return new DefaultBankingService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), transactions: new D1TransactionRepository(database), operations: new D1BankingOperationRepository(database), paymentRequests: new D1PaymentRequestRepository(database), createId: () => commandId }); }
@@ -165,3 +178,8 @@ export class GameSession {
 }
 
 interface ResponsePayload { status: number; data: unknown; }
+
+async function commandPayloadHash(command: LiveMutationCommand): Promise<string> { const payload: Record<string, unknown> = { ...command }; delete payload.commandId; const encoded = new TextEncoder().encode(canonicalJson(payload)); const hash = await crypto.subtle.digest('SHA-256', encoded); return [...new Uint8Array(hash)].map((value) => value.toString(16).padStart(2, '0')).join(''); }
+function canonicalJson(value: unknown): string { if (value === null || typeof value !== 'object') return JSON.stringify(value); if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`; const object = value as Record<string, unknown>; return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(object[key])}`).join(',')}}`; }
+function replay(entry: import('./repositories/command-ledger-repository.js').CommandLedgerEntry): ResponsePayload { if (entry.resultStatus === null || entry.resultJson === null) throw new ValidationError('Completed command has no result.'); return { status: entry.resultStatus, data: JSON.parse(entry.resultJson) as unknown }; }
+function transactionIdFor(data: unknown): string | null { if (data !== null && typeof data === 'object' && 'transaction' in data) { const transaction = (data as { transaction?: unknown }).transaction; if (transaction !== null && typeof transaction === 'object' && typeof (transaction as { id?: unknown }).id === 'string') return (transaction as { id: string }).id; } return null; }
