@@ -1,4 +1,4 @@
-import type { ApiSuccess } from '../../shared/contracts/api.js';
+import type { ApiSuccess, GameDetails } from '../../shared/contracts/api.js';
 import type { BankingService } from '../services/banking-service.js';
 import type { GameService } from '../services/game-service.js';
 import { AuthService } from '../services/auth-service.js';
@@ -96,8 +96,14 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
     if (access.status !== 'LOBBY') throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
     const profile = await dependencies.auth.createGuest(body.nickname, body.avatar);
     const details = await dependencies.games.getGame(access.gameId);
-    await dependencies.access.joinLobby({ gameId: access.gameId, userId: profile.profile.id, nickname: profile.profile.nickname, playerId: crypto.randomUUID(), color: nextPlayerColor(details.players), startingBalance: details.game.startingBalance });
-    await dependencies.live?.lobbyUpdated(access.gameId).catch(() => undefined);
+    const playerId = crypto.randomUUID(); const color = nextPlayerColor(details.players);
+    if (dependencies.live !== undefined) {
+      const response = await dependencies.live.mutate(access.gameId, profile.profile, { type: 'JOIN_LOBBY', commandId: readCommandId(request), playerId, nickname: profile.profile.nickname, color, startingBalance: details.game.startingBalance });
+      if (!response.ok) return response;
+      const payload = await response.json() as { data: GameDetails };
+      return success({ profile: profile.profile, game: payload.data }, 201, profile.cookie);
+    }
+    await dependencies.access.joinLobby({ gameId: access.gameId, userId: profile.profile.id, nickname: profile.profile.nickname, playerId, color, startingBalance: details.game.startingBalance });
     return success({ profile: profile.profile, game: await dependencies.games.getGame(access.gameId) }, 201, profile.cookie);
   }
 
@@ -117,8 +123,9 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
     if (access === null) throw new InvalidJoinCodeError();
     if (access.status !== 'LOBBY') throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
     const details = await dependencies.games.getGame(access.gameId);
-    await dependencies.access.joinLobby({ gameId: access.gameId, userId: actor.id, nickname: actor.nickname, playerId: crypto.randomUUID(), color: nextPlayerColor(details.players), startingBalance: details.game.startingBalance });
-    await dependencies.live?.lobbyUpdated(access.gameId).catch(() => undefined);
+    const playerId = crypto.randomUUID(); const color = nextPlayerColor(details.players);
+    if (dependencies.live !== undefined) return dependencies.live.mutate(access.gameId, actor, { type: 'JOIN_LOBBY', commandId: readCommandId(request), playerId, nickname: actor.nickname, color, startingBalance: details.game.startingBalance });
+    await dependencies.access.joinLobby({ gameId: access.gameId, userId: actor.id, nickname: actor.nickname, playerId, color, startingBalance: details.game.startingBalance });
     return success(await dependencies.games.getGame(access.gameId));
   }
 
@@ -160,7 +167,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
     return success({ game: details.game, winners, ...summary });
   }
   if (duplicateMatch !== null && request.method === 'POST') { const gameId = parseResourceId(duplicateMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.duplicateGameForOwner(actor.id, gameId, (await parseDuplicateGameRequest(request)).gameAccessPassword), 201); }
-  if (startMatch !== null && request.method === 'POST') { const gameId = parseResourceId(startMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); return success(await dependencies.games.startGame(gameId)); }
+  if (startMatch !== null && request.method === 'POST') { const gameId = parseResourceId(startMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'START_GAME', commandId: readCommandId(request) }); return success(await dependencies.games.startGame(gameId)); }
   if (finishMatch !== null && request.method === 'POST') { const gameId = parseResourceId(finishMatch[1], 'gameId'); await dependencies.access.requireOwner(gameId, actor.id); const body = await parseFinishGameRequest(request); const existing = await dependencies.games.getGame(gameId); if (body.winnerPlayerIds.some((id) => !existing.players.some((player) => player.id === id))) throw new ApiValidationError('winnerPlayerIds must belong to this game.'); if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'FINISH_GAME', commandId: readCommandId(request), winnerPlayerIds: body.winnerPlayerIds }); if (dependencies.statistics === undefined) throw new ConflictError('STATISTICS_UNAVAILABLE', 'Statistics are not configured.'); await dependencies.statistics.saveFinalSnapshot(gameId, body.winnerPlayerIds, await dependencies.statistics.calculate(existing.game, existing.players)); const details = await dependencies.games.finishGame(gameId); const winnerIds = new Set(body.winnerPlayerIds); const participants = (await dependencies.access.linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) })); await dependencies.profileStatistics.recordCompletedGame(gameId, participants); return success(details); }
   if (activityMatch !== null && request.method === 'GET') { const gameId = parseResourceId(activityMatch[1], 'gameId'); await dependencies.access.requireMember(gameId, actor.id); if (dependencies.statistics === undefined) throw new ConflictError('STATISTICS_UNAVAILABLE', 'Statistics are not configured.'); const query = new URL(request.url).searchParams; const scope = query.get('scope') ?? 'ALL'; if (scope !== 'ALL' && scope !== 'MINE' && scope !== 'PENDING') throw new ApiValidationError('scope must be ALL, MINE, or PENDING.'); const limit = readHistoryLimit(request); const cursor = readActivityCursor(query.get('cursor')); const wallets = await dependencies.access.controlledWallets(gameId, actor.id); return success(scope === 'PENDING' ? await dependencies.statistics.pending(gameId, wallets.map((wallet) => wallet.playerId), cursor, limit) : await dependencies.statistics.activity(gameId, scope, wallets.map((wallet) => wallet.playerId), cursor, limit)); }
   if (favoriteMatch !== null && request.method === 'POST') {

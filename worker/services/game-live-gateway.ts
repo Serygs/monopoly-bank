@@ -4,7 +4,6 @@ import type { LiveMutationCommand } from '../../shared/contracts/live.js';
 export interface GameLiveGateway {
   connect(gameId: string, actor: UserProfile, request: Request): Promise<Response>;
   mutate(gameId: string, actor: UserProfile, command: LiveMutationCommand): Promise<Response>;
-  lobbyUpdated(gameId: string): Promise<void>;
 }
 
 /** The public Worker authenticates requests before forwarding them to the per-game object. */
@@ -26,9 +25,6 @@ export class DurableObjectGameLiveGateway implements GameLiveGateway {
     }));
   }
 
-  async lobbyUpdated(gameId: string): Promise<void> {
-    await this.session(gameId).fetch(new Request('https://game-session/lobby-updated', { method: 'POST', headers: { 'x-game-id': gameId } }));
-  }
 
   private session(gameId: string): DurableObjectStub { return this.sessions.get(this.sessions.idFromName(gameId)); }
 }

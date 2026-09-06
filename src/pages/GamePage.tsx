@@ -19,6 +19,7 @@ import { playerNameWithGameId } from '../utils/player-display';
 import { playerTransactionAmount, transactionAmount, transactionDescription } from '../utils/transaction-history';
 import { isLiveServerEvent, type LiveServerEvent } from '../../shared/contracts/live';
 import { createLocalQr } from '../utils/local-qr';
+import { acceptsLiveVersion } from '../utils/live-version';
 
 type ActionType = CreateTransactionRequest['type'];
 interface Props { gameId: string; onBack: () => void; preferences: DevicePreferences; offline: boolean; onPaymentFlowChange: (open: boolean) => void; }
@@ -54,6 +55,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [paymentRequestNotice, setPaymentRequestNotice] = useState(false);
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
+  const lastAppliedVersion = useRef(0);
   useEffect(() => { onPaymentFlowChange(selectedPlayer !== null || bankruptPlayer !== null); return () => onPaymentFlowChange(false); }, [selectedPlayer, bankruptPlayer, onPaymentFlowChange]);
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     if (details?.game.status !== 'ACTIVE' || offline) {
       return;
     }
-    let closed = false; let retry: number | undefined; let socket: WebSocket | null = null; let attempts = 0;
+    let closed = false; let retry: number | undefined; let heartbeat: number | undefined; let socket: WebSocket | null = null; let attempts = 0;
     const connect = () => {
       if (closed) return;
       setLiveStatus(attempts === 0 ? 'connecting' : 'reconnecting');
@@ -80,13 +82,13 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
       const nextSocket = new WebSocket(url);
       socket = nextSocket;
-      nextSocket.onopen = () => { if (socket === nextSocket) { attempts = 0; setLiveStatus('live'); } };
-      nextSocket.onmessage = (message) => { if (socket !== nextSocket) return; try { const event: unknown = JSON.parse(String(message.data)); if (isLiveServerEvent(event)) { applyLiveEvent(event, setDetails, setHistory, historyCache); if (event.type === 'TRANSACTION_CREATED') setLiveTransactions((current) => [event.transaction, ...current.filter((item) => item.id !== event.transaction.id)].slice(0, 50)); if (event.type === 'PAYMENT_REQUESTS_UPDATED') loadPaymentRequests(); } } catch { /* Ignore malformed network data. */ } };
-      nextSocket.onclose = () => { if (closed || socket !== nextSocket) return; setLiveStatus('offline'); attempts += 1; retry = window.setTimeout(connect, Math.min(1000 * 2 ** (attempts - 1), 10_000)); };
+      nextSocket.onopen = () => { if (socket === nextSocket) { attempts = 0; setLiveStatus('live'); heartbeat = window.setInterval(() => { if (nextSocket.readyState === WebSocket.OPEN) nextSocket.send(JSON.stringify({ type: 'HEARTBEAT' })); }, 20_000); } };
+      nextSocket.onmessage = (message) => { if (socket !== nextSocket) return; try { const event: unknown = JSON.parse(String(message.data)); if (!isLiveServerEvent(event)) return; if (event.type === 'GAME_SNAPSHOT') { lastAppliedVersion.current = event.state.stateVersion; applyLiveEvent(event, setDetails, setHistory, historyCache); return; } if (!acceptsLiveVersion(lastAppliedVersion.current, event.stateVersion)) { nextSocket.close(4001, 'State version gap: resync required.'); return; } if (event.stateVersion > lastAppliedVersion.current) lastAppliedVersion.current = event.stateVersion; applyLiveEvent(event, setDetails, setHistory, historyCache); if (event.type === 'GAME_COMMITTED') setLiveTransactions((current) => [event.transaction, ...current.filter((item) => item.id !== event.transaction.id)].slice(0, 50)); if (event.type === 'PAYMENT_REQUESTS_UPDATED') loadPaymentRequests(); } catch { /* Ignore malformed network data. */ } };
+      nextSocket.onclose = () => { if (heartbeat !== undefined) { window.clearInterval(heartbeat); heartbeat = undefined; } if (closed || socket !== nextSocket) return; setLiveStatus('offline'); attempts += 1; const base = Math.min(1000 * 2 ** (attempts - 1), 10_000); retry = window.setTimeout(connect, Math.round(base * (0.7 + Math.random() * 0.6))); };
       nextSocket.onerror = () => { if (socket === nextSocket) nextSocket.close(); };
     };
     connect();
-    return () => { closed = true; if (retry !== undefined) window.clearTimeout(retry); socket?.close(); };
+    return () => { closed = true; if (retry !== undefined) window.clearTimeout(retry); if (heartbeat !== undefined) window.clearInterval(heartbeat); socket?.close(); };
   }, [gameId, details?.game.status, loadPaymentRequests, offline]);
 
   const loadHistory = async (player: Player | null = null) => {
@@ -134,7 +136,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
       <div><p className="eyebrow">{t('activeGame')}</p><h1>{details.game.name}</h1><p className="lede">{t('configuredPassGoReward', { amount: formatMoney(details.game.passGoReward, details.game.currency) })}</p>{details.game.status === 'ACTIVE' && <span className={`live-status live-status-${liveStatus}`} role="status">{liveStatus === 'live' ? t('connectionLive') : liveStatus === 'connecting' ? t('connectionConnecting') : liveStatus === 'reconnecting' ? t('connectionReconnecting') : t('connectionOffline')}</span>}</div>
       <div className="header-actions">{details.canManage && details.game.status === 'LOBBY' && <button className="button button-secondary" type="button" disabled={offline} onClick={() => setInviteOpen(true)}>{t('invitePlayers')}</button>}{details.canManage && details.game.status === 'ACTIVE' && <button className="button button-danger" type="button" disabled={offline} onClick={() => setFinishing(true)}>{t('finishGame')}</button>}<button className="button button-secondary" type="button" disabled={offline} onClick={() => setActivityOpen(true)}>{t('activity')}</button><button className="button button-secondary" type="button" disabled={offline} onClick={() => void monopolyBankApi.getGameSummary(gameId).then((result) => { setSummary(result); setStatisticsOpen(true); })}>{t('statistics')}</button><button className="button button-quiet" type="button" onClick={onBack}>{t('savedGames')}</button></div>
     </section>
-    {details.game.status === 'LOBBY' && <section className="notice notice-success" role="status"><p>{t('waitingForPlayers')} — {t('startGameHint')}</p>{details.canManage && <button className="button button-primary" type="button" disabled={details.players.length < 2} onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}>{t('startGame')}</button>}</section>}
+    {details.game.status === 'LOBBY' && <section className="notice notice-success" role="status"><p>{t('waitingForPlayers')} — {t('startGameHint')}</p>{details.canManage && <button className="button button-primary" type="button" disabled={offline || details.players.length < 2} onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}>{t('startGame')}</button>}</section>}
     {notice !== null && <section className="notice notice-success" role="status"><p>{t('recorded', { action: actionLabel(notice, t) })}</p><button className="button button-quiet" type="button" onClick={() => setNotice(null)}>{t('dismiss')}</button></section>}
     {paymentRequestNotice && <section className="notice notice-success" role="status"><p>{t('paymentRequestCreated')}</p><button className="button button-quiet" type="button" onClick={() => setPaymentRequestNotice(false)}>{t('dismiss')}</button></section>}
     {controlledWallets.length > 0 && <fieldset className="wallet-switcher"><legend>{t('walletSwitcher')}</legend><div>{controlledWallets.map((wallet) => { const player = details.players.find((candidate) => candidate.id === wallet.playerId); if (player === undefined) return null; return <button className="button button-secondary" type="button" key={wallet.playerId} aria-pressed={activeControlledWalletId === wallet.playerId} onClick={() => setActiveWalletId(wallet.playerId)}>{controllerLabel(wallet.kind, t)}: {player.name}</button>; })}</div></fieldset>}
@@ -321,11 +323,10 @@ function HistoryDialog({ history, player, players, currency, error, language, lo
 }
 
 function applyLiveEvent(event: LiveServerEvent, setDetails: React.Dispatch<React.SetStateAction<GameDetails | null>>, setHistory: React.Dispatch<React.SetStateAction<Transaction[] | null>>, historyCache: MutableRefObject<Map<string, Transaction[]>>) {
-  if (event.type === 'GAME_STATE') { historyCache.current.set('all', event.state.transactions); setDetails((current) => withClientGameDetails(event.state.details, current)); setHistory(event.state.transactions); return; }
+  if (event.type === 'GAME_SNAPSHOT') { historyCache.current.set('all', event.state.transactions); setDetails((current) => withClientGameDetails(event.state.details, current)); setHistory(event.state.transactions); return; }
   if (event.type === 'LOBBY_UPDATED') { setDetails((current) => current === null ? current : { ...current, game: event.details.game, players: event.details.players }); return; }
-  if (event.type === 'BALANCES_UPDATED' || event.type === 'PLAYER_BANKRUPT') { historyCache.current.clear(); setDetails((current) => current === null ? current : { ...current, players: event.players }); }
+  if (event.type === 'GAME_COMMITTED') { historyCache.current.clear(); setDetails((current) => current === null ? current : { ...current, players: event.players }); setHistory((current) => current === null ? current : [event.transaction, ...current.filter((transaction) => transaction.id !== event.transaction.id)]); return; }
   if (event.type === 'GAME_FINISHED') setDetails((current) => withClientGameDetails(event.details, current));
-  if (event.type === 'TRANSACTION_CREATED') { historyCache.current.clear(); setHistory((current) => current === null ? current : [event.transaction, ...current.filter((transaction) => transaction.id !== event.transaction.id)]); }
 }
 
 function withClientGameDetails(details: GameDetails, current: GameDetails | null): GameDetails {

@@ -31,9 +31,9 @@ describe('GameSession live coordinator', () => {
     expect((await session.mutate(gameId, 'actor', request())).status).toBe(201);
     expect((await session.mutate(gameId, 'actor', request())).status).toBe(201);
     expect(calls).toBe(1);
-    expect(sent[0]).toHaveLength(2);
+    expect(sent[0]).toHaveLength(1);
     expect(sent[0]).toEqual(sent[1]);
-    expect(JSON.parse(sent[0][0])).toMatchObject({ type: 'TRANSACTION_CREATED', transaction: { id: commandId } });
+    expect(JSON.parse(sent[0][0])).toMatchObject({ type: 'GAME_COMMITTED', stateVersion: 1, transaction: { id: commandId }, players: [] });
   });
 
   it('rejects requests that did not come through the authenticated Worker gateway', async () => {
@@ -91,13 +91,19 @@ describe('GameSession live coordinator', () => {
     }
   });
 
-  it('broadcasts the roster snapshot after a lobby join without polling clients', async () => {
-    const sent: string[] = [];
-    const context = { storage: { get: async () => 3, put: async () => undefined }, getWebSockets: () => [{ send: (message: string) => sent.push(message) }] };
-    const session = new GameSession(context as never, {} as Env) as unknown as { lobbyUpdated(gameId: string): Promise<Response>; gameService(): { getGame(): Promise<unknown> } };
-    session.gameService = () => ({ getGame: async () => ({ game: { id: gameId, status: 'LOBBY' }, players: [{ id: 'new-player' }] }) });
-    expect((await session.lobbyUpdated(gameId)).status).toBe(204);
-    expect(JSON.parse(sent[0])).toEqual({ type: 'LOBBY_UPDATED', version: 4, details: { game: { id: gameId, status: 'LOBBY' }, players: [{ id: 'new-player' }] } });
+  it('isolates a broken socket while delivering the committed event to healthy clients', async () => {
+    const delivered: string[] = []; let closed = false;
+    const context = { storage: { get: async <T>() => undefined as T | undefined, put: async () => undefined }, getWebSockets: () => [{ send: () => { throw new Error('broken'); }, close: () => { closed = true; } }, { send: (message: string) => delivered.push(message), close: () => undefined }] };
+    const session = new GameSession(context as never, {} as Env) as unknown as { broadcast(event: unknown): Promise<void> };
+    await session.broadcast({ type: 'HEARTBEAT', stateVersion: 2 });
+    expect(closed).toBe(true);
+    expect(delivered).toEqual([JSON.stringify({ type: 'HEARTBEAT', stateVersion: 2 })]);
+  });
+
+  it('counts multiple hibernatable sockets for one actor as one presence', () => {
+    const context = { getWebSockets: () => [{ deserializeAttachment: () => ({ userId: 'actor-a' }) }, { deserializeAttachment: () => ({ userId: 'actor-a' }) }, { deserializeAttachment: () => ({ userId: 'actor-b' }) }] };
+    const session = new GameSession(context as never, {} as Env) as unknown as { connectedActors(): number };
+    expect(session.connectedActors()).toBe(2);
   });
 });
 
