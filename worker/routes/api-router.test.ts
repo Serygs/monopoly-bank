@@ -4,7 +4,7 @@ import type { CreateGameRequest, CreateTransactionRequest, GameDetails, GameSumm
 import { InsufficientFundsError } from '../../shared/domain/banking.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { BankingService } from '../services/banking-service.js';
-import { ResourceNotFoundError } from '../services/errors.js';
+import { ForbiddenError, ResourceNotFoundError } from '../services/errors.js';
 import type { GameService } from '../services/game-service.js';
 import { createApiRouter } from './api-router.js';
 
@@ -30,6 +30,35 @@ const gameDetails: GameDetails = {
 };
 
 describe('API router', () => {
+  it('rejects cross-origin mutations before a service can write and attaches security headers', async () => {
+    let writes = 0;
+    const router = createTestRouter({ createGame: async () => { writes += 1; return gameDetails; } });
+    const response = await router(new Request('https://example.test/api/games', { method: 'POST', headers: { origin: 'https://attacker.test', 'content-type': 'application/json' }, body: JSON.stringify({}) }));
+    expect(response.status).toBe(403);
+    expect(writes).toBe(0);
+    expect(response.headers.get('content-security-policy')).toContain("default-src 'self'");
+    expect(response.headers.get('x-frame-options')).toBe('DENY');
+  });
+  it('uses the same generic response for known and unknown password-reset requests', async () => {
+    const requestedEmails: string[] = [];
+    const router = createApiRouter({
+      games: {} as GameService,
+      banking: {} as BankingService,
+      auth: { requestPasswordReset: async (email: string) => { requestedEmails.push(email); } } as never,
+      access: {} as never,
+      profileStatistics: {} as never,
+    });
+
+    const known = await router(jsonRequest('POST', '/api/auth/password-reset', { email: 'known@example.test' }));
+    const unknown = await router(jsonRequest('POST', '/api/auth/password-reset', { email: 'unknown@example.test' }));
+
+    expect(known.status).toBe(202);
+    expect(unknown.status).toBe(202);
+    await expect(known.json()).resolves.toEqual({ data: { accepted: true } });
+    await expect(unknown.json()).resolves.toEqual({ data: { accepted: true } });
+    expect(requestedEmails).toEqual(['known@example.test', 'unknown@example.test']);
+  });
+
   it('creates a valid game with server-validated input', async () => {
     let received: CreateGameRequest | undefined;
     const router = createTestRouter({
@@ -128,6 +157,26 @@ describe('API router', () => {
     expect(received).toMatchObject({ type: 'PLAYER_TO_PLAYER', amount: 100 });
   });
 
+  it('rejects a direct transaction for a foreign wallet before any banking service call', async () => {
+    let writes = 0;
+    let liveMutations = 0;
+    const router = createApiRouter({
+      games: {} as GameService,
+      banking: { createTransaction: async () => { writes += 1; return transactionResponse(); } } as BankingService,
+      auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Member', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: { requireMember: async () => 'OWNER', requirePlayerController: async () => { throw new ForbiddenError(); } } as never,
+      profileStatistics: {} as never,
+      live: { connect: async () => new Response(), mutate: async () => { liveMutations += 1; return new Response(); } },
+    });
+
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/transactions`, { type: 'PLAYER_TO_BANK', playerId: secondPlayerId, amount: 100 }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: { code: 'FORBIDDEN', message: 'You are not allowed to perform this operation.', requestId: expect.any(String) } });
+    expect(writes).toBe(0);
+    expect(liveMutations).toBe(0);
+  });
+
   it('rejects retired PAY_RENT creation requests', async () => {
     const response = await createTestRouter()(jsonRequest('POST', `/api/games/${gameId}/transactions`, {
       type: 'PAY_RENT',
@@ -189,7 +238,7 @@ describe('API router', () => {
   it('does not expose an unowned legacy game through a normal authenticated API', async () => {
     const games: GameService = { listGames: async () => [], listGamesForUser: async () => [], createGame: async () => gameDetails, createGameForOwner: async () => gameDetails, getGame: async () => gameDetails, deleteGame: async () => ({ gameId }), duplicateGame: async () => gameDetails, finishGame: async () => gameDetails, toggleFavoriteAmount: async () => [] };
     const banking: BankingService = { createTransaction: async () => transactionResponse(), listTransactions: async () => [], listPlayerTransactions: async () => [] };
-    const router = createApiRouter({ games, banking, auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Test', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never, access: { requireMember: async () => { throw new ResourceNotFoundError('Game'); } } as never, profileStatistics: { recordCompletedGame: async () => undefined } as never });
+    const router = createApiRouter({ games, banking, auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Test', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never, access: { requireMember: async () => { throw new ResourceNotFoundError('Game'); }, controlledWallets: async () => [] } as never, profileStatistics: { recordCompletedGame: async () => undefined } as never });
     const response = await router(new Request(`https://example.test/api/games/${gameId}`));
     expect(response.status).toBe(404);
   });
@@ -197,7 +246,7 @@ describe('API router', () => {
   it('exposes an invitation code only to the game owner', async () => {
     const games: GameService = { listGames: async () => [], listGamesForUser: async () => [], createGameForOwner: async () => gameDetails, getGame: async () => gameDetails, deleteGame: async () => ({ gameId }), duplicateGameForOwner: async () => gameDetails, finishGame: async () => gameDetails, toggleFavoriteAmount: async () => [] };
     const banking: BankingService = { createTransaction: async () => transactionResponse(), listTransactions: async () => [], listPlayerTransactions: async () => [] };
-    const router = createApiRouter({ games, banking, auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Owner', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never, access: { requireMember: async () => 'OWNER', ownerJoinCode: async () => 'TABLE42' } as never, profileStatistics: { recordCompletedGame: async () => undefined } as never });
+    const router = createApiRouter({ games, banking, auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Owner', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never, access: { requireMember: async () => 'OWNER', ownerJoinCode: async () => 'TABLE42', controlledWallets: async () => [] } as never, profileStatistics: { recordCompletedGame: async () => undefined } as never });
 
     const response = await router(new Request(`https://example.test/api/games/${gameId}`));
 
@@ -207,7 +256,7 @@ describe('API router', () => {
   it('does not expose an invitation code to a player member', async () => {
     const response = await createTestRouter()(new Request(`https://example.test/api/games/${gameId}`));
 
-    await expect(response.json()).resolves.toEqual({ data: { ...gameDetails, canManage: false } });
+    await expect(response.json()).resolves.toEqual({ data: { ...gameDetails, controlledWallets: [], controlledPlayerIds: [], canManage: false } });
   });
 
   it('creates a secure lobby invitation only through the owner route', async () => {
@@ -216,14 +265,58 @@ describe('API router', () => {
       games: {} as GameService,
       banking: {} as BankingService,
       auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Owner', avatar: '🎩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
-      access: { requireOwner: async (requestedGameId: string) => { invitationInput = { gameId: requestedGameId, userId: '00000000-0000-4000-8000-000000000099' }; }, createInvitation: async () => 'secure-token' } as never,
+      access: { requireOwner: async (requestedGameId: string) => { invitationInput = { gameId: requestedGameId, userId: '00000000-0000-4000-8000-000000000099' }; }, createInvitation: async () => ({ invitationToken: 'secure-token', shortCode: 'TABLE42', expiresAt: '2026-02-01T00:00:00.000Z', visibility: 'UNLISTED' }) } as never,
       profileStatistics: { recordCompletedGame: async () => undefined } as never,
     });
 
     const response = await router(new Request(`https://example.test/api/games/${gameId}/invitations`, { method: 'POST' }));
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toEqual({ data: { invitationToken: 'secure-token' } });
+    await expect(response.json()).resolves.toEqual({ data: { invitationToken: 'secure-token', shortCode: 'TABLE42', expiresAt: '2026-02-01T00:00:00.000Z', visibility: 'UNLISTED' } });
+    expect(invitationInput).toEqual({ gameId, userId: '00000000-0000-4000-8000-000000000099' });
+  });
+
+  it('does not distinguish expired or revoked invitation tokens from an invalid token', async () => {
+    const router = createApiRouter({
+      games: {} as GameService,
+      banking: {} as BankingService,
+      auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Member', avatar: '🎩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: { invitation: async () => null } as never,
+      profileStatistics: {} as never,
+    });
+    const response = await router(jsonRequest('POST', '/api/games/join', { invitationToken: 'A'.repeat(43) }));
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'INVALID_JOIN_CODE' } });
+  });
+
+  it('preserves the Durable Object WebSocket upgrade response', async () => {
+    const upgrade = { status: 101, headers: new Headers({ 'x-request-id': 'live-request-id' }), body: null, statusText: '' } as Response;
+    const router = createApiRouter({
+      games: { getGame: async () => gameDetails } as never,
+      banking: {} as BankingService,
+      auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Member', avatar: '🎩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: { requireMember: async () => 'PLAYER' } as never,
+      profileStatistics: {} as never,
+      live: { connect: async () => upgrade, mutate: async () => new Response() },
+    });
+
+    await expect(router(new Request(`https://example.test/api/games/${gameId}/live`, { headers: { upgrade: 'websocket' } }))).resolves.toBe(upgrade);
+  });
+
+  it('creates a secure lobby invitation only through the owner route', async () => {
+    let invitationInput: { gameId: string; userId: string } | undefined;
+    const router = createApiRouter({
+      games: {} as GameService,
+      banking: {} as BankingService,
+      auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Owner', avatar: '🎩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: { requireOwner: async (requestedGameId: string) => { invitationInput = { gameId: requestedGameId, userId: '00000000-0000-4000-8000-000000000099' }; }, createInvitation: async () => ({ invitationToken: 'secure-token', shortCode: 'TABLE42', expiresAt: '2026-02-01T00:00:00.000Z', visibility: 'UNLISTED' }) } as never,
+      profileStatistics: { recordCompletedGame: async () => undefined } as never,
+    });
+
+    const response = await router(new Request(`https://example.test/api/games/${gameId}/invitations`, { method: 'POST' }));
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({ data: { invitationToken: 'secure-token', shortCode: 'TABLE42', expiresAt: '2026-02-01T00:00:00.000Z', visibility: 'UNLISTED' } });
     expect(invitationInput).toEqual({ gameId, userId: '00000000-0000-4000-8000-000000000099' });
   });
 
@@ -306,7 +399,7 @@ function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {
     ...pickBankingOverrides(overrides),
   };
   const auth = { current: async () => ({ id: '00000000-0000-4000-8000-000000000099', nickname: 'Test', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) };
-  const access = { requireMember: async () => 'PLAYER' as const, requireOwner: async () => undefined };
+  const access = { requireMember: async () => 'PLAYER' as const, requireOwner: async () => undefined, requirePlayerController: async () => undefined, controlledWallets: async () => [] };
   const profileStatistics = { recordCompletedGame: async () => undefined };
   return createApiRouter({ games, banking, auth: auth as never, access: access as never, profileStatistics: profileStatistics as never });
 }

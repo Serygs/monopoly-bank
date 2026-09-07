@@ -60,7 +60,7 @@ export class DefaultGameService implements GameService {
         startingBalance: request.startingBalance,
         passGoReward: request.passGoReward,
         currency: request.currency,
-        status: 'LOBBY', ownerUserId: owner.userId, joinCode: owner.joinCode, gameAccessPasswordHash: owner.hasPassword ? owner.hash : null, gameAccessPasswordSalt: owner.hasPassword ? owner.salt : null,
+        status: 'LOBBY', paymentMode: request.paymentMode ?? 'FAST', ownerUserId: owner.userId, joinCode: owner.joinCode, gameAccessPasswordHash: owner.hasPassword ? owner.hash : null, gameAccessPasswordSalt: owner.hasPassword ? owner.salt : null,
       },
       playerInputs,
     );
@@ -97,6 +97,7 @@ export class DefaultGameService implements GameService {
       startingBalance: source.game.startingBalance,
       passGoReward: source.game.passGoReward,
       currency: source.game.currency,
+      paymentMode: source.game.paymentMode,
       gameAccessPassword,
       players: source.players.map((player) => ({ name: player.name, color: player.color })),
     });

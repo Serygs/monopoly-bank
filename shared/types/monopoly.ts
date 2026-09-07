@@ -5,6 +5,9 @@ export type GameStatus = (typeof gameStatuses)[number];
 export const currencies = ['USD', 'EUR', 'UAH', 'K'] as const;
 export type Currency = (typeof currencies)[number];
 
+export const paymentModes = ['FAST', 'CONFIRMATION'] as const;
+export type PaymentMode = (typeof paymentModes)[number];
+
 export const transactionTypes = [
   'PLAYER_TO_PLAYER',
   'PLAYER_TO_BANK',
@@ -24,6 +27,8 @@ export interface Game {
   startingBalance: number;
   passGoReward: number;
   currency: Currency;
+  /** Set at lobby creation and immutable once the game starts. */
+  paymentMode: PaymentMode;
   status: GameStatus;
   createdAt: string;
   updatedAt: string;
