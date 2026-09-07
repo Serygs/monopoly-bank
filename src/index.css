@@ -18,9 +18,35 @@
   --color-brand: #1f6b45;
   --color-brand-strong: #123e2c;
   --color-brass: #c8a958;
+  --color-income-surface: #e1f3e6;
+  --color-income-border: #3c8258;
+  --color-income-text: #153f28;
+  --color-expense-surface: #f8e3e3;
+  --color-expense-border: #b9464d;
+  --color-expense-text: #682128;
+  --color-paper: #fff9e9;
+  --color-paper-rule: rgb(31 107 69 / .11);
+  --color-felt-deep: #0f3828;
+  --color-felt-mid: #1d6748;
+  --color-rail: #c83d3f;
+  --color-gold-light: #f3dda0;
   --shadow-surface: 0 8px 22px rgb(37 54 44 / .08);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --radius-control: 12px;
   --radius-panel: 12px;
   --radius-panel-large: 18px;
+  --focus-ring: 3px solid var(--color-brass);
+  --motion-fast: .16s ease;
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-right: env(safe-area-inset-right, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-safe-left: env(safe-area-inset-left, 0px);
 
   font-family: var(--font-ui);
   color: var(--color-text);
@@ -46,6 +72,18 @@
   --color-brand: #2d895d;
   --color-brand-strong: #d7ecda;
   --color-brass: #dfc96d;
+  --color-income-surface: #174c32;
+  --color-income-border: #76ca93;
+  --color-income-text: #f0fbf2;
+  --color-expense-surface: #572a31;
+  --color-expense-border: #f08a90;
+  --color-expense-text: #fff2f2;
+  --color-paper: #1b392c;
+  --color-paper-rule: rgb(215 236 218 / .09);
+  --color-felt-deep: #091c15;
+  --color-felt-mid: #174b35;
+  --color-rail: #d85b62;
+  --color-gold-light: #ebd881;
   --shadow-surface: 0 12px 28px rgb(0 0 0 / .24);
 }
 * { box-sizing: border-box; }

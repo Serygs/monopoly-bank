@@ -34,7 +34,7 @@ describe('lobby request validation', () => {
   });
 
   it('accepts six-character account passwords and invitation tokens', async () => {
-    await expect(parseRegisterRequest(jsonRequest({ nickname: 'Player', avatar: '🎩', password: '123456' }))).resolves.toMatchObject({ password: '123456' });
+    await expect(parseRegisterRequest(jsonRequest({ nickname: 'Player', avatar: '🎩', email: 'Player@Example.test', password: '123456' }))).resolves.toMatchObject({ email: 'player@example.test', password: '123456' });
     await expect(parseJoinGameRequest(jsonRequest({ invitationToken: 'A'.repeat(43) }))).resolves.toEqual({ invitationToken: 'A'.repeat(43) });
   });
 });

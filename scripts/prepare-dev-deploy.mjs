@@ -26,5 +26,10 @@ if (!database) {
 configuration.name = 'monopoly-bank-dev'
 database.database_name = databaseName
 database.database_id = databaseId
+// Analytics Engine is an account-level optional service. Keep production and
+// staging observability strict, but allow the isolated development Worker to
+// deploy in accounts where it has not been enabled.
+delete configuration.analytics_engine_datasets
+configuration.vars = { ...configuration.vars, ENVIRONMENT: 'development' }
 
 await writeFile(outputPath, `${JSON.stringify(configuration, null, 2)}\n`)

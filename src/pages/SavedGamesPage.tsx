@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GameSummary } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { Dialog } from '../components/Dialog';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 
@@ -20,26 +21,21 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   const [removeError, setRemoveError] = useState<unknown | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [duplicating, setDuplicating] = useState<string | null>(null);
+  const [gameToDuplicate, setGameToDuplicate] = useState<GameSummary | null>(null);
+  const [duplicatePassword, setDuplicatePassword] = useState('');
+  const [duplicateError, setDuplicateError] = useState<unknown | null>(null);
 
   const loadGames = () => {
     setLoading(true);
     setError(null);
-    void monopolyBankApi.listGames()
-      .then(setGames, setError)
-      .finally(() => setLoading(false));
+    void monopolyBankApi.listGames().then(setGames, setError).finally(() => setLoading(false));
   };
 
   useEffect(() => {
     let active = true;
     void monopolyBankApi.listGames()
-      .then((result) => {
-        if (active) setGames(result);
-      }, (caught: unknown) => {
-        if (active) setError(caught);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+      .then((result) => { if (active) setGames(result); }, (caught: unknown) => { if (active) setError(caught); })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
@@ -49,10 +45,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   };
 
   const removeGame = async () => {
-    if (gameToRemove === null) {
-      return;
-    }
-
+    if (gameToRemove === null) return;
     setRemoving(true);
     setRemoveError(null);
     try {
@@ -66,12 +59,30 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
       setRemoving(false);
     }
   };
-  const duplicateGame = async (game: GameSummary) => {
-    const gameAccessPassword = window.prompt(t('copyGamePasswordPrompt'));
-    if (gameAccessPassword === null) return;
-    if (gameAccessPassword.length < 4) { window.alert(t('gamePasswordMinLength')); return; }
-    setDuplicating(game.game.id);
-    try { onOpenGame((await monopolyBankApi.duplicateGame(game.game.id, gameAccessPassword)).game.id); } finally { setDuplicating(null); }
+
+  const requestDuplicate = (game: GameSummary) => {
+    setGameToDuplicate(game);
+    setDuplicatePassword('');
+    setDuplicateError(null);
+  };
+
+  const duplicateGame = async () => {
+    if (gameToDuplicate === null) return;
+    if (duplicatePassword.length < 4) {
+      setDuplicateError(new Error(t('gamePasswordMinLength')));
+      return;
+    }
+    setDuplicating(gameToDuplicate.game.id);
+    setDuplicateError(null);
+    try {
+      const result = await monopolyBankApi.duplicateGame(gameToDuplicate.game.id, duplicatePassword);
+      setGameToDuplicate(null);
+      onOpenGame(result.game.id);
+    } catch (caught) {
+      setDuplicateError(caught);
+    } finally {
+      setDuplicating(null);
+    }
   };
 
   return <main className="page saved-games-page">
@@ -81,7 +92,10 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
         <h1>{t('savedGames')}</h1>
         <p className="lede">{t('savedGamesLede')}</p>
       </div>
-      <div className="header-actions"><button className="button button-secondary" type="button" onClick={() => onJoinGame()}>{t('joinGame')}</button><button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button></div>
+      <div className="header-actions">
+        <button className="button button-secondary" type="button" onClick={() => onJoinGame()}>{t('joinGame')}</button>
+        <button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button>
+      </div>
     </section>
 
     {notice !== null && <section className="notice notice-success" role="status">
@@ -113,19 +127,14 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
           {summary.isPublicLobby && summary.joinCode !== undefined
             ? <button className="button button-secondary" type="button" onClick={() => onJoinGame(summary.joinCode)}>{t('joinOpenLobby')}</button>
             : <button className="button button-secondary" type="button" onClick={() => onOpenGame(summary.game.id)}>{t('openGame')}</button>}
-          <button className="button button-quiet" type="button" disabled={duplicating === summary.game.id} onClick={() => void duplicateGame(summary)}>{duplicating === summary.game.id ? 'Copying…' : 'Duplicate'}</button>
+          <button className="button button-quiet" type="button" disabled={duplicating === summary.game.id} onClick={() => requestDuplicate(summary)}>{duplicating === summary.game.id ? t('duplicating') : t('duplicate')}</button>
           <button className="button button-danger-quiet" type="button" aria-label={t('removeGameAria', { name: summary.game.name })} onClick={() => requestRemoval(summary)}>{t('removeGame')}</button>
         </div>
       </article>)}
     </section>}
 
-    {gameToRemove !== null && <RemoveGameDialog
-      game={gameToRemove}
-      error={removeError}
-      removing={removing}
-      onCancel={() => setGameToRemove(null)}
-      onConfirm={() => void removeGame()}
-    />}
+    {gameToRemove !== null && <RemoveGameDialog game={gameToRemove} error={removeError} removing={removing} onCancel={() => setGameToRemove(null)} onConfirm={() => void removeGame()} />}
+    {gameToDuplicate !== null && <DuplicateGameDialog password={duplicatePassword} error={duplicateError} duplicating={duplicating === gameToDuplicate.game.id} onPasswordChange={setDuplicatePassword} onCancel={() => setGameToDuplicate(null)} onConfirm={() => void duplicateGame()} />}
   </main>;
 }
 
@@ -137,43 +146,44 @@ function RemoveGameDialog({ game, error, removing, onCancel, onConfirm }: {
   onConfirm: () => void;
 }) {
   const { t } = useLanguage();
-  const titleId = useId();
-  const dialog = useRef<HTMLElement>(null);
+  const title = t('removeGameTitle', { name: game.game.name });
+  return <Dialog title={title} eyebrow={t('closeTable')} closeLabel={t('closeDialog', { title })} closeDisabled={removing} onClose={onCancel} className="remove-game-dialog">
+    <p>{t('removeGameWarning', { count: game.playerCount })}</p>
+    {error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableRemoveGame')}</p>}
+    <div className="dialog-actions">
+      <button className="button button-secondary" type="button" disabled={removing} onClick={onCancel}>{t('cancel')}</button>
+      <button className="button button-danger" type="button" disabled={removing} onClick={onConfirm}>{removing ? t('removing') : t('removeGame')}</button>
+    </div>
+  </Dialog>;
+}
 
-  useEffect(() => {
-    dialog.current?.focus();
-  }, []);
-
-  return <div className="dialog-backdrop" role="presentation" onMouseDown={() => { if (!removing) onCancel(); }}>
-    <section
-      ref={dialog}
-      className="dialog remove-game-dialog"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
-      tabIndex={-1}
-      onKeyDown={(event) => { if (event.key === 'Escape' && !removing) onCancel(); }}
-      onMouseDown={(event) => event.stopPropagation()}
-    >
-      <header>
-        <div>
-          <p className="eyebrow">{t('closeTable')}</p>
-          <h2 id={titleId}>{t('removeGameTitle', { name: game.game.name })}</h2>
-        </div>
-      </header>
-      <p>{t('removeGameWarning', { count: game.playerCount })}</p>
-      {error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableRemoveGame')}</p>}
-      <div className="dialog-actions">
-        <button className="button button-secondary" type="button" disabled={removing} onClick={onCancel}>{t('cancel')}</button>
-        <button className="button button-danger" type="button" disabled={removing} onClick={onConfirm}>{removing ? t('removing') : t('removeGame')}</button>
-      </div>
-    </section>
-  </div>;
+function DuplicateGameDialog({ password, error, duplicating, onPasswordChange, onCancel, onConfirm }: {
+  password: string;
+  error: unknown | null;
+  duplicating: boolean;
+  onPasswordChange: (password: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { t } = useLanguage();
+  const title = t('duplicateGame');
+  const passwordId = 'duplicate-game-password';
+  return <Dialog title={title} closeLabel={t('closeDialog', { title })} closeDisabled={duplicating} onClose={onCancel}>
+    <p className="dialog-intro">{t('duplicateGameDescription')}</p>
+    <label className="dialog-field" htmlFor={passwordId}>
+      <span>{t('copyGamePassword')}</span>
+      <input id={passwordId} type="password" autoComplete="new-password" minLength={4} value={password} onChange={(event) => onPasswordChange(event.target.value)} />
+      <small>{t('copyGamePasswordHint')}</small>
+    </label>
+    {error !== null && <p className="notice notice-error" role="alert">{error instanceof Error && error.message === t('gamePasswordMinLength') ? error.message : apiErrorMessage(error, t, 'unableDuplicateGame')}</p>}
+    <div className="dialog-actions">
+      <button className="button button-secondary" type="button" disabled={duplicating} onClick={onCancel}>{t('cancel')}</button>
+      <button className="button button-primary" type="button" disabled={duplicating} onClick={onConfirm}>{duplicating ? t('duplicating') : t('duplicateGame')}</button>
+    </div>
+  </Dialog>;
 }
 
 function formatDate(value: string, locale: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.valueOf())
-    ? value
-    : new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
+  return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
 }

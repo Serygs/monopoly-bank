@@ -1,0 +1,15 @@
+{
+  "name": "Monopoly Bank",
+  "short_name": "Monopoly Bank",
+  "description": "A shared table bank for Monopoly games.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eee8d5",
+  "theme_color": "#0f3828",
+  "icons": [
+    { "src": "/icons/monopoly-bank-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/icons/monopoly-bank-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

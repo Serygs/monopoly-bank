@@ -25,5 +25,6 @@ export class DurableObjectGameLiveGateway implements GameLiveGateway {
     }));
   }
 
+
   private session(gameId: string): DurableObjectStub { return this.sessions.get(this.sessions.idFromName(gameId)); }
 }
