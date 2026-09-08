@@ -1,5 +1,6 @@
 import { useId, useState, type ChangeEvent } from 'react';
 import { AVATAR_OPTIONS, isUploadedAvatar } from '../utils/avatar';
+import { cropAvatar } from '../utils/avatar-image';
 
 export function Avatar({ avatar, label, className = '' }: { avatar: string; label: string; className?: string }) {
   return isUploadedAvatar(avatar)
@@ -39,25 +40,4 @@ export function AvatarPicker({ avatar, onChange, label, uploadLabel, uploadHint,
     {allowUpload && <div className="avatar-upload"><input id={fileInputId} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void selectFile(event)} /><label className="button button-secondary" htmlFor={fileInputId}>{uploadLabel}</label><span className="field-hint">{uploadHint}</span></div>}
     {uploadError !== null && <p className="field-error" role="alert">{uploadError}</p>}
   </fieldset>;
-}
-
-async function cropAvatar(file: File): Promise<string> {
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) throw new Error('Unsupported image');
-  const url = URL.createObjectURL(file);
-  try {
-    const image = new Image();
-    image.src = url;
-    await image.decode();
-    const side = Math.min(image.naturalWidth, image.naturalHeight);
-    if (side === 0) throw new Error('Empty image');
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-    canvas.getContext('2d')?.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, 256, 256);
-    const result = canvas.toDataURL('image/jpeg', 0.86);
-    if (result.length > 100_000) throw new Error('Image is too large');
-    return result;
-  } finally {
-    URL.revokeObjectURL(url);
-  }
 }

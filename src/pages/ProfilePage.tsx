@@ -19,8 +19,8 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
 }
 
 function VerificationNotice() {
-  const { t } = useLanguage(); const [busy, setBusy] = useState(false); const [error, setError] = useState<unknown>(null); const resend = async () => { setBusy(true); setError(null); try { await monopolyBankApi.resendVerification(); } catch (caught) { setError(caught); } finally { setBusy(false); } };
-  return <section className="notice notice-success" role="status"><p>{t('verificationPending')}</p>{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableAuthenticate')}</p>}<button className="button button-secondary" type="button" disabled={busy} onClick={() => void resend()}>{t('resendVerification')}</button></section>;
+  const { t } = useLanguage(); const [busy, setBusy] = useState(false); const [error, setError] = useState<unknown>(null); const [sent, setSent] = useState(false); const resend = async () => { setBusy(true); setError(null); setSent(false); try { await monopolyBankApi.resendVerification(); setSent(true); } catch (caught) { setError(caught); } finally { setBusy(false); } };
+  return <section className="verification-notice"><div className="notice notice-success" role="status"><p>{sent ? t('verificationSent') : t('verificationPending')}</p><button className="button button-secondary" type="button" disabled={busy} onClick={() => void resend()}>{busy ? t('pleaseWait') : t('resendVerification')}</button></div>{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'errorEmailDelivery')}</p>}</section>;
 }
 
 function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void }) {

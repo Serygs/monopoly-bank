@@ -8,6 +8,7 @@ const errorKeys: Record<string, TranslationKey> = {
   NOT_FOUND: 'errorNotFound',
   PERSISTENCE_ERROR: 'errorPersistence',
   INTERNAL_ERROR: 'errorUnexpected',
+  EMAIL_DELIVERY_UNAVAILABLE: 'errorEmailDelivery',
 };
 
 export function apiErrorMessage(error: unknown, t: Translate, fallback: TranslationKey): string {
