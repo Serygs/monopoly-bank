@@ -124,9 +124,9 @@ npm run dev
 
 The Vite Cloudflare plugin runs the React UI and Worker together. Local D1 data is held in `.wrangler/`, which is ignored by Git.
 
-### Transactional email
+### Transactional email (temporarily disabled)
 
-Email verification and password reset use Resend. Configure these Worker secrets for every deployed environment:
+Email verification and password reset are temporarily hidden in the UI. The Resend setup below is retained for re-enabling the feature later.
 
 - `RESEND_API_KEY` — a Resend API key allowed to send from the configured domain;
 - `RESEND_FROM_EMAIL` — a sender address on a verified Resend domain, for example `Monopoly Bank <accounts@example.com>`;
@@ -186,7 +186,7 @@ In GitHub, open **Settings → Environments** and create both `development` and 
 - `CLOUDFLARE_API_TOKEN` — the Cloudflare API token;
 - `CLOUDFLARE_ACCOUNT_ID` — the Cloudflare account ID.
 
-Environment secrets are separate: adding credentials to `production` does not make them available to `development`. Do not store either value in source code or as a plain GitHub variable.
+Environment secrets are separate: adding credentials to `production` does not make them available to `development`. Do not store these values in source code or as plain GitHub variables.
 
 ### Automatic development deployment
 

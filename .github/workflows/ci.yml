@@ -92,11 +92,7 @@ jobs:
       - name: Prepare development Worker configuration
         run: node scripts/prepare-dev-deploy.mjs
 
-      - name: Validate required development email secrets
-        run: |
-          npx wrangler secret list --config dist/monopoly_bank/wrangler.dev.json --format json > development-secrets.json
-          jq -e 'map(.name) as $names | ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "APP_ORIGIN"] | all(. as $required | $names | index($required))' development-secrets.json
-          rm development-secrets.json
+      # Email delivery is temporarily disabled; do not require or sync Resend secrets.
 
       - name: Apply development D1 migrations
         run: npx wrangler d1 migrations apply "$CLOUDFLARE_DEV_D1_DATABASE_NAME" --remote --config dist/monopoly_bank/wrangler.dev.json
