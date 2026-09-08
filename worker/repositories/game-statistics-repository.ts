@@ -18,7 +18,7 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
     if (scope === 'MINE' && playerIds.length === 0) return { transactions: [], paymentRequests: [], nextCursor: null };
     const cursorClause = cursor === null ? '' : 'AND (created_at < ? OR (created_at = ? AND id < ?))';
     const membershipClause = scope === 'MINE' ? `AND EXISTS (SELECT 1 FROM transaction_participants mine WHERE mine.transaction_id = transactions.id AND mine.player_id IN (${playerIds.map(() => '?').join(', ')}))` : '';
-    const values: (string | number)[] = [gameId, ...playerIds];
+    const values: (string | number)[] = [gameId, ...(scope === 'MINE' ? playerIds : [])];
     if (cursor !== null) values.push(cursor.createdAt, cursor.createdAt, cursor.id);
     values.push(limit + 1);
     const rows = await this.database.prepare(`SELECT id FROM transactions WHERE game_id = ? ${membershipClause} ${cursorClause} ORDER BY created_at DESC, id DESC LIMIT ?`).bind(...values).all<{ id: string }>();
