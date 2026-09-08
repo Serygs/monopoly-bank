@@ -70,6 +70,8 @@ jobs:
           WRANGLER_CONFIG_PATH=dist/monopoly_bank/wrangler.json EXPECTED_D1_DATABASE_ID="d9a99c5e-be1d-4112-a8e1-cba4b910a77d" EXPECTED_D1_DATABASE_NAME=monopoly-bank EXPECTED_WORKER_NAME=monopoly-bank npm run check:bindings
           npx wrangler deploy --dry-run
 
+      # Email delivery is temporarily disabled; do not require or sync Resend secrets.
+
       - name: Apply production D1 migrations
         run: npx wrangler d1 migrations apply MONOPOLY_BANK_DB --remote
 

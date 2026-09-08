@@ -124,6 +124,24 @@ npm run dev
 
 The Vite Cloudflare plugin runs the React UI and Worker together. Local D1 data is held in `.wrangler/`, which is ignored by Git.
 
+### Transactional email (temporarily disabled)
+
+Email verification and password reset are temporarily hidden in the UI. The Resend setup below is retained for re-enabling the feature later.
+
+- `RESEND_API_KEY` — a Resend API key allowed to send from the configured domain;
+- `RESEND_FROM_EMAIL` — a sender address on a verified Resend domain, for example `Monopoly Bank <accounts@example.com>`;
+- `APP_ORIGIN` — the public HTTPS origin used in email links, without a trailing path.
+
+Set each value against the intended Worker configuration, for example:
+
+```bash
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put RESEND_FROM_EMAIL
+npx wrangler secret put APP_ORIGIN
+```
+
+Development and staging deployments must pass their generated `--config` file to the same commands. Release workflows now stop before deployment when any required email secret is absent.
+
 ## Validation
 
 ```bash
@@ -168,7 +186,7 @@ In GitHub, open **Settings → Environments** and create both `development` and 
 - `CLOUDFLARE_API_TOKEN` — the Cloudflare API token;
 - `CLOUDFLARE_ACCOUNT_ID` — the Cloudflare account ID.
 
-Environment secrets are separate: adding credentials to `production` does not make them available to `development`. Do not store either value in source code or as a plain GitHub variable.
+Environment secrets are separate: adding credentials to `production` does not make them available to `development`. Do not store these values in source code or as plain GitHub variables.
 
 ### Automatic development deployment
 

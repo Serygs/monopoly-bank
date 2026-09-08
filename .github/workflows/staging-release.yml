@@ -66,11 +66,7 @@ jobs:
           WRANGLER_CONFIG_PATH=dist/monopoly_bank/wrangler.staging.json EXPECTED_D1_DATABASE_ID="$CLOUDFLARE_STAGING_D1_DATABASE_ID" EXPECTED_D1_DATABASE_NAME="$CLOUDFLARE_STAGING_D1_DATABASE_NAME" EXPECTED_WORKER_NAME="$CLOUDFLARE_STAGING_WORKER_NAME" npm run check:bindings
           npx wrangler deploy --dry-run --config dist/monopoly_bank/wrangler.staging.json
 
-      - name: Validate required staging secrets without revealing them
-        run: |
-          npx wrangler secret list --config dist/monopoly_bank/wrangler.staging.json --json > staging-secrets.json
-          jq -e 'map(.name) as $names | ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "APP_ORIGIN"] | all(. as $required | $names | index($required))' staging-secrets.json
-          rm staging-secrets.json
+      # Email delivery is temporarily disabled; do not require or sync Resend secrets.
 
       - name: Rehearse a staging backup restore in isolated local D1
         run: |
