@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { AuthTokenPurpose, AuthTokenRepository } from '../repositories/auth-token-repository.js';
 import type { SessionRepository } from '../repositories/session-repository.js';
 import type { CreateUserInput, UserRecord, UserRepository } from '../repositories/user-repository.js';
-import { InvalidCredentialsError } from './errors.js';
+import { EmailDeliveryError, InvalidCredentialsError } from './errors.js';
 import { AuthService } from './auth-service.js';
 import type { TransactionalEmail, TransactionalEmailProvider } from './transactional-email.js';
 
@@ -77,6 +77,28 @@ describe('AuthService email accounts and guests', () => {
     await expect(fixture.auth.register({ nickname: 'Ada', avatar: 'рџЋ©', email: 'ada@example.test', password: 'secure-password' })).resolves.toMatchObject({ profile: { accountType: 'REGISTERED' } });
     await expect(fixture.auth.createGuest('Guest', 'рџЋІ')).resolves.toMatchObject({ profile: { accountType: 'GUEST' } });
   });
+
+  it('replaces an active verification token when the user explicitly resends', async () => {
+    const fixture = createFixture();
+    const registered = await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', email: 'ada@example.test', password: 'secure-password' });
+
+    await fixture.auth.resendVerification(registered.profile.id);
+
+    expect(fixture.email.messages).toHaveLength(2);
+    expect(fixture.tokens.issued).toHaveLength(2);
+    expect(fixture.email.messages[1].text).not.toBe(fixture.email.messages[0].text);
+  });
+
+  it('reports resend delivery failures and permits another retry', async () => {
+    const fixture = createFixture();
+    const registered = await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', email: 'ada@example.test', password: 'secure-password' });
+    fixture.email.fail = true;
+
+    await expect(fixture.auth.resendVerification(registered.profile.id)).rejects.toBeInstanceOf(EmailDeliveryError);
+    fixture.email.fail = false;
+    await expect(fixture.auth.resendVerification(registered.profile.id)).resolves.toBeUndefined();
+    expect(fixture.email.messages).toHaveLength(2);
+  });
 });
 
 function createFixture() {
@@ -98,5 +120,5 @@ class MemoryUsers implements UserRepository {
 }
 
 class MemorySessions implements SessionRepository { readonly revokedUserIds: string[] = []; async create(): Promise<void> {} async findUserId(): Promise<string | null> { return null; } async delete(): Promise<void> {} async deleteAllForUser(userId: string): Promise<void> { this.revokedUserIds.push(userId); } async deleteExpired(): Promise<void> {} }
-class MemoryTokens implements AuthTokenRepository { readonly issued: Array<{ userId: string; purpose: AuthTokenPurpose; tokenHash: string }> = []; readonly active = new Set<string>(); nextConsumedUserId: string | null = null; async issue(input: { id: string; userId: string; purpose: AuthTokenPurpose; tokenHash: string }): Promise<boolean> { const key = `${input.userId}:${input.purpose}`; if (this.active.has(key)) return false; this.active.add(key); this.issued.push(input); return true; } async consume(_tokenHash: string, purpose: AuthTokenPurpose): Promise<string | null> { const userId = this.nextConsumedUserId; if (userId !== null) this.active.delete(`${userId}:${purpose}`); this.nextConsumedUserId = null; return userId; } async discard(): Promise<void> {} async deleteExpired(): Promise<void> {} }
+class MemoryTokens implements AuthTokenRepository { readonly issued: Array<{ userId: string; purpose: AuthTokenPurpose; tokenHash: string }> = []; readonly active = new Map<string, string>(); nextConsumedUserId: string | null = null; async issue(input: { id: string; userId: string; purpose: AuthTokenPurpose; tokenHash: string; replaceActive?: boolean }): Promise<boolean> { const key = `${input.userId}:${input.purpose}`; if (this.active.has(key) && input.replaceActive !== true) return false; this.active.set(key, input.tokenHash); this.issued.push(input); return true; } async consume(_tokenHash: string, purpose: AuthTokenPurpose): Promise<string | null> { const userId = this.nextConsumedUserId; if (userId !== null) this.active.delete(`${userId}:${purpose}`); this.nextConsumedUserId = null; return userId; } async discard(tokenHash: string): Promise<void> { for (const [key, activeHash] of this.active) if (activeHash === tokenHash) this.active.delete(key); } async deleteExpired(): Promise<void> {} }
 class MemoryEmail implements TransactionalEmailProvider { readonly messages: TransactionalEmail[] = []; fail = false; async send(message: TransactionalEmail): Promise<void> { if (this.fail) throw new Error('provider unavailable'); this.messages.push(message); } }

@@ -92,6 +92,8 @@ jobs:
       - name: Prepare development Worker configuration
         run: node scripts/prepare-dev-deploy.mjs
 
+      # Email delivery is temporarily disabled; do not require or sync Resend secrets.
+
       - name: Apply development D1 migrations
         run: npx wrangler d1 migrations apply "$CLOUDFLARE_DEV_D1_DATABASE_NAME" --remote --config dist/monopoly_bank/wrangler.dev.json
 

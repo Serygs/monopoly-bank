@@ -5,7 +5,7 @@ import type { SessionRepository } from '../repositories/session-repository.js';
 import type { UserRecord, UserRepository } from '../repositories/user-repository.js';
 import { hashPassword, randomToken, tokenHash, verifyPassword } from './password-security.js';
 import type { TransactionalEmailProvider } from './transactional-email.js';
-import { AuthenticationRequiredError, ConflictError, InvalidCredentialsError, ResourceNotFoundError, ValidationError } from './errors.js';
+import { AuthenticationRequiredError, ConflictError, EmailDeliveryError, InvalidCredentialsError, ResourceNotFoundError, ValidationError } from './errors.js';
 
 export type PublicProfile = UserProfile;
 export class AuthenticationError extends AuthenticationRequiredError {}
@@ -59,7 +59,7 @@ export class AuthService {
   async verifyEmail(token: string): Promise<PublicProfile> { const userId = await this.tokens.consume(await tokenHash(token), 'VERIFY_EMAIL'); if (userId === null) throw new ValidationError('This verification link is invalid or has expired.'); const user = await this.users.markEmailVerified(userId); if (user === null) throw new ResourceNotFoundError('User'); return profile(user); }
   async requestPasswordReset(email: string): Promise<void> { const user = await this.users.findByNormalizedEmail(normalizeEmail(email)); if (user?.accountType === 'REGISTERED' && user.email !== null) await this.issueEmailTokenBestEffort(user, 'RESET_PASSWORD'); }
   async resetPassword(token: string, password: string): Promise<void> { const userId = await this.tokens.consume(await tokenHash(token), 'RESET_PASSWORD'); if (userId === null) throw new ValidationError('This password reset link is invalid or has expired.'); const credentials = await hashPassword(password); const user = await this.users.changePassword(userId, credentials.hash, credentials.salt); if (user === null || user.accountType !== 'REGISTERED') throw new ResourceNotFoundError('User'); await this.sessions.deleteAllForUser(user.id); }
-  async resendVerification(userId: string): Promise<void> { const user = await this.users.findById(userId); if (user === null) throw new ResourceNotFoundError('User'); if (user.accountType !== 'REGISTERED' || user.email === null || user.emailVerifiedAt !== null) return; await this.issueEmailTokenBestEffort(user, 'VERIFY_EMAIL'); }
+  async resendVerification(userId: string): Promise<void> { const user = await this.users.findById(userId); if (user === null) throw new ResourceNotFoundError('User'); if (user.accountType !== 'REGISTERED' || user.email === null || user.emailVerifiedAt !== null) return; await this.issueEmailToken(user, 'VERIFY_EMAIL', true); }
   async upgradeGuest(userId: string, email: string, password: string): Promise<{ profile: PublicProfile; cookie: string }> {
     const credentials = await hashPassword(password); const normalizedEmail = normalizeEmail(email);
     const user = await this.users.upgradeGuest({ id: userId, email, normalizedEmail, passwordHash: credentials.hash, passwordSalt: credentials.salt });
@@ -86,10 +86,10 @@ export class AuthService {
     return expiredCookie();
   }
 
-  private async issueEmailToken(user: UserRecord, purpose: AuthTokenPurpose): Promise<void> {
+  private async issueEmailToken(user: UserRecord, purpose: AuthTokenPurpose, replaceActive = false): Promise<void> {
     if (user.email === null) return;
     const token = randomToken(); const hash = await tokenHash(token);
-    const issued = await this.tokens.issue({ id: this.createId(), userId: user.id, purpose, tokenHash: hash, expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() });
+    const issued = await this.tokens.issue({ id: this.createId(), userId: user.id, purpose, tokenHash: hash, expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), replaceActive });
     if (!issued) return;
     const verify = purpose === 'VERIFY_EMAIL';
     const url = new URL(verify ? '/verify-email' : '/reset-password', this.appOrigin);
@@ -101,7 +101,7 @@ export class AuthService {
       await this.email.send({ to: user.email, subject, text, html: `<p><a href="${escapeHtml(url.toString())}">${escapeHtml(verify ? 'Verify your email' : 'Reset your password')}</a></p>`, idempotencyKey: `${purpose}:${hash}` });
     } catch (cause) {
       await this.tokens.discard(hash);
-      throw cause;
+      throw new EmailDeliveryError(cause);
     }
   }
   private async issueEmailTokenBestEffort(user: UserRecord, purpose: AuthTokenPurpose): Promise<void> {

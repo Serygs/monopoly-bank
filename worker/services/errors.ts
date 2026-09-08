@@ -10,6 +10,7 @@ export class AuthenticationRequiredError extends AppError { constructor() { supe
 export class InvalidCredentialsError extends AppError { constructor() { super({ code: 'INVALID_CREDENTIALS', message: 'Invalid credentials.', status: 401 }); } }
 export class ForbiddenError extends AppError { constructor(message = 'You are not allowed to perform this operation.') { super({ code: 'FORBIDDEN', message, status: 403 }); } }
 export class RateLimitError extends AppError { constructor() { super({ code: 'RATE_LIMITED', message: 'Please try again later.', status: 429 }); } }
+export class EmailDeliveryError extends AppError { constructor(cause: unknown) { super({ code: 'EMAIL_DELIVERY_UNAVAILABLE', message: 'The verification email could not be sent. Please try again.', status: 503, cause }); } }
 /** Intentionally does not disclose whether the game exists. */
 export class GameAccessDeniedError extends AppError { constructor() { super({ code: 'GAME_NOT_MEMBER', message: 'You are not allowed to access this game.', status: 403 }); } }
 export class GameOwnerRequiredError extends AppError { constructor() { super({ code: 'GAME_OWNER_REQUIRED', message: 'Game owner permission is required.', status: 403 }); } }
