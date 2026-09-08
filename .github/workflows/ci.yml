@@ -94,7 +94,7 @@ jobs:
 
       - name: Validate required development email secrets
         run: |
-          npx wrangler secret list --config dist/monopoly_bank/wrangler.dev.json --json > development-secrets.json
+          npx wrangler secret list --config dist/monopoly_bank/wrangler.dev.json --format json > development-secrets.json
           jq -e 'map(.name) as $names | ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "APP_ORIGIN"] | all(. as $required | $names | index($required))' development-secrets.json
           rm development-secrets.json
 

@@ -72,7 +72,7 @@ jobs:
 
       - name: Validate required production email secrets
         run: |
-          npx wrangler secret list --json > production-secrets.json
+          npx wrangler secret list --format json > production-secrets.json
           jq -e 'map(.name) as $names | ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "APP_ORIGIN"] | all(. as $required | $names | index($required))' production-secrets.json
           rm production-secrets.json
 

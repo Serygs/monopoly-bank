@@ -68,7 +68,7 @@ jobs:
 
       - name: Validate required staging secrets without revealing them
         run: |
-          npx wrangler secret list --config dist/monopoly_bank/wrangler.staging.json --json > staging-secrets.json
+          npx wrangler secret list --config dist/monopoly_bank/wrangler.staging.json --format json > staging-secrets.json
           jq -e 'map(.name) as $names | ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "APP_ORIGIN"] | all(. as $required | $names | index($required))' staging-secrets.json
           rm staging-secrets.json
 
