@@ -23,12 +23,9 @@ export class AuthService {
   ) { this.users = users; this.sessions = sessions; this.tokens = tokens; this.email = email; this.createId = createId; this.appOrigin = appOrigin; this.privacy = privacy; }
 
   async register(input: RegisterRequest): Promise<{ profile: PublicProfile; cookie: string }> {
-    const normalizedEmail = normalizeEmail(input.email);
-    if (await this.users.findByNormalizedEmail(normalizedEmail) !== null) throw new ConflictError('ACCOUNT_IDENTIFIER_UNAVAILABLE', 'The account identifier is unavailable.');
     if (await this.users.findByNickname(input.nickname) !== null) throw new ConflictError('ACCOUNT_IDENTIFIER_UNAVAILABLE', 'The account identifier is unavailable.');
     const credentials = await hashPassword(input.password);
-    const user = await this.users.create({ id: this.createId(), nickname: input.nickname, avatar: input.avatar, accountType: 'REGISTERED', email: input.email, normalizedEmail, emailVerifiedAt: null, passwordHash: credentials.hash, passwordSalt: credentials.salt });
-    await this.issueEmailTokenBestEffort(user, 'VERIFY_EMAIL');
+    const user = await this.users.create({ id: this.createId(), nickname: input.nickname, avatar: input.avatar, accountType: 'REGISTERED', email: null, normalizedEmail: null, emailVerifiedAt: null, passwordHash: credentials.hash, passwordSalt: credentials.salt });
     return { profile: profile(user), cookie: await this.createSession(user.id) };
   }
 
