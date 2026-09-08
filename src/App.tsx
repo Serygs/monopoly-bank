@@ -12,6 +12,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { SavedGamesPage } from './pages/SavedGamesPage';
 import { applyTheme, readPreferences, writePreferences, type DevicePreferences } from './utils/preferences';
 import { currentRoute, routePath } from './utils/client-route';
+import { EMAIL_FEATURES_ENABLED } from './utils/email-features';
 import { applyPwaUpdate } from './pwa';
 import './styles/app.css';
 
@@ -62,20 +63,20 @@ function App() {
 
   const navigate = (target: string) => { setSettingsOpen(false); window.history.pushState({}, '', target); setPath(routePath(target)); };
   const emailToken = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
-  if (path === '/verify-email') return <VerifyEmailPage token={emailToken} onVerified={setProfile} onBack={() => navigate('/')} />;
-  if (path === '/reset-password') return <PasswordResetPage token={emailToken} onBack={() => navigate('/')} />;
+  if (EMAIL_FEATURES_ENABLED && path === '/verify-email') return <VerifyEmailPage token={emailToken} onVerified={setProfile} onBack={() => navigate('/')} />;
+  if (EMAIL_FEATURES_ENABLED && path === '/reset-password') return <PasswordResetPage token={emailToken} onBack={() => navigate('/')} />;
   const gameMatch = /^\/games\/([^/]+)$/.exec(path);
   if (profile === undefined) return <main className="page"><p className="status">{t('loadingAccount')}</p></main>;
   if (profile === null && !online) return <OfflineShell />;
   if (profile === null) {
     const navigatePublic = (target: string) => { window.history.pushState({}, '', target); setPath(target); };
-    if (path === '/forgot-password') return <PasswordRecoveryPage onBack={() => navigatePublic('/')} />;
+    if (EMAIL_FEATURES_ENABLED && path === '/forgot-password') return <PasswordRecoveryPage onBack={() => navigatePublic('/')} />;
     if (path === '/games/join') {
       const guestJoinCode = new URLSearchParams(window.location.search).get('code') ?? '';
       const guestInvitationToken = invitationFromLocation();
       return <JoinGamePage initialJoinCode={guestJoinCode} invitationToken={guestInvitationToken} onJoined={() => undefined} onGuestJoined={(guest, gameId) => { setProfile(guest); window.history.pushState({}, '', `/games/${encodeURIComponent(gameId)}`); setPath(`/games/${encodeURIComponent(gameId)}`); }} onBack={() => { window.history.pushState({}, '', '/'); setPath('/'); }} />;
     }
-    const returnRoute = currentRoute(window.location.pathname, window.location.search, window.location.hash);
+    const returnRoute = EMAIL_FEATURES_ENABLED ? currentRoute(window.location.pathname, window.location.search, window.location.hash) : '/';
     return <AuthPage onAuthenticated={(user) => { setProfile(user); navigate(returnRoute); }} onForgotPassword={() => navigatePublic('/forgot-password')} />;
   }
 
