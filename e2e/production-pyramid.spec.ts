@@ -124,6 +124,8 @@ async function joinAsGuest(browser: Browser, invitationUrl: string, nickname: st
   await page.goto(invitationUrl);
   await page.getByLabel(/nickname|псевдонім/i).fill(nickname);
   await page.getByRole('button', { name: /join as guest|приєднатися як гість/i }).click();
+  await expect(page).toHaveURL(/\/games\/[0-9a-f-]{36}$/i);
+  await expect(page.getByRole('heading', { name: /load test/i })).toBeVisible();
   return { context, page };
 }
 
