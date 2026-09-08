@@ -126,7 +126,7 @@ The Vite Cloudflare plugin runs the React UI and Worker together. Local D1 data 
 
 ### Transactional email (temporarily disabled)
 
-Email verification and password reset are temporarily hidden in the UI. The Resend setup below is retained for re-enabling the feature later.
+Account registration and sign-in use a nickname and password only; email is not collected. Email verification and password reset are temporarily hidden until transactional email is configured. The Resend setup below is retained for re-enabling those delivery flows later.
 
 - `RESEND_API_KEY` — a Resend API key allowed to send from the configured domain;
 - `RESEND_FROM_EMAIL` — a sender address on a verified Resend domain, for example `Monopoly Bank <accounts@example.com>`;

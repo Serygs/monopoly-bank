@@ -58,8 +58,8 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   async deleteAccount(): Promise<void> { await request<null>('/api/account', { method: 'DELETE' }); }
   async listGames(): Promise<GameSummary[]> { return request<GameSummary[]>('/api/games'); }
   async createGame(input: CreateGameRequest): Promise<GameDetails> { return request<GameDetails>('/api/games', { method: 'POST', body: JSON.stringify(input) }); }
-  async joinGame(input: JoinGameRequest): Promise<GameDetails> { return request<GameDetails>('/api/games/join', { method: 'POST', body: JSON.stringify(input) }); }
-  async joinGameAsGuest(input: GuestJoinGameRequest): Promise<GuestJoinGameResponse> { return request<GuestJoinGameResponse>('/api/games/join/guest', { method: 'POST', body: JSON.stringify(input) }); }
+  async joinGame(input: JoinGameRequest): Promise<GameDetails> { return request<GameDetails>('/api/games/join', commandInit({ method: 'POST', body: JSON.stringify(input) })); }
+  async joinGameAsGuest(input: GuestJoinGameRequest): Promise<GuestJoinGameResponse> { return request<GuestJoinGameResponse>('/api/games/join/guest', commandInit({ method: 'POST', body: JSON.stringify(input) })); }
   async upgradeGuest(input: UpgradeGuestRequest): Promise<UserProfile> { return request<UserProfile>('/api/auth/upgrade', { method: 'POST', body: JSON.stringify(input) }); }
   async addEmailToLegacyAccount(input: AddAccountEmailRequest): Promise<UserProfile> { return request<UserProfile>('/api/auth/email', { method: 'POST', body: JSON.stringify(input) }); }
   async createInvitation(gameId: string): Promise<CreateInvitationResponse> { return request<CreateInvitationResponse>(`/api/games/${encodeURIComponent(gameId)}/invitations`, commandInit({ method: 'POST' })); }

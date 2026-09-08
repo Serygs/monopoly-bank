@@ -77,7 +77,7 @@ function App() {
       return <JoinGamePage initialJoinCode={guestJoinCode} invitationToken={guestInvitationToken} onJoined={() => undefined} onGuestJoined={(guest, gameId) => { setProfile(guest); window.history.pushState({}, '', `/games/${encodeURIComponent(gameId)}`); setPath(`/games/${encodeURIComponent(gameId)}`); }} onBack={() => { window.history.pushState({}, '', '/'); setPath('/'); }} />;
     }
     const returnRoute = EMAIL_FEATURES_ENABLED ? currentRoute(window.location.pathname, window.location.search, window.location.hash) : '/';
-    return <AuthPage onAuthenticated={(user) => { setProfile(user); navigate(returnRoute); }} onForgotPassword={() => navigatePublic('/forgot-password')} />;
+    return <AuthPage onAuthenticated={(user) => { setProfile(user); navigate(returnRoute); }} />;
   }
 
   const joinCode = path === '/games/join' ? new URLSearchParams(window.location.search).get('code') ?? '' : '';

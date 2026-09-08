@@ -55,8 +55,8 @@ export interface CreateGameRequest {
 }
 
 export type AccountType = 'REGISTERED' | 'GUEST';
-export interface RegisterRequest { nickname: string; avatar: string; email: string; password: string; }
-/** `nickname` remains available only for pre-email accounts created before migration 0012. */
+export interface RegisterRequest { nickname: string; avatar: string; password: string; }
+/** `email` remains available only for accounts that added one via the (currently disabled) email-upgrade flow. */
 export type LoginRequest = { email: string; password: string } | { nickname: string; password: string };
 export type GuestJoinGameRequest = { nickname: string; avatar: string } & JoinGameRequest;
 export interface GuestJoinGameResponse { profile: UserProfile; game: GameDetails; }

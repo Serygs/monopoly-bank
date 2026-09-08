@@ -1,5 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
+import { EMAIL_FEATURES_ENABLED } from '../src/utils/email-features';
+
 const baseURL = process.env.E2E_BASE_URL;
 const runE2E = baseURL !== undefined && process.env.E2E_RUN === 'true';
 
@@ -13,7 +15,7 @@ test.describe('production browser pyramid', () => {
     const guests = await Promise.all(Array.from({ length: 5 }, (_, index) => joinAsGuest(browser, invitation, `Guest ${index + 1}`)));
 
     await expect(owner.page.getByText(/Guest 5/)).toBeVisible();
-    await upgradeGuest(guests[0].page);
+    if (EMAIL_FEATURES_ENABLED) await upgradeGuest(guests[0].page);
     await owner.page.reload();
     await expect(owner.page.getByRole('heading', { name: /load test/i })).toBeVisible();
     await Promise.all(guests.map(({ context }) => context.close()));
@@ -36,7 +38,7 @@ test.describe('production browser pyramid', () => {
     await expect(owner.page.getByText(/live|наживо/i)).toBeVisible();
     await finishWithNoWinner(owner.page);
     await owner.page.getByRole('button', { name: /statistics|статистика/i }).click();
-    await expect(owner.page.getByText(/cash leaderboard|грошовий рейтинг/i)).toBeVisible();
+    await expect(owner.page.getByText(/cash leaderboard|рейтинг за готівкою/i)).toBeVisible();
 
     await guest.context.close();
     await owner.context.close();
@@ -83,11 +85,10 @@ async function register(browser: Browser, nickname: string): Promise<{ context: 
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL ?? 'http://localhost' });
   const page = await context.newPage();
   await page.goto('/');
-  await page.getByRole('button', { name: /create account|створити акаунт/i }).click();
-  await page.getByLabel(/nickname|нікнейм/i).fill(`${nickname} ${Date.now()} ${Math.random().toString(36).slice(2, 7)}`);
-  await page.getByLabel(/email|електронна пошта/i).fill(`e2e-${crypto.randomUUID()}@example.test`);
+  await page.getByRole('button', { name: /create your account|створіть обліковий запис/i }).click();
+  await page.getByLabel(/nickname|псевдонім/i).fill(`${nickname} ${Date.now()} ${Math.random().toString(36).slice(2, 7)}`);
   await page.getByLabel(/^password$|^пароль$/i).fill('SafeE2EPassword123!');
-  await page.getByRole('button', { name: /create account|створити акаунт/i }).click();
+  await page.getByRole('button', { name: /create your account|створіть обліковий запис/i }).click();
   await expect(page.getByRole('heading', { name: /saved games|збережені ігри/i })).toBeVisible();
   return { context, page };
 }
@@ -98,10 +99,11 @@ async function createLobby(page: Page, paymentMode: 'FAST' | 'CONFIRMATION', loc
   await page.getByLabel(/payment mode|режим платежів/i).selectOption(paymentMode);
   for (let index = 0; index < localPlayers; index += 1) {
     await page.getByRole('button', { name: /add player|додати гравця/i }).click();
-    await page.getByLabel(new RegExp(`player name.*${index + 2}|ім.?я гравця.*${index + 2}`, 'i')).fill(`Local ${index + 1}`);
+    await page.getByLabel(new RegExp(`player ${index + 2} name|ім.?я гравця ${index + 2}`, 'i')).fill(`Local ${index + 1}`);
   }
   await page.getByRole('button', { name: /create lobby|створити лобі/i }).click();
-  await expect(page).toHaveURL(/\/games\//);
+  // `/games/new` also contains `/games/`, so match the created game's UUID instead.
+  await expect(page).toHaveURL(/\/games\/[0-9a-f-]{36}/i);
   return page.url().split('/games/')[1];
 }
 
@@ -120,8 +122,10 @@ async function joinAsGuest(browser: Browser, invitationUrl: string, nickname: st
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(invitationUrl);
-  await page.getByLabel(/nickname|нікнейм/i).fill(nickname);
+  await page.getByLabel(/nickname|псевдонім/i).fill(nickname);
   await page.getByRole('button', { name: /join as guest|приєднатися як гість/i }).click();
+  await expect(page).toHaveURL(/\/games\/[0-9a-f-]{36}$/i);
+  await expect(page.getByRole('heading', { name: /load test/i })).toBeVisible();
   return { context, page };
 }
 

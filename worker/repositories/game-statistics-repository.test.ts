@@ -14,7 +14,35 @@ describe('D1 game statistics', () => {
     expect(summary.cashLeaderboard[0].player.id).toBe('a');
     expect(database.queries[0]).not.toMatch(/LIMIT\s+100/i);
   });
+
+  it('does not bind wallet IDs when loading all game activity', async () => {
+    const database = new ActivityDatabase();
+
+    await new D1GameStatisticsRepository(database as unknown as D1Database).activity('game', 'ALL', ['wallet-a', 'wallet-b'], null, 100);
+
+    expect(database.bindings).toEqual([['game', 101]]);
+  });
+
+  it('binds wallet IDs only when loading activity for the current player', async () => {
+    const database = new ActivityDatabase();
+
+    await new D1GameStatisticsRepository(database as unknown as D1Database).activity('game', 'MINE', ['wallet-a', 'wallet-b'], null, 100);
+
+    expect(database.bindings).toEqual([['game', 'wallet-a', 'wallet-b', 101]]);
+  });
 });
+
+class ActivityDatabase {
+  readonly bindings: unknown[][] = [];
+  prepare() {
+    return {
+      bind: (...values: unknown[]) => {
+        this.bindings.push(values);
+        return { all: async () => ({ results: [] }) };
+      },
+    };
+  }
+}
 
 class StatisticsDatabase {
   readonly queries: string[] = [];
