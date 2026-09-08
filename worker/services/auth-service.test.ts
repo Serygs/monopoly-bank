@@ -8,11 +8,21 @@ import { AuthService } from './auth-service.js';
 import type { TransactionalEmail, TransactionalEmailProvider } from './transactional-email.js';
 
 describe('AuthService email accounts and guests', () => {
-  it('registers a normalized email, stores only a token hash, and sends verification', async () => {
+  it('registers an account from just a nickname and password, without an email', async () => {
     const fixture = createFixture();
-    const result = await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', email: ' Ada@Example.TEST ', password: 'secure-password' });
+    const result = await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', password: 'secure-password' });
 
-    expect(result.profile).toMatchObject({ accountType: 'REGISTERED', email: ' Ada@Example.TEST ', emailVerified: false });
+    expect(result.profile).toMatchObject({ accountType: 'REGISTERED', email: null, emailVerified: false });
+    expect(fixture.email.messages).toHaveLength(0);
+    await expect(fixture.auth.login({ nickname: 'Ada', password: 'secure-password' })).resolves.toMatchObject({ profile: { id: result.profile.id } });
+  });
+
+  it('upgrades a guest in place, normalizing and storing only a token hash, and sends verification', async () => {
+    const fixture = createFixture();
+    const guest = await fixture.auth.createGuest('Ada', '🎩');
+    const upgraded = await fixture.auth.upgradeGuest(guest.profile.id, ' Ada@Example.TEST ', 'secure-password');
+
+    expect(upgraded.profile).toMatchObject({ id: guest.profile.id, accountType: 'REGISTERED', email: ' Ada@Example.TEST ', emailVerified: false });
     expect(fixture.users.byEmail.get('ada@example.test')?.email).toBe(' Ada@Example.TEST ');
     expect(fixture.email.messages).toHaveLength(1);
     const rawToken = new URL(fixture.email.messages[0].text.split(': ')[1]).hash.split('=')[1] ?? null;
@@ -22,7 +32,8 @@ describe('AuthService email accounts and guests', () => {
 
   it('returns the same invalid-credentials result for unknown email and bad password', async () => {
     const fixture = createFixture();
-    await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', email: 'ada@example.test', password: 'secure-password' });
+    const guest = await fixture.auth.createGuest('Ada', '🎩');
+    await fixture.auth.upgradeGuest(guest.profile.id, 'ada@example.test', 'secure-password');
 
     await expect(fixture.auth.login({ email: 'missing@example.test', password: 'secure-password' })).rejects.toBeInstanceOf(InvalidCredentialsError);
     await expect(fixture.auth.login({ email: 'ada@example.test', password: 'wrong-password' })).rejects.toBeInstanceOf(InvalidCredentialsError);
@@ -30,7 +41,8 @@ describe('AuthService email accounts and guests', () => {
 
   it('returns normally for known and unknown password-reset emails without sending to the unknown address', async () => {
     const fixture = createFixture();
-    await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', email: 'ada@example.test', password: 'secure-password' });
+    const guest = await fixture.auth.createGuest('Ada', '🎩');
+    await fixture.auth.upgradeGuest(guest.profile.id, 'ada@example.test', 'secure-password');
     fixture.email.messages.length = 0;
 
     await expect(fixture.auth.requestPasswordReset('missing@example.test')).resolves.toBeUndefined();
@@ -40,7 +52,8 @@ describe('AuthService email accounts and guests', () => {
 
   it('throttles repeated reset requests by leaving the existing usable token in place', async () => {
     const fixture = createFixture();
-    await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', email: 'ada@example.test', password: 'secure-password' });
+    const guest = await fixture.auth.createGuest('Ada', '🎩');
+    await fixture.auth.upgradeGuest(guest.profile.id, 'ada@example.test', 'secure-password');
     fixture.email.messages.length = 0;
 
     await fixture.auth.requestPasswordReset('ada@example.test');
@@ -51,8 +64,10 @@ describe('AuthService email accounts and guests', () => {
 
   it('consumes a reset token and revokes all sessions after changing the password', async () => {
     const fixture = createFixture();
-    const registered = await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', email: 'ada@example.test', password: 'secure-password' });
+    const guest = await fixture.auth.createGuest('Ada', '🎩');
+    const registered = await fixture.auth.upgradeGuest(guest.profile.id, 'ada@example.test', 'secure-password');
     fixture.tokens.nextConsumedUserId = registered.profile.id;
+    fixture.sessions.revokedUserIds.length = 0;
 
     await fixture.auth.resetPassword('reset-token-value-that-is-long-enough', 'new-secure-password');
 
@@ -70,17 +85,19 @@ describe('AuthService email accounts and guests', () => {
     expect(fixture.users.byId.get(guest.profile.id)?.accountType).toBe('REGISTERED');
   });
 
-  it('keeps registration and guest play available when email delivery is unavailable', async () => {
+  it('keeps registration and guest upgrade available when email delivery is unavailable', async () => {
     const fixture = createFixture();
     fixture.email.fail = true;
 
-    await expect(fixture.auth.register({ nickname: 'Ada', avatar: 'рџЋ©', email: 'ada@example.test', password: 'secure-password' })).resolves.toMatchObject({ profile: { accountType: 'REGISTERED' } });
-    await expect(fixture.auth.createGuest('Guest', 'рџЋІ')).resolves.toMatchObject({ profile: { accountType: 'GUEST' } });
+    await expect(fixture.auth.register({ nickname: 'Ada', avatar: 'рџЋ©', password: 'secure-password' })).resolves.toMatchObject({ profile: { accountType: 'REGISTERED' } });
+    const guest = await fixture.auth.createGuest('Guest', 'рџЋІ');
+    await expect(fixture.auth.upgradeGuest(guest.profile.id, 'guest@example.test', 'secure-password')).resolves.toMatchObject({ profile: { accountType: 'REGISTERED' } });
   });
 
   it('replaces an active verification token when the user explicitly resends', async () => {
     const fixture = createFixture();
-    const registered = await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', email: 'ada@example.test', password: 'secure-password' });
+    const guest = await fixture.auth.createGuest('Ada', '🎩');
+    const registered = await fixture.auth.upgradeGuest(guest.profile.id, 'ada@example.test', 'secure-password');
 
     await fixture.auth.resendVerification(registered.profile.id);
 
@@ -91,7 +108,8 @@ describe('AuthService email accounts and guests', () => {
 
   it('reports resend delivery failures and permits another retry', async () => {
     const fixture = createFixture();
-    const registered = await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', email: 'ada@example.test', password: 'secure-password' });
+    const guest = await fixture.auth.createGuest('Ada', '🎩');
+    const registered = await fixture.auth.upgradeGuest(guest.profile.id, 'ada@example.test', 'secure-password');
     fixture.email.fail = true;
 
     await expect(fixture.auth.resendVerification(registered.profile.id)).rejects.toBeInstanceOf(EmailDeliveryError);

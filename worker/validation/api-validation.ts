@@ -40,7 +40,7 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
   };
 }
 
-export async function parseRegisterRequest(request: Request): Promise<RegisterRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body), email: readEmail(body), password: readAccountPassword(body, 'password') }; }
+export async function parseRegisterRequest(request: Request): Promise<RegisterRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body), password: readAccountPassword(body, 'password') }; }
 export async function parseLoginRequest(request: Request): Promise<LoginRequest> { const body = await parseJsonObject(request); const password = readAccountPassword(body, 'password'); return body.email === undefined ? { nickname: readNickname(body), password } : { email: readEmail(body), password }; }
 export async function parseUpdateProfileRequest(request: Request): Promise<UpdateProfileRequest> { const body = await parseJsonObject(request); return { nickname: readNickname(body), avatar: readAvatar(body) }; }
 export async function parseJoinGameRequest(request: Request): Promise<JoinGameRequest> { const body = await parseJsonObject(request); if (body.invitationToken !== undefined) return { invitationToken: readInvitationToken(body) }; return { joinCode: readJoinCode(body), ...(body.gameAccessPassword === undefined || body.gameAccessPassword === '' ? {} : { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }) }; }
