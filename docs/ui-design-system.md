@@ -8,10 +8,10 @@ overlays, motion, accessibility, and visual validation. Agent instructions,
 skills, screenshots, tests, and the current CSS implementation must point here
 instead of defining a competing visual contract.
 
-Phases 3 and 4 implement the responsive layout composition and non-game page
-patterns described below. The application uses one shared DOM and state flow per
-page across viewport sizes; only presentation changes between compact, medium,
-and wide layouts.
+Phases 3 through 5 implement the responsive layout composition and page patterns
+described below. The application uses one shared DOM and state flow per page
+across viewport sizes; only presentation changes between compact, medium, and
+wide layouts.
 
 Product and interaction decisions remain outside the style system:
 
@@ -348,6 +348,36 @@ coverage samples, not breakpoint specifications.
   tokens and primitives but must not redefine the palette or introduce
   page-local breakpoint values outside the compact/medium/wide boundaries.
 
+### Live and finished game composition
+
+- The game header reads in one stable order: Saved Games navigation, game
+  status, game name, Pass GO reward, connection state when active, then local
+  actions. The reward label may wrap, but its formatted monetary value remains
+  intact. Activity and Statistics remain secondary actions; lobby invitation
+  and game completion retain their existing permissions and state rules.
+- Wallets form one banking desk rather than separate unrelated card grids. The
+  selected controlled wallet and the other-player wallets share one responsive
+  composition. Compact places the controlled wallet at full width, followed by
+  an intrinsically responsive other-player grid; medium and wide place both
+  groups in balanced columns.
+- At roughly 320px, other-player wallets use one column. Their container—not a
+  page breakpoint—enables two columns once at least `20rem` is available. This
+  keeps cards readable when the wallet area is nested in another composition.
+- The controlled wallet is the strongest surface and includes a textual control
+  badge and explicit banking-action row. Read-only wallets retain full contrast
+  and a readable status instead of using disabled opacity. Bankrupt status is
+  always written as text in addition to colour.
+- Monetary values use tabular numerals, a non-wrapping value line, and
+  length-aware type sizes. Player names may wrap safely without colliding with
+  control or bankruptcy badges.
+- Lobby, active, finished, offline, pending-payment, bankrupt, and read-only
+  presentation must all preserve the same underlying permissions, API calls,
+  realtime lifecycle, and transaction flow. Layout code never decides whether
+  a wallet is authorized.
+- `src/styles/game-page.css` owns game header, wallet desk, wallet-card, and
+  pending-payment composition. Banking dialogs and auxiliary game tools remain
+  shared feature styles and consume the same semantic tokens.
+
 ## Accessibility and motion
 
 Accessibility is a release requirement for every visual style and colour mode:
@@ -410,6 +440,8 @@ requirements for future styles.
 - `src/styles/primitives.css` owns shared controls, feedback, settings, and
   overlays.
 - `src/styles/features.css` owns feature-level presentation.
+- `src/styles/game-page.css` owns the game header, wallet composition, wallet
+  cards, and pending-payment presentation.
 - `src/styles/non-game-pages.css` owns saved-game, profile, create/join, and
   authentication page composition.
 - `src/components/PageHeader.tsx` owns the shared title, back-action, and local

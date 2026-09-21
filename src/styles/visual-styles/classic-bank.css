@@ -128,7 +128,6 @@
   --background-header: linear-gradient(110deg, var(--color-surface-inverse), var(--color-surface-inverse-elevated));
   --background-hero: linear-gradient(130deg, var(--color-surface-inverse), var(--color-accent));
   --background-invitation: var(--color-surface-subtle);
-  --background-wallet: var(--color-surface-elevated);
   --background-banking: var(--color-surface-elevated);
   --color-status-surface: var(--color-success-soft);
   --color-status-border: color-mix(in srgb, var(--color-success) 35%, var(--color-border));
