@@ -83,12 +83,17 @@
 .dialog-intro { margin: var(--space-5) 0; color: var(--color-text-secondary); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-6); }
 
+.dialog-backdrop--popover { z-index: 100; }
+.dialog-backdrop--popover .dialog { width: min(calc(100vw - 2 * var(--space-4)), 23rem); }
+
 .settings-panel { overflow-y: auto; display: grid; gap: var(--space-4); background: var(--color-surface-elevated); }
 .settings-panel header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
 .settings-select { display: grid !important; gap: 7px; }
 .settings-options { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; }
 .settings-options legend { color: var(--color-text-primary); font-size: var(--text-small); font-weight: var(--weight-semibold); }
 .settings-segmented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--color-surface-subtle); }
+.settings-segmented--single { grid-template-columns: 1fr; }
+.settings-segmented--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .settings-segmented button { min-height: var(--control-height-sm); border: 0; border-radius: 9px; color: var(--color-text-secondary); background: transparent; font: var(--weight-semibold) var(--text-small)/1 var(--font-ui); }
 .settings-segmented button.active { color: var(--color-text-on-accent); background: var(--color-accent); box-shadow: var(--shadow-sm); }
 .settings-toggle { display: flex !important; min-height: var(--control-height-lg); align-items: center; justify-content: space-between; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-control); }
@@ -127,6 +132,8 @@
   .form-actions .button { width: 100%; }
   .dialog-backdrop { place-items: end center; padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-2), env(safe-area-inset-right)) 0 max(var(--space-2), env(safe-area-inset-left)); }
   .dialog { width: 100%; max-height: calc(100dvh - env(safe-area-inset-top) - 8px); padding: var(--space-5) max(18px, env(safe-area-inset-right)) max(var(--space-5), calc(env(safe-area-inset-bottom) + 14px)) max(18px, env(safe-area-inset-left)); border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
+  .dialog-backdrop--popover { place-items: end center; padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-2), env(safe-area-inset-right)) 0 max(var(--space-2), env(safe-area-inset-left)); background: var(--color-overlay); }
+  .dialog-backdrop--popover .dialog { width: 100%; }
   .dialog-actions { position: sticky; bottom: calc(var(--space-5) * -1); z-index: 1; flex-direction: column-reverse; margin-bottom: calc(var(--space-5) * -1); padding: var(--space-4) 0 max(var(--space-4), env(safe-area-inset-bottom)); background: var(--color-surface-elevated); }
   .dialog-actions .button { width: 100%; }
 }

@@ -14,10 +14,12 @@ describe('appearance settings', () => {
     expect(markup).toContain(translate(language, 'visualStyle'));
     expect(markup).toContain(translate(language, 'appearance'));
     expect(markup).toContain(translate(language, 'visualStyleClassicBank'));
-    expect(markup.match(/<select/g)).toHaveLength(2);
-    expect(markup.match(/<option/g)).toHaveLength(4);
-    expect(markup).toContain('value="classic-bank" selected=""');
-    expect(markup).toContain('value="dark" selected=""');
+    expect(markup.match(/<fieldset/g)).toHaveLength(2);
+    expect(markup.match(/aria-pressed/g)).toHaveLength(4);
+    expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain(translate(language, 'themeLight'));
+    expect(markup).toContain(translate(language, 'themeDark'));
+    expect(markup).toContain(translate(language, 'themeSystem'));
     expect(markup).not.toContain('liquid-glass');
     expect(markup).not.toContain('minimal-finance');
   });
