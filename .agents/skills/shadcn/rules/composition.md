@@ -1,5 +1,10 @@
 # Component Composition
 
+> **Monopoly Bank:** component selection and composition must follow the
+> semantics and accessibility contract in `docs/ui-design-system.md`. The
+> generic mappings below do not independently decide this application's overlay
+> presentation or visual treatment.
+
 ## Contents
 
 - Items always inside their Group component

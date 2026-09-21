@@ -100,6 +100,10 @@ flowchart TB
 | `e2e/` | Playwright production-pyramid browser scenarios. |
 | `.github/workflows/` | CI plus development, staging, and production delivery workflows. |
 
+UI work is governed by the canonical [UI design system](docs/ui-design-system.md).
+Current CSS and screenshots describe builds; they do not define a separate
+design contract.
+
 ## Database setup
 
 `wrangler.jsonc` contains the production `MONOPOLY_BANK_DB` binding and the separate `monopoly-bank-dev` development database. A D1 database is created only once. If Wrangler reports that a database name already exists, that is expected: verify and reuse it instead of creating another database.

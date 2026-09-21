@@ -58,6 +58,7 @@ test.describe('production browser pyramid', () => {
   });
 });
 
+// Coverage samples are governed by docs/ui-design-system.md; screenshots are diagnostic attachments.
 test.describe('visual and accessibility matrix', () => {
   test.skip(!runE2E, 'Set E2E_BASE_URL and E2E_RUN=true against an isolated staging environment.');
   for (const language of ['en', 'uk'] as const) {
