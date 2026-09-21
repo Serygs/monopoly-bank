@@ -35,6 +35,25 @@
   --space-10: 64px;
   --space-page-inline: clamp(16px, 4vw, 32px);
 
+  /* Responsive layout composition */
+  --layout-content-max: 1280px;
+  --layout-content-narrow: 760px;
+  --layout-page-inline-compact: 16px;
+  --layout-page-inline-medium: 24px;
+  --layout-page-inline-wide: clamp(32px, 5vw, 72px);
+  --layout-page-block-compact: 24px;
+  --layout-page-block-medium: 40px;
+  --layout-page-block-wide: 56px;
+  --layout-gap-compact: 16px;
+  --layout-gap-medium: 24px;
+  --layout-gap-wide: 32px;
+  --layout-section-gap-compact: 28px;
+  --layout-section-gap-medium: 40px;
+  --layout-section-gap-wide: 48px;
+  --layout-header-height-compact: 60px;
+  --layout-header-height-medium: 68px;
+  --layout-header-height-wide: 72px;
+
   /* Shape, controls, icons and motion */
   --radius-xs: 6px;
   --radius-sm: 8px;

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { GameSummary } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Dialog } from '../components/Dialog';
+import { PageHeader } from '../components/PageHeader';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 
@@ -86,17 +87,10 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   };
 
   return <main className="page saved-games-page">
-    <section className="page-heading hero-heading">
-      <div>
-        <p className="eyebrow">{t('appName')}</p>
-        <h1>{t('savedGames')}</h1>
-        <p className="lede">{t('savedGamesLede')}</p>
-      </div>
-      <div className="header-actions">
+    <PageHeader className="page-header--hero" eyebrow={t('appName')} title={t('savedGames')} description={t('savedGamesLede')} actions={<>
         <button className="button button-secondary" type="button" onClick={() => onJoinGame()}>{t('joinGame')}</button>
         <button className="button button-primary" type="button" onClick={onCreateGame}>{t('createNewGame')}</button>
-      </div>
-    </section>
+      </>} />
 
     {notice !== null && <section className="notice notice-success" role="status">
       <p>{t('gameRemoved', { name: notice })}</p>
