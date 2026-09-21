@@ -8,12 +8,12 @@ import { currencies, type Currency, type PaymentMode } from '../../shared/types/
 import type { UserProfile } from '../../shared/contracts/api';
 
 const colors = [
-  { value: '#d83f55', nameKey: 'playerColorRed' },
-  { value: '#2878d0', nameKey: 'playerColorBlue' },
-  { value: '#238b57', nameKey: 'playerColorGreen' },
-  { value: '#d97721', nameKey: 'playerColorOrange' },
-  { value: '#8b4cc5', nameKey: 'playerColorPurple' },
-  { value: '#087f78', nameKey: 'playerColorTeal' },
+  { value: '#d83f55', token: '--color-player-red', nameKey: 'playerColorRed' },
+  { value: '#2878d0', token: '--color-player-blue', nameKey: 'playerColorBlue' },
+  { value: '#238b57', token: '--color-player-green', nameKey: 'playerColorGreen' },
+  { value: '#d97721', token: '--color-player-orange', nameKey: 'playerColorOrange' },
+  { value: '#8b4cc5', token: '--color-player-purple', nameKey: 'playerColorPurple' },
+  { value: '#087f78', token: '--color-player-teal', nameKey: 'playerColorTeal' },
 ] as const;
 interface PlayerForm { key: number; name: string; color: string; }
 interface Props { profile: UserProfile; onCancel: () => void; onCreated: (gameId: string) => void; }
@@ -43,7 +43,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
 
 function ColorPicker({ player, players, onChange }: { player: PlayerForm; players: PlayerForm[]; onChange: (color: string) => void }) {
   const { t } = useLanguage();
-  return <fieldset className="color-picker"><legend>{t('color')}</legend><div className="color-options">{colors.map((color) => { const taken = players.some((candidate) => candidate.key !== player.key && candidate.color === color.value); const selected = player.color === color.value; return <button className={`color-option${selected ? ' selected' : ''}`} type="button" key={color.value} style={{ '--player-color': color.value } as CSSProperties} aria-label={t('selectColor', { color: t(color.nameKey) })} aria-pressed={selected} disabled={taken} onClick={() => onChange(color.value)}><span aria-hidden="true">{selected ? '✓' : ''}</span></button>; })}</div></fieldset>;
+  return <fieldset className="color-picker"><legend>{t('color')}</legend><div className="color-options">{colors.map((color) => { const taken = players.some((candidate) => candidate.key !== player.key && candidate.color === color.value); const selected = player.color === color.value; return <button className={`color-option${selected ? ' selected' : ''}`} type="button" key={color.value} style={{ '--player-color': `var(${color.token})` } as CSSProperties} aria-label={t('selectColor', { color: t(color.nameKey) })} aria-pressed={selected} disabled={taken} onClick={() => onChange(color.value)}><span aria-hidden="true">{selected ? '✓' : ''}</span></button>; })}</div></fieldset>;
 }
 
 function MoneyField({ label, value, currency, onChange, error }: { label: string; value: string; currency: Currency; onChange: (value: string) => void; error: string | undefined }) { const { t } = useLanguage(); const amount = isPositive(value) ? formatMoney(Number(value), currency) : '—'; return <label>{label}<input type="number" inputMode="numeric" min="1" step="1" value={value} onChange={(event) => onChange(event.target.value)} aria-invalid={error !== undefined} /><span className="field-hint">{t('displayedAs', { amount })}</span>{fieldError(error)}</label>; }

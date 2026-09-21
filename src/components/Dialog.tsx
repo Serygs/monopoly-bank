@@ -62,7 +62,7 @@ export function Dialog({ title, children, onClose, closeLabel, eyebrow, classNam
           {eyebrow !== undefined && <p className="eyebrow">{eyebrow}</p>}
           <h2 id={titleId}>{title}</h2>
         </div>
-        <button className="button button-quiet dialog-close" type="button" onClick={onClose} disabled={closeDisabled} aria-label={closeLabel}>×</button>
+        <button className="button button-quiet icon-button dialog-close" type="button" onClick={onClose} disabled={closeDisabled} aria-label={closeLabel}>×</button>
       </header>
       {children}
     </section>
