@@ -8,9 +8,9 @@ overlays, motion, accessibility, and visual validation. Agent instructions,
 skills, screenshots, tests, and the current CSS implementation must point here
 instead of defining a competing visual contract.
 
-Phase 2 implements the first complete `classic-bank` token set and shared
-component language described below. Page-specific information architecture and
-major layout changes remain outside this phase.
+Phase 3 implements the responsive layout composition described below. The
+application uses one shared DOM and state flow per page across viewport sizes;
+only presentation changes between compact, medium, and wide layouts.
 
 Product and interaction decisions remain outside the style system:
 
@@ -282,17 +282,43 @@ may compose them but must not create a second visual language.
 
 ## Responsive and overlay rules
 
-- Start from a usable 320 CSS-pixel viewport and scale fluidly.
-- Add breakpoints because content or interaction fails, not to target a named
-  device. Existing media-query values are implementation details, not permanent
-  design-system breakpoints.
+- Start from a usable 320 CSS-pixel viewport and scale fluidly. Validate compact
+  layouts at 320, 390, and 430px; medium at 768px; and wide at 1024, 1280, and
+  1440px or larger.
+- Monopoly Bank has three responsive layout groups. They are shared rules, not
+  page-specific breakpoint guesses:
+
+  | Group | Range | Composition |
+  | --- | --- | --- |
+  | Compact | under `48rem` / 768px | One primary task column; labelled header controls collapse to icons; page actions become a stable local grid; dialogs and settings use bottom sheets. |
+  | Medium | `48rem` / 768px through under `64rem` / 1024px | Moderate page padding; labelled header controls return; actions may wrap in their local header region; dialogs and settings are anchored/centered surfaces. |
+  | Wide | `64rem` / 1024px and above | Controlled `1280px` content maximum; intentional outer whitespace; page title and actions may share a row; feature grids use available table space. |
+
+- Use `--layout-*` tokens for content measures, inline/block padding, header
+  height, section gaps, and grid gaps. `src/styles/layout.css` owns the three
+  layout-group media queries. Feature CSS may only use the same compact, medium,
+  and wide boundaries when a feature changes composition.
+- Use CSS grid, flex, intrinsic sizing (`minmax(0, ...)`), and wrapping before
+  adding a breakpoint. Never use fixed widths that make a 320px viewport or a
+  Ukrainian label overflow.
+- `PageHeader` is the shared page-level hierarchy: contextual back action,
+  title/description, and one local action region. It preserves action DOM order
+  and handlers while changing only its layout. Page actions never float around a
+  title or move into a duplicate mobile page.
+- The global header is navigation chrome, not a game-status panel. It contains
+  brand, profile access, and settings; game connection state remains contextual
+  to the game page.
 - Avoid horizontal page scrolling at supported widths. Allow deliberate
   overflow only inside a component that communicates and controls it.
 - Preserve information and action parity across viewport sizes. Reflowing,
   collapsing, or changing an overlay's presentation must not remove capability.
-- Dialog, sheet, popover, and menu selection is based on task semantics,
-  available space, focus behaviour, and input modality. A blanket rule such as
-  "all mobile dialogs are bottom sheets" is not part of the system.
+- Dialogs are centered with controlled width/height from medium upward. In the
+  compact group they are bottom sheets: full inline width, rounded top corners,
+  safe-area-aware bottom padding, `dvh` bounded height, and internal scrolling.
+  The same dialog DOM preserves focus trapping, dismissal, and action order.
+- Settings is an anchored header panel from medium upward. In compact it becomes
+  a safe-area-aware bottom sheet with a backdrop; its controls, preference
+  persistence, and keyboard handling remain the same.
 - Account for safe-area insets in installed-PWA and mobile-browser contexts.
 
 The visual validation widths `320`, `390`, `768`, and `1280` are representative
@@ -360,6 +386,8 @@ requirements for future styles.
 - `src/styles/primitives.css` owns shared controls, feedback, settings, and
   overlays.
 - `src/styles/features.css` owns feature-level presentation.
+- `src/components/PageHeader.tsx` owns the shared title, back-action, and local
+  page-action DOM structure used by saved games, game, create, and profile pages.
 - `src/utils/preferences.ts` owns preference types, storage validation, legacy
   migration, and persistence; the appearance controller owns DOM effects.
 - `public/manifest.webmanifest`, `index.html`, and `public/icons/` contain the
@@ -390,7 +418,7 @@ For meaningful UI changes, validate:
 
 - `classic-bank` in English and Ukrainian;
 - explicit light and dark modes, plus system preference resolution;
-- representative widths of 320, 390, 768, and 1280 CSS pixels;
+- representative widths of 320, 390, 430, 768, 1024, 1280, and 1440 CSS pixels;
 - keyboard-only use, focus entry/restoration for overlays, and non-hover input;
 - reduced motion and no-preference;
 - PWA shell/install/update behaviour when shell assets or metadata change.
