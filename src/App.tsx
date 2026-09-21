@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { UserProfile } from '../shared/contracts/api';
 import { monopolyBankApi } from './api/monopoly-bank-api';
 import { Avatar } from './components/AvatarPicker';
@@ -10,7 +10,9 @@ import { GamePage } from './pages/GamePage';
 import { JoinGamePage } from './pages/JoinGamePage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SavedGamesPage } from './pages/SavedGamesPage';
-import { applyTheme, readPreferences, writePreferences, type DevicePreferences } from './utils/preferences';
+import { readPreferences, writePreferences, type DevicePreferences } from './utils/preferences';
+import { mountAppearance } from './appearance/appearance-controller';
+import { AppearanceSettings } from './components/AppearanceSettings';
 import { currentRoute, routePath } from './utils/client-route';
 import { EMAIL_FEATURES_ENABLED } from './utils/email-features';
 import { applyPwaUpdate } from './pwa';
@@ -29,7 +31,9 @@ function App() {
   const headerToolsRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => { applyTheme(preferences.theme); writePreferences(preferences); }, [preferences]);
+  const { visualStyle, colorMode } = preferences;
+  useLayoutEffect(() => mountAppearance({ visualStyle, colorMode }), [visualStyle, colorMode]);
+  useEffect(() => { writePreferences(preferences); }, [preferences]);
   useEffect(() => {
     const onPopState = () => setPath(window.location.pathname);
     window.addEventListener('popstate', onPopState);
@@ -92,7 +96,7 @@ function App() {
           <button ref={settingsButtonRef} className="settings-button" type="button" aria-label={t('settings')} aria-expanded={settingsOpen} aria-haspopup="dialog" aria-controls="settings-panel" onClick={() => setSettingsOpen(!settingsOpen)}>⚙ <span>{t('settings')}</span></button>
         </div>
       </div>
-      {settingsOpen && <section id="settings-panel" ref={settingsRef} className="settings-panel" role="dialog" aria-label={t('settings')}><header><p className="eyebrow">{t('settings')}</p><button className="button button-quiet" type="button" onClick={() => setSettingsOpen(false)}>{t('close')}</button></header><label className="settings-select"><span>{t('theme')}</span><select value={preferences.theme} onChange={(event) => setPreferences({ ...preferences, theme: event.target.value as DevicePreferences['theme'] })}><option value="system">{t('themeSystem')}</option><option value="light">{t('themeLight')}</option><option value="dark">{t('themeDark')}</option></select></label><fieldset className="settings-options"><legend>{t('language')}</legend><div className="settings-segmented"><button type="button" className={language === 'en' ? 'active' : ''} aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>{t('english')}</button><button type="button" className={language === 'uk' ? 'active' : ''} aria-pressed={language === 'uk'} onClick={() => setLanguage('uk')}>{t('ukrainian')}</button></div></fieldset><label className="settings-toggle"><span>{t('sound')}</span><input type="checkbox" checked={preferences.sound} onChange={(event) => setPreferences({ ...preferences, sound: event.target.checked })} /></label><label className="settings-toggle"><span>{t('vibration')}</span><input type="checkbox" checked={preferences.vibration} onChange={(event) => setPreferences({ ...preferences, vibration: event.target.checked })} /></label></section>}
+      {settingsOpen && <section id="settings-panel" ref={settingsRef} className="settings-panel" role="dialog" aria-label={t('settings')}><header><p className="eyebrow">{t('settings')}</p><button className="button button-quiet" type="button" onClick={() => setSettingsOpen(false)}>{t('close')}</button></header><AppearanceSettings preferences={preferences} onChange={(change) => setPreferences((current) => ({ ...current, ...change }))} /><fieldset className="settings-options"><legend>{t('language')}</legend><div className="settings-segmented"><button type="button" className={language === 'en' ? 'active' : ''} aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>{t('english')}</button><button type="button" className={language === 'uk' ? 'active' : ''} aria-pressed={language === 'uk'} onClick={() => setLanguage('uk')}>{t('ukrainian')}</button></div></fieldset><label className="settings-toggle"><span>{t('sound')}</span><input type="checkbox" checked={preferences.sound} onChange={(event) => setPreferences({ ...preferences, sound: event.target.checked })} /></label><label className="settings-toggle"><span>{t('vibration')}</span><input type="checkbox" checked={preferences.vibration} onChange={(event) => setPreferences({ ...preferences, vibration: event.target.checked })} /></label></section>}
     </header>
     {!online && <p className="offline-banner" role="status">{t('staleSnapshot')}</p>}
     {updateReady && !paymentFlowOpen && <section className="update-banner" role="status"><span>{t('updateReady')}</span><button type="button" className="button button-primary" onClick={applyPwaUpdate}>{t('updateApp')}</button><button type="button" className="button button-quiet" onClick={() => setUpdateReady(false)}>{t('updateLater')}</button></section>}
