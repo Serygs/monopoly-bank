@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { GameSummary } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Dialog } from '../components/Dialog';
+import { OverflowMenu } from '../components/OverflowMenu';
 import { PageHeader } from '../components/PageHeader';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
@@ -101,7 +102,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
       <p>{apiErrorMessage(error, t, 'unableLoadSavedGames')}</p>
       <button className="button button-secondary" type="button" onClick={loadGames}>{t('tryAgain')}</button>
     </section>}
-    {!loading && error === null && games.length === 0 && <section className="empty-state banknote-panel">
+    {!loading && error === null && games.length === 0 && <section className="empty-state">
       <span className="empty-state-token" aria-hidden="true">MB</span>
       <h2>{t('noSavedGames')}</h2>
       <p>{t('noSavedGamesDescription')}</p>
@@ -111,18 +112,22 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
       {games.map((summary) => <article className="game-card" key={summary.game.id}>
         <div className="game-card-copy">
           <span className="game-card-seal" aria-hidden="true">MB</span>
-          <div>
+          <div className="game-card-details">
             <h2>{summary.game.name}</h2>
-            <p>{t('playersCount', { count: summary.playerCount })}</p>
-            <p className="muted">{t('updated', { date: formatDate(summary.game.updatedAt, locale) })}</p>
+            <div className="game-card-meta">
+              <span>{t('playersCount', { count: summary.playerCount })}</span>
+              <span>{t('updated', { date: formatDate(summary.game.updatedAt, locale) })}</span>
+            </div>
           </div>
         </div>
         <div className="game-card-actions">
           {summary.isPublicLobby && summary.joinCode !== undefined
-            ? <button className="button button-secondary" type="button" onClick={() => onJoinGame(summary.joinCode)}>{t('joinOpenLobby')}</button>
-            : <button className="button button-secondary" type="button" onClick={() => onOpenGame(summary.game.id)}>{t('openGame')}</button>}
-          <button className="button button-quiet" type="button" disabled={duplicating === summary.game.id} onClick={() => requestDuplicate(summary)}>{duplicating === summary.game.id ? t('duplicating') : t('duplicate')}</button>
-          <button className="button button-danger-quiet" type="button" aria-label={t('removeGameAria', { name: summary.game.name })} onClick={() => requestRemoval(summary)}>{t('removeGame')}</button>
+            ? <button className="button button-primary game-card-primary-action" type="button" onClick={() => onJoinGame(summary.joinCode)}>{t('joinOpenLobby')}</button>
+            : <button className="button button-primary game-card-primary-action" type="button" onClick={() => onOpenGame(summary.game.id)}>{t('openGame')}</button>}
+          <OverflowMenu label={t('gameActions', { name: summary.game.name })} items={[
+            { label: duplicating === summary.game.id ? t('duplicating') : t('duplicate'), disabled: duplicating === summary.game.id, onSelect: () => requestDuplicate(summary) },
+            { label: t('removeGame'), tone: 'danger', onSelect: () => requestRemoval(summary) },
+          ]} />
         </div>
       </article>)}
     </section>}
