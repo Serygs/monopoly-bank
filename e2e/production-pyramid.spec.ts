@@ -71,7 +71,7 @@ test.describe('visual and accessibility matrix', () => {
           const page = await context.newPage();
           await page.goto('/');
           await expect(page.locator('html')).toHaveAttribute('lang', language);
-          await expect(page.locator('body')).toEvaluate((body) => body.scrollWidth <= window.innerWidth);
+          expect(await page.locator('body').evaluate((body) => body.scrollWidth <= window.innerWidth)).toBe(true);
           await testInfo.attach(`matrix-${language}-${width}-${colorScheme}-${reducedMotion}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
           await context.close();
         });

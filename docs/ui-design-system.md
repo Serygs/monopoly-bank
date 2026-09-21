@@ -8,9 +8,10 @@ overlays, motion, accessibility, and visual validation. Agent instructions,
 skills, screenshots, tests, and the current CSS implementation must point here
 instead of defining a competing visual contract.
 
-Phase 3 implements the responsive layout composition described below. The
-application uses one shared DOM and state flow per page across viewport sizes;
-only presentation changes between compact, medium, and wide layouts.
+Phases 3 and 4 implement the responsive layout composition and non-game page
+patterns described below. The application uses one shared DOM and state flow per
+page across viewport sizes; only presentation changes between compact, medium,
+and wide layouts.
 
 Product and interaction decisions remain outside the style system:
 
@@ -324,6 +325,29 @@ may compose them but must not create a second visual language.
 The visual validation widths `320`, `390`, `768`, and `1280` are representative
 coverage samples, not breakpoint specifications.
 
+### Non-game page composition
+
+- Saved games uses a restrained hero and a one-column compact grid. Medium and
+  wide layouts use two columns so each card keeps a comfortable measure. A game
+  card has one filled primary action; duplicate and destructive removal live in
+  an accessible contextual menu, with removal confirmed in a dialog.
+- Profile keeps a 2-by-2 statistics grid at all supported widths. Compact stacks
+  identity, statistics, and a full-width editor action. Medium and wide use a
+  balanced identity/statistics column beside the editor rather than constraining
+  the whole page to a narrow form measure.
+- Create lobby is one ordered column on compact screens. From medium upward,
+  game basics and banking rules may share a row; player sections use available
+  width without changing field order, validation, or submit behaviour. Colour
+  choices always combine a visible check with a strong ring and accessible
+  pressed state.
+- Authentication and joining use the same focused elevated surface, field
+  rhythm, identity controls, and full-width primary action. Invitation state,
+  join code, password, and guest identity remain distinct form states without
+  duplicating join logic.
+- `src/styles/non-game-pages.css` owns these compositions. It may consume shared
+  tokens and primitives but must not redefine the palette or introduce
+  page-local breakpoint values outside the compact/medium/wide boundaries.
+
 ## Accessibility and motion
 
 Accessibility is a release requirement for every visual style and colour mode:
@@ -386,8 +410,12 @@ requirements for future styles.
 - `src/styles/primitives.css` owns shared controls, feedback, settings, and
   overlays.
 - `src/styles/features.css` owns feature-level presentation.
+- `src/styles/non-game-pages.css` owns saved-game, profile, create/join, and
+  authentication page composition.
 - `src/components/PageHeader.tsx` owns the shared title, back-action, and local
   page-action DOM structure used by saved games, game, create, and profile pages.
+- `src/components/OverflowMenu.tsx` owns the reusable keyboard-dismissible
+  contextual action menu used by saved-game cards.
 - `src/utils/preferences.ts` owns preference types, storage validation, legacy
   migration, and persistence; the appearance controller owns DOM effects.
 - `public/manifest.webmanifest`, `index.html`, and `public/icons/` contain the
