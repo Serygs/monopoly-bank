@@ -3,34 +3,65 @@
   color: var(--color-text-primary);
   background: var(--background-shell);
 }
-.offline-shell { min-height: 100dvh; display: grid; align-content: center; justify-items: start; gap: 16px; padding: max(32px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); color: var(--color-text-on-accent); background: var(--color-surface-inverse); }.offline-shell .brand-mark { width: 56px; height: 56px; }.offline-shell h1, .offline-shell p { max-width: 34rem; margin: 0; }.offline-shell p { color: var(--color-accent-subtle); line-height: 1.55; }.offline-banner, .update-banner { position: fixed; z-index: 40; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); left: max(12px, env(safe-area-inset-left)); width: min(720px, calc(100% - 24px)); margin: auto; padding: 12px 14px; border: 1px solid var(--color-accent); border-radius: 12px; color: var(--color-text-on-accent); background: var(--color-surface-inverse); box-shadow: var(--shadow-md); }.update-banner { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }.update-banner span { margin-right: auto; }
+
+.offline-shell {
+  min-height: 100dvh;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: var(--space-4);
+  padding: max(var(--space-7), env(safe-area-inset-top)) max(var(--space-6), env(safe-area-inset-right)) max(var(--space-7), env(safe-area-inset-bottom)) max(var(--space-6), env(safe-area-inset-left));
+  color: var(--color-text-on-inverse);
+  background: var(--color-surface-inverse);
+}
+
+.offline-shell .brand-mark { width: 56px; height: 56px; }
+.offline-shell h1, .offline-shell p { max-width: 34rem; margin: 0; }
+.offline-shell h1 { font: var(--weight-bold) var(--text-display)/var(--leading-tight) var(--font-display); letter-spacing: var(--tracking-display); }
+.offline-shell p { color: color-mix(in srgb, var(--color-text-on-inverse) 76%, transparent); }
+
+.offline-banner, .update-banner {
+  position: fixed;
+  z-index: 40;
+  right: max(var(--space-3), env(safe-area-inset-right));
+  bottom: max(var(--space-3), env(safe-area-inset-bottom));
+  left: max(var(--space-3), env(safe-area-inset-left));
+  width: min(720px, calc(100% - 24px));
+  margin: auto;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-highlight) 65%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--color-text-on-inverse);
+  background: var(--color-surface-inverse);
+  box-shadow: var(--shadow-md);
+}
+
+.update-banner { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.update-banner span { margin-right: auto; }
 
 .app-header {
   position: sticky;
   top: 0;
   z-index: 20;
-  padding: var(--app-safe-top) max(16px, var(--app-safe-right)) 0 max(16px, var(--app-safe-left));
-  border-bottom: 4px solid var(--color-accent);
-  color: var(--color-text-on-accent);
+  padding: var(--app-safe-top) max(var(--space-4), var(--app-safe-right)) 0 max(var(--space-4), var(--app-safe-left));
+  border-bottom: 1px solid color-mix(in srgb, var(--color-highlight) 48%, transparent);
+  color: var(--color-text-on-inverse);
   background: var(--background-header);
   box-shadow: var(--shadow-header);
 }
 
-.app-header-inner, .page {
-  width: min(100%, 1120px);
-  margin-inline: auto;
-}
+.app-header-inner, .page { width: min(100%, 1120px); margin-inline: auto; }
 
 .app-header-inner {
   display: flex;
   min-height: 68px;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .page {
-  padding: clamp(24px, 5vw, 56px) max(var(--space-page-inline), env(safe-area-inset-right)) max(48px, calc(env(safe-area-inset-bottom) + 28px)) max(var(--space-page-inline), env(safe-area-inset-left));
+  padding: clamp(var(--space-6), 5vw, var(--space-10)) max(var(--space-page-inline), env(safe-area-inset-right)) max(var(--space-9), calc(env(safe-area-inset-bottom) + 28px)) max(var(--space-page-inline), env(safe-area-inset-left));
 }
 
 .page-narrow { max-width: 720px; }
@@ -40,30 +71,30 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
-  margin-bottom: clamp(24px, 4vw, 42px);
+  gap: var(--space-6);
+  margin-bottom: clamp(var(--space-6), 4vw, var(--space-8));
 }
 
-.page h1, .page h2, .dialog h2 { color: var(--color-text-heading); }
-.page h1 { max-width: 18ch; margin: 0; font-size: clamp(2.2rem, 6vw, 4.25rem); line-height: .96; letter-spacing: -.065em; }
-.page h2 { margin: 0; }
-.lede { max-width: 62ch; margin: 14px 0 0; color: var(--color-text-secondary); font-size: 1.04rem; line-height: 1.55; }
-.muted, .field-hint, .field-note { color: var(--color-text-secondary); }
-.eyebrow { margin: 0 0 8px; color: var(--color-text-accent); font-size: .78rem; font-weight: 800; letter-spacing: .04em; }
+.page h1, .page h2, .dialog h2 { color: var(--color-text-primary); font-family: var(--font-display); }
+.page h1 { max-width: 20ch; margin: 0; font-size: var(--text-display); font-weight: var(--weight-bold); line-height: var(--leading-tight); letter-spacing: var(--tracking-display); }
+.page h2 { margin: 0; font-size: var(--text-heading-lg); line-height: 1.2; letter-spacing: -.025em; }
+.lede { max-width: 62ch; margin: var(--space-3) 0 0; color: var(--color-text-secondary); font-size: 1.04rem; }
+.muted, .field-hint, .field-note { color: var(--color-text-muted); }
+.eyebrow { margin: 0 0 var(--space-2); color: var(--color-accent); font-size: var(--text-meta); font-weight: var(--weight-bold); letter-spacing: var(--tracking-meta); text-transform: uppercase; }
 
-.header-actions, .header-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.header-actions, .header-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .header-tools { justify-content: flex-end; }
 
 .brand, .profile-menu-button, .settings-button {
   display: inline-flex;
+  min-height: var(--control-height-md);
   align-items: center;
   gap: 9px;
-  min-height: 44px;
   border: 0;
   color: inherit;
   background: transparent;
   font: inherit;
-  font-weight: 760;
+  font-weight: var(--weight-semibold);
 }
 
 .brand { padding: 0; font-size: 1rem; letter-spacing: -.015em; }
@@ -73,37 +104,44 @@
   flex: 0 0 auto;
   width: 42px;
   height: 42px;
-  border: 2px solid var(--color-accent-subtle);
-  border-radius: 13px;
-  color: var(--color-surface-inverse);
-  background: var(--color-surface-panel);
-  box-shadow: inset 0 0 0 3px var(--color-surface-inverse);
-  font-size: .76rem;
-  font-weight: 900;
-  letter-spacing: .03em;
+  border: 1px solid color-mix(in srgb, var(--color-highlight) 64%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--color-text-on-inverse);
+  background: var(--color-surface-inverse-elevated);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-surface-inverse) 70%, transparent);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-meta);
 }
 
-.profile-menu-button { max-width: 220px; padding: 4px 8px 4px 4px; border-radius: 999px; }
-.profile-menu-button:hover { background: var(--color-inverse-hover); }
+.profile-menu-button { max-width: 220px; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1); border-radius: var(--radius-pill); }
 .header-avatar { width: 34px; height: 34px; }
-.bank-status { display: inline-flex; align-items: center; gap: 7px; color: var(--color-accent-subtle); font-size: .84rem; font-weight: 700; }
-.bank-status i { width: 8px; height: 8px; border-radius: 999px; background: var(--color-status-positive); box-shadow: 0 0 0 3px var(--color-status-positive-halo); }
+.bank-status { display: inline-flex; align-items: center; gap: 7px; color: color-mix(in srgb, var(--color-text-on-inverse) 74%, transparent); font-size: var(--text-small); font-weight: var(--weight-medium); }
+.bank-status i { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--color-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 18%, transparent); }
 
-.settings-button { padding: 7px 10px; border: 1px solid var(--color-border-inverse); border-radius: 10px; }
-.settings-panel { position: absolute; z-index: 30; top: calc(68px + var(--app-safe-top)); right: max(16px, calc((100vw - 1120px) / 2)); width: min(calc(100vw - 32px), 360px); }
+.settings-button { padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--color-text-on-inverse) 28%, transparent); border-radius: var(--radius-md); }
+.settings-panel { position: absolute; z-index: 30; top: calc(68px + var(--app-safe-top)); right: max(var(--space-4), calc((100vw - 1120px) / 2)); width: min(calc(100vw - 32px), 360px); }
+
+@media (hover: hover) and (pointer: fine) {
+  .profile-menu-button:hover, .settings-button:hover { background: var(--color-inverse-hover); }
+}
+
+:root[data-color-mode='light'] .app-header button:focus-visible,
+:root[data-color-mode='light'] .hero-heading button:focus-visible,
+:root[data-color-mode='light'] .offline-shell button:focus-visible {
+  outline-color: var(--color-text-on-inverse);
+}
 
 @media (max-width: 767px) {
   .app-header-inner { min-height: 60px; }
-  .settings-panel { top: calc(60px + var(--app-safe-top)); right: max(12px, var(--app-safe-right)); }
+  .settings-panel { top: calc(60px + var(--app-safe-top)); right: max(var(--space-3), var(--app-safe-right)); }
   .bank-status, .profile-menu-button > span:last-child, .settings-button > span { display: none; }
-  .profile-menu-button { max-width: 44px; padding: 4px; }
-  .page { padding-top: 24px; }
-  .page-heading { gap: 16px; margin-bottom: 26px; }
-  .page h1 { font-size: clamp(2rem, 10vw, 3rem); }
+  .profile-menu-button { max-width: 44px; padding: var(--space-1); }
+  .page { padding-top: var(--space-6); }
+  .page-heading { gap: var(--space-4); margin-bottom: 26px; }
 }
 
-/* iOS standalone mode can report a zero top inset during first paint.
-   Keep the Dynamic Island/status bar clear until WebKit supplies the real inset. */
+/* iOS standalone mode can report a zero top inset during first paint. */
 @supports (-webkit-touch-callout: none) {
   @media (max-width: 767px) and (orientation: portrait) {
     :root { --app-safe-top: max(env(safe-area-inset-top, 0px), 54px); }
@@ -127,5 +165,5 @@
 
 @media (max-width: 360px) {
   .brand > span:last-child { display: none; }
-  .app-header-inner { gap: 8px; }
+  .app-header-inner { gap: var(--space-2); }
 }

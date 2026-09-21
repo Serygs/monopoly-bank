@@ -8,8 +8,9 @@ overlays, motion, accessibility, and visual validation. Agent instructions,
 skills, screenshots, tests, and the current CSS implementation must point here
 instead of defining a competing visual contract.
 
-Phase 1 implements the appearance architecture described below. The application
-keeps its current visual treatment until a later, explicitly scoped redesign.
+Phase 2 implements the first complete `classic-bank` token set and shared
+component language described below. Page-specific information architecture and
+major layout changes remain outside this phase.
 
 Product and interaction decisions remain outside the style system:
 
@@ -34,7 +35,7 @@ families, typography, shape, depth, imagery, and optional presentation effects.
 
 | Style ID | Status | Intent |
 | --- | --- | --- |
-| `classic-bank` | Initial and only implemented style | The existing bank-inspired presentation, retained in Phase 1. |
+| `classic-bank` | Initial and only implemented style | A modern, premium interpretation of classic Monopoly banking. |
 | `liquid-glass` | Future architecture example only | Translucent, refractive surfaces with optional device-aware effects. |
 | `minimal-finance` | Future architecture example only | A possible restrained finance presentation. |
 
@@ -158,12 +159,126 @@ alone.
 
 Typography follows semantic roles rather than per-component font declarations.
 Every chosen face and fallback must render English and Ukrainian completely and
-legibly. The current implementation has a single `--font-ui` token; a future
-style may add documented display or numeric roles without changing page logic.
+legibly. Classic Bank uses a system font stack through body, display, and money
+roles; no remote font request is made.
 
 Layout primitives, focus behaviour, and overlay semantics are shared. A visual
 style may change their presentation, but not reading order, accessible names,
 focus management, dismissal behaviour, or the meaning and order of actions.
+
+## Classic Bank visual specification
+
+Classic Bank should feel premium, tactile, financially trustworthy, and lightly
+playful. It uses warm ivory space, crisp pale surfaces, deep bank green, and
+small brass details. It must not use fake paper texture, glassmorphism, heavy
+outlines, cartoon typography, or gold as a general-purpose action colour.
+Elevation is reserved for interactive or layered hierarchy; ordinary content
+grouping should prefer spacing and subtle surface contrast.
+
+### Token contract
+
+`src/styles/visual-styles/classic-bank.css` is the implemented source for exact
+values. Shared and feature CSS must use the following roles rather than adding
+raw palette names.
+
+| Group | Tokens | Contract |
+| --- | --- | --- |
+| Canvas and surfaces | `--color-canvas`, `--color-surface`, `--color-surface-elevated`, `--color-surface-subtle`, `--color-surface-inverse`, `--color-surface-inverse-elevated` | Ivory canvas and clean neutral surfaces in light mode; deep neutral-green canvas and progressively lighter green-neutral surfaces in dark mode. |
+| Text | `--color-text-primary`, `--color-text-secondary`, `--color-text-muted`, `--color-text-on-accent`, `--color-text-on-danger`, `--color-text-on-inverse` | Primary content, supporting copy, de-emphasized metadata, and contrast-safe text on filled roles. |
+| Structure | `--color-border`, `--color-border-strong`, `--color-dialog-divider` | Use the quiet border by default. Strong borders are for selected, interactive, or unusually dense boundaries. |
+| Brand/action | `--color-accent`, `--color-accent-hover`, `--color-accent-pressed`, `--color-accent-soft` | Deep premium green in light mode and a brighter accessible green in dark mode. This is the primary action and selection family. |
+| Highlight | `--color-highlight`, `--color-highlight-hover`, `--color-highlight-soft` | Muted brass for focus, compact identity details, and limited emphasis; never the default control fill. |
+| Feedback | `--color-danger`, `--color-danger-hover`, `--color-danger-soft`, `--color-success`, `--color-success-soft`, plus status/border aliases | Restrained red for destructive/error states and green for positive/live states. Always pair colour with text, iconography, or semantics. |
+| Player identity | `--color-player-red`, `--color-player-blue`, `--color-player-green`, `--color-player-orange`, `--color-player-purple`, `--color-player-teal`, `--color-text-on-player` | Stable values matching persisted player colours. Keep all six distinguishable in both modes. |
+| Focus and overlay | `--color-focus-ring`, `--color-focus-halo`, `--color-overlay`, `--focus-ring` | Brass focus treatment remains visible on light, dark, and inverse surfaces. Classic Bank overlays are opaque and must not blur content. |
+
+The resolved core palette is:
+
+| Role | Light | Dark |
+| --- | --- | --- |
+| Canvas | `#f4f1e8` | `#0b1511` |
+| Surface | `#fffcf5` | `#111f1a` |
+| Elevated surface | `#ffffff` | `#182a23` |
+| Subtle surface | `#ecefe9` | `#1d3028` |
+| Primary text | `#17231e` | `#f2f1eb` |
+| Secondary text | `#46534d` | `#c3cbc6` |
+| Muted text | `#626d67` | `#93a099` |
+| Border / strong border | `#d9ded8` / `#b9c3bb` | `#2f443b` / `#4c6258` |
+| Accent / hover / pressed | `#176344` / `#125338` / `#0d432d` | `#4fa779` / `#65b98b` / `#3d8d65` |
+| Accent soft | `#e2f0e8` | `#193b2d` |
+| Highlight / hover / soft | `#b78c3f` / `#9d7430` / `#f2e9d4` | `#c7a45e` / `#d4b46f` / `#352f20` |
+| Danger / hover / soft | `#b3434b` / `#98363d` / `#f8e7e8` | `#e06d75` / `#ef8188` / `#43242a` |
+| Success / soft | `#2e7650` / `#e4f2e9` | `#6eb88b` / `#173928` |
+| Focus ring | `#8b6322` | `#d5b86f` |
+
+Dark mode is designed independently; do not derive it by inversion. Stable
+player values are red `#d83f55`, blue `#2878d0`, green `#238b57`, orange
+`#d97721`, purple `#8b4cc5`, and teal `#087f78`.
+
+### Typography
+
+Classic Bank uses high-quality system stacks so Ukrainian glyph coverage and
+PWA startup do not depend on a network font:
+
+- `--font-body` / `--font-ui`: body copy and controls;
+- `--font-display`: page and section headings;
+- `--font-money`: balances and transaction values with tabular numerals.
+
+The responsive roles are display `clamp(2.15rem, 6vw, 3.75rem)`, large heading
+`clamp(1.45rem, 3vw, 2rem)`, medium heading `1.2rem`, body `1rem`, small
+`.875rem`, meta `.78rem`, large money `clamp(1.55rem, 5vw, 2.25rem)`, hero
+money `clamp(2.45rem, 10vw, 4rem)`, and button `.9375rem`. Page headings and
+large balances scale without breakpoint-specific font sizes. Monetary values
+use tight but readable leading, tabular numerals, and safe wrapping. Metadata
+must remain secondary, never smaller than its documented role merely to fit.
+
+### Spacing, shape, elevation, and motion
+
+- Spacing uses `--space-1` through `--space-10`: `4`, `8`, `12`, `16`, `20`,
+  `24`, `32`, `40`, `48`, and `64px`; page inline spacing is
+  `clamp(16px, 4vw, 32px)`.
+- Shape uses `--radius-xs`, `--radius-sm`, `--radius-md`, `--radius-lg`,
+  `--radius-xl`, and `--radius-pill`: `6`, `8`, `12`, `16`, `20`, and `999px`.
+  Controls use `12px`; cards use `16px` or `20px`.
+- Controls use `--control-height-sm`, `--control-height-md`, and
+  `--control-height-lg`: `40`, `44`, and `48px`; normal interactive targets are
+  at least `44px`.
+- Icons use `--icon-size-sm`, `--icon-size-md`, and `--icon-size-lg`: `16`, `20`,
+  and `24px`.
+- Elevation uses `--shadow-sm`, `--shadow-md`, `--shadow-lg`, and
+  `--shadow-hover`. Apply the smallest shadow that communicates the layer.
+- Motion durations are `120`, `180`, and `260ms`; easing is
+  `cubic-bezier(.2, 0, 0, 1)` normally and `cubic-bezier(.2, .8, .2, 1)` for
+  emphasized changes. Desktop hover may translate a clickable card/control by
+  at most `2px`; touch interaction never relies on it.
+
+With `prefers-reduced-motion: reduce`, nonessential transitions and animations
+complete immediately and translation is removed. Focus, pressed, selected,
+disabled, and validation states remain visible without motion.
+
+### Shared primitive contract
+
+- Buttons provide primary, secondary, ghost (`button-quiet`), destructive,
+  destructive-ghost, and square icon treatments. Every variant defines hover
+  where appropriate, pressed, focus-visible, and disabled states.
+- Inputs and selects use elevated surfaces, strong-enough neutral boundaries,
+  accent focus borders, and a visible focus halo. Placeholders use muted text.
+- Settings use a segmented control and semantic on/off switches. Native
+  checkboxes elsewhere retain platform affordance with the accent colour.
+- Cards and stat tiles use quiet borders and at most low elevation. Interactive
+  cards may lift only for fine pointers; player-colour rails are data-driven.
+- Badges use compact pill geometry and combine colour with readable status text.
+- The settings popover is an elevated solid-surface menu/dialog. It must keep
+  its accessible name, outside-click dismissal, and keyboard behaviour.
+- Dialogs are centered solid surfaces on larger viewports and may reflow as a
+  bottom sheet when narrow. Both presentations share focus trapping, Escape,
+  restoration, overlay, and action semantics. Classic Bank uses no backdrop
+  blur or translucent glass.
+- Tabs use a subtle grouped surface and a filled selected state. Horizontal
+  overflow is local to the tab list when labels do not fit.
+
+These definitions are implemented in `src/styles/primitives.css`. Feature CSS
+may compose them but must not create a second visual language.
 
 ## Responsive and overlay rules
 
@@ -232,12 +347,13 @@ controllers.
 
 ## Current implementation map
 
-The existing application is the `classic-bank` implementation for now. Its
-green, cream, brass, felt, paper, radii, and current layout choices describe the
-present build; they are not global requirements for future styles.
+The application currently implements only `classic-bank`. Its palette,
+typography, shape, and elevation describe that registered style, not global
+requirements for future styles.
 
-- `src/styles/visual-styles/classic-bank.css` owns the existing palette,
-  typography, shape tokens, shadows, decorative backgrounds, and dark overrides.
+- `src/styles/visual-styles/classic-bank.css` owns the palette, typography,
+  spacing, shape, controls, icons, motion, elevation, presentation roles, player
+  colours, and deliberately designed dark overrides.
 - `src/index.css` imports the style sheet and owns base document styles,
   safe-area inputs, and native `color-scheme` for each resolved mode.
 - `src/styles/layout.css` owns shell and page geometry.
@@ -249,15 +365,15 @@ present build; they are not global requirements for future styles.
 - `public/manifest.webmanifest`, `index.html`, and `public/icons/` contain the
   current installed-PWA colours and icon assets.
 
-Feature styles now consume semantic names such as `--color-surface-elevated`,
+Feature styles consume semantic names such as `--color-surface-elevated`,
 `--color-text-primary`, `--color-text-secondary`, `--color-accent`,
-`--color-accent-strong`, `--color-danger`, `--shadow-md`, `--radius-card`, and
-`--space-page-inline`. Former paper/felt/brass/gold names have been removed.
-Decorative backgrounds and previously literal component colours are supplied by
-the style sheet. Existing geometry, breakpoints, and animations are retained;
-their complete redesign/tokenization belongs to later phases.
+`--color-highlight`, `--color-danger`, `--shadow-md`, `--radius-card`, and
+`--space-page-inline`. Player-picker swatches use player tokens for display while
+retaining the established hex values in persisted domain data. Superseded
+paper-grid, heavy control-shadow, oversized watermark, blur-overlay, and
+raw visual-name tokens have been removed rather than aliased.
 
-The PWA manifest and theme metadata retain their static values in Phase 1.
+The PWA manifest and theme metadata retain valid static fallbacks.
 Style effects must not alter installation, updates, or service-worker caching.
 
 Frontend regression coverage lives in `src/utils/preferences.test.ts`,
