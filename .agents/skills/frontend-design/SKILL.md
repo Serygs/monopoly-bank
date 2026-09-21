@@ -6,6 +6,15 @@ license: Complete terms in LICENSE.txt
 
 # Frontend Design
 
+## Monopoly Bank authority
+
+For work in this repository, read `docs/ui-design-system.md` before applying this
+skill. That document is authoritative for product-specific visual styles,
+colour modes, tokens, responsive behaviour, overlays, motion, accessibility,
+and visual validation. The guidance below is a general design process only; it
+must not create a competing palette, breakpoint system, typography contract, or
+component treatment.
+
 Approach this as the design lead at a design studio known for giving every client a distinct visual identity that is not mistaken for anyone else's. This client has already rejected proposals that felt cliché or templated, and is paying for a distinctive point of view: make deliberate, opinionated choices about palette, typography, and layout that are specific to this brief, and take aesthetic risk if justified.
 
 ## Ground your designs in the subject matter

@@ -5,6 +5,11 @@ description: Develop the Monopoly Bank repository efficiently and safely. Use wh
 
 # Monopoly Bank development
 
+## UI design authority
+
+- Before UI work, read `docs/ui-design-system.md`. It is the repository's sole authority for visual styles, colour modes, tokens, responsive behaviour, overlays, motion, accessibility, and visual validation.
+- Treat current CSS and screenshots as implementation evidence, not as instructions to reproduce a visual treatment. Do not create a parallel design brief in this skill or another agent file.
+
 ## Work efficiently
 
 - Start with the smallest relevant file set: `package.json`, then the affected feature, its caller, and its test. Read Wrangler configuration before touching Worker, D1, bindings, migrations, or deployment.
@@ -28,7 +33,7 @@ description: Develop the Monopoly Bank repository efficiently and safely. Use wh
 - Reject insufficient funds and negative balances without writes; return the affected player's current balance and required amount.
 - Interpret player→all amount per recipient and require the payer to cover `amount × recipient count`. Interpret all→player amount per payer and require every payer to afford it before any write.
 - Require a UI confirmation for every balance change showing operation, source, destination, amount, relevant total, and practical resulting balances. Allow an optional transaction comment.
-- Keep the dice roller standalone: two independent 1–6 dice, total, doubles indicator, and a brief polished animation. Do not connect it to banking or game state.
+- Keep the dice roller standalone: two independent 1–6 dice, total, and doubles indicator. Do not connect it to banking or game state. Its presentation and motion follow `docs/ui-design-system.md`.
 
 ## Validation
 

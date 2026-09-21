@@ -1,5 +1,9 @@
 # Styling & Customization
 
+> **Monopoly Bank:** read `docs/ui-design-system.md` first. These generic rules
+> may support its semantic-token contract but must not replace or extend the
+> application's visual specification independently.
+
 See [customization.md](../customization.md) for theming, CSS variables, and adding custom colors.
 
 ## Contents

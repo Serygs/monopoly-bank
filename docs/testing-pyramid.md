@@ -14,8 +14,9 @@ E2E_BASE_URL=https://monopoly-bank-staging.example E2E_RUN=true npm run test:e2e
 It uses six independent browser contexts for invitation/guest join, verifies a
 local secondary wallet, guest-to-account upgrade, FAST retry idempotency,
 CONFIRMATION flow, finish/statistics, reconnect, keyboard focus, and captures
-the EN/UK × 320/390/768/1280 × light/dark × reduced-motion visual matrix as
-Playwright report attachments. Install the browser once per runner with
+the compatibility matrix defined by the [UI design system](./ui-design-system.md)
+as diagnostic Playwright report attachments. These captures are not design
+baselines. Install the browser once per runner with
 `npx playwright install --with-deps chromium`.
 
 The load runner is also opt-in. It never uses production credentials: provide a
