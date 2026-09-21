@@ -10,9 +10,11 @@ interface DialogProps {
   eyebrow?: string;
   className?: string;
   closeDisabled?: boolean;
+  presentation?: 'modal' | 'popover';
+  id?: string;
 }
 
-export function Dialog({ title, children, onClose, closeLabel, eyebrow, className = '', closeDisabled = false }: DialogProps) {
+export function Dialog({ title, children, onClose, closeLabel, eyebrow, className = '', closeDisabled = false, presentation = 'modal', id }: DialogProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLElement>(null);
 
@@ -55,8 +57,8 @@ export function Dialog({ title, children, onClose, closeLabel, eyebrow, classNam
     }
   };
 
-  return <div className="dialog-backdrop" role="presentation" onMouseDown={() => { if (!closeDisabled) onClose(); }}>
-    <section ref={dialogRef} className={`dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown} onMouseDown={(event) => event.stopPropagation()}>
+  return <div className={`dialog-backdrop dialog-backdrop--${presentation}`} role="presentation" onMouseDown={() => { if (!closeDisabled) onClose(); }}>
+    <section id={id ?? (className.includes('settings-panel') ? 'settings-panel' : undefined)} ref={dialogRef} className={`dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown} onMouseDown={(event) => event.stopPropagation()}>
       <header>
         <div>
           {eyebrow !== undefined && <p className="eyebrow">{eyebrow}</p>}

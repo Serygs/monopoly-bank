@@ -144,19 +144,8 @@
 .header-avatar { width: 34px; height: 34px; }
 .settings-button { width: var(--control-height-md); padding: 0; border: 1px solid color-mix(in srgb, var(--color-text-on-inverse) 28%, transparent); border-radius: var(--radius-md); }
 
-.settings-backdrop { position: fixed; z-index: 29; inset: 0; background: var(--color-overlay); }
 .settings-panel {
-  position: fixed;
-  z-index: 30;
-  right: 0;
-  bottom: 0;
-  left: 0;
   max-height: min(78dvh, calc(100dvh - var(--app-safe-top) - var(--space-4)));
-  overflow-y: auto;
-  padding: var(--space-5) max(var(--layout-page-inline-compact), env(safe-area-inset-right)) max(var(--space-5), calc(env(safe-area-inset-bottom) + var(--space-3))) max(var(--layout-page-inline-compact), env(safe-area-inset-left));
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  box-shadow: var(--shadow-lg);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -181,8 +170,8 @@
   .brand > span:last-child, .profile-menu-button > span:last-child, .settings-button > span { display: inline; }
   .profile-menu-button { max-width: 16rem; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1); }
   .settings-button { width: auto; padding-inline: var(--space-3); }
-  .settings-backdrop { display: none; }
-  .settings-panel { position: absolute; top: calc(var(--layout-header-height-medium) + var(--app-safe-top)); right: max(var(--layout-page-inline-medium), calc((100vw - var(--layout-content-max)) / 2)); bottom: auto; left: auto; width: min(calc(100vw - 2 * var(--layout-page-inline-medium)), 23rem); max-height: calc(100dvh - var(--layout-header-height-medium) - var(--app-safe-top) - var(--space-4)); padding: var(--space-5); border-radius: var(--radius-lg); }
+  .dialog-backdrop--popover { place-items: start end; padding: calc(var(--layout-header-height-medium) + var(--app-safe-top) + var(--space-2)) max(var(--layout-page-inline-medium), calc((100vw - var(--layout-content-max)) / 2)) var(--space-4); background: transparent; }
+  .dialog-backdrop--popover .settings-panel { max-height: calc(100dvh - var(--layout-header-height-medium) - var(--app-safe-top) - var(--space-4)); }
 }
 
 /* Wide: use the available table space with a controlled content measure. */
@@ -194,7 +183,7 @@
   .page-header { grid-template-columns: minmax(0, 1fr) auto; gap: var(--layout-gap-wide); margin-bottom: var(--layout-section-gap-wide); }
   .page-header-actions { justify-content: flex-end; align-self: center; max-width: 32rem; }
   .page-header--hero { padding: clamp(var(--space-7), 4vw, var(--space-9)); }
-  .settings-panel { top: calc(var(--layout-header-height-wide) + var(--app-safe-top)); }
+  .dialog-backdrop--popover { padding-top: calc(var(--layout-header-height-wide) + var(--app-safe-top) + var(--space-2)); }
 }
 
 /* iOS standalone mode can report a zero top inset during first paint. */
@@ -209,5 +198,5 @@
 @media (max-height: 31.25rem) and (orientation: landscape) {
   .app-header-inner { min-height: 52px; }
   .page { padding-top: var(--space-4); }
-  .settings-panel { max-height: calc(100dvh - var(--app-safe-top) - var(--space-2)); }
+  .dialog-backdrop--popover .settings-panel { max-height: calc(100dvh - var(--app-safe-top) - var(--space-2)); }
 }
