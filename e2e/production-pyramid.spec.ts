@@ -56,6 +56,50 @@ test.describe('production browser pyramid', () => {
     await expect(owner.page.getByRole('button', { name: /settings|налаштування/i })).toBeFocused();
     await owner.context.close();
   });
+
+  test('amount unit toggle drives the recorded transaction amount', async ({ browser }) => {
+    const owner = await register(browser, 'Unit owner');
+    const gameId = await createLobby(owner.page, 'FAST', 1);
+    await startLobby(owner.page);
+    const before = await readGameDetails(owner.page, gameId);
+    const playerId = before.data.controlledPlayerIds[0];
+    const balanceBefore = balanceOf(before, playerId);
+
+    // Full unit names come from aria-label; the short K/M and Т./М. captions are ambiguous.
+    const thousands = owner.page.getByRole('button', { name: /^thousands$|^тисячі$/i });
+    const millions = owner.page.getByRole('button', { name: /^millions$|^мільйони$/i });
+    const amountField = owner.page.getByRole('textbox', { name: /amount|сума/i });
+
+    await openPayBank(owner.page);
+    await expect(thousands).toHaveAttribute('aria-pressed', 'true');
+    await expect(millions).toHaveAttribute('aria-pressed', 'false');
+
+    await millions.click();
+    await pressKeypadDigit(owner.page, '1');
+    await expect(amountField).toHaveValue('1');
+    await expect(owner.page.getByText(/^(amount|сума): \D*1 000\D*$/i)).toBeVisible();
+
+    await thousands.click();
+    await expect(amountField).toHaveValue('');
+    await expect(owner.page.getByText(/enter a positive whole number|введіть додатне ціле число/i)).toBeVisible();
+
+    await millions.click();
+    await pressKeypadDigit(owner.page, '1');
+    await owner.page.getByRole('button', { name: /review transaction|перевірити транзакцію/i }).click();
+    await owner.page.getByRole('button', { name: /confirm transaction|підтвердити транзакцію/i }).click();
+    await expect(owner.page.getByRole('dialog')).toBeHidden();
+    // The canonical amount is thousands: one million entered must be recorded as 1000, not 1.
+    await expect.poll(async () => balanceOf(await readGameDetails(owner.page, gameId), playerId)).toBe(balanceBefore - 1000);
+    const history = await readPlayerTransactions(owner.page, gameId, playerId);
+    expect(history.data[0]).toMatchObject({ type: 'PLAYER_TO_BANK', amount: 1000 });
+
+    await owner.page.reload();
+    await expect(owner.page.getByRole('heading', { name: /load test/i })).toBeVisible();
+    await openPayBank(owner.page);
+    await expect(millions).toHaveAttribute('aria-pressed', 'true');
+    await expect(thousands).toHaveAttribute('aria-pressed', 'false');
+    await owner.context.close();
+  });
 });
 
 test.describe('visual and accessibility matrix', () => {
@@ -130,6 +174,12 @@ async function joinAsGuest(browser: Browser, invitationUrl: string, nickname: st
 }
 
 async function startLobby(page: Page): Promise<void> { await page.getByRole('button', { name: /start game|почати гру/i }).click(); }
+async function openPayBank(page: Page): Promise<void> { await page.getByRole('button', { name: /open banking actions|відкрити банківські дії/i }).click(); await page.getByRole('button', { name: /^pay bank$|^заплатити банку$/i }).click(); }
+async function pressKeypadDigit(page: Page, digit: string): Promise<void> { await page.getByRole('group', { name: /numeric keypad|цифрова клавіатура/i }).getByRole('button', { name: digit, exact: true }).click(); }
+async function readGameDetails(page: Page, gameId: string): Promise<GameDetailsResponse> { return await page.evaluate(async (id) => (await fetch(`/api/games/${id}`)).json(), gameId) as GameDetailsResponse; }
+async function readPlayerTransactions(page: Page, gameId: string, playerId: string): Promise<{ data: Array<{ type: string; amount: number }> }> { return await page.evaluate(async ({ id, player }) => (await fetch(`/api/games/${id}/players/${player}/transactions`)).json(), { id: gameId, player: playerId }) as { data: Array<{ type: string; amount: number }> }; }
+function balanceOf(details: GameDetailsResponse, playerId: string): number { const player = details.data.players.find((candidate) => candidate.id === playerId); if (player === undefined) throw new Error(`Player ${playerId} is missing from the game details.`); return player.balance; }
+type GameDetailsResponse = { data: { controlledPlayerIds: string[]; players: Array<{ id: string; balance: number }> } };
 async function finishWithNoWinner(page: Page): Promise<void> { await page.getByRole('button', { name: /finish game|завершити гру/i }).click(); await page.getByRole('button', { name: /no winner|без переможця/i }).click(); }
 async function upgradeGuest(page: Page): Promise<void> {
   await page.getByRole('button', { name: /Guest 1/ }).click();
