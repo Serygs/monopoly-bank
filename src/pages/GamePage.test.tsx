@@ -40,7 +40,8 @@ class FakeWebSocket {
   onmessage: ((message: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  constructor(readonly url: URL) { FakeWebSocket.instances.push(this); }
+  readonly url: URL;
+  constructor(url: URL) { this.url = url; FakeWebSocket.instances.push(this); }
   send(): void { /* Heartbeats are irrelevant to rendering. */ }
   close(): void { /* The page closes its socket on unmount. */ }
 }
