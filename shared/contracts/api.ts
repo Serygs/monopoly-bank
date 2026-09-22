@@ -1,4 +1,4 @@
-import type { Currency, Game, PaymentMode, Player, Transaction, TransactionType } from '../types/monopoly.js';
+import type { Game, PaymentMode, Player, SelectableCurrency, Transaction, TransactionType } from '../types/monopoly.js';
 
 export interface ApiSuccess<T> {
   data: T;
@@ -48,7 +48,7 @@ export interface CreateGameRequest {
   name: string;
   startingBalance: number;
   passGoReward: number;
-  currency: Currency;
+  currency: SelectableCurrency;
   paymentMode?: PaymentMode;
   gameAccessPassword?: string;
   players: CreateGamePlayerRequest[];

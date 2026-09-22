@@ -15,12 +15,19 @@ describe('profile avatar validation', () => {
 describe('lobby request validation', () => {
   it('accepts a public lobby with its account owner as the only initial player', async () => {
     await expect(parseCreateGameRequest(jsonRequest({
-      name: 'Friday table', startingBalance: 1500, passGoReward: 200, currency: 'K',
+      name: 'Friday table', startingBalance: 1500, passGoReward: 200, currency: 'USD',
       players: [{ name: 'Owner', color: '#e05263' }],
     }))).resolves.toEqual({
-      name: 'Friday table', startingBalance: 1500, passGoReward: 200, currency: 'K',
+      name: 'Friday table', startingBalance: 1500, passGoReward: 200, currency: 'USD',
       players: [{ name: 'Owner', color: '#e05263' }],
     });
+  });
+
+  it('rejects the legacy K currency and unknown currencies for new games', async () => {
+    const request = { name: 'Friday table', startingBalance: 1500, passGoReward: 200, players: [{ name: 'Owner', color: '#e05263' }] };
+    await expect(parseCreateGameRequest(jsonRequest({ ...request, currency: 'K' }))).rejects.toBeInstanceOf(ApiValidationError);
+    await expect(parseCreateGameRequest(jsonRequest({ ...request, currency: 'GBP' }))).rejects.toBeInstanceOf(ApiValidationError);
+    await expect(parseCreateGameRequest(jsonRequest({ ...request, currency: 'UAH' }))).resolves.toMatchObject({ currency: 'UAH' });
   });
 
   it('accepts joining a public lobby without a password', async () => {
@@ -28,7 +35,7 @@ describe('lobby request validation', () => {
   });
 
   it('accepts a four-character game password and rejects a shorter one', async () => {
-    const request = { name: 'Friday table', startingBalance: 1500, passGoReward: 200, currency: 'K', players: [{ name: 'Owner', color: '#e05263' }] };
+    const request = { name: 'Friday table', startingBalance: 1500, passGoReward: 200, currency: 'USD', players: [{ name: 'Owner', color: '#e05263' }] };
     await expect(parseCreateGameRequest(jsonRequest({ ...request, gameAccessPassword: '1234' }))).resolves.toMatchObject({ gameAccessPassword: '1234' });
     await expect(parseCreateGameRequest(jsonRequest({ ...request, gameAccessPassword: '123' }))).rejects.toBeInstanceOf(ApiValidationError);
   });
