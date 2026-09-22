@@ -13,6 +13,7 @@
     "test:d1": "node scripts/test-d1-migrations.mjs",
     "test:worker": "vitest run worker/game-session.test.ts worker/routes/api-router.test.ts",
     "test:e2e": "playwright test",
+    "test:e2e:local": "node scripts/e2e-local.mjs",
     "test:load": "node scripts/load/realtime-load.mjs",
     "test:restore": "node scripts/rehearse-d1-restore.mjs",
     "check:bindings": "node scripts/validate-deployment-bindings.mjs",
