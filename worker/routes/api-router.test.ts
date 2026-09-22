@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CreateGameRequest, CreateTransactionRequest, GameDetails, GameSummary } from '../../shared/contracts/api.js';
+import type { CreateGameRequest, CreateTransactionRequest, GameDetails, GameSummary, LedgerStatistics } from '../../shared/contracts/api.js';
+import { classicBoard, classicBuildingBank, classicSpaces, emptyClassicProperties } from '../classic-board.test-support.js';
 import { IncompleteEstateError, InsufficientFundsError } from '../../shared/domain/banking.js';
 import { PlayerNotInJailError } from '../../shared/domain/jail.js';
 import { DiceTotalRequiredError, IncompleteColorGroupError, PropertyAlreadyOwnedError } from '../../shared/domain/property.js';
@@ -554,6 +555,59 @@ describe('board and property routes', () => {
     expect((await foreign.router(jsonRequest('POST', `/api/games/${gameId}/dice-rolls`, { playerId: firstPlayerId, first: 4, second: 4 }))).status).toBe(403);
     expect(foreign.properties.recordDiceRoll).not.toHaveBeenCalled();
   });
+
+  it('ranks capital in the live statistics of a board game and omits the field for a game without a board', async () => {
+    const deeds = emptyClassicProperties().map((deed) => (deed.boardSpaceId === 'board-classic-space-39' ? { ...deed, ownerPlayerId: secondPlayerId, houses: 1 } : deed));
+    const boardGame: GameDetails = { ...gameDetails, game: { ...gameDetails.game, boardId: 'board-classic' }, board: classicBoard, boardSpaces: classicSpaces, properties: deeds, buildingBank: classicBuildingBank };
+    const statistics = { calculate: vi.fn(async () => ledgerStatistics()), getFinalSnapshot: vi.fn(async () => null), saveFinalSnapshot: vi.fn(async () => undefined) };
+    const withBoard = await createStatisticsRouter(boardGame, statistics)(new Request(`https://example.test/api/games/${gameId}/statistics`));
+    expect(withBoard.status).toBe(200);
+    const ranked = (await withBoard.json() as { data: { netWorth: Array<{ player: { id: string }; netWorth: number }> } }).data.netWorth;
+    expect(ranked.map((entry) => [entry.player.id, entry.netWorth])).toEqual([[secondPlayerId, 1500 + 400 + 200], [firstPlayerId, 1500]]);
+    expect(statistics.getFinalSnapshot).not.toHaveBeenCalled();
+
+    const plain = await createStatisticsRouter(gameDetails, statistics)(new Request(`https://example.test/api/games/${gameId}/summary`));
+    expect(plain.status).toBe(200);
+    expect((await plain.json() as { data: object }).data).not.toHaveProperty('netWorth');
+  });
+
+  it('finishing a board game writes the capital ranking and the deed table into the final snapshot with the winners the owner named', async () => {
+    const deeds = emptyClassicProperties().map((deed) => (deed.boardSpaceId === 'board-classic-space-01' ? { ...deed, ownerPlayerId: firstPlayerId } : deed));
+    const boardGame: GameDetails = { ...gameDetails, game: { ...gameDetails.game, boardId: 'board-classic' }, board: classicBoard, boardSpaces: classicSpaces, properties: deeds, buildingBank: classicBuildingBank };
+    const statistics = { calculate: vi.fn(async () => ledgerStatistics()), getFinalSnapshot: vi.fn(async () => null), saveFinalSnapshot: vi.fn(async () => undefined) };
+    const response = await createStatisticsRouter(boardGame, statistics)(jsonRequest('POST', `/api/games/${gameId}/finish`, { winnerPlayerIds: [secondPlayerId] }));
+    expect(response.status).toBe(200);
+    expect(statistics.saveFinalSnapshot).toHaveBeenCalledTimes(1);
+    const [, winners, summary] = statistics.saveFinalSnapshot.mock.calls[0] as unknown as [string, string[], { netWorth?: Array<{ player: { id: string }; netWorth: number }>; propertyOwnership?: unknown[] }];
+    expect(winners).toEqual([secondPlayerId]);
+    expect(summary.netWorth?.map((entry) => entry.player.id)).toEqual([firstPlayerId, secondPlayerId]);
+    expect(summary.propertyOwnership).toHaveLength(28);
+    expect(summary.propertyOwnership?.[0]).toEqual({ boardSpaceId: 'board-classic-space-01', ownerPlayerId: firstPlayerId, houses: 0, mortgaged: false });
+  });
+
+  it('serves a finished game\'s summary from the stored snapshot, including the fields a board game kept', async () => {
+    const stored = { ...ledgerStatistics(), netWorth: [{ player: gameDetails.players[1], netWorth: 2100 }, { player: gameDetails.players[0], netWorth: 1500 }], propertyOwnership: [{ boardSpaceId: 'board-classic-space-39', ownerPlayerId: secondPlayerId, houses: 1, mortgaged: false }] };
+    const statistics = { calculate: vi.fn(async () => ledgerStatistics()), getFinalSnapshot: vi.fn(async () => ({ winnerPlayerIds: [secondPlayerId], summary: stored })), saveFinalSnapshot: vi.fn(async () => undefined) };
+    const finished: GameDetails = { ...gameDetails, game: { ...gameDetails.game, status: 'FINISHED', boardId: 'board-classic' } };
+    const response = await createStatisticsRouter(finished, statistics)(new Request(`https://example.test/api/games/${gameId}/summary`));
+    await expect(response.json()).resolves.toMatchObject({ data: { winners: [{ id: secondPlayerId }], netWorth: stored.netWorth, propertyOwnership: stored.propertyOwnership } });
+    expect(statistics.calculate).not.toHaveBeenCalled();
+  });
+
+  function createStatisticsRouter(details: GameDetails, statistics: { calculate: () => Promise<unknown>; getFinalSnapshot: () => Promise<unknown>; saveFinalSnapshot: () => Promise<void> }) {
+    return createApiRouter({
+      games: { getGame: async () => details, finishGame: async () => ({ ...details, game: { ...details.game, status: 'FINISHED' } }) } as never,
+      banking: {} as BankingService,
+      auth: { current: async () => ({ id: ownerId, nickname: 'Owner', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: { requireMember: async () => 'OWNER', requireOwner: async () => undefined, linkedMembers: async () => [] } as never,
+      profileStatistics: { recordCompletedGame: async () => undefined } as never,
+      statistics: statistics as never,
+    });
+  }
+
+  function ledgerStatistics(): LedgerStatistics {
+    return { durationMs: 0, totalTransactions: 0, totalMoneyTransferred: 0, largestSinglePayment: 0, richestActivePlayer: null, lowestActiveBalance: null, players: [], playerToPlayerTotal: 0, paidToBank: 0, receivedFromBank: 0, largestTransaction: 0, biggestSenderId: null, leastSenderId: null, biggestPayerRecipient: null, cashLeaderboard: [] };
+  }
 
   it('serves the board catalogue to the authenticated actor', async () => {
     const { router, boards } = createPropertyRouter();

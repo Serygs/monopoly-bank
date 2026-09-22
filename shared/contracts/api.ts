@@ -1,8 +1,9 @@
 import type { BoardDefinition, BoardSpace, BuildingBank, Game, GameProperty, PaymentMode, Player, SelectableCurrency, Transaction, TransactionType } from '../types/monopoly.js';
+import type { NetWorthEntry } from '../domain/net-worth.js';
 import type { MortgageResolution } from '../domain/property-trade.js';
 
 /** The rule lives in the domain; the wire shape re-exports it so clients import one name. */
-export type { MortgageResolution };
+export type { MortgageResolution, NetWorthEntry };
 
 export interface ApiSuccess<T> {
   data: T;
@@ -184,7 +185,22 @@ export interface GameSummaryStatistics {
   lowestActiveBalance: number | null;
   players: Array<{ player: Player; totalReceived: number; totalPaid: number; passGoCount: number; transactionCount: number }>;
 }
-export interface FinalGameSummaryResponse extends GameSummaryStatistics { playerToPlayerTotal: number; paidToBank: number; receivedFromBank: number; largestTransaction: number; biggestSenderId: string | null; leastSenderId: string | null; biggestPayerRecipient: { payerId: string; recipientId: string; amount: number; transactionCount: number } | null; }
+export interface FinalGameSummaryResponse extends GameSummaryStatistics {
+  playerToPlayerTotal: number;
+  paidToBank: number;
+  receivedFromBank: number;
+  largestTransaction: number;
+  biggestSenderId: string | null;
+  leastSenderId: string | null;
+  biggestPayerRecipient: { payerId: string; recipientId: string; amount: number; transactionCount: number } | null;
+  /**
+   * Capital per player, richest first; present only for a game on a board. It is
+   * a metric: winners are named by the owner and computed exactly as before.
+   */
+  netWorth?: NetWorthEntry[];
+  /** The deed table as it stood when the game finished; written into the final snapshot of a board game only. */
+  propertyOwnership?: GameProperty[];
+}
 export interface FinishGameRequest { winnerPlayerIds: string[]; }
 export type ActivityScope = 'ALL' | 'MINE' | 'PENDING';
 export interface ActivityCursor { createdAt: string; id: string; }

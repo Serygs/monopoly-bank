@@ -20,6 +20,7 @@ import { GameAccessService } from './services/game-access-service.js';
 import { DefaultGameService } from './services/game-service.js';
 import { ProfileStatisticsService } from './services/profile-statistics-service.js';
 import { DefaultPropertyService, executePropertyOperation, resolveRentOwner } from './services/property-service.js';
+import { withPropertySnapshot } from './services/property-statistics.js';
 import { DefaultPropertyTradeService } from './services/property-trade-service.js';
 
 /** One coordinator per game. All state-changing game commands enter here. */
@@ -212,7 +213,8 @@ export class GameSession {
     const beforeFinish = await this.gameService().getGame(gameId);
     if (winnerPlayerIds.some((id) => !beforeFinish.players.some((player) => player.id === id))) throw new ValidationError('winnerPlayerIds must belong to this game.');
     const winnerIds = new Set(winnerPlayerIds); const statistics = new D1GameStatisticsRepository(this.env.MONOPOLY_BANK_DB);
-    await statistics.saveFinalSnapshot(gameId, winnerPlayerIds, await statistics.calculate(beforeFinish.game, beforeFinish.players));
+    // The snapshot keeps the capital ranking and the deed table as they stood at the finish; winners stay exactly the ids the owner named.
+    await statistics.saveFinalSnapshot(gameId, winnerPlayerIds, withPropertySnapshot(await statistics.calculate(beforeFinish.game, beforeFinish.players), beforeFinish));
     const details = await this.gameService().finishGame(gameId);
     const participants = (await this.access().linkedMembers(gameId)).filter((member) => member.playerId !== null).map((member) => ({ userId: member.userId, won: winnerIds.has(member.playerId as string) }));
     await new ProfileStatisticsService(new D1GameCompletionRepository(this.env.MONOPOLY_BANK_DB)).recordCompletedGame(gameId, participants);
