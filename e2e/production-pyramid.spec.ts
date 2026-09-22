@@ -108,13 +108,13 @@ test.describe('visual and accessibility matrix', () => {
             expect(motion).toEqual({ animation: 'none', transition: '0s' });
           }
           await openActivity(page, language);
-          await testInfo.attach(`${visualStyle}-${language}-${colorScheme}-${reducedMotion}-activity`, { body: await page.screenshot(), contentType: 'image/png' });
+          await attachPage(page, testInfo, `${visualStyle}-${language}-${colorScheme}-${reducedMotion}-activity`);
           await page.keyboard.press('Escape');
           await openStatistics(page, language);
-          await testInfo.attach(`${visualStyle}-${language}-${colorScheme}-${reducedMotion}-statistics`, { body: await page.screenshot(), contentType: 'image/png' });
+          await attachPage(page, testInfo, `${visualStyle}-${language}-${colorScheme}-${reducedMotion}-statistics`);
           await page.keyboard.press('Escape');
           await openSettings(page, language);
-          await testInfo.attach(`${visualStyle}-${language}-${colorScheme}-${reducedMotion}-settings`, { body: await page.screenshot(), contentType: 'image/png' });
+          await attachPage(page, testInfo, `${visualStyle}-${language}-${colorScheme}-${reducedMotion}-settings`);
           await context.close();
         });
         }
@@ -132,6 +132,77 @@ test.describe('visual and accessibility matrix', () => {
         await context.close();
       });
     }
+  }
+
+  const liquidGlassQaCases = [
+    { width: 320, language: 'en', colorScheme: 'light' },
+    { width: 390, language: 'uk', colorScheme: 'dark' },
+    { width: 430, language: 'uk', colorScheme: 'light' },
+    { width: 768, language: 'en', colorScheme: 'dark' },
+    { width: 1024, language: 'uk', colorScheme: 'light' },
+    { width: 1280, language: 'en', colorScheme: 'dark' },
+    { width: 1440, language: 'uk', colorScheme: 'light' },
+    { width: 1920, language: 'en', colorScheme: 'dark' },
+  ] as const;
+
+  for (const visualCase of liquidGlassQaCases) {
+    test(`liquid-glass functional surfaces at ${visualCase.width}px ${visualCase.colorScheme}`, async ({ browser }) => {
+      const context = await createVisualContext(browser, { ...visualCase, reducedMotion: 'no-preference', visualStyle: 'liquid-glass' });
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await exerciseLiquidGlassSurfaces(page, visualCase.language, visualCase.colorScheme);
+      await context.close();
+    });
+  }
+
+  for (const visualCase of [
+    { width: 430, colorScheme: 'light' },
+    { width: 1280, colorScheme: 'dark' },
+  ] as const) {
+    test(`liquid-glass incoming payments at ${visualCase.width}px ${visualCase.colorScheme}`, async ({ browser }) => {
+      const context = await createVisualContext(browser, { ...visualCase, language: 'en', reducedMotion: 'no-preference', visualStyle: 'liquid-glass' });
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await mockActivePaymentInbox(page);
+      await openGame(page, 'en');
+      await expect(page.getByRole('heading', { name: translate('en', 'paymentInbox'), exact: true })).toBeVisible();
+      await assertViewportHealth(page);
+      await assertNoHorizontalOverflow(page, '.payment-inbox');
+      await assertNoHorizontalOverflow(page, '.payment-inbox li');
+      await context.close();
+    });
+  }
+
+  for (const width of [320, 390, 768, 1280, 1440] as const) {
+    test(`liquid-glass settings remain contained after switching to Ukrainian at ${width}px`, async ({ browser }, testInfo) => {
+      const context = await createVisualContext(browser, { width, language: 'en', colorScheme: 'light', reducedMotion: 'no-preference', visualStyle: 'liquid-glass' });
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await openGame(page, 'en');
+      await openSettings(page, 'en');
+      await page.getByRole('button', { name: translate('en', 'ukrainian'), exact: true }).click();
+      const panel = page.getByRole('dialog');
+      await expect(panel.getByRole('heading', { name: translate('uk', 'settings'), exact: true })).toBeVisible();
+      await expect(page.locator('html')).toHaveAttribute('lang', 'uk');
+      await assertNoHorizontalOverflow(page, '.settings-panel');
+      await assertNoHorizontalOverflow(page, '.settings-panel h2');
+      await assertDescendantsContained(page, '.settings-panel', 'button, input');
+      if (width >= 768) await assertSettingsAnchor(page, 'uk');
+      await attachPage(page, testInfo, `liquid-glass-${width}-settings-switched-uk`);
+      await context.close();
+    });
+  }
+
+  for (const zoom of [1.25, 1.5] as const) {
+    test(`liquid-glass functional surfaces at ${zoom * 100}% zoom`, async ({ browser }) => {
+      const context = await createVisualContext(browser, { width: 1280, language: 'en', colorScheme: 'light', reducedMotion: 'no-preference', visualStyle: 'liquid-glass' });
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await page.goto(`/games/${visualGame.id}`);
+      await page.locator('body').evaluate((body, scale) => { body.style.zoom = String(scale); }, zoom);
+      await exerciseLiquidGlassSurfaces(page, 'en', 'light', false);
+      await context.close();
+    });
   }
 });
 
@@ -225,6 +296,7 @@ async function openGame(page: Page, language: Language): Promise<void> {
 async function openActivity(page: Page, language: Language): Promise<void> {
   await page.getByRole('button', { name: translate(language, 'activity'), exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('heading', { name: translate(language, 'activity'), exact: true })).toBeVisible();
+  await waitForOverlayMotion(page);
   const scroll = page.locator('.activity-scroll');
   await expect(scroll).toBeVisible();
   expect(await scroll.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
@@ -233,21 +305,100 @@ async function openActivity(page: Page, language: Language): Promise<void> {
 async function openStatistics(page: Page, language: Language): Promise<void> {
   await page.getByRole('button', { name: translate(language, 'statistics'), exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('heading', { name: translate(language, 'statistics'), exact: true })).toBeVisible();
+  await waitForOverlayMotion(page);
 }
 
-async function openSettings(page: Page, language: Language): Promise<void> {
+async function openSettings(page: Page, language: Language, assertAnchor = true): Promise<void> {
   const trigger = page.getByRole('button', { name: translate(language, 'settings'), exact: true });
   await trigger.click();
   await expect(page.getByRole('dialog').getByRole('heading', { name: translate(language, 'settings'), exact: true })).toBeVisible();
-  if ((page.viewportSize()?.width ?? 0) >= 768) {
-    const [triggerBox, panelBox] = await Promise.all([trigger.boundingBox(), page.getByRole('dialog').boundingBox()]);
-    expect(triggerBox).not.toBeNull();
-    expect(panelBox).not.toBeNull();
-    if (triggerBox !== null && panelBox !== null) {
-      expect(panelBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height + 11);
-      expect(Math.abs((panelBox.x + panelBox.width) - (triggerBox.x + triggerBox.width))).toBeLessThanOrEqual(2);
-    }
+  await waitForOverlayMotion(page);
+  if (assertAnchor && (page.viewportSize()?.width ?? 0) >= 768) await assertSettingsAnchor(page, language);
+}
+
+async function assertSettingsAnchor(page: Page, language: Language): Promise<void> {
+  const trigger = page.getByRole('button', { name: translate(language, 'settings'), exact: true });
+  const [triggerBox, panelBox] = await Promise.all([trigger.boundingBox(), page.getByRole('dialog').boundingBox()]);
+  expect(triggerBox).not.toBeNull();
+  expect(panelBox).not.toBeNull();
+  if (triggerBox !== null && panelBox !== null) {
+    expect(panelBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height + 11);
+    expect(Math.abs((panelBox.x + panelBox.width) - (triggerBox.x + triggerBox.width))).toBeLessThanOrEqual(2);
   }
+}
+
+async function waitForOverlayMotion(page: Page): Promise<void> {
+  await page.getByRole('dialog').evaluate(async (element) => {
+    await Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)));
+  });
+}
+
+async function exerciseLiquidGlassSurfaces(page: Page, language: Language, colorScheme: 'light' | 'dark', navigate = true): Promise<void> {
+  if (navigate) await openGame(page, language);
+  else await expect(page.getByRole('heading', { name: visualGame.name, exact: true })).toBeVisible();
+
+  await assertViewportHealth(page);
+  await assertNoHorizontalOverflow(page, '.wallets-section');
+  const activeWallet = page.locator('.wallet-card-active').first();
+  await expect(activeWallet).toBeVisible();
+  const activeWalletColors = await activeWallet.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { color: style.color, background: style.backgroundColor };
+  });
+  if (colorScheme === 'light') {
+    expect(activeWalletColors.color).toBe('rgb(20, 32, 51)');
+    expect(activeWalletColors.background).not.toBe('rgba(0, 0, 0, 0)');
+  }
+
+  await openActivity(page, language);
+  await assertFunctionalDialog(page);
+  await page.keyboard.press('Escape');
+
+  await openStatistics(page, language);
+  await assertFunctionalDialog(page);
+  await assertNoHorizontalOverflow(page, '.statistics-report');
+  await page.keyboard.press('Escape');
+
+  await openSettings(page, language, navigate);
+  await assertNoHorizontalOverflow(page, '.settings-panel');
+  await assertNoHorizontalOverflow(page, '.style-preview-grid');
+  await assertNoHorizontalOverflow(page, '.settings-segmented');
+  await page.keyboard.press('Escape');
+}
+
+async function assertFunctionalDialog(page: Page): Promise<void> {
+  const dialog = page.getByRole('dialog');
+  await assertNoHorizontalOverflow(page, '.dialog');
+  const styles = await dialog.evaluate((element) => {
+    const dialogStyle = getComputedStyle(element);
+    const backdropStyle = getComputedStyle(element.parentElement!);
+    return {
+      color: dialogStyle.color,
+      background: dialogStyle.backgroundColor,
+      backdropBackground: backdropStyle.backgroundColor,
+      backdropFilter: backdropStyle.backdropFilter || backdropStyle.getPropertyValue('-webkit-backdrop-filter'),
+    };
+  });
+  expect(styles.background).not.toBe('rgba(0, 0, 0, 0)');
+  expect(styles.backdropBackground).not.toBe('rgba(0, 0, 0, 0)');
+  expect(styles.backdropFilter).toContain('blur');
+}
+
+async function assertNoHorizontalOverflow(page: Page, selector: string): Promise<void> {
+  const element = page.locator(selector).first();
+  await expect(element).toBeVisible();
+  expect(await element.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+}
+
+async function assertDescendantsContained(page: Page, containerSelector: string, descendantSelector: string): Promise<void> {
+  const overflow = await page.locator(containerSelector).first().evaluate((container, selector) => {
+    const bounds = container.getBoundingClientRect();
+    return Array.from(container.querySelectorAll<HTMLElement>(selector)).filter((element) => {
+      const child = element.getBoundingClientRect();
+      return child.left < bounds.left - 1 || child.right > bounds.right + 1;
+    }).map((element) => element.getAttribute('aria-label') ?? element.textContent?.trim() ?? element.tagName);
+  }, descendantSelector);
+  expect(overflow).toEqual([]);
 }
 
 async function assertViewportHealth(page: Page): Promise<void> {
@@ -288,7 +439,9 @@ async function assertSearchFieldGeometry(page: Page): Promise<void> {
 }
 
 async function attachPage(page: Page, testInfo: TestInfo, name: string): Promise<void> {
-  await testInfo.attach(name, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  const outputDirectory = process.env.VISUAL_QA_OUTPUT;
+  const body = await page.screenshot({ fullPage: true, ...(outputDirectory === undefined ? {} : { path: `${outputDirectory}/${name}.png` }) });
+  await testInfo.attach(name, { body, contentType: 'image/png' });
 }
 
 async function mockVisualApi(page: Page): Promise<void> {
@@ -305,6 +458,19 @@ async function mockVisualApi(page: Page): Promise<void> {
       return;
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data }) });
+  });
+}
+
+async function mockActivePaymentInbox(page: Page): Promise<void> {
+  await page.route(`**/api/games/${visualGame.id}/payment-requests`, async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: visualPendingActivity.paymentRequests }) });
+  });
+  await page.route(`**/api/games/${visualGame.id}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { ...visualGameDetails, game: { ...visualGameDetails.game, status: 'ACTIVE', finishedAt: null } } }),
+    });
   });
 }
 
