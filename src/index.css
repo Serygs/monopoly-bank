@@ -31,6 +31,20 @@
   --color-rail: #c83d3f;
   --color-gold-light: #f3dda0;
   --shadow-surface: 0 8px 22px rgb(37 54 44 / .08);
+  /* Colour groups of the board. Light theme: deep swatches under cream labels.
+     Contrast of --group-label-text on each swatch is asserted ≥ 4.5:1 in
+     src/utils/property-view.test.ts (light: 7.2 / 5.5 / 6.1 / 5.3 / 6.4 / 4.8 / 5.3 / 9.4 / 8.9 / 5.7). */
+  --group-label-text: #fffdf2;
+  --group-brown: #7a4a22;
+  --group-light-blue: #1f6f9a;
+  --group-pink: #b02a6b;
+  --group-orange: #b04d08;
+  --group-red: #b3262e;
+  --group-yellow: #8f6b00;
+  --group-green: #1f7a3f;
+  --group-dark-blue: #23408f;
+  --group-railroad: #3d4a52;
+  --group-utility: #5b6b4a;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -85,6 +99,18 @@
   --color-rail: #d85b62;
   --color-gold-light: #ebd881;
   --shadow-surface: 0 12px 28px rgb(0 0 0 / .24);
+  /* Dark theme: bright swatches under the canvas-dark label (dark: 5.7 / 8.6 / 6.6 / 6.9 / 5.5 / 11.1 / 8.6 / 6.4 / 8.3 / 10.6). */
+  --group-label-text: #10231b;
+  --group-brown: #c98a5b;
+  --group-light-blue: #7fc4ea;
+  --group-pink: #ef7fb8;
+  --group-orange: #f0913a;
+  --group-red: #ef6b6b;
+  --group-yellow: #f2d35b;
+  --group-green: #6fcf8f;
+  --group-dark-blue: #7f9ff2;
+  --group-railroad: #b8c2c9;
+  --group-utility: #d9d3b8;
 }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; overflow-x: hidden; color: var(--color-text); background-color: var(--color-canvas); background-image: linear-gradient(var(--color-canvas-pattern) 1px, transparent 1px), linear-gradient(90deg, var(--color-canvas-pattern) 1px, transparent 1px), radial-gradient(circle at 15% 10%, rgb(255 255 255 / .85), transparent 34rem); background-size: 32px 32px, 32px 32px, auto; }
