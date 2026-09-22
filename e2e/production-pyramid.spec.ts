@@ -199,6 +199,19 @@ test.describe('visual and accessibility matrix', () => {
     });
   }
 
+  for (const width of [390, 1280] as const) {
+    test(`liquid-glass saved-game menu exposes duplicate and delete at ${width}px`, async ({ browser }) => {
+      const context = await createVisualContext(browser, { width, language: 'en', colorScheme: 'light', reducedMotion: 'no-preference', visualStyle: 'liquid-glass' });
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await page.goto('/');
+      await page.getByRole('button', { name: translate('en', 'gameActions', { name: visualGame.name }), exact: true }).click();
+      await expect(page.getByRole('menuitem', { name: translate('en', 'duplicate'), exact: true })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: translate('en', 'removeGame'), exact: true })).toBeVisible();
+      await context.close();
+    });
+  }
+
   for (const visualCase of [
     { width: 430, colorScheme: 'light' },
     { width: 1280, colorScheme: 'dark' },
