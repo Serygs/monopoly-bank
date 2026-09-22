@@ -1,5 +1,5 @@
 import type { AddAccountEmailRequest, AuthTokenRequest, BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, FinishGameRequest, GuestJoinGameRequest, JoinGameRequest, LoginRequest, PasswordResetConfirmationRequest, PasswordResetRequest, RegisterRequest, UpdateProfileRequest, UpgradeGuestRequest } from '../../shared/contracts/api.js';
-import { currencies, paymentModes, transactionTypes, type Currency, type PaymentMode, type TransactionType } from '../../shared/types/monopoly.js';
+import { paymentModes, selectableCurrencies, transactionTypes, type PaymentMode, type SelectableCurrency, type TransactionType } from '../../shared/types/monopoly.js';
 import { ValidationError } from '../services/errors.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -54,12 +54,12 @@ export async function parseDuplicateGameRequest(request: Request): Promise<Dupli
 export async function parseBankruptcyRequest(request: Request): Promise<BankruptcyRequest> { const body = await parseJsonObject(request); const creditorPlayerId = body.creditorPlayerId === undefined ? undefined : readUuid(body, 'creditorPlayerId'); return { playerId: readUuid(body, 'playerId'), ...(creditorPlayerId === undefined ? {} : { creditorPlayerId }) }; }
 export async function parseFinishGameRequest(request: Request): Promise<FinishGameRequest> { const body = await parseJsonObject(request); const winnerPlayerIds = readArray(body, 'winnerPlayerIds').map((value, index) => parseResourceId(readRequiredString({ value }, 'value', `winnerPlayerIds[${index}]`), `winnerPlayerIds[${index}]`)); if (new Set(winnerPlayerIds).size !== winnerPlayerIds.length) throw new ApiValidationError('winnerPlayerIds must not contain duplicates.'); return { winnerPlayerIds }; }
 
-function readCurrency(body: Record<string, unknown>): Currency {
+function readCurrency(body: Record<string, unknown>): SelectableCurrency {
   const value = body.currency;
-  if (typeof value !== 'string' || !currencies.includes(value as Currency)) {
-    throw new ApiValidationError('currency must be one of USD, EUR, UAH, or K.');
+  if (typeof value !== 'string' || !selectableCurrencies.includes(value as SelectableCurrency)) {
+    throw new ApiValidationError('currency must be one of USD, EUR, or UAH.');
   }
-  return value as Currency;
+  return value as SelectableCurrency;
 }
 
 function readPaymentMode(body: Record<string, unknown>): PaymentMode {
