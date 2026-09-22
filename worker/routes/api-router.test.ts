@@ -449,6 +449,35 @@ describe('board and property routes', () => {
     expect(paid.properties.chargeRent).not.toHaveBeenCalled();
   });
 
+  it('records an auction for the winner\'s controller at a bid above the catalogue price, and rejects a zero bid before any service call', async () => {
+    const { router, properties, controllers } = createPropertyRouter({ controlled: [secondPlayerId] });
+    properties.recordAuction.mockResolvedValueOnce({ transaction: { ...transactionResponse().transaction, type: 'PROPERTY_AUCTION' as const, amount: 999, totalAmount: 999 }, players: gameDetails.players, properties: [{ boardSpaceId, ownerPlayerId: secondPlayerId, houses: 0, mortgaged: false }], buildingBank: { housesAvailable: 32, hotelsAvailable: 12 } });
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/properties/auction`, { winnerPlayerId: secondPlayerId, boardSpaceId, price: 999 }));
+    expect(response.status).toBe(201);
+    expect(controllers).toEqual([secondPlayerId]);
+    expect(properties.recordAuction).toHaveBeenCalledWith(gameId, { winnerPlayerId: secondPlayerId, boardSpaceId, price: 999 });
+    await expect(response.json()).resolves.toMatchObject({ data: { transaction: { type: 'PROPERTY_AUCTION', amount: 999 } } });
+
+    const zero = await router(jsonRequest('POST', `/api/games/${gameId}/properties/auction`, { winnerPlayerId: secondPlayerId, boardSpaceId, price: 0 }));
+    expect(zero.status).toBe(400);
+    await expect(zero.json()).resolves.toMatchObject({ error: { code: 'VALIDATION_ERROR', message: 'price must be a positive integer.' } });
+    expect(properties.recordAuction).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers PROPERTY_ALREADY_OWNED for an auction of a held deed and refuses a bid for a wallet the actor does not control', async () => {
+    const { router, properties } = createPropertyRouter();
+    properties.recordAuction.mockRejectedValueOnce(new PropertyAlreadyOwnedError(boardSpaceId, firstPlayerId));
+    const held = await router(jsonRequest('POST', `/api/games/${gameId}/properties/auction`, { winnerPlayerId: secondPlayerId, boardSpaceId, price: 120 }));
+    expect(held.status).toBe(409);
+    await expect(held.json()).resolves.toMatchObject({ error: { code: 'PROPERTY_ALREADY_OWNED', details: { boardSpaceId } } });
+
+    const foreign = createPropertyRouter({ controlled: [firstPlayerId], live: true });
+    const response = await foreign.router(jsonRequest('POST', `/api/games/${gameId}/properties/auction`, { winnerPlayerId: secondPlayerId, boardSpaceId, price: 120 }));
+    expect(response.status).toBe(403);
+    expect(foreign.properties.recordAuction).not.toHaveBeenCalled();
+    expect(foreign.live.mutate).not.toHaveBeenCalled();
+  });
+
   it('routes every property operation through the live coordinator as a PROPERTY_OPERATION command', async () => {
     const { router, live, properties } = createPropertyRouter({ live: true });
     const headers = { 'content-type': 'application/json', 'x-command-id': commandId };
@@ -458,6 +487,7 @@ describe('board and property routes', () => {
       ['sell-buildings', 'SELL_BUILDINGS', { playerId: firstPlayerId, boardSpaceId, count: 1 }],
       ['mortgage', 'MORTGAGE', { playerId: firstPlayerId, boardSpaceId }],
       ['unmortgage', 'UNMORTGAGE', { playerId: firstPlayerId, boardSpaceId }],
+      ['auction', 'AUCTION', { winnerPlayerId: firstPlayerId, boardSpaceId, price: 75 }],
     ] as const) {
       await router(new Request(`https://example.test/api/games/${gameId}/properties/${action}`, { method: 'POST', headers, body: JSON.stringify(body) }));
       expect(live.mutate).toHaveBeenLastCalledWith(gameId, expect.anything(), { type: 'PROPERTY_OPERATION', commandId, operation, request: body });
@@ -550,7 +580,7 @@ describe('board and property routes', () => {
     const properties = {
       state: vi.fn(async () => ({ board: { id: 'board-classic' }, boardSpaces: [], properties: operation.properties, buildingBank: operation.buildingBank })),
       ownerOf: vi.fn(async () => (options.owner === undefined ? secondPlayerId : options.owner)),
-      purchase: vi.fn(async () => operation), chargeRent: vi.fn(async () => operation), build: vi.fn(async () => operation), sellBuildings: vi.fn(async () => operation), mortgage: vi.fn(async () => operation), unmortgage: vi.fn(async () => operation),
+      purchase: vi.fn(async () => operation), chargeRent: vi.fn(async () => operation), build: vi.fn(async () => operation), sellBuildings: vi.fn(async () => operation), mortgage: vi.fn(async () => operation), unmortgage: vi.fn(async () => operation), recordAuction: vi.fn(async () => operation),
       payJailBail: vi.fn(async () => ({ transaction: operation.transaction, players: gameDetails.players })),
       recordDiceRoll: vi.fn(async () => ({ player: gameDetails.players[0], thirdDouble: false })),
     };

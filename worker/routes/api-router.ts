@@ -41,6 +41,7 @@ import {
   parseCreateTradeRequest,
   parseDiceRollRequest,
   parseJailBailRequest,
+  parsePropertyAuctionRequest,
   parsePropertyBuildRequest,
   parsePropertyMortgageRequest,
   parsePropertyPurchaseRequest,
@@ -106,7 +107,7 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   const liveMatch = /^\/api\/games\/([^/]+)\/live$/.exec(pathname);
   const boardMatch = /^\/api\/boards\/([^/]+)$/.exec(pathname);
   const propertiesMatch = /^\/api\/games\/([^/]+)\/properties$/.exec(pathname);
-  const propertyOperationMatch = /^\/api\/games\/([^/]+)\/properties\/(purchase|rent|build|sell-buildings|mortgage|unmortgage)$/.exec(pathname);
+  const propertyOperationMatch = /^\/api\/games\/([^/]+)\/properties\/(purchase|rent|build|sell-buildings|mortgage|unmortgage|auction)$/.exec(pathname);
   const tradesMatch = /^\/api\/games\/([^/]+)\/trades$/.exec(pathname);
   const tradeActionMatch = /^\/api\/games\/([^/]+)\/trades\/([^/]+)\/(accept|decline|cancel)$/.exec(pathname);
   const jailBailMatch = /^\/api\/games\/([^/]+)\/jail\/bail$/.exec(pathname);
@@ -376,6 +377,7 @@ async function parsePropertyOperation(request: Request, action: string): Promise
     case 'build': return { operation: 'BUILD', request: await parsePropertyBuildRequest(request) };
     case 'sell-buildings': return { operation: 'SELL_BUILDINGS', request: await parsePropertySellBuildingsRequest(request) };
     case 'mortgage': return { operation: 'MORTGAGE', request: await parsePropertyMortgageRequest(request) };
+    case 'auction': return { operation: 'AUCTION', request: await parsePropertyAuctionRequest(request) };
     default: return { operation: 'UNMORTGAGE', request: await parsePropertyUnmortgageRequest(request) };
   }
 }

@@ -1,4 +1,4 @@
-import type { AddAccountEmailRequest, AuthTokenRequest, BankruptcyRequest, CreateBoardRequest, CreateGameRequest, CreateTradeRequest, CreateTransactionRequest, DiceRollRequest, DuplicateGameRequest, FinishGameRequest, GuestJoinGameRequest, JailBailRequest, JoinGameRequest, LoginRequest, MortgageResolution, PasswordResetConfirmationRequest, PasswordResetRequest, PropertyBuildRequest, PropertyMortgageRequest, PropertyPurchaseRequest, PropertyRentRequest, PropertySellBuildingsRequest, PropertyUnmortgageRequest, RegisterRequest, TradeOffer, UpdateProfileRequest, UpgradeGuestRequest } from '../../shared/contracts/api.js';
+import type { AddAccountEmailRequest, AuthTokenRequest, BankruptcyRequest, CreateBoardRequest, CreateGameRequest, CreateTradeRequest, CreateTransactionRequest, DiceRollRequest, DuplicateGameRequest, FinishGameRequest, GuestJoinGameRequest, JailBailRequest, JoinGameRequest, LoginRequest, MortgageResolution, PasswordResetConfirmationRequest, PasswordResetRequest, PropertyAuctionRequest, PropertyBuildRequest, PropertyMortgageRequest, PropertyPurchaseRequest, PropertyRentRequest, PropertySellBuildingsRequest, PropertyUnmortgageRequest, RegisterRequest, TradeOffer, UpdateProfileRequest, UpgradeGuestRequest } from '../../shared/contracts/api.js';
 import { hotelHouseLevel, paymentModes, selectableCurrencies, type PaymentMode, type SelectableCurrency } from '../../shared/types/monopoly.js';
 import { ValidationError } from '../services/errors.js';
 
@@ -51,6 +51,13 @@ export async function parsePropertyBuildRequest(request: Request): Promise<Prope
 export async function parsePropertySellBuildingsRequest(request: Request): Promise<PropertySellBuildingsRequest> { return parseBuildingCountRequest(request); }
 export async function parsePropertyMortgageRequest(request: Request): Promise<PropertyMortgageRequest> { return parsePlayerSpaceRequest(request); }
 export async function parsePropertyUnmortgageRequest(request: Request): Promise<PropertyUnmortgageRequest> { return parsePlayerSpaceRequest(request); }
+
+/** The winning bid is whatever the table agreed: a positive integer, deliberately not bounded by the catalogue price. */
+export async function parsePropertyAuctionRequest(request: Request): Promise<PropertyAuctionRequest> {
+  const body = await parseJsonObject(request);
+  const comment = readOptionalComment(body);
+  return { boardSpaceId: readCatalogId(body, 'boardSpaceId'), winnerPlayerId: readUuid(body, 'winnerPlayerId'), price: readPositiveInteger(body, 'price'), ...(comment === undefined ? {} : { comment }) };
+}
 
 export async function parseJailBailRequest(request: Request): Promise<JailBailRequest> {
   const body = await parseJsonObject(request);

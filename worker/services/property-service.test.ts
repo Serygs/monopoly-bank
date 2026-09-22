@@ -96,6 +96,24 @@ describe('DefaultPropertyService', () => {
     await expect(service(world).unmortgage(gameId, { playerId: ada, boardSpaceId: brownOne })).rejects.toMatchObject({ code: 'PROPERTY_NOT_MORTGAGED' });
   });
 
+  it('records an auction of a free deed at a price the catalogue does not bound as one PROPERTY_AUCTION persist', async () => {
+    const world = makeWorld();
+    const response = await service(world).recordAuction(gameId, { winnerPlayerId: lin, boardSpaceId: brownOne, price: 410 });
+    expect(world.persist).toHaveBeenCalledTimes(1);
+    const input = world.persist.mock.calls[0][0];
+    expect(input.transaction).toMatchObject({ type: 'PROPERTY_AUCTION', amount: 410, totalAmount: 410, participants: [{ playerId: lin, balanceDelta: -410 }] });
+    expect(input.propertyChanges).toEqual([{ previous: { boardSpaceId: brownOne, ownerPlayerId: null, houses: 0, mortgaged: false }, change: { boardSpaceId: brownOne, ownerPlayerId: lin, houses: 0, mortgaged: false } }]);
+    expect(response.transaction.type).toBe('PROPERTY_AUCTION');
+    expect(response.players.find((player) => player.id === lin)?.balance).toBe(1090);
+    expect(response.properties.find((property) => property.boardSpaceId === brownOne)?.ownerPlayerId).toBe(lin);
+  });
+
+  it('refuses to auction a deed somebody already holds without writing anything', async () => {
+    const world = makeWorld({ properties: { [brownOne]: { ownerPlayerId: ada } } });
+    await expect(service(world).recordAuction(gameId, { winnerPlayerId: lin, boardSpaceId: brownOne, price: 10 })).rejects.toMatchObject({ code: 'PROPERTY_ALREADY_OWNED' });
+    expect(world.persist).not.toHaveBeenCalled();
+  });
+
   it('pays bail from the board fee and clears the jail flag in the same persist call', async () => {
     const world = makeWorld({ players: { ada: { isInJail: true } } });
     const response = await service(world).payJailBail(gameId, { playerId: ada });
