@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readPreferences, writePreferences } from './preferences';
+import { readAmountUnit, readPreferences, writeAmountUnit, writePreferences } from './preferences';
 
 const key = 'monopoly-bank-device-preferences';
 
@@ -58,5 +58,35 @@ describe('device preferences', () => {
     const preferences = readPreferences();
     expect(preferences.colorMode).toBe('system');
     expect(() => writePreferences(preferences)).not.toThrow();
+  });
+});
+
+describe('amount unit preference', () => {
+  let store: Map<string, string>;
+
+  beforeEach(() => {
+    store = new Map();
+    vi.stubGlobal('localStorage', {
+      getItem: (storageKey: string) => store.get(storageKey) ?? null,
+      setItem: (storageKey: string, value: string) => { store.set(storageKey, value); },
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('defaults to thousands when nothing is stored', () => { expect(readAmountUnit()).toBe('THOUSANDS'); });
+  it('defaults to thousands for an invalid stored value', () => {
+    store.set('monopoly-bank-amount-unit', 'BILLIONS');
+    expect(readAmountUnit()).toBe('THOUSANDS');
+  });
+  it('round-trips an amount unit under its own key', () => {
+    writeAmountUnit('MILLIONS');
+    expect(readAmountUnit()).toBe('MILLIONS');
+    expect(store.get('monopoly-bank-amount-unit')).toBe('MILLIONS');
+    expect(store.has('monopoly-bank-device-preferences')).toBe(false);
+  });
+  it('does not throw when storage is unavailable', () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('storage unavailable'); }, setItem: () => { throw new Error('storage unavailable'); } });
+    expect(() => writeAmountUnit('MILLIONS')).not.toThrow();
+    expect(readAmountUnit()).toBe('THOUSANDS');
   });
 });

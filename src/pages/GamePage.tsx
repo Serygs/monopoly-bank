@@ -271,7 +271,7 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
     </> : <>
       <p className="dialog-intro">{actionDescription(action, player.name, t)}</p>
       {targetRequired && <PlayerPicker label={t('chooseRecipient')} players={players.filter((candidate) => candidate.id !== player.id)} gamePlayers={players} value={targetId} currency={currency} onChange={changeTarget} />}
-      {amountRequired && <><AmountSelector value={amount} onChange={changeAmount} currency={currency} favorites={favoriteAmounts} recent={recentAmounts} onToggleFavorite={onToggleFavorite} onQuickAmountSelect={reviewQuickAmount} /><span className="field-hint">{isPositiveInteger(amount) ? formatMoney(amountValue, currency) : t('enterPositiveInteger')}</span></>}
+      {amountRequired && <><AmountSelector value={amount} onChange={changeAmount} currency={currency} favorites={favoriteAmounts} recent={recentAmounts} onToggleFavorite={onToggleFavorite} onQuickAmountSelect={reviewQuickAmount} /><span className="field-hint">{isPositiveInteger(amount) ? t('amountTotalHint', { amount: formatMoney(amountValue, currency) }) : t('enterPositiveInteger')}</span></>}
       {fundsError !== null && <p className="field-error" role="alert">{fundsError}</p>}
       {action === 'PASS_GO' && <p className="pass-go-value">{t('passGoReceives', { amount: formatMoney(passGoReward, currency) })}</p>}
       <label className="dialog-field">{t('comment')} <span className="field-note">{t('optional')}</span><input value={comment} maxLength={500} onChange={(event) => changeComment(event.target.value)} /></label>

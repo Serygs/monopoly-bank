@@ -2,7 +2,12 @@ export const gameStatuses = ['LOBBY', 'ACTIVE', 'FINISHED'] as const;
 
 export type GameStatus = (typeof gameStatuses)[number];
 
-export const currencies = ['USD', 'EUR', 'UAH', 'K'] as const;
+/** Currencies a new game can be created with. */
+export const selectableCurrencies = ['USD', 'EUR', 'UAH'] as const;
+export type SelectableCurrency = (typeof selectableCurrencies)[number];
+
+/** Every currency a stored game may carry. `K` is legacy: existing games keep it, new games cannot choose it. */
+export const currencies = [...selectableCurrencies, 'K'] as const;
 export type Currency = (typeof currencies)[number];
 
 export const paymentModes = ['FAST', 'CONFIRMATION'] as const;

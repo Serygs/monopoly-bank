@@ -72,7 +72,7 @@ describe('API router', () => {
       name: ' Friday Monopoly ',
       startingBalance: 1500,
       passGoReward: 200,
-      currency: 'K',
+      currency: 'USD',
       gameAccessPassword: 'table-password',
       players: [
         { name: ' Ada ', color: '#123456' },
@@ -85,7 +85,7 @@ describe('API router', () => {
       name: 'Friday Monopoly',
       startingBalance: 1500,
       passGoReward: 200,
-      currency: 'K',
+      currency: 'USD',
       gameAccessPassword: 'table-password',
       players: [
         { name: 'Ada', color: '#123456' },
@@ -114,7 +114,7 @@ describe('API router', () => {
       name: 'Friday Monopoly',
       startingBalance: field === 'startingBalance' ? 0 : 1500,
       passGoReward: field === 'passGoReward' ? -1 : 200,
-      currency: 'K',
+      currency: 'USD',
       players: [
         { name: 'Ada', color: '#123456' },
         { name: 'Lin', color: '#654321' },
