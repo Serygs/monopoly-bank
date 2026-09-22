@@ -5,6 +5,7 @@ import type {
   DiceRollResponse,
   JailBailRequest,
   PaymentRequest,
+  PropertyAuctionRequest,
   PropertyBuildRequest,
   PropertyMortgageRequest,
   PropertyOperationResponse,
@@ -16,6 +17,7 @@ import type {
 } from '../../shared/contracts/api.js';
 import type { PropertyOperation } from '../../shared/contracts/live.js';
 import { applyDiceRoll, payJailBail } from '../../shared/domain/jail.js';
+import { recordAuctionResult } from '../../shared/domain/property-trade.js';
 import {
   buildHouses,
   calculateRent,
@@ -90,6 +92,7 @@ export function executePropertyOperation(properties: PropertyService, gameId: st
     case 'SELL_BUILDINGS': return properties.sellBuildings(gameId, command.request);
     case 'MORTGAGE': return properties.mortgage(gameId, command.request);
     case 'UNMORTGAGE': return properties.unmortgage(gameId, command.request);
+    case 'AUCTION': return properties.recordAuction(gameId, command.request);
   }
 }
 
@@ -103,6 +106,8 @@ export interface PropertyService {
   sellBuildings(gameId: string, request: PropertySellBuildingsRequest): Promise<PropertyOperationResponse>;
   mortgage(gameId: string, request: PropertyMortgageRequest): Promise<PropertyOperationResponse>;
   unmortgage(gameId: string, request: PropertyUnmortgageRequest): Promise<PropertyOperationResponse>;
+  /** The bank's auction of a free deed: the winner pays the agreed price, which the catalogue does not bound. */
+  recordAuction(gameId: string, request: PropertyAuctionRequest): Promise<PropertyOperationResponse>;
   payJailBail(gameId: string, request: JailBailRequest): Promise<CreateTransactionResponse>;
   recordDiceRoll(gameId: string, request: DiceRollRequest): Promise<DiceRollResponse>;
 }
@@ -168,6 +173,10 @@ export class DefaultPropertyService implements PropertyService {
 
   async unmortgage(gameId: string, request: PropertyUnmortgageRequest): Promise<PropertyOperationResponse> {
     return this.commit(gameId, (world) => unmortgageProperty({ ...propertyCommandBase(world),playerId: request.playerId, boardSpaceId: request.boardSpaceId, comment: request.comment }));
+  }
+
+  async recordAuction(gameId: string, request: PropertyAuctionRequest): Promise<PropertyOperationResponse> {
+    return this.commit(gameId, (world) => recordAuctionResult({ ...propertyCommandBase(world), winnerPlayerId: request.winnerPlayerId, boardSpaceId: request.boardSpaceId, price: request.price, comment: request.comment }));
   }
 
   async payJailBail(gameId: string, request: JailBailRequest): Promise<CreateTransactionResponse> {

@@ -25,4 +25,27 @@ describe('live server protocol', () => {
     expect(isLiveMutationCommand({ type: 'START_GAME', commandId })).toBe(true);
     expect(isLiveMutationCommand({ type: 'UNKNOWN', commandId })).toBe(false);
   });
+
+  it('accepts a committed event with the board fields and still accepts one without them', () => {
+    const base = { type: 'GAME_COMMITTED', stateVersion: 3, transaction: { id: 'transaction' }, players: [] };
+    expect(isLiveServerEvent({ ...base, properties: [{ boardSpaceId: 's', ownerPlayerId: 'p', houses: 0, mortgaged: false }], buildingBank: { housesAvailable: 31, hotelsAvailable: 12 }, jailChanges: [{ playerId: 'p', isInJail: false }] })).toBe(true);
+    expect(isLiveServerEvent(base)).toBe(true);
+    expect(isLiveServerEvent({ ...base, properties: 'all' })).toBe(false);
+    expect(isLiveServerEvent({ ...base, jailChanges: {} })).toBe(false);
+  });
+
+  it('accepts TRADES_UPDATED and DICE_ROLLED only with a state version and their payload', () => {
+    expect(isLiveServerEvent({ type: 'TRADES_UPDATED', stateVersion: 4 })).toBe(true);
+    expect(isLiveServerEvent({ type: 'TRADES_UPDATED' })).toBe(false);
+    expect(isLiveServerEvent({ type: 'DICE_ROLLED', stateVersion: 5, player: { id: 'p' }, thirdDouble: false })).toBe(true);
+    expect(isLiveServerEvent({ type: 'DICE_ROLLED', player: { id: 'p' }, thirdDouble: false })).toBe(false);
+    expect(isLiveServerEvent({ type: 'DICE_ROLLED', stateVersion: 5, thirdDouble: true })).toBe(false);
+    expect(isLiveServerEvent({ type: 'DICE_ROLLED', stateVersion: 5, player: { id: 'p' } })).toBe(false);
+  });
+
+  it('accepts an auction only as a PROPERTY_OPERATION that names the winner and the price', () => {
+    expect(isLiveMutationCommand({ type: 'PROPERTY_OPERATION', commandId, operation: 'AUCTION', request: { winnerPlayerId: 'p', boardSpaceId: 's', price: 90 } })).toBe(true);
+    expect(isLiveMutationCommand({ type: 'PROPERTY_OPERATION', commandId, operation: 'AUCTION', request: { boardSpaceId: 's', price: 90 } })).toBe(false);
+    expect(isLiveMutationCommand({ type: 'PROPERTY_OPERATION', commandId, operation: 'AUCTION', request: { winnerPlayerId: 'p', boardSpaceId: 's' } })).toBe(false);
+  });
 });
