@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
@@ -46,7 +46,17 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
 
 function ColorPicker({ player, players, onChange }: { player: PlayerForm; players: PlayerForm[]; onChange: (color: string) => void }) {
   const { t } = useLanguage();
-  return <fieldset className="color-picker"><legend>{t('color')}</legend><div className="color-options">{colors.map((color) => { const taken = players.some((candidate) => candidate.key !== player.key && candidate.color === color.value); const selected = player.color === color.value; return <button className={`color-option${selected ? ' selected' : ''}`} type="button" key={color.value} style={{ '--player-color': `var(${color.token})` } as CSSProperties} aria-label={t('selectColor', { color: t(color.nameKey) })} aria-pressed={selected} disabled={taken} onClick={() => onChange(color.value)}><span aria-hidden="true">{selected ? '✓' : ''}</span></button>; })}</div></fieldset>;
+  const moveColorFocus = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)'));
+    if (options.length === 0) return;
+    event.preventDefault();
+    const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement);
+    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? (currentIndex + 1) % options.length : (currentIndex - 1 + options.length) % options.length;
+    options[nextIndex]?.focus();
+    options[nextIndex]?.click();
+  };
+  return <fieldset className="color-picker"><legend>{t('color')}</legend><div className="color-options" role="radiogroup" aria-label={t('color')} onKeyDown={moveColorFocus}>{colors.map((color) => { const taken = players.some((candidate) => candidate.key !== player.key && candidate.color === color.value); const selected = player.color === color.value; return <button className={`color-option${selected ? ' selected' : ''}`} type="button" role="radio" key={color.value} style={{ '--player-color': `var(${color.token})` } as CSSProperties} aria-label={t('selectColor', { color: t(color.nameKey) })} aria-checked={selected} tabIndex={selected ? 0 : -1} disabled={taken} onClick={() => onChange(color.value)}><span aria-hidden="true">{selected ? '✓' : ''}</span></button>; })}</div></fieldset>;
 }
 
 function MoneyField({ label, value, currency, onChange, error }: { label: string; value: string; currency: Currency; onChange: (value: string) => void; error: string | undefined }) { const { t } = useLanguage(); const amount = isPositive(value) ? formatMoney(Number(value), currency) : '—'; return <label>{label}<input type="number" inputMode="numeric" min="1" step="1" value={value} onChange={(event) => onChange(event.target.value)} aria-invalid={error !== undefined} /><span className="field-hint">{t('displayedAs', { amount })}</span>{fieldError(error)}</label>; }

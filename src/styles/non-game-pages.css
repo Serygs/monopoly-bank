@@ -14,8 +14,9 @@
 .game-card-primary-action { width: 100%; }
 .overflow-menu { position: relative; }
 .overflow-menu-trigger { width: var(--control-height-md); padding: 0; letter-spacing: .08em; }
-.overflow-menu-panel { position: absolute; z-index: 20; inset: calc(100% + var(--space-2)) 0 auto auto; display: grid; min-width: 11rem; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface-elevated); box-shadow: var(--shadow-lg); }
-.overflow-menu-item { min-height: var(--control-height-md); padding: 0 var(--space-3); border: 0; border-radius: calc(var(--radius-control) - 3px); color: var(--color-text-primary); background: transparent; font: var(--weight-semibold) var(--text-small)/1.2 var(--font-ui); text-align: start; cursor: pointer; }
+.overflow-menu-panel { position: absolute; z-index: 20; inset: calc(100% + var(--space-2)) 0 auto auto; display: grid; min-width: 11rem; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface-elevated); box-shadow: var(--shadow-lg); transform-origin: top right; }
+:root[data-visual-style='classic-bank'] .overflow-menu-panel { animation: classic-menu-in var(--duration-fast) var(--ease-emphasized); }
+.overflow-menu-item { min-height: var(--control-height-md); padding: 0 var(--space-3); border: 0; border-radius: calc(var(--radius-control) - 3px); color: var(--color-text-primary); background: transparent; font: var(--weight-semibold) var(--text-small)/1.2 var(--font-ui); text-align: start; cursor: pointer; transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
 .overflow-menu-item-danger { color: var(--color-danger); }
 .overflow-menu-item:disabled { cursor: not-allowed; opacity: .5; }
 
@@ -24,7 +25,7 @@
 .avatar-picker, .game-form .avatar-picker { min-inline-size: 0; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .avatar-picker legend { margin-bottom: var(--space-3); color: var(--color-text-primary); font-weight: var(--weight-semibold); }
 .avatar-options { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.avatar-option { display: inline-grid; width: 52px; height: 52px; flex: 0 0 auto; place-items: center; border: 1px solid var(--color-border-strong); border-radius: 50%; background: var(--color-surface-elevated); cursor: pointer; }
+.avatar-option { display: inline-grid; width: 52px; height: 52px; flex: 0 0 auto; place-items: center; border: 1px solid var(--color-border-strong); border-radius: 50%; background: var(--color-surface-elevated); cursor: pointer; transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard); }
 .avatar-option.selected { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-surface-elevated), 0 0 0 5px var(--color-accent); }
 .avatar-option:focus-visible { outline: var(--focus-ring); outline-offset: 4px; }
 .avatar-upload { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-4); }
@@ -63,6 +64,8 @@
 .color-option.selected span { background: color-mix(in srgb, var(--color-surface-inverse) 62%, transparent); }
 .color-option:focus-visible { outline: var(--focus-ring); outline-offset: 5px; }
 .color-option:disabled { cursor: not-allowed; filter: grayscale(.72); opacity: .3; }
+
+@keyframes classic-menu-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
 .create-form-actions { padding-top: var(--space-2); }
 .create-form-actions .button { min-width: min(100%, 15rem); }
 
@@ -116,5 +119,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .game-card, .color-option { transition: none; transform: none !important; }
+  .game-card, .color-option, .avatar-option, .overflow-menu-panel { transform: none !important; }
 }

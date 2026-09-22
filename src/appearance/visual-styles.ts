@@ -3,12 +3,19 @@ import type { TranslationKey } from '../i18n/translations';
 export type VisualStyleId = 'classic-bank';
 export type StyleCapability = 'translucentSurfaces' | 'pointerReactiveEffects' | 'deviceTiltEffects' | 'richBackgroundEffects';
 
+export interface VisualStyleEffectContext {
+  readonly root: HTMLElement;
+  readonly ownerDocument: Document;
+  /** Lazily access motion preference only in styles that actually mount effects. */
+  readonly getReducedMotionPreference: () => MediaQueryList;
+}
+
 export interface VisualStyleDefinition {
   readonly id: VisualStyleId;
   readonly labelKey: TranslationKey;
   readonly supportedCapabilities: readonly StyleCapability[];
-  /** Attach presentation effects only; release listeners/frames in the returned cleanup. */
-  readonly mountEffects: (root: HTMLElement) => () => void;
+  /** Attach opt-in presentation effects only; release every listener/frame in the returned cleanup. */
+  readonly mountEffects: (context: VisualStyleEffectContext) => () => void;
 }
 
 export const DEFAULT_VISUAL_STYLE: VisualStyleId = 'classic-bank';

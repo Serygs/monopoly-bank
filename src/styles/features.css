@@ -7,14 +7,15 @@
 .die { position: relative; display: grid; width: 44px; height: 44px; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 3px; padding: 7px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface-elevated); box-shadow: var(--shadow-sm); }
 .die i { width: 7px; height: 7px; place-self: center; border-radius: 50%; background: var(--color-surface-inverse); }
 .die-1 i { grid-area: 2 / 2; }.die-2 i:nth-child(1) { grid-area: 1 / 1; }.die-2 i:nth-child(2) { grid-area: 3 / 3; }.die-3 i:nth-child(1) { grid-area: 1 / 1; }.die-3 i:nth-child(2) { grid-area: 2 / 2; }.die-3 i:nth-child(3) { grid-area: 3 / 3; }.die-4 i:nth-child(1) { grid-area: 1 / 1; }.die-4 i:nth-child(2) { grid-area: 1 / 3; }.die-4 i:nth-child(3) { grid-area: 3 / 1; }.die-4 i:nth-child(4) { grid-area: 3 / 3; }.die-5 i:nth-child(1) { grid-area: 1 / 1; }.die-5 i:nth-child(2) { grid-area: 1 / 3; }.die-5 i:nth-child(3) { grid-area: 2 / 2; }.die-5 i:nth-child(4) { grid-area: 3 / 1; }.die-5 i:nth-child(5) { grid-area: 3 / 3; }.die-6 i:nth-child(1) { grid-area: 1 / 1; }.die-6 i:nth-child(2) { grid-area: 1 / 3; }.die-6 i:nth-child(3) { grid-area: 2 / 1; }.die-6 i:nth-child(4) { grid-area: 2 / 3; }.die-6 i:nth-child(5) { grid-area: 3 / 1; }.die-6 i:nth-child(6) { grid-area: 3 / 3; }
-.dice-results.rolling .die { animation: dice-roll .65s ease-in-out; }
+.dice-results.rolling .die { animation: dice-roll var(--duration-slow) var(--ease-emphasized); }
 .double { color: var(--color-status-text); font-weight: var(--weight-bold); }
 .dice-button { justify-self: start; }
 @keyframes dice-roll { 50% { transform: rotate(14deg) scale(1.08); } }
 
 .calculator-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .calculator-operations { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
-.calculator-operations button, .numeric-keypad button { min-height: 42px; border: 1px solid var(--color-border-strong); border-radius: 8px; color: var(--color-text-primary); background: var(--color-surface-elevated); font: inherit; font-weight: var(--weight-semibold); }
+.calculator-operations button, .numeric-keypad button { min-height: var(--control-height-md); border: 1px solid var(--color-border-strong); border-radius: 8px; color: var(--color-text-primary); background: var(--color-surface-elevated); font: inherit; font-weight: var(--weight-semibold); transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard); }
+.calculator-operations button:active, .numeric-keypad button:active { transform: translateY(1px); }
 .calculator-operations button.selected { color: var(--color-text-on-accent); background: var(--color-accent); }
 .calculator-controls output { color: var(--color-text-primary); font-weight: var(--weight-bold); }
 
@@ -73,8 +74,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dice-results.rolling .die { animation: none; transition: none; transform: none; }
+  .dice-results.rolling .die, .calculator-operations button, .numeric-keypad button { animation: none; transition: none; transform: none; }
 }
 
 .activity-dialog { height: min(720px, calc(100dvh - 48px)); grid-template-rows: auto auto minmax(0, 1fr); }
+.amount-chip { min-height: var(--control-height-md); }
+.favorite-toggle { min-width: var(--control-height-md); }
+.winner-picker label { min-height: var(--control-height-md); }
 @media (max-width: 47.99rem) { .activity-dialog { height: calc(100dvh - env(safe-area-inset-top) - 8px); } }
