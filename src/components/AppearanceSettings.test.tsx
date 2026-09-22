@@ -15,12 +15,12 @@ describe('appearance settings', () => {
     expect(markup).toContain(translate(language, 'appearance'));
     expect(markup).toContain(translate(language, 'visualStyleClassicBank'));
     expect(markup.match(/<fieldset/g)).toHaveLength(2);
-    expect(markup.match(/aria-pressed/g)).toHaveLength(4);
+    expect(markup.match(/aria-pressed/g)).toHaveLength(5);
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain(translate(language, 'themeLight'));
     expect(markup).toContain(translate(language, 'themeDark'));
     expect(markup).toContain(translate(language, 'themeSystem'));
-    expect(markup).not.toContain('liquid-glass');
+    expect(markup).toContain(translate(language, 'visualStyleLiquidGlass'));
     expect(markup).not.toContain('minimal-finance');
   });
 });

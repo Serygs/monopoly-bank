@@ -36,16 +36,15 @@ families, typography, shape, depth, imagery, and optional presentation effects.
 
 | Style ID | Status | Intent |
 | --- | --- | --- |
-| `classic-bank` | Initial and only implemented style | A modern, premium interpretation of classic Monopoly banking. |
-| `liquid-glass` | Future architecture example only | Translucent, refractive surfaces with optional device-aware effects. |
+| `classic-bank` | Implemented | A modern, premium interpretation of classic Monopoly banking. |
+| `liquid-glass` | Implemented | Translucent, refractive surfaces with an optional reduced-motion-safe pointer highlight. |
 | `minimal-finance` | Future architecture example only | A possible restrained finance presentation. |
 
-Do not implement, expose, or advertise future styles until a dedicated phase
-defines and delivers them. New styles must be registered; page components must
-not gain style-specific business branches.
+New styles must be registered; page components must not gain style-specific
+business branches.
 
-Liquid Glass, Minimal Finance, and other possible styles are architectural
-roadmap examples only. Only `classic-bank` currently exists.
+Minimal Finance and any additional styles remain architectural roadmap examples.
+Classic Bank and Liquid Glass are the currently implemented styles.
 
 ### Colour mode
 
@@ -84,7 +83,8 @@ style registry -> style token sheet -> shared semantic components -> pages
 `VisualStyleDefinition` registry, validation, and the default style. Each entry
 has an `id`, localized `labelKey`, `supportedCapabilities`, and `mountEffects`.
 The ID is also the root `data-visual-style` value and CSS selector; a second
-attribute/class name is unnecessary. The only entry is `classic-bank`.
+attribute/class name is unnecessary. The registry contains `classic-bank` and
+`liquid-glass`.
 
 `mountEffects` receives a shell-owned context containing the root, owning
 document, and lazy reduced-motion query. Page components never provide effect
@@ -106,9 +106,8 @@ layout effect keyed only by style and mode. Sound, vibration, language, and
 route changes do not restart it. The HTML has a static Classic Bank/light
 fallback. No `data-theme` attribute or page-specific theme checks remain.
 
-Stylesheets are imported statically from `src/index.css`. Classic Bank's token
-sheet is `src/styles/visual-styles/classic-bank.css`, scoped by style and resolved
-mode. This avoids an asynchronous stylesheet loader for a single small style.
+Stylesheets are imported statically from `src/index.css`. Each registered style
+has a token sheet scoped by style and resolved mode.
 
 To add a style in a future phase:
 
@@ -139,7 +138,7 @@ existing values/defaults. Saving writes the new shape under the same key;
 the language preference remains in its existing separate key. Storage failures
 are nonfatal and use in-memory defaults. No settings are deliberately reset.
 
-`src/components/AppearanceSettings.tsx` renders independent, labelled selects
+`src/components/AppearanceSettings.tsx` renders independent, labelled controls
 for Visual style and Appearance. The existing shell settings also retain
 Language, Sound, and Vibration. Only registered, implemented styles appear.
 
@@ -166,8 +165,10 @@ alone.
 
 Typography follows semantic roles rather than per-component font declarations.
 Every chosen face and fallback must render English and Ukrainian completely and
-legibly. Classic Bank uses a system font stack through body, display, and money
-roles; no remote font request is made.
+legibly. The bundled `@fontsource-variable/inter` package supplies Inter
+Variable locally; no font is requested from a CDN at runtime. Liquid Glass
+allows Apple platforms to resolve their native system font before the bundled
+Inter fallback.
 
 Layout primitives, focus behaviour, and overlay semantics are shared. A visual
 style may change their presentation, but not reading order, accessible names,
@@ -203,18 +204,18 @@ The resolved core palette is:
 
 | Role | Light | Dark |
 | --- | --- | --- |
-| Canvas | `#f4f1e8` | `#0b1511` |
-| Elevated surface | `#ffffff` | `#182a23` |
-| Subtle surface | `#ecefe9` | `#1d3028` |
-| Primary text | `#17231e` | `#f2f1eb` |
-| Secondary text | `#46534d` | `#c3cbc6` |
-| Muted text | `#626d67` | `#93a099` |
-| Border / strong border | `#d9ded8` / `#b9c3bb` | `#2f443b` / `#4c6258` |
-| Accent / hover / pressed | `#176344` / `#125338` / `#0d432d` | `#4fa779` / `#65b98b` / `#3d8d65` |
-| Accent soft | `#e2f0e8` | `#193b2d` |
-| Highlight | `#b78c3f` | `#c7a45e` |
-| Danger / hover / soft | `#b3434b` / `#98363d` / `#f8e7e8` | `#e06d75` / `#ef8188` / `#43242a` |
-| Success / soft | `#2e7650` / `#e4f2e9` | `#6eb88b` / `#173928` |
+| Canvas | `#f4efdf` | `#091d18` |
+| Elevated surface | `#fff9ea` | `#102a23` |
+| Subtle surface | `#f6f0df` | `#1a3b31` |
+| Primary text | `#10372e` | `#f8f4e8` |
+| Secondary text | `#50675e` | `#c4cec8` |
+| Muted text | `#75867f` | `#8fa39a` |
+| Border / strong border | `#d9cead` / `#9baf9f` | `rgb(220 202 151 / .22)` / `#547166` |
+| Accent / hover / pressed | `#126247` / `#176f51` / `#0b4a38` | `#4fa779` / `#65b98b` / `#3d8d65` |
+| Accent soft | `#e6f0e9` | `#193b2d` |
+| Highlight | `#c5a34d` | `#d0ae58` |
+| Danger / hover / soft | `#c94d56` / `#98363d` / `#f8e7e8` | `#e06d75` / `#ef8188` / `#43242a` |
+| Success / soft | `#2e9b68` / `#e4f2e9` | `#6eb88b` / `#173928` |
 | Focus ring | `#8b6322` | `#d5b86f` |
 
 Dark mode is designed independently; do not derive it by inversion. Stable
@@ -223,14 +224,15 @@ player values are red `#d83f55`, blue `#2878d0`, green `#238b57`, orange
 
 ### Typography
 
-Classic Bank uses high-quality system stacks so Ukrainian glyph coverage and
-PWA startup do not depend on a network font:
+Classic Bank uses bundled Inter Variable with robust local fallbacks, so
+Ukrainian glyph coverage and PWA startup do not depend on a network font:
 
 - `--font-body` / `--font-ui`: body copy and controls;
 - `--font-display`: page and section headings;
 - `--font-money`: balances and transaction values with tabular numerals.
 
-The responsive roles are display `clamp(2.15rem, 6vw, 3.75rem)`, large heading
+The responsive roles are display `clamp(2.625rem, 4vw, 4rem)` (mobile may
+resolve through `clamp(2.125rem, 10vw, 2.875rem)`), large heading
 `clamp(1.45rem, 3vw, 2rem)`, medium heading `1.2rem`, body `1rem`, small
 `.875rem`, meta `.78rem`, large money `clamp(1.55rem, 5vw, 2.25rem)`, hero
 money `clamp(2.45rem, 10vw, 4rem)`, and button `.9375rem`. Page headings and
@@ -261,8 +263,8 @@ disabled, and validation states remain visible without motion.
 
 ### Shared primitive contract
 
-- Buttons provide primary, secondary, ghost (`button-quiet`), destructive,
-  destructive-ghost, and square icon treatments. Every variant defines hover
+- Buttons provide primary, secondary, ghost (`button-quiet`), destructive, and
+  square icon treatments. Every variant defines hover
   where appropriate, pressed, focus-visible, and disabled states.
 - Inputs and selects use elevated surfaces, strong-enough neutral boundaries,
   accent focus borders, and a visible focus halo. Placeholders use muted text.
@@ -319,8 +321,10 @@ may compose them but must not create a second visual language.
   compact group they are bottom sheets: full inline width, rounded top corners,
   safe-area-aware bottom padding, `dvh` bounded height, and internal scrolling.
   The same dialog DOM preserves focus trapping, dismissal, and action order.
-- Settings is an anchored header panel from medium upward. In compact it becomes
-  a safe-area-aware bottom sheet with a backdrop; its controls, preference
+- Settings is anchored to its header trigger from medium upward: its right edge
+  aligns with the trigger, it opens 12px below it, and its height is bounded to
+  the visible viewport with internal scrolling. In compact it becomes a
+  safe-area-aware bottom sheet with a backdrop; its controls, preference
   persistence, and keyboard handling remain the same.
 - Account for safe-area insets in installed-PWA and mobile-browser contexts.
 
@@ -399,12 +403,13 @@ Accessibility is a release requirement for every visual style and colour mode:
   necessary to complete a banking task.
 
 Motion should explain a user-triggered state change or provide concise feedback.
-No style may introduce continuous movement by default.
+Classic Bank has no continuous decorative motion. Liquid Glass may use only its
+documented 24-second, few-percent ambient background drift; it is disabled by
+reduced-motion preferences and must never read as an animated gradient wave.
 
-## Future `liquid-glass` capability
+## Liquid Glass capability
 
-`liquid-glass` is not implemented. The architecture must allow it
-later without changing page business logic:
+`liquid-glass` is implemented without changing page business logic:
 
 - translucent surfaces and glass/refraction effects live in its token and
   presentation layers;
@@ -427,13 +432,22 @@ These capabilities belong in optional style adapters. Shared components may
 expose stable decorative hooks, but pages must not import sensor or animation
 controllers.
 
+Liquid Glass uses `src/appearance/liquid-glass-effects.ts` for its optional
+shell-only pointer highlight. It updates a bounded CSS custom property, ignores
+touch input, observes live reduced-motion changes, and removes all listeners and
+temporary properties during cleanup. It does not request or collect sensor data.
+Both style sheets also define the shared `--ui-*` semantic aliases for canvas,
+surface, text, border, feedback, radius, elevation, and motion; legacy semantic
+`--color-*` roles remain compatibility aliases while feature CSS is migrated.
+
 ## Current implementation map
 
-The application currently implements only `classic-bank`. Its palette,
-typography, shape, and elevation describe that registered style, not global
+The application implements `classic-bank` and `liquid-glass`. Their palettes,
+typography, shape, and elevation describe their registered styles, not global
 requirements for future styles.
 
-- `src/styles/visual-styles/classic-bank.css` owns the palette, typography,
+- `src/styles/visual-styles/classic-bank.css` and
+  `src/styles/visual-styles/liquid-glass.css` own the palette, typography,
   spacing, shape, controls, icons, motion, elevation, presentation roles, player
   colours, and deliberately designed dark overrides.
 - `src/index.css` imports the style sheet and owns base document styles,
@@ -474,6 +488,53 @@ dynamic descriptions/durations, overlay keyboard behaviour, and the responsive
 route/mode matrix. Run `npm test -- src` for the frontend suite and
 `node node_modules/typescript/bin/tsc -p tsconfig.app.json --noEmit` for frontend
 type checking, plus `npm run lint`.
+
+## Shared information architecture
+
+The global header is compact navigation chrome only: brand, profile access, and
+settings. It never exposes Create game or Join game. Those actions appear once,
+in the Saved Games hero. The hero preserves one DOM structure across styles and
+uses an approximately 62/38 content/decoration composition from wide layouts;
+it is a stacked task sequence on compact screens.
+
+Saved Games has one shared route and behavior: hero, search, status filter,
+sort control, then game cards. Cards provide status, title, player count, last
+updated time, one primary Open/Join action, and the contextual Duplicate/Delete
+menu. Compact layouts are one column through 600px and do not duplicate actions.
+Long titles truncate safely while their full value remains available as the title
+attribute and overflow-menu accessible name.
+
+## Typography and assets
+
+No remote fonts are fetched. Classic Bank uses the documented cross-platform
+Inter/system fallback stack; Liquid Glass places the native Apple stack first on
+Apple platforms and otherwise falls back to Inter and Segoe UI. Monetary roles
+always use tabular numerals. Hero display text uses a 0.98--1.04 line height,
+negative display tracking, and a responsive 34--64px range.
+
+Runtime assets, if introduced, belong only under `public/assets/themes/classic/`
+or `public/assets/themes/liquid-glass/`; design references stay under
+`docs/ui/reference/` and are never shipped to the client. Classic Bank uses
+`public/assets/themes/classic/hero-bank.webp` as a low-contrast, text-free hero
+decoration behind its green contrast overlay. Liquid Glass intentionally uses
+CSS ambient decoration and has no required raster asset.
+
+## Style-specific implementation
+
+Classic Bank uses the warm ivory/green/brass palette defined in
+`classic-bank.css`, restrained radial canvas lighting, opaque cream surfaces,
+and low-elevation card hierarchy. Liquid Glass uses the documented silver, ice
+blue, lavender, and mint CSS ambient background, more opaque readable cards,
+and progressive-enhancement blur (22px desktop, 16px compact). The fallback
+surfaces remain contrast-safe when blur is unavailable.
+
+Liquid Glass pointer reflection is frame-throttled and writes bounded custom
+properties only to the currently highlighted hero or card. It measures a
+surface once on pointer entry, does not read layout during pointer movement,
+ignores touch input, and removes its temporary properties and listeners on
+cleanup. DeviceOrientation remains unsupported by design until an explicit
+user-triggered permission flow is specified; no sensor permission is requested
+automatically.
 
 ## Visual validation
 

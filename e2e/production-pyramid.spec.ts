@@ -4,6 +4,7 @@ import type { ActivityPage, GameDetails, GameSummary, LedgerStatistics, UserProf
 import type { Game, Player, Transaction } from '../shared/types/monopoly';
 import { translate, type Language } from '../src/i18n/translations';
 import { EMAIL_FEATURES_ENABLED } from '../src/utils/email-features';
+import type { VisualStyleId } from '../src/appearance/visual-styles';
 
 const baseURL = process.env.E2E_BASE_URL;
 const runE2E = baseURL !== undefined && process.env.E2E_RUN === 'true';
@@ -88,13 +89,16 @@ test.describe('visual and accessibility matrix', () => {
   for (const language of ['en', 'uk'] as const) {
     for (const colorScheme of ['light', 'dark'] as const) {
       for (const reducedMotion of ['reduce', 'no-preference'] as const) {
-        test(`classic-bank ${language} ${colorScheme} ${reducedMotion}`, async ({ browser }, testInfo) => {
-          const context = await createVisualContext(browser, { width: 390, language, colorScheme, reducedMotion });
+        for (const visualStyle of ['classic-bank', 'liquid-glass'] as const) {
+        test(`${visualStyle} ${language} ${colorScheme} ${reducedMotion}`, async ({ browser }, testInfo) => {
+          const context = await createVisualContext(browser, { width: 390, language, colorScheme, reducedMotion, visualStyle });
           const page = await context.newPage();
           await mockVisualApi(page);
+          await page.goto('/');
+          await assertSearchFieldGeometry(page);
           await openGame(page, language);
           await assertViewportHealth(page);
-          await expect(page.locator('html')).toHaveAttribute('data-visual-style', 'classic-bank');
+          await expect(page.locator('html')).toHaveAttribute('data-visual-style', visualStyle);
           await expect(page.locator('html')).toHaveAttribute('data-color-mode', colorScheme);
           if (reducedMotion === 'reduce') {
             const motion = await page.locator('.wallet-card').first().evaluate((element) => {
@@ -104,16 +108,29 @@ test.describe('visual and accessibility matrix', () => {
             expect(motion).toEqual({ animation: 'none', transition: '0s' });
           }
           await openActivity(page, language);
-          await testInfo.attach(`classic-bank-${language}-${colorScheme}-${reducedMotion}-activity`, { body: await page.screenshot(), contentType: 'image/png' });
+          await testInfo.attach(`${visualStyle}-${language}-${colorScheme}-${reducedMotion}-activity`, { body: await page.screenshot(), contentType: 'image/png' });
           await page.keyboard.press('Escape');
           await openStatistics(page, language);
-          await testInfo.attach(`classic-bank-${language}-${colorScheme}-${reducedMotion}-statistics`, { body: await page.screenshot(), contentType: 'image/png' });
+          await testInfo.attach(`${visualStyle}-${language}-${colorScheme}-${reducedMotion}-statistics`, { body: await page.screenshot(), contentType: 'image/png' });
           await page.keyboard.press('Escape');
           await openSettings(page, language);
-          await testInfo.attach(`classic-bank-${language}-${colorScheme}-${reducedMotion}-settings`, { body: await page.screenshot(), contentType: 'image/png' });
+          await testInfo.attach(`${visualStyle}-${language}-${colorScheme}-${reducedMotion}-settings`, { body: await page.screenshot(), contentType: 'image/png' });
           await context.close();
         });
+        }
       }
+    }
+  }
+
+  for (const visualStyle of ['classic-bank', 'liquid-glass'] as const) {
+    for (const colorScheme of ['light', 'dark'] as const) {
+      test(`${visualStyle} desktop ${colorScheme}`, async ({ browser }, testInfo) => {
+        const context = await createVisualContext(browser, { width: 1280, language: 'en', colorScheme, reducedMotion: 'no-preference', visualStyle });
+        const page = await context.newPage();
+        await mockVisualApi(page);
+        await exerciseMajorViews(page, 'en', `${visualStyle}-1280-en-${colorScheme}`, testInfo);
+        await context.close();
+      });
     }
   }
 });
@@ -123,6 +140,7 @@ type VisualCase = {
   language: Language;
   colorScheme: 'light' | 'dark';
   reducedMotion: 'reduce' | 'no-preference';
+  visualStyle?: VisualStyleId;
 };
 
 async function createVisualContext(browser: Browser, visualCase: VisualCase): Promise<BrowserContext> {
@@ -132,18 +150,19 @@ async function createVisualContext(browser: Browser, visualCase: VisualCase): Pr
     reducedMotion: visualCase.reducedMotion,
     serviceWorkers: 'block',
   });
-  await context.addInitScript(({ language, colorMode }) => {
+  await context.addInitScript(({ language, colorMode, visualStyle }) => {
     try {
       window.localStorage.setItem('monopoly-bank-language', language);
-      window.localStorage.setItem('monopoly-bank-device-preferences', JSON.stringify({ visualStyle: 'classic-bank', colorMode, sound: false, vibration: false }));
+      window.localStorage.setItem('monopoly-bank-device-preferences', JSON.stringify({ visualStyle, colorMode, sound: false, vibration: false }));
     } catch { /* The initial opaque about:blank document does not expose storage. */ }
-  }, { language: visualCase.language, colorMode: visualCase.colorScheme });
+  }, { language: visualCase.language, colorMode: visualCase.colorScheme, visualStyle: visualCase.visualStyle ?? 'classic-bank' });
   return context;
 }
 
 async function exerciseMajorViews(page: Page, language: Language, attachmentPrefix: string, testInfo: TestInfo): Promise<void> {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: translate(language, 'savedGames'), exact: true })).toBeVisible();
+  await assertSearchFieldGeometry(page);
   await assertViewportHealth(page);
   await attachPage(page, testInfo, `${attachmentPrefix}-saved-games`);
 
@@ -217,8 +236,18 @@ async function openStatistics(page: Page, language: Language): Promise<void> {
 }
 
 async function openSettings(page: Page, language: Language): Promise<void> {
-  await page.getByRole('button', { name: translate(language, 'settings'), exact: true }).click();
+  const trigger = page.getByRole('button', { name: translate(language, 'settings'), exact: true });
+  await trigger.click();
   await expect(page.getByRole('dialog').getByRole('heading', { name: translate(language, 'settings'), exact: true })).toBeVisible();
+  if ((page.viewportSize()?.width ?? 0) >= 768) {
+    const [triggerBox, panelBox] = await Promise.all([trigger.boundingBox(), page.getByRole('dialog').boundingBox()]);
+    expect(triggerBox).not.toBeNull();
+    expect(panelBox).not.toBeNull();
+    if (triggerBox !== null && panelBox !== null) {
+      expect(panelBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height + 11);
+      expect(Math.abs((panelBox.x + panelBox.width) - (triggerBox.x + triggerBox.width))).toBeLessThanOrEqual(2);
+    }
+  }
 }
 
 async function assertViewportHealth(page: Page): Promise<void> {
@@ -229,6 +258,33 @@ async function assertViewportHealth(page: Page): Promise<void> {
     const box = await primaryTargets.nth(index).boundingBox();
     expect(box === null || (box.height >= 44 && box.width >= 44)).toBe(true);
   }
+}
+
+async function assertSearchFieldGeometry(page: Page): Promise<void> {
+  const input = page.locator('.saved-games-search input');
+  const icon = page.locator('.saved-games-search-icon');
+  await expect(input).toBeVisible();
+
+  const assertGeometry = async () => {
+    const [inputBox, iconBox, padding] = await Promise.all([
+      input.boundingBox(),
+      icon.boundingBox(),
+      input.evaluate((element) => getComputedStyle(element).paddingInlineStart),
+    ]);
+    expect(inputBox).not.toBeNull();
+    expect(iconBox).not.toBeNull();
+    expect(padding).toBe('48px');
+    if (inputBox !== null && iconBox !== null) {
+      const scale = iconBox.width / 20;
+      expect(Math.abs((iconBox.y + iconBox.height / 2) - (inputBox.y + inputBox.height / 2))).toBeLessThanOrEqual(1);
+      expect(Math.abs((iconBox.x - inputBox.x) - 16 * scale)).toBeLessThanOrEqual(1);
+    }
+  };
+
+  await assertGeometry();
+  await page.locator('body').evaluate((body) => { body.style.zoom = '1.25'; });
+  await assertGeometry();
+  await page.locator('body').evaluate((body) => { body.style.zoom = ''; });
 }
 
 async function attachPage(page: Page, testInfo: TestInfo, name: string): Promise<void> {

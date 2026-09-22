@@ -1,4 +1,6 @@
+@import '@fontsource-variable/inter/wght.css';
 @import './styles/visual-styles/classic-bank.css';
+@import './styles/visual-styles/liquid-glass.css';
 
 :root {
   --app-safe-top: env(safe-area-inset-top, 0px);

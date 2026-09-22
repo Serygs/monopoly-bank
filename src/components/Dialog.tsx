@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 
 const focusableSelector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
@@ -12,9 +12,10 @@ interface DialogProps {
   closeDisabled?: boolean;
   presentation?: 'modal' | 'popover';
   id?: string;
+  popoverStyle?: CSSProperties;
 }
 
-export function Dialog({ title, children, onClose, closeLabel, eyebrow, className = '', closeDisabled = false, presentation = 'modal', id }: DialogProps) {
+export function Dialog({ title, children, onClose, closeLabel, eyebrow, className = '', closeDisabled = false, presentation = 'modal', id, popoverStyle }: DialogProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLElement>(null);
 
@@ -58,7 +59,7 @@ export function Dialog({ title, children, onClose, closeLabel, eyebrow, classNam
   };
 
   return <div className={`dialog-backdrop dialog-backdrop--${presentation}`} role="presentation" onMouseDown={() => { if (!closeDisabled) onClose(); }}>
-    <section id={id ?? (className.includes('settings-panel') ? 'settings-panel' : undefined)} ref={dialogRef} className={`dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown} onMouseDown={(event) => event.stopPropagation()}>
+    <section id={id ?? (className.includes('settings-panel') ? 'settings-panel' : undefined)} ref={dialogRef} className={`dialog ${className}`.trim()} style={presentation === 'popover' ? popoverStyle : undefined} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown} onMouseDown={(event) => event.stopPropagation()}>
       <header>
         <div>
           {eyebrow !== undefined && <p className="eyebrow">{eyebrow}</p>}

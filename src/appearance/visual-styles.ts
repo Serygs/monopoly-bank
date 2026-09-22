@@ -1,6 +1,7 @@
 import type { TranslationKey } from '../i18n/translations';
+import { mountLiquidGlassEffects } from './liquid-glass-effects';
 
-export type VisualStyleId = 'classic-bank';
+export type VisualStyleId = 'classic-bank' | 'liquid-glass';
 export type StyleCapability = 'translucentSurfaces' | 'pointerReactiveEffects' | 'deviceTiltEffects' | 'richBackgroundEffects';
 
 export interface VisualStyleEffectContext {
@@ -26,6 +27,12 @@ export const visualStyles: readonly VisualStyleDefinition[] = [
     labelKey: 'visualStyleClassicBank',
     supportedCapabilities: [],
     mountEffects: () => () => {},
+  },
+  {
+    id: 'liquid-glass',
+    labelKey: 'visualStyleLiquidGlass',
+    supportedCapabilities: ['translucentSurfaces', 'pointerReactiveEffects', 'richBackgroundEffects'],
+    mountEffects: mountLiquidGlassEffects,
   },
 ];
 

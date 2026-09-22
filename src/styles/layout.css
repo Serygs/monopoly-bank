@@ -95,6 +95,8 @@
 .page-header-actions .button { min-width: 0; white-space: normal; }
 
 .page-header--hero {
+  position: relative;
+  overflow: hidden;
   padding: var(--space-6);
   border: 1px solid color-mix(in srgb, var(--color-highlight) 45%, transparent);
   border-radius: var(--radius-xl);
@@ -103,9 +105,16 @@
   box-shadow: var(--shadow-md);
 }
 
+.page-header--hero::after { position: absolute; z-index: 0; inset: 0 0 0 auto; width: 39%; content: ''; background: radial-gradient(circle at 65% 38%, color-mix(in srgb, var(--color-highlight) 40%, transparent), transparent 17%), radial-gradient(circle at 38% 64%, color-mix(in srgb, var(--color-surface-elevated) 28%, transparent), transparent 22%), linear-gradient(135deg, transparent, color-mix(in srgb, var(--color-surface-elevated) 10%, transparent)); pointer-events: none; }
+.page-header--hero > * { position: relative; z-index: 1; }
+
 .page-header--hero h1, .page-header--hero .lede, .page-header--hero .eyebrow { color: inherit; }
 .page-header--hero .eyebrow { color: color-mix(in srgb, var(--color-highlight) 82%, white); }
 .page-header--hero .button-secondary { border-color: color-mix(in srgb, var(--color-text-on-inverse) 42%, transparent); color: var(--color-text-primary); background: var(--color-surface-elevated); }
+
+@media (max-width: 47.99rem) {
+  .page-header--hero h1 { font-size: clamp(2.125rem, 10vw, 2.875rem); }
+}
 
 .header-tools { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
 .brand, .profile-menu-button, .settings-button {
@@ -124,7 +133,7 @@
 }
 
 .brand { padding: 0; font-size: 1rem; letter-spacing: -.015em; }
-.brand > span:last-child, .profile-menu-button > span:last-child, .settings-button > span { display: none; }
+.profile-menu-button > span:last-child, .settings-button > span { display: none; }
 .brand-mark, .game-card-seal, .empty-state-token, .auth-card-mark {
   display: grid;
   place-items: center;
@@ -145,10 +154,6 @@
 .header-avatar { width: 34px; height: 34px; }
 .settings-button { width: var(--control-height-md); padding: 0; border: 1px solid color-mix(in srgb, var(--color-text-on-inverse) 28%, transparent); border-radius: var(--radius-md); }
 .brand:active, .profile-menu-button:active, .settings-button:active { transform: translateY(1px); }
-
-.settings-panel {
-  max-height: min(78dvh, calc(100dvh - var(--app-safe-top) - var(--space-4)));
-}
 
 @media (hover: hover) and (pointer: fine) {
   .brand:hover, .profile-menu-button:hover, .settings-button:hover { background: var(--color-inverse-hover); }
@@ -173,11 +178,24 @@
   .page-header { gap: var(--layout-gap-medium); margin-bottom: var(--layout-section-gap-medium); }
   .page-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; }
   .page-header-actions .button { flex: 0 1 auto; }
-  .brand > span:last-child, .profile-menu-button > span:last-child, .settings-button > span { display: inline; }
+  .profile-menu-button > span:last-child, .settings-button > span { display: inline; }
   .profile-menu-button { max-width: 16rem; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1); }
   .settings-button { width: auto; padding-inline: var(--space-3); }
-  .dialog-backdrop--popover { place-items: start end; padding: calc(var(--layout-header-height-medium) + var(--app-safe-top) + var(--space-2)) max(var(--layout-page-inline-medium), calc((100vw - var(--layout-content-max)) / 2)) var(--space-4); background: transparent; }
-  .dialog-backdrop--popover .settings-panel { max-height: calc(100dvh - var(--layout-header-height-medium) - var(--app-safe-top) - var(--space-4)); }
+  .dialog-backdrop--popover { display: block; padding: 0; background: transparent; }
+  .dialog-backdrop--popover .settings-panel {
+    position: fixed;
+    top: var(--settings-popover-top, calc(var(--layout-header-height-medium) + var(--app-safe-top) + 12px));
+    right: var(--settings-popover-right, max(var(--layout-page-inline-medium), calc((100vw - var(--layout-content-max)) / 2)));
+    width: clamp(20rem, 27vw, 22.5rem);
+    max-width: calc(100vw - 2 * var(--space-3));
+    max-height: calc(100dvh - var(--settings-popover-top, calc(var(--layout-header-height-medium) + var(--app-safe-top) + 12px)) - 24px);
+    overflow-y: auto;
+  }
+}
+
+@media (min-width: 64rem) {
+  .saved-games-page .page-header--hero { grid-template-columns: minmax(0, 62%) minmax(0, 38%); align-items: center; }
+  .saved-games-page .page-header-actions { grid-column: 1; max-width: 28rem; }
 }
 
 /* Wide: use the available table space with a controlled content measure. */
@@ -189,7 +207,7 @@
   .page-header { grid-template-columns: minmax(0, 1fr) auto; gap: var(--layout-gap-wide); margin-bottom: var(--layout-section-gap-wide); }
   .page-header-actions { justify-content: flex-end; align-self: center; max-width: 32rem; }
   .page-header--hero { padding: clamp(var(--space-7), 4vw, var(--space-9)); }
-  .dialog-backdrop--popover { padding-top: calc(var(--layout-header-height-wide) + var(--app-safe-top) + var(--space-2)); }
+  .dialog-backdrop--popover .settings-panel { top: var(--settings-popover-top, calc(var(--layout-header-height-wide) + var(--app-safe-top) + 12px)); }
 }
 
 /* iOS standalone mode can report a zero top inset during first paint. */
