@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { CreateGameRequest, CreateTransactionRequest, GameDetails, GameSummary } from '../../shared/contracts/api.js';
-import { InsufficientFundsError } from '../../shared/domain/banking.js';
+import { IncompleteEstateError, InsufficientFundsError } from '../../shared/domain/banking.js';
+import { PlayerNotInJailError } from '../../shared/domain/jail.js';
+import { DiceTotalRequiredError, IncompleteColorGroupError, PropertyAlreadyOwnedError } from '../../shared/domain/property.js';
+import { MortgageResolutionRequiredError, TradeStateChangedError } from '../../shared/domain/property-trade.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { BankingService } from '../services/banking-service.js';
-import { ForbiddenError, ResourceNotFoundError } from '../services/errors.js';
+import { BoardRequiredError, ConflictError, ForbiddenError, ResourceNotFoundError } from '../services/errors.js';
 import type { GameService } from '../services/game-service.js';
 import { createApiRouter } from './api-router.js';
 
@@ -380,6 +383,202 @@ describe('API router', () => {
       error: { code: 'VALIDATION_ERROR', message: 'gameId must be a UUID.' },
     });
   });
+});
+
+describe('board and property routes', () => {
+  const boardSpaceId = 'board-classic-space-01';
+  const tradeId = '00000000-0000-4000-8000-000000000077';
+  const commandId = '00000000-0000-4000-8000-000000000088';
+  const ownerId = '00000000-0000-4000-8000-000000000099';
+  const spaceNames = Object.fromEntries(Array.from({ length: 28 }, (_, index) => [`board-classic-space-${String(index).padStart(2, '0')}`, `Street ${index}`]));
+
+  it('passes a boardId through to game creation', async () => {
+    let received: CreateGameRequest | undefined;
+    const router = createTestRouter({ createGame: async (request) => { received = request; return gameDetails; } });
+    const response = await router(jsonRequest('POST', '/api/games', { name: 'Board table', startingBalance: 1500, passGoReward: 200, currency: 'USD', boardId: 'board-classic', players: [{ name: 'Ada', color: '#123456' }] }));
+    expect(response.status).toBe(201);
+    expect(received?.boardId).toBe('board-classic');
+  });
+
+  it('returns the board slice to a member and refuses a game without a board with BOARD_REQUIRED', async () => {
+    const { router, properties } = createPropertyRouter();
+    const response = await router(new Request(`https://example.test/api/games/${gameId}/properties`));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ data: { properties: [{ boardSpaceId, ownerPlayerId: secondPlayerId }] } });
+    properties.state.mockRejectedValueOnce(new BoardRequiredError());
+    const legacy = await router(new Request(`https://example.test/api/games/${gameId}/properties`));
+    expect(legacy.status).toBe(400);
+    await expect(legacy.json()).resolves.toMatchObject({ error: { code: 'BOARD_REQUIRED' } });
+  });
+
+  it('buys a deed for a controlled wallet and answers 201 with the operation result', async () => {
+    const { router, properties } = createPropertyRouter();
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/properties/purchase`, { playerId: firstPlayerId, boardSpaceId }));
+    expect(response.status).toBe(201);
+    expect(properties.purchase).toHaveBeenCalledWith(gameId, { playerId: firstPlayerId, boardSpaceId });
+    await expect(response.json()).resolves.toMatchObject({ data: { transaction: { type: 'PROPERTY_PURCHASE' } } });
+  });
+
+  it('rejects a purchase from a wallet the actor does not control before any service call', async () => {
+    const { router, properties, live } = createPropertyRouter({ controlled: [firstPlayerId], live: true });
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/properties/purchase`, { playerId: secondPlayerId, boardSpaceId }));
+    expect(response.status).toBe(403);
+    expect(properties.purchase).not.toHaveBeenCalled();
+    expect(live.mutate).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 PROPERTY_NOT_OWNED for rent on a deed nobody owns, without touching the service', async () => {
+    const { router, properties } = createPropertyRouter({ owner: null });
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/properties/rent`, { payerPlayerId: firstPlayerId, boardSpaceId, chargedByOwner: true }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'PROPERTY_NOT_OWNED', details: { boardSpaceId } } });
+    expect(properties.chargeRent).not.toHaveBeenCalled();
+  });
+
+  it('authorizes an owner-raised rent claim against the stored owner and a payer-raised one against the payer', async () => {
+    const claimed = createPropertyRouter({ owner: secondPlayerId, controlled: [secondPlayerId] });
+    const claim = await claimed.router(jsonRequest('POST', `/api/games/${gameId}/properties/rent`, { payerPlayerId: firstPlayerId, boardSpaceId, chargedByOwner: true, ownerPlayerId: firstPlayerId }));
+    expect(claim.status).toBe(201);
+    expect(claimed.controllers).toEqual([secondPlayerId]);
+    expect(claimed.properties.chargeRent).toHaveBeenCalledWith(gameId, { payerPlayerId: firstPlayerId, boardSpaceId, chargedByOwner: true });
+
+    const paid = createPropertyRouter({ owner: secondPlayerId, controlled: [secondPlayerId] });
+    const payment = await paid.router(jsonRequest('POST', `/api/games/${gameId}/properties/rent`, { payerPlayerId: firstPlayerId, boardSpaceId }));
+    expect(payment.status).toBe(403);
+    expect(paid.controllers).toEqual([firstPlayerId]);
+    expect(paid.properties.chargeRent).not.toHaveBeenCalled();
+  });
+
+  it('routes every property operation through the live coordinator as a PROPERTY_OPERATION command', async () => {
+    const { router, live, properties } = createPropertyRouter({ live: true });
+    const headers = { 'content-type': 'application/json', 'x-command-id': commandId };
+    for (const [action, operation, body] of [
+      ['purchase', 'PURCHASE', { playerId: firstPlayerId, boardSpaceId }],
+      ['build', 'BUILD', { playerId: firstPlayerId, boardSpaceId, count: 2 }],
+      ['sell-buildings', 'SELL_BUILDINGS', { playerId: firstPlayerId, boardSpaceId, count: 1 }],
+      ['mortgage', 'MORTGAGE', { playerId: firstPlayerId, boardSpaceId }],
+      ['unmortgage', 'UNMORTGAGE', { playerId: firstPlayerId, boardSpaceId }],
+    ] as const) {
+      await router(new Request(`https://example.test/api/games/${gameId}/properties/${action}`, { method: 'POST', headers, body: JSON.stringify(body) }));
+      expect(live.mutate).toHaveBeenLastCalledWith(gameId, expect.anything(), { type: 'PROPERTY_OPERATION', commandId, operation, request: body });
+    }
+    expect(properties.purchase).not.toHaveBeenCalled();
+    const missing = await router(jsonRequest('POST', `/api/games/${gameId}/properties/purchase`, { playerId: firstPlayerId, boardSpaceId }));
+    expect(missing.status).toBe(400);
+  });
+
+  it.each([
+    ['PROPERTY_ALREADY_OWNED', 409, () => new PropertyAlreadyOwnedError(boardSpaceId, secondPlayerId)],
+    ['INCOMPLETE_COLOR_GROUP', 409, () => new IncompleteColorGroupError('BROWN')],
+    ['TRADE_STATE_CHANGED', 409, () => new TradeStateChangedError(boardSpaceId, { ownerPlayerId: firstPlayerId, houses: 0, mortgaged: false }, { ownerPlayerId: firstPlayerId, houses: 0, mortgaged: true })],
+    ['MORTGAGE_RESOLUTION_REQUIRED', 400, () => new MortgageResolutionRequiredError(boardSpaceId)],
+    ['PLAYER_NOT_IN_JAIL', 409, () => new PlayerNotInJailError(firstPlayerId)],
+    ['INSUFFICIENT_FUNDS', 409, () => new InsufficientFundsError(firstPlayerId, 10, 60)],
+    ['INCOMPLETE_ESTATE', 400, () => new IncompleteEstateError(['properties'])],
+    ['DICE_TOTAL_REQUIRED', 400, () => new DiceTotalRequiredError(boardSpaceId)],
+  ] as const)('returns the domain code %s with the domain status %i', async (code, status, error) => {
+    const { router, properties } = createPropertyRouter();
+    properties.purchase.mockRejectedValueOnce(error());
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/properties/purchase`, { playerId: firstPlayerId, boardSpaceId }));
+    expect(response.status).toBe(status);
+    await expect(response.json()).resolves.toMatchObject({ error: { code } });
+  });
+
+  it('proposes a trade for the proposer\'s controller and lists trades for members', async () => {
+    const { router, trades, controllers } = createPropertyRouter();
+    const body = { proposerPlayerId: firstPlayerId, responderPlayerId: secondPlayerId, cashFromProposer: 50, propertiesFromProposer: [{ boardSpaceId }] };
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/trades`, body));
+    expect(response.status).toBe(201);
+    expect(controllers).toEqual([firstPlayerId]);
+    expect(trades.propose).toHaveBeenCalledWith(gameId, body);
+    const list = await router(new Request(`https://example.test/api/games/${gameId}/trades`));
+    expect(list.status).toBe(200);
+    await expect(list.json()).resolves.toEqual({ data: [expect.objectContaining({ id: tradeId })] });
+  });
+
+  it('lets only the responder accept or decline and only the proposer cancel a trade', async () => {
+    const responder = createPropertyRouter({ controlled: [secondPlayerId] });
+    expect((await responder.router(jsonRequest('POST', `/api/games/${gameId}/trades/${tradeId}/accept`, {}))).status).toBe(200);
+    expect(responder.trades.accept).toHaveBeenCalledWith(gameId, tradeId);
+    expect((await responder.router(jsonRequest('POST', `/api/games/${gameId}/trades/${tradeId}/cancel`, {}))).status).toBe(403);
+    expect(responder.trades.cancel).not.toHaveBeenCalled();
+
+    const proposer = createPropertyRouter({ controlled: [firstPlayerId] });
+    expect((await proposer.router(jsonRequest('POST', `/api/games/${gameId}/trades/${tradeId}/accept`, {}))).status).toBe(403);
+    expect(proposer.trades.accept).not.toHaveBeenCalled();
+    expect((await proposer.router(jsonRequest('POST', `/api/games/${gameId}/trades/${tradeId}/cancel`, {}))).status).toBe(200);
+    expect(proposer.trades.cancel).toHaveBeenCalledWith(gameId, tradeId);
+
+    const missing = createPropertyRouter({ trade: null });
+    expect((await missing.router(jsonRequest('POST', `/api/games/${gameId}/trades/${tradeId}/decline`, {}))).status).toBe(404);
+  });
+
+  it('pays bail and records dice rolls for the wallet\'s controller only', async () => {
+    const { router, properties, controllers } = createPropertyRouter();
+    expect((await router(jsonRequest('POST', `/api/games/${gameId}/jail/bail`, { playerId: firstPlayerId }))).status).toBe(201);
+    expect(properties.payJailBail).toHaveBeenCalledWith(gameId, { playerId: firstPlayerId });
+    expect((await router(jsonRequest('POST', `/api/games/${gameId}/dice-rolls`, { playerId: firstPlayerId, first: 4, second: 4 }))).status).toBe(201);
+    expect(properties.recordDiceRoll).toHaveBeenCalledWith(gameId, { playerId: firstPlayerId, first: 4, second: 4 });
+    expect(controllers).toEqual([firstPlayerId, firstPlayerId]);
+    const foreign = createPropertyRouter({ controlled: [secondPlayerId] });
+    expect((await foreign.router(jsonRequest('POST', `/api/games/${gameId}/dice-rolls`, { playerId: firstPlayerId, first: 4, second: 4 }))).status).toBe(403);
+    expect(foreign.properties.recordDiceRoll).not.toHaveBeenCalled();
+  });
+
+  it('serves the board catalogue to the authenticated actor', async () => {
+    const { router, boards } = createPropertyRouter();
+    expect((await router(new Request('https://example.test/api/boards'))).status).toBe(200);
+    expect(boards.list).toHaveBeenCalledWith(ownerId);
+    const created = await router(jsonRequest('POST', '/api/boards', { name: 'Kyiv', sourceBoardId: 'board-classic', spaceNames }));
+    expect(created.status).toBe(201);
+    expect(boards.create).toHaveBeenCalledWith(ownerId, { name: 'Kyiv', sourceBoardId: 'board-classic', spaceNames });
+    expect((await router(new Request('https://example.test/api/boards/board-classic'))).status).toBe(200);
+    expect(boards.get).toHaveBeenCalledWith('board-classic', ownerId);
+    expect((await router(new Request('https://example.test/api/boards/board-classic', { method: 'DELETE' }))).status).toBe(200);
+    expect(boards.delete).toHaveBeenCalledWith('board-classic', ownerId);
+    boards.delete.mockRejectedValueOnce(new ConflictError('BOARD_IN_USE', 'A game is still played on this board.'));
+    const inUse = await router(new Request('https://example.test/api/boards/board-classic', { method: 'DELETE' }));
+    expect(inUse.status).toBe(409);
+    await expect(inUse.json()).resolves.toMatchObject({ error: { code: 'BOARD_IN_USE' } });
+  });
+
+  function createPropertyRouter(options: { controlled?: string[]; owner?: string | null; live?: boolean; trade?: null } = {}) {
+    const controlled = options.controlled ?? [firstPlayerId, secondPlayerId];
+    const controllers: string[] = [];
+    const operation = { transaction: { ...transactionResponse().transaction, type: 'PROPERTY_PURCHASE' as const }, players: gameDetails.players, properties: [{ boardSpaceId, ownerPlayerId: secondPlayerId, houses: 0, mortgaged: false }], buildingBank: { housesAvailable: 32, hotelsAvailable: 12 } };
+    const trade = { id: tradeId, gameId, proposerPlayerId: firstPlayerId, responderPlayerId: secondPlayerId, cashFromProposer: 50, cashFromResponder: 0, items: [], state: 'PENDING' as const, expiresAt: '2999-01-01T00:00:00.000Z', createdAt: '', resolvedAt: null, transactionId: null };
+    const properties = {
+      state: vi.fn(async () => ({ board: { id: 'board-classic' }, boardSpaces: [], properties: operation.properties, buildingBank: operation.buildingBank })),
+      ownerOf: vi.fn(async () => (options.owner === undefined ? secondPlayerId : options.owner)),
+      purchase: vi.fn(async () => operation), chargeRent: vi.fn(async () => operation), build: vi.fn(async () => operation), sellBuildings: vi.fn(async () => operation), mortgage: vi.fn(async () => operation), unmortgage: vi.fn(async () => operation),
+      payJailBail: vi.fn(async () => ({ transaction: operation.transaction, players: gameDetails.players })),
+      recordDiceRoll: vi.fn(async () => ({ player: gameDetails.players[0], thirdDouble: false })),
+    };
+    const trades = {
+      list: vi.fn(async () => [trade]), get: vi.fn(async () => (options.trade === null ? null : trade)),
+      propose: vi.fn(async () => ({ trade, players: gameDetails.players })), accept: vi.fn(async () => ({ trade, players: gameDetails.players })), decline: vi.fn(async () => ({ trade, players: gameDetails.players })), cancel: vi.fn(async () => ({ trade, players: gameDetails.players })),
+    };
+    const boards = { list: vi.fn(async () => []), get: vi.fn(async () => ({ board: { id: 'board-classic' }, spaces: [] })), create: vi.fn(async () => ({ board: { id: 'copy' }, spaces: [] })), delete: vi.fn(async () => ({ boardId: 'board-classic' })) };
+    const live = { connect: vi.fn(async () => new Response()), mutate: vi.fn(async () => Response.json({ data: operation }, { status: 201 })) };
+    const access = {
+      requireMember: async () => 'PLAYER' as const,
+      requireOwner: async () => undefined,
+      requirePlayerController: async (_gameId: string, _userId: string, playerId: string) => { controllers.push(playerId); if (!controlled.includes(playerId)) throw new ForbiddenError(); },
+      controlledWallets: async () => controlled.map((playerId) => ({ playerId, kind: 'PRIMARY' as const })),
+    };
+    const router = createApiRouter({
+      games: { createGameForOwner: async () => gameDetails, getGame: async () => gameDetails } as never,
+      banking: {} as BankingService,
+      auth: { current: async () => ({ id: ownerId, nickname: 'Test', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: access as never,
+      profileStatistics: {} as never,
+      properties: properties as never,
+      trades: trades as never,
+      boards: boards as never,
+      ...(options.live === true ? { live } : {}),
+    });
+    return { router, properties, trades, boards, live, controllers };
+  }
 });
 
 function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {

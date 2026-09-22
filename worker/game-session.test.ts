@@ -36,6 +36,50 @@ describe('GameSession live coordinator', () => {
     expect(JSON.parse(sent[0][0])).toMatchObject({ type: 'GAME_COMMITTED', stateVersion: 1, transaction: { id: commandId }, players: [] });
   });
 
+  it('replays a PROPERTY_OPERATION command by its ID from the ledger without a second write', async () => {
+    const sent: string[] = [];
+    const storage = new Map<string, unknown>();
+    const context = { storage: { get: async <T>(key: string) => storage.get(key) as T | undefined, put: async (key: string, value: unknown) => { storage.set(key, value); } }, getWebSockets: () => [{ send: (message: string) => sent.push(message) }] };
+    const session = new GameSession(context as never, {} as Env) as unknown as {
+      mutate(gameId: string, userId: string, request: Request): Promise<Response>;
+      properties(command: string): { purchase(): Promise<unknown> };
+      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
+      commandLedger(): ReturnType<typeof fakeLedger>;
+    };
+    const ledger = fakeLedger();
+    let purchases = 0;
+    const transaction = { id: commandId, gameId, type: 'PROPERTY_PURCHASE', amount: 60, totalAmount: 60, comment: null, createdAt: '', participants: [{ playerId: '00000000-0000-4000-8000-000000000003', balanceDelta: -60 }] };
+    session.properties = () => ({ purchase: async () => { purchases += 1; return { transaction, players: [], properties: [{ boardSpaceId: 'board-classic-space-01', ownerPlayerId: '00000000-0000-4000-8000-000000000003', houses: 0, mortgaged: false }], buildingBank: { housesAvailable: 32, hotelsAvailable: 12 } }; } });
+    session.commandLedger = () => ledger;
+    session.authorizeMutation = async () => undefined;
+    const request = () => new Request('https://game-session/mutation', { method: 'POST', body: JSON.stringify({ type: 'PROPERTY_OPERATION', commandId, operation: 'PURCHASE', request: { playerId: '00000000-0000-4000-8000-000000000003', boardSpaceId: 'board-classic-space-01' } }) });
+
+    const first = await session.mutate(gameId, 'actor', request());
+    const second = await session.mutate(gameId, 'actor', request());
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    await expect(second.json()).resolves.toEqual(await first.clone().json());
+    expect(purchases).toBe(1);
+    expect(sent).toHaveLength(1);
+    expect(JSON.parse(sent[0])).toMatchObject({ type: 'GAME_COMMITTED', stateVersion: 1, transaction: { id: commandId, type: 'PROPERTY_PURCHASE' } });
+  });
+
+  it('authorizes a rent claim against the owner stored on the deed, not a wallet the request names', async () => {
+    const session = new GameSession({} as never, {} as Env) as unknown as {
+      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
+      properties(command: string): { ownerOf(): Promise<string | null> };
+      access(): { requireMember(): Promise<void>; requirePlayerController(gameId: string, userId: string, playerId: string): Promise<void> };
+    };
+    const controllers: string[] = [];
+    session.properties = () => ({ ownerOf: async () => '00000000-0000-4000-8000-0000000000aa' });
+    session.access = () => ({ requireMember: async () => undefined, requirePlayerController: async (_gameId, _userId, playerId) => { controllers.push(playerId); } });
+    await session.authorizeMutation(gameId, 'actor', { type: 'PROPERTY_OPERATION', commandId, operation: 'RENT', request: { payerPlayerId: '00000000-0000-4000-8000-000000000003', boardSpaceId: 'board-classic-space-01', chargedByOwner: true, ownerPlayerId: '00000000-0000-4000-8000-0000000000ff' } });
+    await session.authorizeMutation(gameId, 'actor', { type: 'PROPERTY_OPERATION', commandId, operation: 'RENT', request: { payerPlayerId: '00000000-0000-4000-8000-000000000003', boardSpaceId: 'board-classic-space-01' } });
+    expect(controllers).toEqual(['00000000-0000-4000-8000-0000000000aa', '00000000-0000-4000-8000-000000000003']);
+    session.properties = () => ({ ownerOf: async () => null });
+    await expect(session.authorizeMutation(gameId, 'actor', { type: 'PROPERTY_OPERATION', commandId, operation: 'RENT', request: { payerPlayerId: '00000000-0000-4000-8000-000000000003', boardSpaceId: 'board-classic-space-01', chargedByOwner: true } })).rejects.toMatchObject({ code: 'PROPERTY_NOT_OWNED', status: 400 });
+  });
+
   it('rejects requests that did not come through the authenticated Worker gateway', async () => {
     const session = new GameSession({} as never, {} as Env);
     expect((await session.fetch(new Request('https://game-session/mutation'))).status).toBe(403);
