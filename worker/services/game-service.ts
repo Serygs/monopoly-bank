@@ -1,13 +1,17 @@
 import type { CreateGameRequest, DeleteGameResponse, GameDetails, GameSummary } from '../../shared/contracts/api.js';
+import type { Currency } from '../../shared/types/monopoly.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { CreatePlayerInput, PlayerRepository } from '../repositories/player-repository.js';
 import { ConflictError, ResourceNotFoundError } from './errors.js';
 import { hashPassword, randomToken } from './password-security.js';
 
+/** The API only lets a new game pick a selectable currency; duplicating keeps the source game's stored currency, including the legacy `K`. */
+export type CreateGameInput = Omit<CreateGameRequest, 'currency'> & { currency: Currency };
+
 export interface GameService {
   listGames(): Promise<GameSummary[]>;
   listGamesForUser(userId: string): Promise<GameSummary[]>;
-  createGameForOwner(userId: string, request: CreateGameRequest): Promise<GameDetails>;
+  createGameForOwner(userId: string, request: CreateGameInput): Promise<GameDetails>;
   getGame(gameId: string): Promise<GameDetails>;
   deleteGame(gameId: string): Promise<DeleteGameResponse>;
   duplicateGameForOwner(userId: string, gameId: string, gameAccessPassword: string): Promise<GameDetails>;
@@ -38,12 +42,12 @@ export class DefaultGameService implements GameService {
   }
   async listGamesForUser(userId: string): Promise<GameSummary[]> { return this.games.listSummariesForUser(userId); }
 
-  async createGameForOwner(userId: string, request: CreateGameRequest): Promise<GameDetails> {
+  async createGameForOwner(userId: string, request: CreateGameInput): Promise<GameDetails> {
     const gameAccessCredentials = request.gameAccessPassword === undefined ? { hash: '', salt: '' } : await hashPassword(request.gameAccessPassword);
     return this.createGameInternal(request, { userId, joinCode: randomToken(5).toUpperCase().replace(/[^A-Z0-9]/gu, 'X').slice(0, 8), ...gameAccessCredentials, hasPassword: request.gameAccessPassword !== undefined });
   }
 
-  private async createGameInternal(request: CreateGameRequest, owner: { userId: string; joinCode: string; hash: string; salt: string; hasPassword: boolean }): Promise<GameDetails> {
+  private async createGameInternal(request: CreateGameInput, owner: { userId: string; joinCode: string; hash: string; salt: string; hasPassword: boolean }): Promise<GameDetails> {
     const gameId = this.createId();
     const playerInputs: CreatePlayerInput[] = request.players.map((player) => ({
       id: this.createId(),
