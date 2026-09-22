@@ -11,7 +11,11 @@ describe('root appearance controller', () => {
     dataset = {};
     systemDark = false;
     listeners = new Set();
-    vi.stubGlobal('document', { documentElement: { dataset } });
+    vi.stubGlobal('document', {
+      documentElement: { dataset, style: { removeProperty: vi.fn(), setProperty: vi.fn() } },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
     vi.stubGlobal('window', {
       matchMedia: vi.fn(() => ({
         get matches() { return systemDark; },
@@ -59,8 +63,8 @@ describe('root appearance controller', () => {
     expect(cleanupEffects).toHaveBeenCalledTimes(3);
   });
 
-  it('classic-bank has no reactive capabilities or effect side effects', () => {
-    expect(visualStyles).toHaveLength(1);
+  it('registers independent style capabilities while Classic Bank stays effect-free', () => {
+    expect(visualStyles).toHaveLength(2);
     expect(visualStyles[0].supportedCapabilities).toEqual([]);
     const cleanup = visualStyles[0].mountEffects({
       root: document.documentElement,
@@ -69,6 +73,14 @@ describe('root appearance controller', () => {
     });
     expect(window.matchMedia).not.toHaveBeenCalled();
     expect(dataset).toEqual({});
+    cleanup();
+  });
+
+  it('mounts and releases the Liquid Glass presentation adapter', () => {
+    const style = visualStyles.find(({ id }) => id === 'liquid-glass');
+    expect(style?.supportedCapabilities).toContain('pointerReactiveEffects');
+    const cleanup = mountAppearance({ visualStyle: 'liquid-glass', colorMode: 'dark' });
+    expect(dataset).toEqual({ visualStyle: 'liquid-glass', colorMode: 'dark' });
     cleanup();
   });
 });

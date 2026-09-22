@@ -31,8 +31,13 @@ describe('device preferences', () => {
   });
 
   it('falls back for unknown styles and modes without resetting valid feedback settings', () => {
-    stored = JSON.stringify({ visualStyle: 'liquid-glass', colorMode: 'sepia', sound: true, vibration: false });
+    stored = JSON.stringify({ visualStyle: 'unknown-style', colorMode: 'sepia', sound: true, vibration: false });
     expect(readPreferences()).toEqual({ visualStyle: 'classic-bank', colorMode: 'system', sound: true, vibration: false });
+  });
+
+  it('retains the independently persisted Liquid Glass style', () => {
+    stored = JSON.stringify({ visualStyle: 'liquid-glass', colorMode: 'dark', sound: true, vibration: false });
+    expect(readPreferences()).toEqual({ visualStyle: 'liquid-glass', colorMode: 'dark', sound: true, vibration: false });
   });
 
   it('can recover the legacy mode when a new mode is invalid', () => {
