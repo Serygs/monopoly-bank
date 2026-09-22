@@ -1,5 +1,9 @@
 # Customization & Theming
 
+> **Monopoly Bank:** `docs/ui-design-system.md` is the source of truth. The
+> examples here explain shadcn mechanics and do not define this application's
+> palette, typography, radii, style registry, or colour-mode contract.
+
 Components reference semantic CSS variable tokens. Change the variables to change every component.
 
 ## Contents
