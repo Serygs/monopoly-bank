@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { declareBankruptcy } from '../../shared/domain/banking.js';
 import type { BoardSpace, Game, GameProperty, Player } from '../../shared/types/monopoly.js';
+import { DefaultBankingService } from './banking-service.js';
+import { ada, brownOne, gameId, lin, makeWorld, railroad } from './property-fixtures.test-support.js';
 
 const game: Game = { id: 'game', name: 'Table', startingBalance: 1500, passGoReward: 200, currency: 'K', status: 'ACTIVE', createdAt: '', updatedAt: '' };
 const players: Player[] = [{ id: 'a', gameId: 'game', name: 'Ada', color: '#000', balance: 400, status: 'ACTIVE', createdAt: '' }, { id: 'b', gameId: 'game', name: 'Lin', color: '#111', balance: 700, status: 'ACTIVE', createdAt: '' }];
@@ -37,5 +39,33 @@ describe('bankruptcy operation with an estate', () => {
 
     expect(result.affectedPlayers.map((item) => [item.player.id, item.balanceAfter])).toEqual([['a', 0]]);
     expect(result.propertyChanges.map((change) => change.ownerPlayerId)).toEqual([null, null]);
+  });
+});
+
+describe('DefaultBankingService.declareBankruptcy on a board', () => {
+  it('hands the whole estate to the domain, persists deeds and bank with the transfer, and answers with the fresh slice', async () => {
+    const world = makeWorld({ properties: { [brownOne]: { ownerPlayerId: ada, houses: 2 }, [railroad]: { ownerPlayerId: ada, mortgaged: true } }, buildingBank: { housesAvailable: 30, hotelsAvailable: 12 } });
+    const service = new DefaultBankingService(world.dependencies as never);
+    const response = await service.declareBankruptcy(gameId, { playerId: ada, creditorPlayerId: lin });
+
+    expect(world.persist).toHaveBeenCalledTimes(1);
+    const input = world.persist.mock.calls[0][0];
+    expect(input.bankruptPlayerId).toBe(ada);
+    expect(input.transaction.type).toBe('BANKRUPTCY_TRANSFER');
+    expect(input.propertyChanges?.map((write) => write.change)).toEqual([
+      { boardSpaceId: brownOne, ownerPlayerId: lin, houses: 0, mortgaged: false },
+      { boardSpaceId: railroad, ownerPlayerId: lin, houses: 0, mortgaged: true },
+    ]);
+    expect(input.buildingBankDelta).toEqual({ houses: 2, hotels: 0 });
+    expect(response.properties?.filter((deed) => deed.ownerPlayerId === lin).map((deed) => deed.boardSpaceId)).toEqual([brownOne, railroad]);
+    expect(response.buildingBank).toEqual({ housesAvailable: 32, hotelsAvailable: 12 });
+  });
+
+  it('answers a board-less game without any board field and passes no estate', async () => {
+    const world = makeWorld({ game: { boardId: null } });
+    const response = await new DefaultBankingService(world.dependencies as never).declareBankruptcy(gameId, { playerId: ada });
+    expect(world.persist.mock.calls[0][0]).not.toHaveProperty('propertyChanges');
+    expect(response).not.toHaveProperty('properties');
+    expect(response).not.toHaveProperty('buildingBank');
   });
 });

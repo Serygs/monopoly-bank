@@ -166,6 +166,12 @@ export interface BankruptcyRequest {
   creditorPlayerId?: string;
 }
 
+/** On a board the estate moves with the balance, so the answer carries the fresh deeds and bank; a board-less game omits both. */
+export interface BankruptcyResponse extends CreateTransactionResponse {
+  properties?: GameProperty[];
+  buildingBank?: BuildingBank;
+}
+
 export interface SetJailRequest { isInJail: boolean; }
 export interface DiceRollRequest { playerId: string; first: number; second: number; }
 export interface DiceRollResponse { player: Player; thirdDouble: boolean; }

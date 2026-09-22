@@ -1,9 +1,11 @@
 import type {
+  BankruptcyRequest,
+  BankruptcyResponse,
   CreateTransactionRequest,
   CreateBankingCommandResponse,
-  CreateTransactionResponse,
   PaymentRequest,
   PaymentRequestActionResponse,
+  PropertyStateResponse,
 } from '../../shared/contracts/api.js';
 import {
   allToPlayer,
@@ -16,7 +18,7 @@ import {
   declareBankruptcy,
 } from '../../shared/domain/banking.js';
 import { payRent } from '../../shared/domain/property.js';
-import type { Transaction } from '../../shared/types/monopoly.js';
+import type { Game, Transaction } from '../../shared/types/monopoly.js';
 import type { BankingOperationRepository } from '../repositories/banking-operation-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { PlayerRepository } from '../repositories/player-repository.js';
@@ -35,7 +37,7 @@ export interface BankingService {
   getPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequest | null>;
   listTransactions(gameId: string, limit: number): Promise<Transaction[]>;
   listPlayerTransactions(gameId: string, playerId: string, limit: number): Promise<Transaction[]>;
-  declareBankruptcy(gameId: string, request: import('../../shared/contracts/api.js').BankruptcyRequest): Promise<CreateTransactionResponse>;
+  declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<BankruptcyResponse>;
 }
 
 export interface BankingServiceDependencies {
@@ -174,15 +176,40 @@ export class DefaultBankingService implements BankingService {
     return transactions;
   }
 
-  async declareBankruptcy(gameId: string, request: import('../../shared/contracts/api.js').BankruptcyRequest): Promise<CreateTransactionResponse> {
+  /**
+   * On a board the bankrupt player's estate settles in the same batch as the
+   * balance: buildings go back to the bank, deeds go to the creditor or fall
+   * free. The whole slice is handed to the domain, which refuses half an estate.
+   */
+  async declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<BankruptcyResponse> {
     const game = await this.games.getById(gameId); if (game === null) throw new ResourceNotFoundError('Game');
     const players = await this.players.listByGameId(gameId);
-    const result = declareBankruptcy({ game, players, ...request });
+    const estate = await this.loadEstate(game);
+    const result = declareBankruptcy({ game, players, ...request, ...(estate === null ? {} : { board: estate.board, spaces: estate.boardSpaces, properties: estate.properties, buildingBank: estate.buildingBank }) });
     const transactionId = this.createId();
-    const existing = await this.transactions.getById(gameId, transactionId); if (existing !== null) return { transaction: existing, players: await this.players.listByGameId(gameId) };
-    await this.operations.persist({ transactionId, transaction: result.transaction, balanceChanges: result.affectedPlayers, bankruptPlayerId: request.playerId });
+    const existing = await this.transactions.getById(gameId, transactionId); if (existing !== null) return this.bankruptcyResponse(game, existing);
+    await this.operations.persist({
+      transactionId,
+      transaction: result.transaction,
+      balanceChanges: result.affectedPlayers,
+      bankruptPlayerId: request.playerId,
+      ...(estate === null ? {} : { propertyChanges: propertyWrites(estate, result), buildingBankDelta: result.buildingBankDelta }),
+    });
     const transaction = await this.transactions.getById(gameId, transactionId); if (transaction === null) throw new PersistenceConsistencyError();
-    return { transaction, players: await this.players.listByGameId(gameId) };
+    return this.bankruptcyResponse(game, transaction);
+  }
+
+  private async loadEstate(game: Game): Promise<PropertyStateResponse | null> {
+    if (game.boardId === null || game.boardId === undefined) return null;
+    if (this.properties === undefined) throw new BoardRequiredError();
+    const slice = await this.properties.loadPropertySlice(game.id);
+    if (slice === null) throw new BoardRequiredError();
+    return slice;
+  }
+
+  private async bankruptcyResponse(game: Game, transaction: Transaction): Promise<BankruptcyResponse> {
+    const [players, estate] = await Promise.all([this.players.listByGameId(game.id), this.loadEstate(game)]);
+    return { transaction, players, ...(estate === null ? {} : { properties: estate.properties, buildingBank: estate.buildingBank }) };
   }
 
   private async createConfirmationRequests(gameId: string, request: Extract<CreateTransactionRequest, { type: 'PLAYER_TO_PLAYER' | 'ALL_TO_PLAYER' }>, players: Awaited<ReturnType<PlayerRepository['listByGameId']>>, commandId: string): Promise<import('../../shared/contracts/api.js').CreatePaymentRequestResponse> {
