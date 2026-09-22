@@ -1,11 +1,13 @@
-import { useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { BoardPicker } from '../components/BoardPicker';
+import { CustomBoardDialog } from '../components/CustomBoardDialog';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import type { Translate } from '../i18n/translations';
 import { formatMoney } from '../utils/money';
 import { selectableCurrencies, type Currency, type PaymentMode, type SelectableCurrency } from '../../shared/types/monopoly';
-import type { UserProfile } from '../../shared/contracts/api';
+import type { BoardSummary, UserProfile } from '../../shared/contracts/api';
 
 const colors = [
   { value: '#d83f55', nameKey: 'playerColorRed' },
@@ -27,17 +29,29 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
   const [gameAccessPassword, setGameAccessPassword] = useState('');
   const [players, setPlayers] = useState<PlayerForm[]>([{ key: 1, name: profile.nickname, color: colors[0].value }]);
   const [errors, setErrors] = useState<Record<string, string>>({}); const [submitting, setSubmitting] = useState(false); const [submitError, setSubmitError] = useState<unknown | null>(null);
+  // Boards: `null` keeps the money-only bank every game had before; a board id opts the table into deeds, rent and jail.
+  const [boardId, setBoardId] = useState<string | null>(null);
+  const [boards, setBoards] = useState<BoardSummary[]>([]); const [boardsLoading, setBoardsLoading] = useState(true); const [boardsError, setBoardsError] = useState<unknown | null>(null);
+  const [customBoardOpen, setCustomBoardOpen] = useState(false); const [boardNotice, setBoardNotice] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    void monopolyBankApi.listBoards().then((result) => { if (active) setBoards(result); }, (caught: unknown) => { if (active) setBoardsError(caught); }).finally(() => { if (active) setBoardsLoading(false); });
+    return () => { active = false; };
+  }, []);
+  const classicBoardId = boards.find((entry) => entry.isCanonical)?.board.id ?? null;
   const updatePlayer = (key: number, change: Partial<Omit<PlayerForm, 'key'>>) => setPlayers(players.map((player) => player.key === key ? { ...player, ...change } : player));
   const addPlayer = () => { if (players.length < 6) { const color = colors.find((candidate) => !players.some((player) => player.color === candidate.value))?.value ?? colors[0].value; setPlayers([...players, { key: nextKey.current++, name: '', color }]); } };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); const nextErrors = validate(name, startingBalance, passGoReward, players, t); if (gameAccessPassword !== '' && gameAccessPassword.length < 4) nextErrors.gameAccessPassword = t('gamePasswordMinLength'); setErrors(nextErrors); setSubmitError(null); if (Object.keys(nextErrors).length > 0) return;
-    setSubmitting(true); try { const details = await monopolyBankApi.createGame({ name: name.trim(), startingBalance: Number(startingBalance), passGoReward: Number(passGoReward), currency, paymentMode, ...(gameAccessPassword === '' ? {} : { gameAccessPassword }), players: players.map((player) => ({ name: player.name.trim(), color: player.color })) }); onCreated(details.game.id); } catch (caught) { setSubmitError(caught); } finally { setSubmitting(false); }
+    setSubmitting(true); try { const details = await monopolyBankApi.createGame({ name: name.trim(), startingBalance: Number(startingBalance), passGoReward: Number(passGoReward), currency, paymentMode, ...(gameAccessPassword === '' ? {} : { gameAccessPassword }), players: players.map((player) => ({ name: player.name.trim(), color: player.color })), ...(boardId === null ? {} : { boardId }) }); onCreated(details.game.id); } catch (caught) { setSubmitError(caught); } finally { setSubmitting(false); }
   };
   return <main className="page page-narrow"><section className="page-heading"><div><p className="eyebrow">{t('newBank')}</p><h1>{t('createLobby')}</h1><p className="lede">{t('lobbyLede')}</p></div><button className="button button-quiet" type="button" onClick={onCancel}>{t('cancel')}</button></section>
     <form className="game-form" onSubmit={(event) => void submit(event)} noValidate><fieldset><legend>{t('game')}</legend><label>{t('gameName')}<input value={name} onChange={(event) => setName(event.target.value)} aria-invalid={errors.name !== undefined} />{fieldError(errors.name)}</label><label>{t('currency')}<select value={currency} onChange={(event) => setCurrency(event.target.value as SelectableCurrency)}>{selectableCurrencies.map((option) => <option key={option} value={option}>{option}</option>)}</select></label><label>{t('paymentMode')}<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)}><option value="FAST">{t('paymentModeFast')}</option><option value="CONFIRMATION">{t('paymentModeConfirmation')}</option></select><span className="field-hint">{t('paymentModeLocked')}</span></label><label>{t('optionalPassword')}<input type="password" autoComplete="new-password" value={gameAccessPassword} onChange={(event) => setGameAccessPassword(event.target.value)} aria-invalid={errors.gameAccessPassword !== undefined} /><span className="field-hint">{t('optionalPasswordHint')}</span>{fieldError(errors.gameAccessPassword)}</label><div className="field-grid"><MoneyField label={t('startingBalance')} value={startingBalance} currency={currency} onChange={setStartingBalance} error={errors.startingBalance} /><MoneyField label={t('passGoReward')} value={passGoReward} currency={currency} onChange={setPassGoReward} error={errors.passGoReward} /></div></fieldset>
+      <fieldset><legend>{t('boardSection')}</legend><BoardPicker boards={boards} loading={boardsLoading} error={boardsError} value={boardId} onChange={setBoardId} onCreateCustom={() => setCustomBoardOpen(true)} />{boardNotice !== null && <p className="notice notice-success board-created" role="status">{boardNotice}</p>}</fieldset>
       <fieldset><div className="section-title"><legend>{t('ownerPlayer')}</legend></div><div className="player-list">{players.slice(0, 1).map((player) => <section className="player-editor" key={player.key}><label>{t('playerName', { number: 1 })}<input value={player.name} onChange={(event) => updatePlayer(player.key, { name: event.target.value })} aria-invalid={errors[`player-${player.key}`] !== undefined} />{fieldError(errors[`player-${player.key}`])}</label><ColorPicker player={player} players={players} onChange={(color) => updatePlayer(player.key, { color })} /></section>)}</div></fieldset>
       <fieldset><div className="section-title"><legend>{t('localPlayers')}</legend><button className="button button-secondary" type="button" onClick={addPlayer} disabled={players.length >= 6}>{t('addPlayer')}</button></div><p className="field-hint">{t('localPlayersHint')}</p>{fieldError(errors.players)}<div className="player-list">{players.slice(1).map((player, index) => <section className="player-editor" key={player.key}><label>{t('playerName', { number: index + 2 })}<input value={player.name} onChange={(event) => updatePlayer(player.key, { name: event.target.value })} aria-invalid={errors[`player-${player.key}`] !== undefined} />{fieldError(errors[`player-${player.key}`])}</label><ColorPicker player={player} players={players} onChange={(color) => updatePlayer(player.key, { color })} /><button className="button button-quiet remove-player" type="button" onClick={() => setPlayers(players.filter((candidate) => candidate.key !== player.key))}>{t('remove')}</button></section>)}</div></fieldset>
       {submitError !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(submitError, t, 'unableCreateGame')}</p>}<div className="form-actions"><button className="button button-primary" type="submit" disabled={submitting}>{submitting ? t('startingLobby') : t('createLobby')}</button></div></form>
+    {customBoardOpen && classicBoardId !== null && <CustomBoardDialog sourceBoardId={classicBoardId} onClose={() => setCustomBoardOpen(false)} onCreated={(board) => { setBoards((current) => [...current, { board: board.board, isCanonical: board.isCanonical, sourceBoardId: board.sourceBoardId, createdAt: board.createdAt }]); setBoardId(board.board.id); setBoardNotice(t('boardCreated', { name: board.board.name })); setCustomBoardOpen(false); }} />}
   </main>;
 }
 

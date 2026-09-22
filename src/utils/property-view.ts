@@ -4,7 +4,8 @@ import { netWorth } from '../../shared/domain/net-worth';
 import { buildHouses, calculateRent, mortgageProperty, purchaseProperty, sellBuildings, unmortgageProperty, type PropertyCommand } from '../../shared/domain/property';
 import { colorGroups, hotelHouseLevel, type BoardDefinition, type BoardSpace, type BuildingBank, type ColorGroup, type Game, type GameProperty, type Player } from '../../shared/types/monopoly';
 import { apiErrorTranslationKey } from '../i18n/api-errors';
-import type { TranslationKey, TranslationValues } from '../i18n/translations';
+import type { CSSProperties } from 'react';
+import type { Translate, TranslationKey, TranslationValues } from '../i18n/translations';
 
 /** The four board fields of `GameDetails`, present together or not at all. */
 export interface BoardState {
@@ -40,11 +41,11 @@ export function groupSpaces(spaces: readonly BoardSpace[]): SpaceGroup[] {
     .filter((entry) => entry.spaces.length > 0);
 }
 
-export function spacesOwnedBy(state: BoardState, playerId: string): BoardSpace[] {
+export function spacesOwnedBy(state: Pick<BoardState, 'boardSpaces' | 'properties'>, playerId: string): BoardSpace[] {
   return state.boardSpaces.filter((space) => propertyOf(state.properties, space.id).ownerPlayerId === playerId).sort((left, right) => left.boardIndex - right.boardIndex);
 }
 
-export function freeSpaces(state: BoardState): BoardSpace[] {
+export function freeSpaces(state: Pick<BoardState, 'boardSpaces' | 'properties'>): BoardSpace[] {
   return state.boardSpaces.filter((space) => propertyOf(state.properties, space.id).ownerPlayerId === null).sort((left, right) => left.boardIndex - right.boardIndex);
 }
 
@@ -168,6 +169,25 @@ function attempt(kind: SpaceActionKind, fallbackAmount: number | null, run: () =
 function reasonFor(caught: unknown): TranslationKey {
   if (caught instanceof BankingDomainError) return apiErrorTranslationKey(caught.code) ?? 'actionUnavailable';
   return 'actionUnavailable';
+}
+
+/** The label of an action button (with its figure) or, without a figure, the ledger label of what it records. */
+export function actionTitle(kind: SpaceActionKind, amount: string | null, t: Translate): string {
+  switch (kind) {
+    case 'PURCHASE': return amount === null ? t('boughtProperty') : t('buyFor', { amount });
+    case 'AUCTION': return t('auction');
+    case 'PAY_RENT': return amount === null ? t('payRent') : t('payRentAmount', { amount });
+    case 'CHARGE_RENT': return amount === null ? t('chargeRent') : t('chargeRentAmount', { amount });
+    case 'BUILD': return amount === null ? t('builtHouses') : t('buildFor', { amount });
+    case 'SELL_BUILDINGS': return amount === null ? t('sellBuildings') : t('sellBuildingsFor', { amount });
+    case 'MORTGAGE': return amount === null ? t('mortgagedProperty') : t('mortgageFor', { amount });
+    case 'UNMORTGAGE': return amount === null ? t('redeemedProperty') : t('unmortgageFor', { amount });
+  }
+}
+
+/** The CSS custom property a chip or badge paints itself with; the ten tokens live in src/index.css. */
+export function groupColorStyle(group: ColorGroup): CSSProperties {
+  return { '--deed-color': `var(--group-${group.toLowerCase().replaceAll('_', '-')})` } as CSSProperties;
 }
 
 /**
