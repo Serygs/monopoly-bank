@@ -9,6 +9,8 @@ export interface LobbyOptions {
   name?: string;
   /** The label of a board radio to choose on the create page, for example `/^classic/i`; omitted keeps “No board”. */
   board?: RegExp;
+  /** Runs on the create page before the form is filled, for example to create a custom board there. */
+  prepare?: (page: Page) => Promise<void>;
 }
 
 /** Registers a nickname/password account in a new browser context and lands on Saved games. */
@@ -30,6 +32,7 @@ export async function register(browser: Browser, nickname: string, contextOption
 export async function createLobby(page: Page, paymentMode: 'FAST' | 'CONFIRMATION', localPlayers: number, options: LobbyOptions = {}): Promise<string> {
   // An empty account shows the create button twice (header and empty state); either opens the same page.
   await page.getByRole('button', { name: /create.*game|створити.*гру/i }).first().click();
+  if (options.prepare !== undefined) await options.prepare(page);
   await page.getByLabel(/game name|назва гри/i).fill(options.name ?? `Load test ${paymentMode} ${Date.now()}`);
   await page.getByLabel(/payment mode|режим платежів/i).selectOption(paymentMode);
   if (options.board !== undefined) await page.getByRole('radio', { name: options.board }).click();
