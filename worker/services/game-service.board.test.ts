@@ -48,6 +48,30 @@ describe('DefaultGameService with a board', () => {
     expect(games.createWithPlayers).not.toHaveBeenCalled();
   });
 
+  it('duplicates a board game onto the same board with a clean deed table and the board\'s bank limits', async () => {
+    const { service, created } = makeService('board-classic');
+    const copy = await service.duplicateGameForOwner('owner', 'game', 'table-pass');
+    expect(created.input?.board).toEqual({ id: 'board-classic', spaceIds: twentyEightSpaces.map((space) => space.id), houseBankLimit: 32, hotelBankLimit: 12 });
+    expect(created.input?.name).toBe('Table (Copy)');
+    expect(copy.game.boardId).toBe('board-classic');
+    expect(copy.properties?.every((deed) => deed.ownerPlayerId === null && deed.houses === 0 && !deed.mortgaged)).toBe(true);
+  });
+
+  it('answers BOARD_NOT_FOUND when the source board vanished before the copy was written', async () => {
+    const { service, games, properties } = makeService('board-classic');
+    properties.getBoard = async () => null;
+    await expect(service.duplicateGameForOwner('owner', 'game', 'table-pass')).rejects.toMatchObject({ code: 'BOARD_NOT_FOUND', status: 404 });
+    expect(games.createWithPlayers).not.toHaveBeenCalled();
+  });
+
+  it('duplicates a game without a board into a game without a board', async () => {
+    const { service, created, properties } = makeService(null);
+    const copy = await service.duplicateGameForOwner('owner', 'game', 'table-pass');
+    expect(created.input).not.toHaveProperty('board');
+    expect(copy.game.boardId).toBeNull();
+    expect(properties.loadPropertySlice).not.toHaveBeenCalled();
+  });
+
   it('omits every board field for a game without a board and never reads the slice', async () => {
     const { service, created, properties } = makeService(null);
     const details = await service.createGameForOwner('owner', request);

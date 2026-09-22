@@ -30,7 +30,44 @@ describe('D1 game statistics', () => {
 
     expect(database.bindings).toEqual([['game', 'wallet-a', 'wallet-b', 101]]);
   });
+
+  it('writes the capital ranking and the deed table of a board game into summary_json', async () => {
+    const database = new SnapshotDatabase(null);
+    const summary = { ...emptySummary(), netWorth: [{ player: players[0], netWorth: 2600 }, { player: players[1], netWorth: 1000 }], propertyOwnership: [{ boardSpaceId: 'board-classic-space-39', ownerPlayerId: 'a', houses: 1, mortgaged: false }] };
+    await new D1GameStatisticsRepository(database as unknown as D1Database).saveFinalSnapshot('game', ['a'], summary);
+    expect(database.bindings[0][0]).toBe('game');
+    expect(JSON.parse(database.bindings[0][1] as string)).toEqual(['a']);
+    const stored = JSON.parse(database.bindings[0][2] as string) as typeof summary;
+    expect(stored.netWorth.map((entry) => [entry.player.id, entry.netWorth])).toEqual([['a', 2600], ['b', 1000]]);
+    expect(stored.propertyOwnership).toEqual(summary.propertyOwnership);
+  });
+
+  it('reads the snapshot of a game finished before the board subsystem without either field and without error', async () => {
+    const database = new SnapshotDatabase({ winner_player_ids_json: '["b"]', summary_json: JSON.stringify(emptySummary()) });
+    const snapshot = await new D1GameStatisticsRepository(database as unknown as D1Database).getFinalSnapshot('game');
+    expect(snapshot?.winnerPlayerIds).toEqual(['b']);
+    expect(snapshot?.summary.totalTransactions).toBe(0);
+    expect(snapshot?.summary).not.toHaveProperty('netWorth');
+    expect(snapshot?.summary).not.toHaveProperty('propertyOwnership');
+  });
 });
+
+function emptySummary() {
+  return { durationMs: 0, totalTransactions: 0, totalMoneyTransferred: 0, largestSinglePayment: 0, richestActivePlayer: null, lowestActiveBalance: null, players: [], playerToPlayerTotal: 0, paidToBank: 0, receivedFromBank: 0, largestTransaction: 0, biggestSenderId: null, leastSenderId: null, biggestPayerRecipient: null, cashLeaderboard: [] };
+}
+
+class SnapshotDatabase {
+  readonly bindings: unknown[][] = [];
+  constructor(private readonly row: { winner_player_ids_json: string; summary_json: string } | null) {}
+  prepare() {
+    return {
+      bind: (...values: unknown[]) => {
+        this.bindings.push(values);
+        return { run: async () => ({ meta: { changes: 1 } }), first: async () => this.row };
+      },
+    };
+  }
+}
 
 class ActivityDatabase {
   readonly bindings: unknown[][] = [];

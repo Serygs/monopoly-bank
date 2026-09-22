@@ -118,6 +118,12 @@ export class DefaultGameService implements GameService {
     return { gameId };
   }
 
+  /**
+   * A copy inherits the source's board and starts with a clean deed table, the
+   * same way `create` seeds one. Custom names live on the board, not the game,
+   * so nothing else is copied; a board that vanished under the source (which
+   * `RESTRICT` prevents, barring a race) answers `BOARD_NOT_FOUND` like any other.
+   */
   async duplicateGameForOwner(userId: string, gameId: string, gameAccessPassword: string): Promise<GameDetails> {
     const source = await this.getGame(gameId);
     return this.createGameForOwner(userId, {
@@ -128,6 +134,7 @@ export class DefaultGameService implements GameService {
       paymentMode: source.game.paymentMode,
       gameAccessPassword,
       players: source.players.map((player) => ({ name: player.name, color: player.color })),
+      ...(source.game.boardId === null || source.game.boardId === undefined ? {} : { boardId: source.game.boardId }),
     });
   }
 
