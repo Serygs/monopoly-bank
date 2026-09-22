@@ -23,7 +23,7 @@ export function DeedChip({ space, property, onClick, pressed, disabled = false, 
   const { t } = useLanguage();
   const name = boardSpaceName(space, t);
   const state = [
-    property.houses >= hotelHouseLevel ? t('hotelBadge') : property.houses > 0 ? t('housesCount', { count: property.houses }) : null,
+    property.houses >= hotelHouseLevel ? t('hotelBadge') : property.houses === 1 ? t('houseOne') : property.houses > 0 ? t('housesCount', { count: property.houses }) : null,
     property.mortgaged ? t('mortgagedBadge') : null,
     disabled && disabledReason !== null ? disabledReason : null,
   ].filter((part): part is string => part !== null);

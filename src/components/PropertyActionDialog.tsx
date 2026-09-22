@@ -136,7 +136,7 @@ function RentTable({ space, currency, single, pair }: { space: BoardSpace; curre
   if (space.kind === 'UTILITY') return <p className="muted">{t('utilityRentHint', { single, pair })}</p>;
   const labels = space.kind === 'RAILROAD'
     ? space.rents.map((_, index) => t('rentLevelRailroads', { count: index + 1 }))
-    : space.rents.map((_, index) => (index === 0 ? t('rentLevelBase') : index === hotelHouseLevel ? t('hotelBadge') : t('housesCount', { count: index })));
+    : space.rents.map((_, index) => (index === 0 ? t('rentLevelBase') : index === hotelHouseLevel ? t('hotelBadge') : index === 1 ? t('houseOne') : t('housesCount', { count: index })));
   return <section className="rent-table" aria-label={t('spaceRentTable')}><h3>{t('spaceRentTable')}</h3><dl>{space.rents.map((rent, index) => <div key={index}><dt>{labels[index]}</dt><dd>{formatMoney(rent, currency)}</dd></div>)}</dl></section>;
 }
 
