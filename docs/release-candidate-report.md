@@ -10,7 +10,7 @@ eligible until every blocking item below is closed and independently reviewed.
 
 | Gate | Result | Evidence |
 | --- | --- | --- |
-| Unit, domain, route, and Durable Object tests | PASS | `npm test`: 39 files, 138 tests passed. |
+| Unit, domain, route, and Durable Object tests | PASS | Phase 8 follow-up, 2026-09-22: `npm test` passed 47 files and 181 tests. |
 | Focused Worker integration | PASS | `npm run test:worker`: 2 files, 32 tests passed. |
 | D1 migrations and constraints | PASS | `npm run test:d1`: clean database and upgraded production-like fixture completed successfully. |
 | Local restore rehearsal | PASS | `npm run test:restore` against `scripts/fixtures/restore-rehearsal.sql` restored into disposable local D1; foreign keys, schema, and fixture lookup passed. |
@@ -18,8 +18,8 @@ eligible until every blocking item below is closed and independently reviewed.
 | Production build | PASS | `npm run build`: Worker and client production artifacts built successfully. |
 | Production binding validation | PASS | Generated config matches the approved Worker name, D1 ID/name, and Durable Object binding. |
 | Deployment dry-run | PASS | `npx wrangler deploy --dry-run`: artifact assembled; no Worker or D1 changes made. |
-| Security regression suite | PARTIAL | Covered by the 138 local tests; a deployed-origin security/header check remains pending staging. |
-| Playwright six-device, visual, keyboard, and accessibility matrix | NOT RUN | `npm run test:e2e` discovered 35 tests and skipped all because isolated staging URL and test data were absent. |
+| Security regression suite | PARTIAL | Covered by the local suite; a deployed-origin security/header check remains pending staging. |
+| Playwright six-device, visual, keyboard, and accessibility matrix | PARTIAL | Phase 8 follow-up, 2026-09-22: all 15 non-mutating, API-mocked visual/responsive cases passed locally. The three staging mutation/convergence cases remain pending an isolated deployment. |
 | Staging migration dry-run and real migration application | NOT RUN | No staging D1 name or Cloudflare staging credentials were available. |
 | 2x peak soak | NOT RUN | No private 60-game staging scenario or isolated staging endpoint was available. |
 
@@ -34,9 +34,10 @@ violations, and no duplicate/lost ledger operations in the post-run audit.
    database, required Worker secrets, and a non-sensitive fixture game ID.
    Preserve its output for binding validation, backup/restore, migration, and
    smoke evidence.
-2. Run **Staging browser quality** against that deployment. Review all 35
-   Playwright cases and the attached EN/UK × 320/390/768/1280 × light/dark ×
-   reduced-motion captures; record keyboard and screen-reader audit findings.
+2. Run **Staging browser quality** against that deployment. Review every
+   Playwright case and the attached major-route captures at 320/390/430/768/
+   1024/1280/1440px plus the EN/UK Classic Bank light/dark and reduced-motion
+   matrix; record keyboard and screen-reader audit findings.
 3. Supply a private 60-game / 360-session staging scenario and run the 2x peak
    soak for 60 minutes. Retain aggregate server metrics and a ledger
    reconciliation query result; never retain test cookies in source control.

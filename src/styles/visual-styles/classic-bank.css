@@ -1,0 +1,223 @@
+:root[data-visual-style='classic-bank'] {
+  /* Typography */
+  --font-body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-money: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-ui: var(--font-body);
+  --text-display: clamp(2.625rem, 4vw, 4rem);
+  --text-heading-lg: clamp(1.45rem, 3vw, 2rem);
+  --text-heading-md: 1.2rem;
+  --text-body: 1rem;
+  --text-small: .875rem;
+  --text-meta: .78rem;
+  --text-money-lg: clamp(1.55rem, 5vw, 2.25rem);
+  --text-money-xl: clamp(2.45rem, 10vw, 4rem);
+  --text-button: .9375rem;
+  --weight-regular: 450;
+  --weight-medium: 600;
+  --weight-semibold: 700;
+  --weight-bold: 760;
+  --leading-tight: 1.01;
+  --leading-body: 1.55;
+  --tracking-display: -.035em;
+  --tracking-meta: .025em;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+
+  /* Responsive layout composition */
+  --layout-content-max: 1280px;
+  --layout-content-narrow: 760px;
+  --layout-page-inline-compact: 16px;
+  --layout-page-inline-medium: 24px;
+  --layout-page-inline-wide: clamp(32px, 5vw, 72px);
+  --layout-page-block-compact: 24px;
+  --layout-page-block-medium: 32px;
+  --layout-page-block-wide: 36px;
+  --layout-gap-compact: 16px;
+  --layout-gap-medium: 24px;
+  --layout-gap-wide: 32px;
+  --layout-section-gap-compact: 24px;
+  --layout-section-gap-medium: 28px;
+  --layout-section-gap-wide: 30px;
+  --layout-header-height-compact: 60px;
+  --layout-header-height-medium: 68px;
+  --layout-header-height-wide: 72px;
+
+  /* Shape, controls, icons and motion */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+  --radius-control: var(--radius-md);
+  --radius-card: var(--radius-lg);
+  --radius-card-large: var(--radius-xl);
+  --control-height-md: 44px;
+  --control-height-lg: 48px;
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 260ms;
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(.2, .8, .2, 1);
+
+  /* Core color roles */
+  --color-canvas: #f4efdf;
+  --color-surface-elevated: #fff9ea;
+  --color-surface-subtle: #f6f0df;
+  --color-surface-inverse: #07382d;
+  --color-surface-inverse-elevated: #0b4a38;
+  --color-text-primary: #10372e;
+  --color-text-secondary: #50675e;
+  --color-text-muted: #75867f;
+  --color-text-on-accent: #fff;
+  --color-text-on-danger: #fff;
+  --color-text-on-inverse: #f8f6ee;
+  --color-border: #d9cead;
+  --color-border-strong: #9baf9f;
+  --color-accent: #126247;
+  --color-accent-hover: #176f51;
+  --color-accent-pressed: #0b4a38;
+  --color-accent-soft: #e6f0e9;
+  --color-highlight: #c5a34d;
+  --color-danger: #c94d56;
+  --color-danger-hover: #98363d;
+  --color-danger-soft: #f8e7e8;
+  --color-success: #2e9b68;
+  --color-success-soft: #e4f2e9;
+  --color-overlay: rgb(8 22 16 / .72);
+  --color-focus-ring: #8b6322;
+  --color-inverse-hover: rgb(255 255 255 / .09);
+  --color-qr-background: #fff;
+
+  /* Stable player identity colors */
+  --color-player-red: #d83f55;
+  --color-player-blue: #2878d0;
+  --color-player-green: #238b57;
+  --color-player-orange: #d97721;
+  --color-player-purple: #8b4cc5;
+  --color-player-teal: #087f78;
+  --color-text-on-player: #fff;
+
+  /* Elevation */
+  --shadow-sm: 0 8px 24px rgb(42 52 39 / .07);
+  --shadow-md: 0 12px 30px rgb(42 52 39 / .1);
+  --shadow-lg: 0 18px 48px rgb(13 36 25 / .16);
+  --shadow-hover: 0 12px 28px rgb(42 52 39 / .1);
+
+  /* Component presentation roles */
+  --background-shell: radial-gradient(circle at 50% -20%, rgb(197 163 77 / .09), transparent 42%), var(--color-canvas);
+  --background-header: linear-gradient(110deg, var(--color-surface-inverse), var(--color-surface-inverse-elevated));
+  --background-hero: linear-gradient(90deg, rgb(7 56 45 / .99) 0%, rgb(7 56 45 / .94) 43%, rgb(7 56 45 / .48) 72%, rgb(7 56 45 / .24) 100%), url('/assets/themes/classic/hero-bank.webp') center right / cover no-repeat;
+  --background-invitation: var(--color-surface-subtle);
+  --background-banking: var(--color-surface-elevated);
+  --color-status-surface: var(--color-success-soft);
+  --color-status-border: color-mix(in srgb, var(--color-success) 35%, var(--color-border));
+  --color-status-text: #205a3b;
+  --color-danger-border: color-mix(in srgb, var(--color-danger) 34%, var(--color-border));
+  --color-focus-halo: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  --color-dialog-divider: color-mix(in srgb, var(--color-border) 78%, transparent);
+  --shadow-header: 0 5px 18px rgb(6 37 26 / .16);
+  --shadow-balance-inset: inset 0 0 0 1px rgb(255 255 255 / .08);
+  --shadow-player-inset: inset 0 -4px 8px rgb(0 0 0 / .1);
+  --focus-ring: 3px solid var(--color-focus-ring);
+
+  /* Cross-style semantic API. Legacy aliases above keep feature CSS stable. */
+  --ui-canvas: var(--color-canvas);
+  --ui-surface: var(--color-surface-elevated);
+  --ui-surface-raised: var(--color-surface-elevated);
+  --ui-surface-subtle: var(--color-surface-subtle);
+  --ui-text: var(--color-text-primary);
+  --ui-text-secondary: var(--color-text-secondary);
+  --ui-text-muted: var(--color-text-muted);
+  --ui-border: var(--color-border);
+  --ui-border-strong: var(--color-border-strong);
+  --ui-accent: var(--color-accent);
+  --ui-accent-hover: var(--color-accent-hover);
+  --ui-accent-pressed: var(--color-accent-pressed);
+  --ui-danger: var(--color-danger);
+  --ui-success: var(--color-success);
+  --ui-radius-sm: var(--radius-sm);
+  --ui-radius-md: var(--radius-md);
+  --ui-radius-lg: var(--radius-lg);
+  --ui-radius-xl: var(--radius-xl);
+  --ui-shadow-sm: var(--shadow-sm);
+  --ui-shadow-md: var(--shadow-md);
+  --ui-shadow-lg: var(--shadow-lg);
+  --ui-motion-fast: var(--duration-fast);
+  --ui-motion-normal: var(--duration-normal);
+  --ui-motion-slow: var(--duration-slow);
+}
+
+:root[data-visual-style='classic-bank'] .page-header--hero::after { display: none; }
+:root[data-visual-style='classic-bank'] .game-card-seal {
+  color: transparent;
+  background-image: linear-gradient(rgb(7 56 45 / .12), rgb(7 56 45 / .18)), url('/assets/themes/classic/hero-bank.webp');
+  border-color: rgb(197 163 77 / .5);
+  box-shadow: inset 0 0 0 1px rgb(255 249 234 / .22);
+}
+:root[data-visual-style='classic-bank'] .game-card:nth-child(2n) .game-card-seal { background-position: 75% center; }
+:root[data-visual-style='classic-bank'] .game-card:nth-child(3n) .game-card-seal { background-position: 88% 62%; }
+:root[data-visual-style='classic-bank'] .button-primary { box-shadow: 0 5px 12px rgb(10 63 46 / .16); }
+:root[data-visual-style='classic-bank'] .button-secondary { border-color: var(--color-highlight); background: #fff9ea; }
+:root[data-visual-style='classic-bank'] .saved-games-search input,
+:root[data-visual-style='classic-bank'] .saved-games-sort select { background-color: #fffcf3; border-color: var(--color-border); box-shadow: 0 5px 16px rgb(42 52 39 / .05); }
+:root[data-visual-style='classic-bank'] .game-card { background: #fff9ea; border-color: rgb(88 111 95 / .35); }
+
+:root[data-visual-style='classic-bank'][data-color-mode='dark'] {
+  --color-canvas: #091d18;
+  --color-surface-elevated: #102a23;
+  --color-surface-subtle: #1a3b31;
+  --color-surface-inverse: #082f24;
+  --color-surface-inverse-elevated: #104b38;
+  --color-text-primary: #f8f4e8;
+  --color-text-secondary: #c4cec8;
+  --color-text-muted: #8fa39a;
+  --color-text-on-accent: #071b12;
+  --color-text-on-danger: #1b080a;
+  --color-text-on-inverse: #f7f4ea;
+  --color-border: rgb(220 202 151 / .22);
+  --color-border-strong: #4c6258;
+  --color-accent: #4fa779;
+  --color-accent-hover: #65b98b;
+  --color-accent-pressed: #3d8d65;
+  --color-accent-soft: #193b2d;
+  --color-highlight: #c7a45e;
+  --color-danger: #e06d75;
+  --color-danger-hover: #ef8188;
+  --color-danger-soft: #43242a;
+  --color-success: #6eb88b;
+  --color-success-soft: #173928;
+  --color-overlay: rgb(2 8 5 / .8);
+  --color-focus-ring: #d5b86f;
+  --color-inverse-hover: rgb(255 255 255 / .11);
+  --color-status-border: color-mix(in srgb, var(--color-success) 42%, var(--color-border));
+  --color-status-text: #bde3cb;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .22);
+  --shadow-md: 0 10px 28px rgb(0 0 0 / .22);
+  --shadow-lg: 0 20px 54px rgb(0 0 0 / .34);
+  --shadow-hover: 0 14px 34px rgb(0 0 0 / .3);
+  --shadow-header: 0 6px 20px rgb(0 0 0 / .28);
+}
+
+:root[data-visual-style='classic-bank'][data-color-mode='dark'] .button-secondary,
+:root[data-visual-style='classic-bank'][data-color-mode='dark'] .saved-games-search input,
+:root[data-visual-style='classic-bank'][data-color-mode='dark'] .saved-games-sort select,
+:root[data-visual-style='classic-bank'][data-color-mode='dark'] .game-card { background-color: var(--color-surface-elevated); }
+
+@media (max-width: 47.99rem) {
+  :root[data-visual-style='classic-bank'] { --text-display: clamp(2.125rem, 10vw, 2.875rem); }
+  :root[data-visual-style='classic-bank'] .page-header--hero {
+    background-position: 62% center;
+    background-size: auto 100%;
+  }
+}

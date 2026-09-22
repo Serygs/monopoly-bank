@@ -13,9 +13,14 @@ E2E_BASE_URL=https://monopoly-bank-staging.example E2E_RUN=true npm run test:e2e
 
 It uses six independent browser contexts for invitation/guest join, verifies a
 local secondary wallet, guest-to-account upgrade, FAST retry idempotency,
-CONFIRMATION flow, finish/statistics, reconnect, keyboard focus, and captures
-the EN/UK × 320/390/768/1280 × light/dark × reduced-motion visual matrix as
-Playwright report attachments. Install the browser once per runner with
+CONFIRMATION flow, finish/statistics, reconnect, and keyboard focus. The same
+suite uses deterministic API interception for non-mutating visual coverage of
+Saved Games, Profile, Create Game, Join Game, Game, Operations, Statistics, and
+Settings at 320, 390, 430, 768, 1024, 1280, and 1440 CSS pixels. It covers EN/UK,
+Classic Bank light/dark modes, reduced motion, long names, large balances,
+scrolling dialogs, and focus restoration according to the
+[UI design system](./ui-design-system.md). Screenshots are diagnostic Playwright
+report attachments, not design baselines. Install the browser once per runner with
 `npx playwright install --with-deps chromium`.
 
 The load runner is also opt-in. It never uses production credentials: provide a
