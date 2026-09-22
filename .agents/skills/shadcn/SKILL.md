@@ -7,6 +7,13 @@ allowed-tools: Bash(npx shadcn@latest *), Bash(pnpm dlx shadcn@latest *), Bash(b
 
 # shadcn/ui
 
+## Monopoly Bank authority
+
+Before using shadcn for this repository, read `docs/ui-design-system.md`. Its
+visual-style, colour-mode, token, responsive, overlay, motion, accessibility,
+and validation contracts override generic examples in this skill and its
+references. Do not apply a preset or theme as an independent design source.
+
 A framework for building ui, components and design systems. Components are added as source code to the user's project via the CLI.
 
 > **IMPORTANT:** Run all CLI commands using the project's package runner: `npx shadcn@latest`, `pnpm dlx shadcn@latest`, or `bunx --bun shadcn@latest` — based on the project's `packageManager`. Examples below use `npx shadcn@latest` but substitute the correct runner for the project.
