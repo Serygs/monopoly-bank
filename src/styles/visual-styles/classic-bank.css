@@ -33,7 +33,6 @@
   --space-8: 40px;
   --space-9: 48px;
   --space-10: 64px;
-  --space-page-inline: clamp(16px, 4vw, 32px);
 
   /* Responsive layout composition */
   --layout-content-max: 1280px;
@@ -55,7 +54,6 @@
   --layout-header-height-wide: 72px;
 
   /* Shape, controls, icons and motion */
-  --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -64,12 +62,8 @@
   --radius-control: var(--radius-md);
   --radius-card: var(--radius-lg);
   --radius-card-large: var(--radius-xl);
-  --control-height-sm: 40px;
   --control-height-md: 44px;
   --control-height-lg: 48px;
-  --icon-size-sm: 16px;
-  --icon-size-md: 20px;
-  --icon-size-lg: 24px;
   --duration-fast: 120ms;
   --duration-normal: 180ms;
   --duration-slow: 260ms;
@@ -78,7 +72,6 @@
 
   /* Core color roles */
   --color-canvas: #f4f1e8;
-  --color-surface: #fffcf5;
   --color-surface-elevated: #fff;
   --color-surface-subtle: #ecefe9;
   --color-surface-inverse: #0c3f30;
@@ -96,8 +89,6 @@
   --color-accent-pressed: #0d432d;
   --color-accent-soft: #e2f0e8;
   --color-highlight: #b78c3f;
-  --color-highlight-hover: #9d7430;
-  --color-highlight-soft: #f2e9d4;
   --color-danger: #b3434b;
   --color-danger-hover: #98363d;
   --color-danger-soft: #f8e7e8;
@@ -143,7 +134,6 @@
 
 :root[data-visual-style='classic-bank'][data-color-mode='dark'] {
   --color-canvas: #0b1511;
-  --color-surface: #111f1a;
   --color-surface-elevated: #182a23;
   --color-surface-subtle: #1d3028;
   --color-surface-inverse: #082f24;
@@ -161,8 +151,6 @@
   --color-accent-pressed: #3d8d65;
   --color-accent-soft: #193b2d;
   --color-highlight: #c7a45e;
-  --color-highlight-hover: #d4b46f;
-  --color-highlight-soft: #352f20;
   --color-danger: #e06d75;
   --color-danger-hover: #ef8188;
   --color-danger-soft: #43242a;

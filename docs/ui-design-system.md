@@ -8,8 +8,8 @@ overlays, motion, accessibility, and visual validation. Agent instructions,
 skills, screenshots, tests, and the current CSS implementation must point here
 instead of defining a competing visual contract.
 
-Phases 3 through 5 implement the responsive layout composition and page patterns
-described below. The application uses one shared DOM and state flow per page
+The current implementation follows the responsive layout composition and page
+patterns described below. The application uses one shared DOM and state flow per page
 across viewport sizes; only presentation changes between compact, medium, and
 wide layouts.
 
@@ -43,6 +43,9 @@ families, typography, shape, depth, imagery, and optional presentation effects.
 Do not implement, expose, or advertise future styles until a dedicated phase
 defines and delivers them. New styles must be registered; page components must
 not gain style-specific business branches.
+
+Liquid Glass, Minimal Finance, and other possible styles are architectural
+roadmap examples only. Only `classic-bank` currently exists.
 
 ### Colour mode
 
@@ -83,10 +86,13 @@ has an `id`, localized `labelKey`, `supportedCapabilities`, and `mountEffects`.
 The ID is also the root `data-visual-style` value and CSS selector; a second
 attribute/class name is unnecessary. The only entry is `classic-bank`.
 
-Capabilities are descriptive metadata: `translucentSurfaces`,
+`mountEffects` receives a shell-owned context containing the root, owning
+document, and lazy reduced-motion query. Page components never provide effect
+inputs. Capabilities are descriptive metadata: `translucentSurfaces`,
 `pointerReactiveEffects`, `deviceTiltEffects`, and `richBackgroundEffects`.
 Classic Bank declares none. Nothing probes sensors or installs effect listeners
-based on these names. Its `mountEffects(root)` adapter returns a no-op cleanup.
+based on these names. Its adapter does not access the lazy motion query and
+returns a no-op cleanup.
 A future adapter owns its effect lifecycle and returns a cleanup that releases
 all listeners, animation frames, and temporary properties. It must enforce the
 accessibility and permission rules below, including live reduced-motion changes.
@@ -184,11 +190,11 @@ raw palette names.
 
 | Group | Tokens | Contract |
 | --- | --- | --- |
-| Canvas and surfaces | `--color-canvas`, `--color-surface`, `--color-surface-elevated`, `--color-surface-subtle`, `--color-surface-inverse`, `--color-surface-inverse-elevated` | Ivory canvas and clean neutral surfaces in light mode; deep neutral-green canvas and progressively lighter green-neutral surfaces in dark mode. |
+| Canvas and surfaces | `--color-canvas`, `--color-surface-elevated`, `--color-surface-subtle`, `--color-surface-inverse`, `--color-surface-inverse-elevated` | Ivory canvas and clean neutral surfaces in light mode; deep neutral-green canvas and progressively lighter green-neutral surfaces in dark mode. |
 | Text | `--color-text-primary`, `--color-text-secondary`, `--color-text-muted`, `--color-text-on-accent`, `--color-text-on-danger`, `--color-text-on-inverse` | Primary content, supporting copy, de-emphasized metadata, and contrast-safe text on filled roles. |
 | Structure | `--color-border`, `--color-border-strong`, `--color-dialog-divider` | Use the quiet border by default. Strong borders are for selected, interactive, or unusually dense boundaries. |
 | Brand/action | `--color-accent`, `--color-accent-hover`, `--color-accent-pressed`, `--color-accent-soft` | Deep premium green in light mode and a brighter accessible green in dark mode. This is the primary action and selection family. |
-| Highlight | `--color-highlight`, `--color-highlight-hover`, `--color-highlight-soft` | Muted brass for focus, compact identity details, and limited emphasis; never the default control fill. |
+| Highlight | `--color-highlight` | Muted brass for compact identity details and limited emphasis; never the default control fill. |
 | Feedback | `--color-danger`, `--color-danger-hover`, `--color-danger-soft`, `--color-success`, `--color-success-soft`, plus status/border aliases | Restrained red for destructive/error states and green for positive/live states. Always pair colour with text, iconography, or semantics. |
 | Player identity | `--color-player-red`, `--color-player-blue`, `--color-player-green`, `--color-player-orange`, `--color-player-purple`, `--color-player-teal`, `--color-text-on-player` | Stable values matching persisted player colours. Keep all six distinguishable in both modes. |
 | Focus and overlay | `--color-focus-ring`, `--color-focus-halo`, `--color-overlay`, `--focus-ring` | Brass focus treatment remains visible on light, dark, and inverse surfaces. Classic Bank overlays are opaque and must not blur content. |
@@ -198,7 +204,6 @@ The resolved core palette is:
 | Role | Light | Dark |
 | --- | --- | --- |
 | Canvas | `#f4f1e8` | `#0b1511` |
-| Surface | `#fffcf5` | `#111f1a` |
 | Elevated surface | `#ffffff` | `#182a23` |
 | Subtle surface | `#ecefe9` | `#1d3028` |
 | Primary text | `#17231e` | `#f2f1eb` |
@@ -207,7 +212,7 @@ The resolved core palette is:
 | Border / strong border | `#d9ded8` / `#b9c3bb` | `#2f443b` / `#4c6258` |
 | Accent / hover / pressed | `#176344` / `#125338` / `#0d432d` | `#4fa779` / `#65b98b` / `#3d8d65` |
 | Accent soft | `#e2f0e8` | `#193b2d` |
-| Highlight / hover / soft | `#b78c3f` / `#9d7430` / `#f2e9d4` | `#c7a45e` / `#d4b46f` / `#352f20` |
+| Highlight | `#b78c3f` | `#c7a45e` |
 | Danger / hover / soft | `#b3434b` / `#98363d` / `#f8e7e8` | `#e06d75` / `#ef8188` / `#43242a` |
 | Success / soft | `#2e7650` / `#e4f2e9` | `#6eb88b` / `#173928` |
 | Focus ring | `#8b6322` | `#d5b86f` |
@@ -236,16 +241,13 @@ must remain secondary, never smaller than its documented role merely to fit.
 ### Spacing, shape, elevation, and motion
 
 - Spacing uses `--space-1` through `--space-10`: `4`, `8`, `12`, `16`, `20`,
-  `24`, `32`, `40`, `48`, and `64px`; page inline spacing is
-  `clamp(16px, 4vw, 32px)`.
-- Shape uses `--radius-xs`, `--radius-sm`, `--radius-md`, `--radius-lg`,
-  `--radius-xl`, and `--radius-pill`: `6`, `8`, `12`, `16`, `20`, and `999px`.
+  `24`, `32`, `40`, `48`, and `64px`; responsive page spacing uses the
+  documented `--layout-page-*` roles.
+- Shape uses `--radius-sm`, `--radius-md`, `--radius-lg`, `--radius-xl`, and
+  `--radius-pill`: `8`, `12`, `16`, `20`, and `999px`.
   Controls use `12px`; cards use `16px` or `20px`.
-- Controls use `--control-height-sm`, `--control-height-md`, and
-  `--control-height-lg`: `40`, `44`, and `48px`; normal interactive targets are
-  at least `44px`.
-- Icons use `--icon-size-sm`, `--icon-size-md`, and `--icon-size-lg`: `16`, `20`,
-  and `24px`.
+- Controls use `--control-height-md` and `--control-height-lg`: `44` and `48px`;
+  normal interactive targets are at least `44px`.
 - Elevation uses `--shadow-sm`, `--shadow-md`, `--shadow-lg`, and
   `--shadow-hover`. Apply the smallest shadow that communicates the layer.
 - Motion durations are `120`, `180`, and `260ms`; easing is
@@ -322,8 +324,8 @@ may compose them but must not create a second visual language.
   persistence, and keyboard handling remain the same.
 - Account for safe-area insets in installed-PWA and mobile-browser contexts.
 
-The visual validation widths `320`, `390`, `768`, and `1280` are representative
-coverage samples, not breakpoint specifications.
+The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
+`1440` are representative coverage samples, not breakpoint specifications.
 
 ### Non-game page composition
 
@@ -456,7 +458,7 @@ requirements for future styles.
 Feature styles consume semantic names such as `--color-surface-elevated`,
 `--color-text-primary`, `--color-text-secondary`, `--color-accent`,
 `--color-highlight`, `--color-danger`, `--shadow-md`, `--radius-card`, and
-`--space-page-inline`. Player-picker swatches use player tokens for display while
+responsive `--layout-page-*` roles. Player-picker swatches use player tokens for display while
 retaining the established hex values in persisted domain data. Superseded
 paper-grid, heavy control-shadow, oversized watermark, blur-overlay, and
 raw visual-name tokens have been removed rather than aliased.
@@ -464,11 +466,12 @@ raw visual-name tokens have been removed rather than aliased.
 The PWA manifest and theme metadata retain valid static fallbacks.
 Style effects must not alter installation, updates, or service-worker caching.
 
-Frontend regression coverage lives in `src/utils/preferences.test.ts`,
-`src/appearance/appearance-controller.test.ts`, and
-`src/components/AppearanceSettings.test.tsx`. It checks migration, fallback,
-independent settings, system-mode updates, adapter/listener cleanup, and EN/UK
-options. Run `npm test -- src` for the frontend suite and
+Frontend regression coverage includes preference/appearance tests, component
+interaction tests, EN/UK localization tests, activity/dialog tests, and the
+existing Playwright production-pyramid suite. It checks migration, fallback,
+independent settings, system-mode updates, adapter/listener cleanup, localized
+dynamic descriptions/durations, overlay keyboard behaviour, and the responsive
+route/mode matrix. Run `npm test -- src` for the frontend suite and
 `node node_modules/typescript/bin/tsc -p tsconfig.app.json --noEmit` for frontend
 type checking, plus `npm run lint`.
 

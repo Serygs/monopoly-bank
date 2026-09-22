@@ -18,15 +18,13 @@
 .button-secondary { border-color: var(--color-border-strong); color: var(--color-text-primary); background: var(--color-surface-elevated); box-shadow: var(--shadow-sm); }
 .button-quiet { color: var(--color-accent); background: transparent; }
 .button-danger { color: var(--color-text-on-danger); background: var(--color-danger); box-shadow: var(--shadow-sm); }
-.button-danger-quiet { color: var(--color-danger); background: transparent; }
 .button.icon-button, .icon-button { min-width: var(--control-height-md); min-height: var(--control-height-md); padding: 0; border-radius: var(--radius-md); }
 
-.button:active:not(:disabled) { transform: translateY(0); }
+.button:active:not(:disabled) { transform: translateY(1px); }
 .button-primary:active:not(:disabled) { background: var(--color-accent-pressed); }
 .button-secondary:active:not(:disabled) { border-color: var(--color-accent); background: var(--color-surface-subtle); }
 .button-quiet:active:not(:disabled) { color: var(--color-accent-pressed); background: var(--color-accent-soft); }
 .button-danger:active:not(:disabled) { background: var(--color-danger-hover); }
-.button-danger-quiet:active:not(:disabled) { background: var(--color-danger-soft); }
 .button:disabled { opacity: .48; box-shadow: none; transform: none; }
 
 .button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
@@ -56,7 +54,7 @@
 .game-form legend { padding-inline: var(--space-2); color: var(--color-text-primary); font-size: var(--text-heading-md); font-weight: var(--weight-semibold); }
 .game-form label, .dialog-field { display: grid; gap: 7px; color: var(--color-text-primary); font-weight: var(--weight-medium); }
 
-.game-form input, .game-form select, .dialog-field input, .calculator-controls input, .settings-select select {
+.game-form input, .game-form select, .dialog-field input, .calculator-controls input {
   width: 100%;
   min-height: var(--control-height-lg);
   padding: 10px var(--space-3);
@@ -68,8 +66,8 @@
 }
 
 .game-form input::placeholder, .dialog-field input::placeholder, .calculator-controls input::placeholder { color: var(--color-text-muted); }
-.game-form input:focus, .game-form select:focus, .dialog-field input:focus, .calculator-controls input:focus, .settings-select select:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-focus-halo); }
-.game-form input:disabled, .game-form select:disabled, .dialog-field input:disabled, .calculator-controls input:disabled, .settings-select select:disabled { cursor: not-allowed; opacity: .58; background: var(--color-surface-subtle); }
+.game-form input:focus, .game-form select:focus, .dialog-field input:focus, .calculator-controls input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-focus-halo); }
+.game-form input:disabled, .game-form select:disabled, .dialog-field input:disabled, .calculator-controls input:disabled { cursor: not-allowed; opacity: .58; background: var(--color-surface-subtle); }
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin-top: var(--space-4); }
 .field-hint, .field-note { font-size: var(--text-small); font-weight: var(--weight-regular); }
 .field-error { color: var(--color-danger); font-size: var(--text-small); font-weight: var(--weight-semibold); }
@@ -77,6 +75,8 @@
 
 .dialog-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: var(--space-6); background: var(--color-overlay); }
 .dialog { width: min(100%, 640px); max-height: calc(100dvh - 48px); overflow: auto; padding: clamp(var(--space-5), 4vw, var(--space-7)); border: 1px solid var(--color-border); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); }
+:root[data-visual-style='classic-bank'] .dialog-backdrop { animation: classic-overlay-backdrop-in var(--duration-normal) var(--ease-standard); }
+:root[data-visual-style='classic-bank'] .dialog { transform-origin: center; animation: classic-dialog-in var(--duration-normal) var(--ease-emphasized); }
 .dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-5); padding-bottom: var(--space-4); border-bottom: 1px solid var(--color-dialog-divider); }
 .dialog > header h2 { margin: 0; font-size: var(--text-heading-lg); }
 .dialog-close { min-width: var(--control-height-md); padding: 0; font-size: 1.55rem; line-height: 1; }
@@ -88,13 +88,12 @@
 
 .settings-panel { overflow-y: auto; display: grid; gap: var(--space-4); background: var(--color-surface-elevated); }
 .settings-panel header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
-.settings-select { display: grid !important; gap: 7px; }
 .settings-options { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; }
 .settings-options legend { color: var(--color-text-primary); font-size: var(--text-small); font-weight: var(--weight-semibold); }
 .settings-segmented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--color-surface-subtle); }
 .settings-segmented--single { grid-template-columns: 1fr; }
 .settings-segmented--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.settings-segmented button { min-height: var(--control-height-sm); border: 0; border-radius: 9px; color: var(--color-text-secondary); background: transparent; font: var(--weight-semibold) var(--text-small)/1 var(--font-ui); }
+.settings-segmented button { min-height: var(--control-height-md); border: 0; border-radius: 9px; color: var(--color-text-secondary); background: transparent; font: var(--weight-semibold) var(--text-small)/1 var(--font-ui); transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard); }
 .settings-segmented button.active { color: var(--color-text-on-accent); background: var(--color-accent); box-shadow: var(--shadow-sm); }
 .settings-toggle { display: flex !important; min-height: var(--control-height-lg); align-items: center; justify-content: space-between; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-control); }
 .settings-toggle input {
@@ -111,6 +110,13 @@
 .settings-toggle input:checked { border-color: var(--color-accent); background: var(--color-accent); }
 .settings-toggle input:checked::before { transform: translateX(16px); }
 
+.player-choice, .amount-chip, .favorite-toggle {
+  transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
+}
+
+@keyframes classic-overlay-backdrop-in { from { opacity: 0; } }
+@keyframes classic-dialog-in { from { opacity: 0; transform: translateY(4px) scale(.99); } }
+
 .winner-picker input[type='checkbox'] { width: 20px; height: 20px; accent-color: var(--color-accent); }
 .settings-segmented button:disabled, .wallet-card-button:disabled, .player-choice:disabled, .amount-chip:disabled, .favorite-toggle:disabled { cursor: not-allowed; opacity: .48; }
 
@@ -119,8 +125,7 @@
   .button-secondary:hover:not(:disabled) { border-color: var(--color-accent); box-shadow: var(--shadow-md); transform: translateY(-1px); }
   .button-quiet:hover:not(:disabled) { background: var(--color-accent-soft); }
   .button-danger:hover:not(:disabled) { background: var(--color-danger-hover); box-shadow: var(--shadow-md); transform: translateY(-1px); }
-  .button-danger-quiet:hover:not(:disabled) { background: var(--color-danger-soft); }
-  .game-form input:hover, .game-form select:hover, .dialog-field input:hover, .calculator-controls input:hover, .settings-select select:hover { border-color: var(--color-accent); }
+  .game-form input:hover, .game-form select:hover, .dialog-field input:hover, .calculator-controls input:hover { border-color: var(--color-accent); }
   .settings-segmented button:hover:not(.active) { color: var(--color-text-primary); background: color-mix(in srgb, var(--color-surface-elevated) 72%, transparent); }
   .settings-toggle:hover { border-color: var(--color-border-strong); background: var(--color-surface-subtle); }
 }
@@ -132,19 +137,21 @@
   .form-actions .button { width: 100%; }
   .dialog-backdrop { place-items: end center; padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-2), env(safe-area-inset-right)) 0 max(var(--space-2), env(safe-area-inset-left)); }
   .dialog { width: 100%; max-height: calc(100dvh - env(safe-area-inset-top) - 8px); padding: var(--space-5) max(18px, env(safe-area-inset-right)) max(var(--space-5), calc(env(safe-area-inset-bottom) + 14px)) max(18px, env(safe-area-inset-left)); border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
+  :root[data-visual-style='classic-bank'] .dialog { transform-origin: bottom; animation-name: classic-sheet-in; }
   .dialog-backdrop--popover { place-items: end center; padding: max(var(--space-2), env(safe-area-inset-top)) max(var(--space-2), env(safe-area-inset-right)) 0 max(var(--space-2), env(safe-area-inset-left)); background: var(--color-overlay); }
   .dialog-backdrop--popover .dialog { width: 100%; }
   .dialog-actions { position: sticky; bottom: calc(var(--space-5) * -1); z-index: 1; flex-direction: column-reverse; margin-bottom: calc(var(--space-5) * -1); padding: var(--space-4) 0 max(var(--space-4), env(safe-area-inset-bottom)); background: var(--color-surface-elevated); }
   .dialog-actions .button { width: 100%; }
 }
 
+@keyframes classic-sheet-in { from { opacity: 0; transform: translateY(var(--space-4)); } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0s !important;
+    animation: none !important;
+    transition: none !important;
   }
 
-  .button, .game-card, .wallet-card, .activity-item { transform: none !important; }
+  .button, .game-card, .wallet-card, .dialog { transform: none !important; }
 }

@@ -62,7 +62,11 @@ describe('root appearance controller', () => {
   it('classic-bank has no reactive capabilities or effect side effects', () => {
     expect(visualStyles).toHaveLength(1);
     expect(visualStyles[0].supportedCapabilities).toEqual([]);
-    const cleanup = visualStyles[0].mountEffects(document.documentElement);
+    const cleanup = visualStyles[0].mountEffects({
+      root: document.documentElement,
+      ownerDocument: document as Document,
+      getReducedMotionPreference: () => window.matchMedia('(prefers-reduced-motion: reduce)'),
+    });
     expect(window.matchMedia).not.toHaveBeenCalled();
     expect(dataset).toEqual({});
     cleanup();

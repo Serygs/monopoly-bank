@@ -34,6 +34,10 @@ export function OverflowMenu({ label, items }: { label: string; items: OverflowM
   }, [open]);
 
   const moveFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Tab') {
+      setOpen(false);
+      return;
+    }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const enabledItems = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []);
     if (enabledItems.length === 0) return;
@@ -43,8 +47,18 @@ export function OverflowMenu({ label, items }: { label: string; items: OverflowM
     enabledItems[nextIndex]?.focus();
   };
 
+  const openFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    setOpen(true);
+    window.setTimeout(() => {
+      const enabledItems = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []);
+      (event.key === 'ArrowUp' ? enabledItems.at(-1) : enabledItems[0])?.focus();
+    }, 0);
+  };
+
   return <div className="overflow-menu" ref={rootRef}>
-    <button ref={triggerRef} className="button button-secondary icon-button overflow-menu-trigger" type="button" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} onClick={() => setOpen((current) => !current)}>
+    <button ref={triggerRef} className="button button-secondary icon-button overflow-menu-trigger" type="button" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} onKeyDown={openFromKeyboard} onClick={() => setOpen((current) => !current)}>
       <span aria-hidden="true">•••</span>
     </button>
     {open && <div ref={menuRef} className="overflow-menu-panel" id={menuId} role="menu" onKeyDown={moveFocus}>
