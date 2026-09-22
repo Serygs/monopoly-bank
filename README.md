@@ -1,6 +1,6 @@
 # Monopoly Bank
 
-A responsive English/Ukrainian banking companion for an in-person Monopoly game. It stores games, player wallets, and explicit banking history in Cloudflare D1; it does not implement board or game-engine rules. The UI language switch is available in the header and the preference is retained in the browser.
+A responsive English/Ukrainian banking companion for an in-person Monopoly game. Cloudflare D1 is the source of truth for wallets, the transaction ledger, the board catalogue and property ownership: a game created on a board tracks deeds, rent, houses, mortgages, trades, auctions and jail bail with server-computed amounts, while a game created without a board moves money only, exactly as before. The application does not add token movement, turn order, chance cards or other game-engine state; those stay at the physical table. The UI language switch is available in the header and the preference is retained in the browser.
 
 ## Project architecture
 
@@ -22,8 +22,8 @@ flowchart TB
 
   subgraph Shared["Shared TypeScript"]
     Contracts["API and live-event contracts"]
-    Domain["Banking, player-control,<br/>winner and summary rules"]
-    Types["Game, player, transaction,<br/>currency, and payment types"]
+    Domain["Banking, property, trade, jail,<br/>net-worth, player-control,<br/>winner and summary rules"]
+    Types["Game, player, transaction, board,<br/>deed, currency, and payment types"]
   end
 
   subgraph Cloudflare["Cloudflare edge application"]
@@ -31,8 +31,8 @@ flowchart TB
     Worker["Cloudflare Worker<br/>fetch + scheduled handlers"]
     Security["Origin checks, validation,<br/>sessions, access control, rate limits"]
     Router["API router<br/>auth, account, games, activity, banking"]
-    Services["Application services<br/>auth, game lifecycle, banking, statistics"]
-    Repositories["D1 repositories<br/>SQL and atomic banking operations"]
+    Services["Application services<br/>auth, game lifecycle, banking,<br/>property, trades, boards, statistics"]
+    Repositories["D1 repositories<br/>SQL and atomic banking operations<br/>deeds, building bank, trades, catalogue"]
     LiveGateway["Live gateway"]
     GameSession["GameSession Durable Object<br/>one object per game<br/>command idempotency + WebSocket fan-out"]
     Metrics["Analytics Engine<br/>operational metrics"]
@@ -43,7 +43,7 @@ flowchart TB
     Worker --> Metrics
   end
 
-  D1[("Cloudflare D1<br/>source of truth for users, sessions,<br/>games, wallets, ledger, requests, and statistics")]
+  D1[("Cloudflare D1<br/>source of truth for users, sessions,<br/>games, wallets, ledger, requests, statistics,<br/>board catalogue, deeds and trades")]
   Email["Resend API<br/>transactional account email"]
   Cron["Daily Cloudflare cron<br/>expired-data cleanup"]
 
@@ -68,37 +68,38 @@ flowchart TB
 1. Cloudflare serves the Vite-built React application and PWA files. The service worker caches only the static shell; API calls, authenticated data, banking mutations, invitations, and WebSocket traffic are never cached.
 2. The React client calls same-origin `/api/*` endpoints using the shared request/response contracts. The Worker applies origin checks, input validation, authentication, authorization, and rate limits before invoking application services.
 3. Live game-state and banking mutations are routed through the per-game `GameSession` Durable Object. It serializes commands, protects retries with command IDs, persists through D1-backed services, and broadcasts versioned snapshots to connected clients over WebSockets.
-4. D1 is the durable source of truth. Durable Object storage coordinates the live session but does not replace the persisted game, wallet, transaction, or statistics records.
-5. The Worker emits operational events to Analytics Engine, uses Resend for configured account emails, and runs daily cleanup through a scheduled Cloudflare trigger.
+4. A property command (purchase, rent, building, selling buildings, mortgage, redemption, auction, trade, jail bail) is priced by the shared domain in `shared/domain/property*.ts`: the client runs the same functions to preview the amount and the reason an action is unavailable, and the coordinator runs them again on the stored deed table before writing the deed change, the building bank, the balances and the transaction in one D1 batch. Rent authority comes from the stored owner, never from the request.
+5. D1 is the durable source of truth. Durable Object storage coordinates the live session but does not replace the persisted game, wallet, deed, transaction, or statistics records.
+6. The Worker emits operational events to Analytics Engine, uses Resend for configured account emails, and runs daily cleanup (expired sessions, tokens, guests, rate-limit buckets and trade offers) through a scheduled Cloudflare trigger.
 
 ### Components and tools
 
-| Area | Components and tools | Responsibility |
-| --- | --- | --- |
-| Client | React 19, React DOM, TypeScript, HTML/CSS | Single responsive English/Ukrainian UI for owners, registered players, and guests. |
-| PWA | Web App Manifest, service worker, Cache Storage | Standalone installation, icons/theme metadata, update handling, and an offline static shell. |
-| Client communication | Fetch API, WebSocket API, shared TypeScript contracts | Typed REST operations plus real-time per-game updates and commands. |
-| Edge backend | Cloudflare Workers, API router, scheduled handler | API entry point, security boundary, dependency wiring, error mapping, and cleanup jobs. |
-| Real time | Cloudflare Durable Objects, WebSocket Hibernation API | One coordinator per game for ordered/idempotent mutations, presence, and fan-out. |
-| Persistence | Cloudflare D1, SQL migrations, repository layer | Authoritative accounts, access, games, balances, transaction ledger, payment requests, and statistics. |
-| Observability and email | Cloudflare Analytics Engine, Resend API | Operational metrics and transactional verification/password-reset email. |
-| Shared code | `shared/contracts`, `shared/domain`, `shared/types` | Stable API/live contracts and financial rules used across browser and Worker code. |
-| Build and local development | npm, Vite 8, Cloudflare Vite plugin, TypeScript 6, Wrangler | Runs the integrated client/Worker locally, builds assets and Worker code, manages D1, and deploys. |
-| Quality | ESLint, Vitest, Playwright, Node.js validation/load/restore scripts | Static checks, unit/contract tests, D1 migration checks, browser tests, load tests, and operational rehearsals. |
-| Delivery | GitHub Actions, Wrangler | Validates pull requests and deploys isolated development, staging, and production environments with migrations. |
+| Area                        | Components and tools                                                | Responsibility                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Client                      | React 19, React DOM, TypeScript, HTML/CSS                           | Single responsive English/Ukrainian UI for owners, registered players, and guests.                              |
+| PWA                         | Web App Manifest, service worker, Cache Storage                     | Standalone installation, icons/theme metadata, update handling, and an offline static shell.                    |
+| Client communication        | Fetch API, WebSocket API, shared TypeScript contracts               | Typed REST operations plus real-time per-game updates and commands.                                             |
+| Edge backend                | Cloudflare Workers, API router, scheduled handler                   | API entry point, security boundary, dependency wiring, error mapping, and cleanup jobs.                         |
+| Real time                   | Cloudflare Durable Objects, WebSocket Hibernation API               | One coordinator per game for ordered/idempotent mutations, presence, and fan-out.                               |
+| Persistence                 | Cloudflare D1, SQL migrations, repository layer                     | Authoritative accounts, access, games, balances, transaction ledger, payment requests, and statistics.          |
+| Observability and email     | Cloudflare Analytics Engine, Resend API                             | Operational metrics and transactional verification/password-reset email.                                        |
+| Shared code                 | `shared/contracts`, `shared/domain`, `shared/types`                 | Stable API/live contracts and financial rules used across browser and Worker code.                              |
+| Build and local development | npm, Vite 8, Cloudflare Vite plugin, TypeScript 6, Wrangler         | Runs the integrated client/Worker locally, builds assets and Worker code, manages D1, and deploys.              |
+| Quality                     | ESLint, Vitest, Playwright, Node.js validation/load/restore scripts | Static checks, unit/contract tests, D1 migration checks, browser tests, load tests, and operational rehearsals. |
+| Delivery                    | GitHub Actions, Wrangler                                            | Validates pull requests and deploys isolated development, staging, and production environments with migrations. |
 
 ### Repository map
 
-| Path | Role |
-| --- | --- |
-| `src/` | React application, pages, reusable UI, localization, browser utilities, and the typed API client. |
-| `public/` | PWA manifest, service worker, favicon, and install icons copied as static assets. |
-| `shared/` | Contracts, domain rules, and types shared by the client and Worker. |
-| `worker/` | Worker entry point, API routing/validation, services, D1 repositories, security, metrics, email integration, and the Durable Object. |
-| `migrations/` | Ordered D1 schema migrations and database constraints. |
-| `scripts/` | Deployment preparation, migration checks, smoke/load tests, and restore rehearsal. |
-| `e2e/` | Playwright production-pyramid browser scenarios. |
-| `.github/workflows/` | CI plus development, staging, and production delivery workflows. |
+| Path                 | Role                                                                                                                                                                                                                                                                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/`               | React application, pages, reusable UI, localization, browser utilities, and the typed API client.                                                                                                                                                                                                                                             |
+| `public/`            | PWA manifest, service worker, favicon, and install icons copied as static assets.                                                                                                                                                                                                                                                             |
+| `shared/`            | Contracts, domain rules, and types shared by the client and Worker. `shared/domain/property.ts` (purchase, rent, building, mortgage), `property-trade.ts` (trades, auctions), `jail.ts` (doubles, bail) and `net-worth.ts` (capital) hold the board rules next to `banking.ts`.                                                               |
+| `worker/`            | Worker entry point, API routing/validation, services, D1 repositories, security, metrics, email integration, and the Durable Object. Board work lives in `services/property-service.ts`, `property-trade-service.ts`, `board-service.ts`, `property-statistics.ts` and `repositories/property-repository.ts`, `property-trade-repository.ts`. |
+| `migrations/`        | Ordered D1 schema migrations and database constraints, including the seeded board catalogue (`0018`), deeds and building banks (`0019`), trades (`0020`) and dice columns (`0021`).                                                                                                                                                           |
+| `scripts/`           | Deployment preparation, migration checks, the local browser runner (`e2e-local.mjs`), smoke/load tests, and restore rehearsal.                                                                                                                                                                                                                |
+| `e2e/`               | Playwright browser scenarios: the staging production pyramid (`production-pyramid.spec.ts`), the local board scenarios (`property.spec.ts`) and the helpers they share (`helpers.ts`).                                                                                                                                                        |
+| `.github/workflows/` | CI plus development, staging, and production delivery workflows.                                                                                                                                                                                                                                                                              |
 
 UI work is governed by the canonical [UI design system](docs/ui-design-system.md).
 Current CSS and screenshots describe builds; they do not define a separate
@@ -124,6 +125,10 @@ npx wrangler d1 create monopoly-bank-dev --location eeur
 ```
 
 If a new **production** D1 database is intentionally created, update the production binding's `database_id` in `wrangler.jsonc` before applying remote migrations or deploying. Never point the production Worker at `monopoly-bank-dev`.
+
+### Board catalogue and property tables
+
+Migrations `0018`–`0021` add the board subsystem and are applied like every other migration; there is no separate data load. `board_definitions` holds a board's parameters (jail fee, redemption interest, house and hotel limits, utility multipliers) and `board_spaces` its 28 ownable spaces with prices, mortgage values, house costs and rent tables. Migration `0018` seeds the canonical `board-classic` board; a user's custom board is a full copy of it with its own names, referenced through `source_board_id`. A game opts into the subsystem with `games.board_id`; `NULL` keeps the money-only behaviour. Per game, `game_properties` stores the owner, houses and mortgage state of each space and `game_building_banks` the unsold houses and hotels; `property_trades` and `property_trade_items` store offers between players; `payment_requests.board_space_id` links a rent bill to its deed; `players.last_roll_total` and `players.last_roll_at` keep the last recorded roll for utility rent. `npm run test:d1` checks the seed and the constraints on every migration change.
 
 ## Local development
 
@@ -159,9 +164,18 @@ Development and staging deployments must pass their generated `--config` file to
 npm test
 npm run lint
 npm run build
+npm run test:d1
 ```
 
 `npm run build` includes the TypeScript project build; there is no separate typecheck script.
+
+For a game on a board, run the local browser scenarios as well. They build the client and Worker, apply every migration to a throwaway local D1, start `wrangler dev --local` on a free loopback port, drive the real UI in Chromium (owner and guest in separate browser contexts) and clean up afterwards. No staging deployment, mail provider or environment variable is needed; install the browser once with `npx playwright install chromium`.
+
+```bash
+npm run test:e2e:local
+```
+
+The layers and what each one covers are described in [docs/testing-pyramid.md](docs/testing-pyramid.md).
 
 ## Lobby invitations
 

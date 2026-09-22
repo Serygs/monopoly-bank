@@ -4,7 +4,8 @@
 
 - The application is a React 19/Vite client in `src/`, a Cloudflare Worker in `worker/`, and Cloudflare D1 migrations in `migrations/`.
 - Shared API contracts belong in `shared/contracts/`; shared financial rules belong in `shared/domain/`. Keep UI state and rendering out of Worker services.
-- D1 is the source of truth. Do not add a bank balance, board mechanics, property ownership, turn order, or other game-engine state.
+- D1 is the source of truth for wallets, the transaction ledger, the board catalogue and property ownership. Do not add token movement, turn order, chance cards or other game-engine state.
+- Every property operation (purchase, rent, building, mortgage, auction, trade, bankruptcy estate, jail bail) goes through the domain in `shared/domain/property*.ts` and is written atomically together with its transaction. A game without a board (`games.board_id IS NULL`) must behave exactly as it did before boards existed.
 - Monetary values are positive safe integers measured in thousands. Multi-player banking operations must remain atomic and write an explicit transaction record.
 
 ## UI and localization
@@ -23,3 +24,4 @@
 ## Validation
 
 - Run `npm test`, `npm run lint`, and `npm run build` for meaningful UI or Worker changes. Add focused tests for new validation or domain behaviour.
+- Run `npm run test:e2e:local` for changes to a game on a board (deeds, rent, buildings, mortgages, trades, auctions, jail, boards): it drives the real client and Worker in a browser against a throwaway local D1 and needs no staging, mail or environment variable.
