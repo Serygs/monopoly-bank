@@ -1,5 +1,5 @@
 import type { AddAccountEmailRequest, AuthTokenRequest, BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, FinishGameRequest, GuestJoinGameRequest, JoinGameRequest, LoginRequest, PasswordResetConfirmationRequest, PasswordResetRequest, RegisterRequest, UpdateProfileRequest, UpgradeGuestRequest } from '../../shared/contracts/api.js';
-import { paymentModes, selectableCurrencies, transactionTypes, type PaymentMode, type SelectableCurrency, type TransactionType } from '../../shared/types/monopoly.js';
+import { paymentModes, selectableCurrencies, type PaymentMode, type SelectableCurrency } from '../../shared/types/monopoly.js';
 import { ValidationError } from '../services/errors.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -180,12 +180,25 @@ function readPositiveInteger(body: Record<string, unknown>, key: string): number
   return value;
 }
 
-function readTransactionType(body: Record<string, unknown>): Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'> {
+/**
+ * The banking endpoint accepts only the manual money moves. Rent, bankruptcy and
+ * every property transaction are raised by their own routes, never by this body.
+ */
+const bankingTransactionTypes = [
+  'PLAYER_TO_PLAYER',
+  'PLAYER_TO_BANK',
+  'BANK_TO_PLAYER',
+  'PLAYER_TO_ALL',
+  'ALL_TO_PLAYER',
+  'PASS_GO',
+] as const satisfies readonly CreateTransactionRequest['type'][];
+
+function readTransactionType(body: Record<string, unknown>): CreateTransactionRequest['type'] {
   const value = body.type;
-  if (typeof value !== 'string' || !transactionTypes.includes(value as TransactionType) || value === 'PAY_RENT' || value === 'BANKRUPTCY_TRANSFER') {
+  if (typeof value !== 'string' || !bankingTransactionTypes.includes(value as CreateTransactionRequest['type'])) {
     throw new ApiValidationError('type must be a supported transaction type.');
   }
-  return value as Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'>;
+  return value as CreateTransactionRequest['type'];
 }
 
 function readOptionalComment(body: Record<string, unknown>): string | undefined {

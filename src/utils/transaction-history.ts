@@ -22,6 +22,8 @@ export function transactionDescription(transaction: Transaction, players: Player
     case 'ALL_TO_PLAYER': return `${text.everyone} → ${nameOf(positive?.playerId)}`;
     case 'PASS_GO': return `${nameOf(positive?.playerId)} · ${text.passGo}`;
     case 'BANKRUPTCY_TRANSFER': return `${nameOf(negative?.playerId)} declared bankruptcy to ${nameOf(positive?.playerId)}`;
+    // Property and jail transactions render through their own phase; until then the neutral payer → payee line is correct for all of them.
+    default: return `${nameOf(negative?.playerId)} → ${nameOf(positive?.playerId)}`;
   }
 }
 

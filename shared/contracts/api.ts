@@ -1,4 +1,4 @@
-import type { Game, PaymentMode, Player, SelectableCurrency, Transaction, TransactionType } from '../types/monopoly.js';
+import type { BoardDefinition, BoardSpace, BuildingBank, Game, GameProperty, PaymentMode, Player, SelectableCurrency, Transaction, TransactionType } from '../types/monopoly.js';
 
 export interface ApiSuccess<T> {
   data: T;
@@ -35,6 +35,11 @@ export interface GameDetails {
   canManage?: boolean;
   /** Present only for the game's owner; never expose the password hash. */
   joinCode?: string;
+  /** The four board fields are present only for a game that opted into a board; a game without one omits them all. */
+  board?: BoardDefinition;
+  boardSpaces?: BoardSpace[];
+  properties?: GameProperty[];
+  buildingBank?: BuildingBank;
 }
 
 export type PlayerControllerKind = 'PRIMARY' | 'LOCAL';
@@ -183,6 +188,34 @@ export interface PaymentRequest {
   resolvedAt: string | null;
   transactionId: string | null;
 }
+interface PropertyRequestBase {
+  boardSpaceId: string;
+  comment?: string;
+}
+
+export interface PropertyPurchaseRequest extends PropertyRequestBase { playerId: string; }
+/** `diceTotal` is required only for a utility, whose rent is the dice total times the board multiplier. */
+export interface PropertyRentRequest extends PropertyRequestBase { payerPlayerId: string; diceTotal?: number; }
+export interface PropertyBuildRequest extends PropertyRequestBase { playerId: string; count: number; }
+export interface PropertySellBuildingsRequest extends PropertyRequestBase { playerId: string; count: number; }
+export interface PropertyMortgageRequest extends PropertyRequestBase { playerId: string; }
+export interface PropertyUnmortgageRequest extends PropertyRequestBase { playerId: string; }
+
+/** The board slice a client needs to render ownership: the catalogue, who owns what, and what the bank still holds. */
+export interface PropertyStateResponse {
+  board: BoardDefinition;
+  boardSpaces: BoardSpace[];
+  properties: GameProperty[];
+  buildingBank: BuildingBank;
+}
+
+export interface PropertyOperationResponse {
+  transaction: Transaction;
+  players: Player[];
+  properties: GameProperty[];
+  buildingBank: BuildingBank;
+}
+
 export interface CreatePaymentRequestResponse { paymentRequests: PaymentRequest[]; players: Player[]; }
 export type CreateBankingCommandResponse = CreateTransactionResponse | CreatePaymentRequestResponse;
 export interface PaymentRequestActionResponse { paymentRequest: PaymentRequest; players: Player[]; transaction?: Transaction; }

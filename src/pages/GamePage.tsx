@@ -397,7 +397,9 @@ function destinationFor(action: ActionType, player: Player, target: Player | nul
 }
 
 function transactionLabel(type: TransactionType, t: Translate): string {
-  return ({ PLAYER_TO_PLAYER: t('playerPayment'), PLAYER_TO_BANK: t('paidBank'), BANK_TO_PLAYER: t('receivedFromBank'), PLAYER_TO_ALL: t('paidEveryone'), ALL_TO_PLAYER: t('everyonePaidPlayer'), PAY_RENT: t('paidRent'), PASS_GO: t('passedGo'), BANKRUPTCY_TRANSFER: t('bankruptcyTransfer') })[type];
+  // Property and jail transactions get their own labels with the board UI; until then they fall back to the generic payment label.
+  const labels: Partial<Record<TransactionType, string>> = { PLAYER_TO_PLAYER: t('playerPayment'), PLAYER_TO_BANK: t('paidBank'), BANK_TO_PLAYER: t('receivedFromBank'), PLAYER_TO_ALL: t('paidEveryone'), ALL_TO_PLAYER: t('everyonePaidPlayer'), PAY_RENT: t('paidRent'), PASS_GO: t('passedGo'), BANKRUPTCY_TRANSFER: t('bankruptcyTransfer') };
+  return labels[type] ?? t('playerPayment');
 }
 
 function isPositiveInteger(value: string) { return /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0; }
