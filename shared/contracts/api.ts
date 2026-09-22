@@ -61,7 +61,31 @@ export interface CreateGameRequest {
   paymentMode?: PaymentMode;
   gameAccessPassword?: string;
   players: CreateGamePlayerRequest[];
+  /** Opt the game into a board: a canonical one, or a copy the creator owns. */
+  boardId?: string;
 }
+
+/** A board as the catalogue lists it; `isCanonical` boards belong to nobody and are shared by every table. */
+export interface BoardSummary {
+  board: BoardDefinition;
+  isCanonical: boolean;
+  sourceBoardId: string | null;
+  createdAt: string;
+}
+
+export interface BoardDetails extends BoardSummary {
+  spaces: BoardSpace[];
+}
+
+/** Renames every space of `sourceBoardId` into a new board the caller owns; prices, groups and rents are copied verbatim. */
+export interface CreateBoardRequest {
+  name: string;
+  sourceBoardId: string;
+  /** Exactly one custom name per space of the source board, keyed by the source space id. */
+  spaceNames: Record<string, string>;
+}
+
+export interface DeleteBoardResponse { boardId: string; }
 
 export type AccountType = 'REGISTERED' | 'GUEST';
 export interface RegisterRequest { nickname: string; avatar: string; password: string; }
@@ -191,6 +215,8 @@ export interface PaymentRequest {
   createdAt: string;
   resolvedAt: string | null;
   transactionId: string | null;
+  /** Set only for a rent confirmation, which is repriced against the deed when it is accepted. */
+  boardSpaceId?: string | null;
 }
 interface PropertyRequestBase {
   boardSpaceId: string;

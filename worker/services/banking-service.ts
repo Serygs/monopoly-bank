@@ -15,13 +15,16 @@ import {
   type BankingOperationResult,
   declareBankruptcy,
 } from '../../shared/domain/banking.js';
+import { payRent } from '../../shared/domain/property.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { BankingOperationRepository } from '../repositories/banking-operation-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { PlayerRepository } from '../repositories/player-repository.js';
+import type { PropertyRepository } from '../repositories/property-repository.js';
 import type { TransactionRepository } from '../repositories/transaction-repository.js';
 import type { PaymentRequestRepository } from '../repositories/payment-request-repository.js';
-import { ConflictError, PersistenceConsistencyError, ResourceNotFoundError } from './errors.js';
+import { BoardRequiredError, ConflictError, PersistenceConsistencyError, ResourceNotFoundError } from './errors.js';
+import { loadPropertyWorld, propertyCommandBase, propertyWrites } from './property-service.js';
 
 export interface BankingService {
   createTransaction(gameId: string, request: CreateTransactionRequest): Promise<CreateBankingCommandResponse>;
@@ -42,6 +45,8 @@ export interface BankingServiceDependencies {
   operations: BankingOperationRepository;
   paymentRequests: PaymentRequestRepository;
   createId: () => string;
+  /** Needed to settle a rent confirmation; a service without it handles only plain money moves. */
+  properties?: PropertyRepository;
 }
 
 export class DefaultBankingService implements BankingService {
@@ -50,6 +55,7 @@ export class DefaultBankingService implements BankingService {
   private readonly transactions: TransactionRepository;
   private readonly operations: BankingOperationRepository;
   private readonly paymentRequests: PaymentRequestRepository;
+  private readonly properties: PropertyRepository | undefined;
   private readonly createId: () => string;
 
   constructor(dependencies: BankingServiceDependencies) {
@@ -58,6 +64,7 @@ export class DefaultBankingService implements BankingService {
     this.transactions = dependencies.transactions;
     this.operations = dependencies.operations;
     this.paymentRequests = dependencies.paymentRequests;
+    this.properties = dependencies.properties;
     this.createId = dependencies.createId;
   }
 
@@ -113,14 +120,40 @@ export class DefaultBankingService implements BankingService {
       return { paymentRequest, transaction, players: await this.players.listByGameId(gameId) };
     }
     if (paymentRequest.state !== 'PENDING') throw new ConflictError('PAYMENT_REQUEST_NOT_PENDING', 'This payment request is no longer pending.');
-    const game = await this.games.getById(gameId); if (game === null) throw new ResourceNotFoundError('Game');
-    const players = await this.players.listByGameId(gameId);
-    const result = playerToPlayer({ game, players, sourcePlayerId: paymentRequest.payerPlayerId, destinationPlayerId: paymentRequest.recipientPlayerId, amount: paymentRequest.amount, ...(paymentRequest.comment === null ? {} : { comment: paymentRequest.comment }) });
     const transactionId = this.createId();
-    await this.paymentRequests.settle({ requestId, transactionId, transaction: result.transaction, balanceChanges: result.affectedPlayers });
+    if (paymentRequest.boardSpaceId !== undefined && paymentRequest.boardSpaceId !== null) {
+      await this.settleRentRequest(gameId, paymentRequest, transactionId);
+    } else {
+      const game = await this.games.getById(gameId); if (game === null) throw new ResourceNotFoundError('Game');
+      const players = await this.players.listByGameId(gameId);
+      const result = playerToPlayer({ game, players, sourcePlayerId: paymentRequest.payerPlayerId, destinationPlayerId: paymentRequest.recipientPlayerId, amount: paymentRequest.amount, ...(paymentRequest.comment === null ? {} : { comment: paymentRequest.comment }) });
+      await this.paymentRequests.settle({ requestId, transactionId, transaction: result.transaction, balanceChanges: result.affectedPlayers });
+    }
     const transaction = await this.transactions.getById(gameId, transactionId); if (transaction === null) throw new PersistenceConsistencyError();
     const accepted = await this.requirePaymentRequest(gameId, requestId);
     return { paymentRequest: accepted, transaction, players: await this.players.listByGameId(gameId) };
+  }
+
+  /**
+   * A rent confirmation is repriced when it is accepted: the domain recomputes
+   * the rent from the deed as it stands now, not the figure quoted when the owner
+   * raised the claim, and settles the request in the same batch as the payment.
+   */
+  private async settleRentRequest(gameId: string, paymentRequest: PaymentRequest, transactionId: string): Promise<void> {
+    if (this.properties === undefined) throw new BoardRequiredError();
+    const world = await loadPropertyWorld({ games: this.games, players: this.players, properties: this.properties }, gameId);
+    const payer = world.players.find((player) => player.id === paymentRequest.payerPlayerId);
+    const diceTotal = payer?.lastRollTotal ?? undefined;
+    const result = payRent({ ...propertyCommandBase(world), payerPlayerId: paymentRequest.payerPlayerId, boardSpaceId: paymentRequest.boardSpaceId as string, ...(paymentRequest.comment === null ? {} : { comment: paymentRequest.comment }), ...(diceTotal === undefined ? {} : { diceTotal }) });
+    await this.operations.persist({
+      transactionId,
+      transaction: result.transaction,
+      balanceChanges: result.affectedPlayers,
+      propertyChanges: propertyWrites(world.slice, result),
+      buildingBankDelta: result.buildingBankDelta,
+      recentAmount: result.transaction.amount,
+      paymentRequestSettlement: { requestId: paymentRequest.id },
+    });
   }
 
   async declinePaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse> { return this.resolvePaymentRequest(gameId, requestId, 'DECLINED'); }

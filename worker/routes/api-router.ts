@@ -1,12 +1,16 @@
 import type { ApiSuccess, GameDetails } from '../../shared/contracts/api.js';
+import type { PropertyOperation, TradeResolution } from '../../shared/contracts/live.js';
 import type { BankingService } from '../services/banking-service.js';
 import type { GameService } from '../services/game-service.js';
+import { executePropertyOperation, resolveRentOwner, type PropertyService } from '../services/property-service.js';
+import type { PropertyTradeService } from '../services/property-trade-service.js';
+import type { BoardService } from '../services/board-service.js';
 import { AuthService } from '../services/auth-service.js';
 import { GameAccessService } from '../services/game-access-service.js';
 import { ProfileStatisticsService } from '../services/profile-statistics-service.js';
 import type { GameStatisticsRepository } from '../repositories/game-statistics-repository.js';
 import type { GameLiveGateway } from '../services/game-live-gateway.js';
-import { controlledPlayerIdForBankingCommand } from '../../shared/domain/player-control.js';
+import { controlledPlayerIdForBankingCommand, rentBankingCommand } from '../../shared/domain/player-control.js';
 import { ConflictError, InvalidJoinCodeError, NotFoundError, RateLimitError } from '../services/errors.js';
 import { handleError } from '../services/error-handler.js';
 import { requireSameOriginForMutation, requireSameOriginWebSocket, securityHeaders } from '../services/request-security.js';
@@ -32,6 +36,17 @@ import {
   parseUpgradeGuestRequest,
   parseAddAccountEmailRequest,
   parseFinishGameRequest,
+  parseCatalogId,
+  parseCreateBoardRequest,
+  parseCreateTradeRequest,
+  parseDiceRollRequest,
+  parseJailBailRequest,
+  parsePropertyBuildRequest,
+  parsePropertyMortgageRequest,
+  parsePropertyPurchaseRequest,
+  parsePropertyRentRequest,
+  parsePropertySellBuildingsRequest,
+  parsePropertyUnmortgageRequest,
 } from '../validation/api-validation.js';
 
 export interface ApiRouterDependencies {
@@ -44,6 +59,10 @@ export interface ApiRouterDependencies {
   live?: GameLiveGateway;
   rateLimits?: SecurityRateLimitRepository;
   metrics?: OperationalMetrics;
+  /** The board subsystem; a router without it answers its routes with `PROPERTIES_UNAVAILABLE`. */
+  properties?: PropertyService;
+  trades?: PropertyTradeService;
+  boards?: BoardService;
 }
 
 export function createApiRouter(dependencies: ApiRouterDependencies) {
@@ -85,6 +104,13 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
   const summaryMatch = /^\/api\/games\/([^/]+)\/summary$/.exec(pathname);
   const activityMatch = /^\/api\/games\/([^/]+)\/activity$/.exec(pathname);
   const liveMatch = /^\/api\/games\/([^/]+)\/live$/.exec(pathname);
+  const boardMatch = /^\/api\/boards\/([^/]+)$/.exec(pathname);
+  const propertiesMatch = /^\/api\/games\/([^/]+)\/properties$/.exec(pathname);
+  const propertyOperationMatch = /^\/api\/games\/([^/]+)\/properties\/(purchase|rent|build|sell-buildings|mortgage|unmortgage)$/.exec(pathname);
+  const tradesMatch = /^\/api\/games\/([^/]+)\/trades$/.exec(pathname);
+  const tradeActionMatch = /^\/api\/games\/([^/]+)\/trades\/([^/]+)\/(accept|decline|cancel)$/.exec(pathname);
+  const jailBailMatch = /^\/api\/games\/([^/]+)\/jail\/bail$/.exec(pathname);
+  const diceRollsMatch = /^\/api\/games\/([^/]+)\/dice-rolls$/.exec(pathname);
 
   if (pathname === '/api/auth/register' && request.method === 'POST') {
     const result = await dependencies.auth.register(await parseRegisterRequest(request));
@@ -264,7 +290,107 @@ async function route(request: Request, dependencies: ApiRouterDependencies, requ
     );
   }
 
+  if (pathname === '/api/boards') {
+    const boards = requireBoards(dependencies);
+    if (request.method === 'GET') return success(await boards.list(actor.id));
+    if (request.method === 'POST') return success(await boards.create(actor.id, await parseCreateBoardRequest(request)), 201);
+  }
+  if (boardMatch !== null) {
+    const boards = requireBoards(dependencies);
+    const boardId = parseCatalogId(boardMatch[1], 'boardId');
+    if (request.method === 'GET') return success(await boards.get(boardId, actor.id));
+    if (request.method === 'DELETE') return success(await boards.delete(boardId, actor.id));
+  }
+
+  if (propertiesMatch !== null && request.method === 'GET') {
+    const gameId = parseResourceId(propertiesMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    return success(await requireProperties(dependencies).state(gameId));
+  }
+
+  if (propertyOperationMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(propertyOperationMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const properties = requireProperties(dependencies);
+    const command = await parsePropertyOperation(request, propertyOperationMatch[2]);
+    // Rent authority comes from the stored deed, never from the request body.
+    const authorized = command.operation === 'RENT' ? rentBankingCommand(command.request, await resolveRentOwner(properties, gameId, command.request)) : command.request;
+    await dependencies.access.requirePlayerController(gameId, actor.id, controlledPlayerIdForBankingCommand(authorized));
+    if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'PROPERTY_OPERATION', commandId: readCommandId(request), ...command });
+    return success(await executePropertyOperation(properties, gameId, command), 201);
+  }
+
+  if (tradesMatch !== null) {
+    const gameId = parseResourceId(tradesMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const trades = requireTrades(dependencies);
+    if (request.method === 'GET') return success(await trades.list(gameId));
+    if (request.method === 'POST') {
+      const body = await parseCreateTradeRequest(request);
+      await dependencies.access.requirePlayerController(gameId, actor.id, controlledPlayerIdForBankingCommand(body));
+      if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'PROPOSE_TRADE', commandId: readCommandId(request), request: body });
+      return success(await trades.propose(gameId, body), 201);
+    }
+  }
+
+  if (tradeActionMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(tradeActionMatch[1], 'gameId');
+    const tradeId = parseResourceId(tradeActionMatch[2], 'tradeId');
+    const action = tradeActionMatch[3] as TradeResolution;
+    await dependencies.access.requireMember(gameId, actor.id);
+    const trades = requireTrades(dependencies);
+    const trade = await trades.get(gameId, tradeId);
+    if (trade === null) throw new NotFoundError('TRADE_NOT_FOUND', 'Trade not found.');
+    await dependencies.access.requirePlayerController(gameId, actor.id, action === 'cancel' ? trade.proposerPlayerId : trade.responderPlayerId);
+    if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'RESOLVE_TRADE', commandId: readCommandId(request), tradeId, action });
+    return success(action === 'accept' ? await trades.accept(gameId, tradeId) : action === 'decline' ? await trades.decline(gameId, tradeId) : await trades.cancel(gameId, tradeId));
+  }
+
+  if (jailBailMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(jailBailMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const properties = requireProperties(dependencies);
+    const body = await parseJailBailRequest(request);
+    await dependencies.access.requirePlayerController(gameId, actor.id, controlledPlayerIdForBankingCommand(body));
+    if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'JAIL_BAIL', commandId: readCommandId(request), request: body });
+    return success(await properties.payJailBail(gameId, body), 201);
+  }
+
+  if (diceRollsMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(diceRollsMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const properties = requireProperties(dependencies);
+    const body = await parseDiceRollRequest(request);
+    await dependencies.access.requirePlayerController(gameId, actor.id, body.playerId);
+    if (dependencies.live !== undefined) return dependencies.live.mutate(gameId, actor, { type: 'DICE_ROLL', commandId: readCommandId(request), request: body });
+    return success(await properties.recordDiceRoll(gameId, body), 201);
+  }
+
   throw new NotFoundError('NOT_FOUND', 'Endpoint not found.');
+}
+
+async function parsePropertyOperation(request: Request, action: string): Promise<PropertyOperation> {
+  switch (action) {
+    case 'purchase': return { operation: 'PURCHASE', request: await parsePropertyPurchaseRequest(request) };
+    case 'rent': return { operation: 'RENT', request: await parsePropertyRentRequest(request) };
+    case 'build': return { operation: 'BUILD', request: await parsePropertyBuildRequest(request) };
+    case 'sell-buildings': return { operation: 'SELL_BUILDINGS', request: await parsePropertySellBuildingsRequest(request) };
+    case 'mortgage': return { operation: 'MORTGAGE', request: await parsePropertyMortgageRequest(request) };
+    default: return { operation: 'UNMORTGAGE', request: await parsePropertyUnmortgageRequest(request) };
+  }
+}
+
+function requireProperties(dependencies: ApiRouterDependencies): PropertyService {
+  if (dependencies.properties === undefined) throw new ConflictError('PROPERTIES_UNAVAILABLE', 'Property operations are not configured.');
+  return dependencies.properties;
+}
+function requireTrades(dependencies: ApiRouterDependencies): PropertyTradeService {
+  if (dependencies.trades === undefined) throw new ConflictError('PROPERTIES_UNAVAILABLE', 'Property trades are not configured.');
+  return dependencies.trades;
+}
+function requireBoards(dependencies: ApiRouterDependencies): BoardService {
+  if (dependencies.boards === undefined) throw new ConflictError('PROPERTIES_UNAVAILABLE', 'Boards are not configured.');
+  return dependencies.boards;
 }
 
 function readCommandId(request: Request): string {

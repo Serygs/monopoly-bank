@@ -1,15 +1,17 @@
 import type { PaymentRequest, PaymentRequestState } from '../../shared/contracts/api.js';
 import type { PendingTransaction, PlayerBalanceChange } from '../../shared/domain/banking.js';
-import { DatabaseError } from '../services/errors.js';
+import { D1BankingOperationRepository } from './banking-operation-repository.js';
 
 interface PaymentRequestRow {
   id: string; game_id: string; payer_player_id: string; recipient_player_id: string; creator_player_id: string; approver_player_id: string;
   amount: number; comment: string | null; state: PaymentRequestState; expires_at: string;
-  created_at: string; resolved_at: string | null; transaction_id: string | null;
+  created_at: string; resolved_at: string | null; transaction_id: string | null; board_space_id: string | null;
 }
 
+export type CreatePaymentRequestInput = Omit<PaymentRequest, 'createdAt' | 'resolvedAt' | 'transactionId'>;
+
 export interface PaymentRequestRepository {
-  create(input: Omit<PaymentRequest, 'createdAt' | 'resolvedAt' | 'transactionId'>): Promise<void>;
+  create(input: CreatePaymentRequestInput): Promise<void>;
   getById(gameId: string, id: string): Promise<PaymentRequest | null>;
   listForPayers(gameId: string, payerPlayerIds: readonly string[]): Promise<PaymentRequest[]>;
   pendingReservedAmount(gameId: string, payerPlayerId: string): Promise<number>;
@@ -18,25 +20,26 @@ export interface PaymentRequestRepository {
   resolve(requestId: string, state: Extract<PaymentRequestState, 'DECLINED' | 'CANCELLED'>): Promise<boolean>;
 }
 
+const paymentRequestColumns = 'id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at, created_at, resolved_at, transaction_id, board_space_id';
+
 export class D1PaymentRequestRepository implements PaymentRequestRepository {
   private readonly database: D1Database;
   constructor(database: D1Database) { this.database = database; }
 
-  async create(input: Omit<PaymentRequest, 'createdAt' | 'resolvedAt' | 'transactionId'>): Promise<void> {
-    await this.database.prepare(`INSERT INTO payment_requests (id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`).bind(input.id, input.gameId, input.payerPlayerId, input.recipientPlayerId, input.creatorPlayerId, input.approverPlayerId, input.amount, input.comment, input.state, input.expiresAt).run();
+  async create(input: CreatePaymentRequestInput): Promise<void> {
+    await this.database.prepare(`INSERT INTO payment_requests (id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at, board_space_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`).bind(input.id, input.gameId, input.payerPlayerId, input.recipientPlayerId, input.creatorPlayerId, input.approverPlayerId, input.amount, input.comment, input.state, input.expiresAt, input.boardSpaceId ?? null).run();
   }
 
   async getById(gameId: string, id: string): Promise<PaymentRequest | null> {
-    const row = await this.database.prepare(`SELECT id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at, created_at, resolved_at, transaction_id
-      FROM payment_requests WHERE game_id = ? AND id = ?`).bind(gameId, id).first<PaymentRequestRow>();
+    const row = await this.database.prepare(`SELECT ${paymentRequestColumns} FROM payment_requests WHERE game_id = ? AND id = ?`).bind(gameId, id).first<PaymentRequestRow>();
     return row === null ? null : mapPaymentRequest(row);
   }
 
   async listForPayers(gameId: string, payerPlayerIds: readonly string[]): Promise<PaymentRequest[]> {
     if (payerPlayerIds.length === 0) return [];
     await this.expirePending(gameId);
-    const result = await this.database.prepare(`SELECT id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at, created_at, resolved_at, transaction_id
+    const result = await this.database.prepare(`SELECT ${paymentRequestColumns}
       FROM payment_requests WHERE game_id = ? AND approver_player_id IN (${payerPlayerIds.map(() => '?').join(', ')}) AND state = 'PENDING'
       ORDER BY created_at ASC, id ASC`).bind(gameId, ...payerPlayerIds).all<PaymentRequestRow>();
     return result.results.map(mapPaymentRequest);
@@ -54,17 +57,15 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
       WHERE game_id = ? AND state = 'PENDING' AND expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).bind(gameId).run();
   }
 
+  /** One batch shared with every other banking write: balances, transaction, participants and the request's settlement. */
   async settle(input: { requestId: string; transactionId: string; transaction: PendingTransaction; balanceChanges: readonly PlayerBalanceChange[] }): Promise<void> {
-    const balanceStatement = balanceUpdate(this.database, input.balanceChanges);
-    const transactionStatement = this.database.prepare(`INSERT INTO transactions (id, game_id, type, amount, total_amount, comment) VALUES (?, ?, ?, ?, ?, ?)`)
-      .bind(input.transactionId, input.transaction.gameId, input.transaction.type, input.transaction.amount, input.transaction.totalAmount, input.transaction.comment);
-    const participants = input.transaction.participants.map((participant) => this.database.prepare(`INSERT INTO transaction_participants (transaction_id, game_id, player_id, balance_delta) VALUES (?, ?, ?, ?)`)
-      .bind(input.transactionId, input.transaction.gameId, participant.playerId, participant.balanceDelta));
-    const requestStatement = this.database.prepare(`UPDATE payment_requests SET state = 'ACCEPTED', resolved_at = CURRENT_TIMESTAMP, transaction_id = ?
-      WHERE id = ? AND state = 'PENDING' AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).bind(input.transactionId, input.requestId);
-    const recentStatements = [this.database.prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?').bind(input.transaction.gameId, input.transaction.amount), this.database.prepare('INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES (?, ?, CURRENT_TIMESTAMP)').bind(input.transaction.gameId, input.transaction.amount), this.database.prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount NOT IN (SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5)').bind(input.transaction.gameId, input.transaction.gameId)];
-    try { await this.database.batch([balanceStatement, transactionStatement, ...participants, requestStatement, ...recentStatements]); }
-    catch (cause) { throw new DatabaseError({ operation: 'settlePaymentRequest', cause }); }
+    await new D1BankingOperationRepository(this.database).persist({
+      transactionId: input.transactionId,
+      transaction: input.transaction,
+      balanceChanges: input.balanceChanges,
+      recentAmount: input.transaction.amount,
+      paymentRequestSettlement: { requestId: input.requestId },
+    });
   }
 
   async resolve(requestId: string, state: Extract<PaymentRequestState, 'DECLINED' | 'CANCELLED'>): Promise<boolean> {
@@ -73,16 +74,6 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
   }
 }
 
-function balanceUpdate(database: D1Database, changes: readonly PlayerBalanceChange[]): D1PreparedStatement {
-  const gameId = changes[0]?.player.gameId;
-  if (gameId === undefined) return database.prepare('SELECT 1');
-  const cases = changes.map(() => 'WHEN ? THEN CASE WHEN balance = ? THEN ? ELSE -1 END');
-  const values: Array<string | number> = [];
-  for (const change of changes) values.push(change.player.id, change.balanceBefore, change.balanceAfter);
-  const ids = changes.map((change) => change.player.id);
-  return database.prepare(`UPDATE players SET balance = CASE id ${cases.join(' ')} ELSE balance END WHERE game_id = ? AND id IN (${ids.map(() => '?').join(', ')})`).bind(...values, gameId, ...ids);
-}
-
 function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
-  return { id: row.id, gameId: row.game_id, payerPlayerId: row.payer_player_id, recipientPlayerId: row.recipient_player_id, creatorPlayerId: row.creator_player_id, approverPlayerId: row.approver_player_id, amount: row.amount, comment: row.comment, state: row.state, expiresAt: row.expires_at, createdAt: row.created_at, resolvedAt: row.resolved_at, transactionId: row.transaction_id };
+  return { id: row.id, gameId: row.game_id, payerPlayerId: row.payer_player_id, recipientPlayerId: row.recipient_player_id, creatorPlayerId: row.creator_player_id, approverPlayerId: row.approver_player_id, amount: row.amount, comment: row.comment, state: row.state, expiresAt: row.expires_at, createdAt: row.created_at, resolvedAt: row.resolved_at, transactionId: row.transaction_id, boardSpaceId: row.board_space_id ?? null };
 }

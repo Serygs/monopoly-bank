@@ -20,6 +20,11 @@ import { ResendTransactionalEmailProvider } from './services/transactional-email
 import { D1SecurityRateLimitRepository } from './repositories/security-rate-limit-repository.js';
 import { AnalyticsOperationalMetrics } from './services/operational-metrics.js';
 import { D1PrivacyRepository } from './repositories/privacy-repository.js';
+import { D1PropertyRepository } from './repositories/property-repository.js';
+import { D1PropertyTradeRepository } from './repositories/property-trade-repository.js';
+import { BoardService } from './services/board-service.js';
+import { DefaultPropertyService } from './services/property-service.js';
+import { DefaultPropertyTradeService } from './services/property-trade-service.js';
 export { GameSession } from './game-session.js';
 
 export default {
@@ -35,8 +40,14 @@ export default {
     const authEnv = env as Env & { RESEND_API_KEY: string; RESEND_FROM_EMAIL: string; APP_ORIGIN: string };
     const createId = () => crypto.randomUUID();
     const access = new GameAccessService(new D1GameAccessRepository(env.MONOPOLY_BANK_DB));
+    const properties = new D1PropertyRepository(env.MONOPOLY_BANK_DB);
+    const operations = new D1BankingOperationRepository(env.MONOPOLY_BANK_DB);
+    const paymentRequests = new D1PaymentRequestRepository(env.MONOPOLY_BANK_DB);
     const router = createApiRouter({
-      games: new DefaultGameService({ games, players, createId }),
+      games: new DefaultGameService({ games, players, properties, createId }),
+      properties: new DefaultPropertyService({ games, players, properties, transactions, operations, paymentRequests, createId }),
+      trades: new DefaultPropertyTradeService({ games, players, properties, trades: new D1PropertyTradeRepository(env.MONOPOLY_BANK_DB), transactions, operations, createId }),
+      boards: new BoardService({ boards: properties, createId }),
       auth: new AuthService(new D1UserRepository(env.MONOPOLY_BANK_DB), new D1SessionRepository(env.MONOPOLY_BANK_DB), new D1AuthTokenRepository(env.MONOPOLY_BANK_DB), new ResendTransactionalEmailProvider(authEnv.RESEND_API_KEY, authEnv.RESEND_FROM_EMAIL, fetch, metrics), createId, authEnv.APP_ORIGIN, new D1PrivacyRepository(env.MONOPOLY_BANK_DB)),
       access,
       profileStatistics: new ProfileStatisticsService(new D1GameCompletionRepository(env.MONOPOLY_BANK_DB)),
@@ -45,8 +56,9 @@ export default {
         games,
         players,
         transactions,
-        operations: new D1BankingOperationRepository(env.MONOPOLY_BANK_DB),
-        paymentRequests: new D1PaymentRequestRepository(env.MONOPOLY_BANK_DB),
+        operations,
+        paymentRequests,
+        properties,
         createId,
       }),
       live: new DurableObjectGameLiveGateway(env.GAME_SESSIONS),
@@ -71,6 +83,8 @@ function apiOperation(request: Request): string {
   if (path.startsWith('/api/auth/')) return 'auth';
   if (path.includes('/live')) return 'live';
   if (path.includes('/transactions') || path.includes('/payment-requests')) return 'banking';
+  if (path.includes('/properties') || path.includes('/trades') || path.includes('/jail/') || path.includes('/dice-rolls')) return 'property';
+  if (path.startsWith('/api/boards')) return 'boards';
   if (path.startsWith('/api/games')) return 'games';
   return 'other';
 }

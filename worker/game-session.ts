@@ -1,6 +1,6 @@
 import type { GameDetails } from '../shared/contracts/api.js';
 import { isLiveMutationCommand, type LiveGameState, type LiveMutationCommand, type LiveServerEvent } from '../shared/contracts/live.js';
-import { controlledPlayerIdForBankingCommand } from '../shared/domain/player-control.js';
+import { controlledPlayerIdForBankingCommand, rentBankingCommand } from '../shared/domain/player-control.js';
 import { D1BankingOperationRepository } from './repositories/banking-operation-repository.js';
 import { D1CommandLedgerRepository, type CommandLedgerRepository } from './repositories/command-ledger-repository.js';
 import { D1GameAccessRepository } from './repositories/game-access-repository.js';
@@ -9,6 +9,8 @@ import { D1GameRepository } from './repositories/game-repository.js';
 import { D1GameStatisticsRepository } from './repositories/game-statistics-repository.js';
 import { D1PaymentRequestRepository } from './repositories/payment-request-repository.js';
 import { D1PlayerRepository } from './repositories/player-repository.js';
+import { D1PropertyRepository } from './repositories/property-repository.js';
+import { D1PropertyTradeRepository } from './repositories/property-trade-repository.js';
 import { D1TransactionRepository } from './repositories/transaction-repository.js';
 import { DefaultBankingService } from './services/banking-service.js';
 import { ConflictError, ValidationError } from './services/errors.js';
@@ -16,6 +18,8 @@ import { handleError } from './services/error-handler.js';
 import { GameAccessService } from './services/game-access-service.js';
 import { DefaultGameService } from './services/game-service.js';
 import { ProfileStatisticsService } from './services/profile-statistics-service.js';
+import { DefaultPropertyService, executePropertyOperation, resolveRentOwner } from './services/property-service.js';
+import { DefaultPropertyTradeService } from './services/property-trade-service.js';
 
 /** One coordinator per game. All state-changing game commands enter here. */
 export class GameSession {
@@ -98,6 +102,15 @@ export class GameSession {
       await this.access().joinLobby({ gameId, userId, playerId: command.playerId, nickname: command.nickname, color: command.color, startingBalance: command.startingBalance });
       return { status: 201, data: await this.gameService().getGame(gameId) };
     }
+    if (command.type === 'PROPERTY_OPERATION') return { status: 201, data: await executePropertyOperation(this.properties(command.commandId), gameId, command) };
+    if (command.type === 'JAIL_BAIL') return { status: 201, data: await this.properties(command.commandId).payJailBail(gameId, command.request) };
+    if (command.type === 'DICE_ROLL') return { status: 201, data: await this.properties(command.commandId).recordDiceRoll(gameId, command.request) };
+    if (command.type === 'PROPOSE_TRADE') return { status: 201, data: await this.trades(command.commandId).propose(gameId, command.request) };
+    if (command.type === 'RESOLVE_TRADE') {
+      const trades = this.trades(command.commandId);
+      const data = command.action === 'accept' ? await trades.accept(gameId, command.tradeId) : command.action === 'decline' ? await trades.decline(gameId, command.tradeId) : await trades.cancel(gameId, command.tradeId);
+      return { status: 200, data };
+    }
     const banking = this.banking(command.commandId);
     if (command.type === 'CREATE_TRANSACTION') return { status: 201, data: await banking.createTransaction(gameId, command.request) };
     if (command.type === 'ACCEPT_PAYMENT_REQUEST') return { status: 200, data: await banking.acceptPaymentRequest(gameId, command.paymentRequestId) };
@@ -129,6 +142,17 @@ export class GameSession {
       return access.requirePlayerController(gameId, userId, paymentRequest.creatorPlayerId);
     }
     await access.requireMember(gameId, userId);
+    if (command.type === 'RESOLVE_TRADE') {
+      const trade = await this.trades(command.commandId).get(gameId, command.tradeId);
+      if (trade === null) throw new ValidationError('Trade not found.');
+      return access.requirePlayerController(gameId, userId, command.action === 'cancel' ? trade.proposerPlayerId : trade.responderPlayerId);
+    }
+    if (command.type === 'DICE_ROLL') return access.requirePlayerController(gameId, userId, command.request.playerId);
+    if (command.type === 'PROPERTY_OPERATION' && command.operation === 'RENT') {
+      // The owner is re-read from the deed here as well, so the coordinator never trusts an owner the gateway request named.
+      const owner = await resolveRentOwner(this.properties(command.commandId), gameId, command.request);
+      return access.requirePlayerController(gameId, userId, controlledPlayerIdForBankingCommand(rentBankingCommand(command.request, owner)));
+    }
     await access.requirePlayerController(gameId, userId, controlledPlayerIdForBankingCommand(command.request));
   }
 
@@ -139,7 +163,7 @@ export class GameSession {
       return;
     }
     if (command.type === 'FINISH_GAME') { await this.broadcast({ type: 'GAME_FINISHED', stateVersion, details: data as GameDetails }); return; }
-    if (command.type === 'CREATE_TRANSACTION' && 'paymentRequests' in (data as object)) { await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion }); return; }
+    if ((command.type === 'CREATE_TRANSACTION' || command.type === 'PROPERTY_OPERATION') && 'paymentRequests' in (data as object)) { await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion }); return; }
     const result = data as { transaction?: import('../shared/types/monopoly.js').Transaction; players?: import('../shared/types/monopoly.js').Player[] };
     if (result.transaction !== undefined && result.players !== undefined) await this.broadcast({ type: 'GAME_COMMITTED', stateVersion, transaction: result.transaction, players: result.players, ...(command.type === 'DECLARE_BANKRUPTCY' ? { bankruptPlayerId: command.request.playerId } : {}) });
     if (command.type === 'ACCEPT_PAYMENT_REQUEST' || command.type === 'DECLINE_PAYMENT_REQUEST' || command.type === 'CANCEL_PAYMENT_REQUEST') await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion });
@@ -157,9 +181,11 @@ export class GameSession {
   private async incrementStateVersion(): Promise<number> { const value = (await this.stateVersion()) + 1; await this.ctx.storage.put('stateVersion', value); return value; }
   private transactions() { return new D1TransactionRepository(this.env.MONOPOLY_BANK_DB); }
   private commandLedger(): CommandLedgerRepository { return new D1CommandLedgerRepository(this.env.MONOPOLY_BANK_DB); }
-  private gameService() { const database = this.env.MONOPOLY_BANK_DB; return new DefaultGameService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), createId: () => crypto.randomUUID() }); }
+  private gameService() { const database = this.env.MONOPOLY_BANK_DB; return new DefaultGameService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), properties: new D1PropertyRepository(database), createId: () => crypto.randomUUID() }); }
   private access() { return new GameAccessService(new D1GameAccessRepository(this.env.MONOPOLY_BANK_DB)); }
-  private banking(commandId: string) { const database = this.env.MONOPOLY_BANK_DB; return new DefaultBankingService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), transactions: new D1TransactionRepository(database), operations: new D1BankingOperationRepository(database), paymentRequests: new D1PaymentRequestRepository(database), createId: () => commandId }); }
+  private banking(commandId: string) { const database = this.env.MONOPOLY_BANK_DB; return new DefaultBankingService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), transactions: new D1TransactionRepository(database), operations: new D1BankingOperationRepository(database), paymentRequests: new D1PaymentRequestRepository(database), properties: new D1PropertyRepository(database), createId: () => commandId }); }
+  private properties(commandId: string) { const database = this.env.MONOPOLY_BANK_DB; return new DefaultPropertyService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), properties: new D1PropertyRepository(database), transactions: new D1TransactionRepository(database), operations: new D1BankingOperationRepository(database), paymentRequests: new D1PaymentRequestRepository(database), createId: () => commandId }); }
+  private trades(commandId: string) { const database = this.env.MONOPOLY_BANK_DB; return new DefaultPropertyTradeService({ games: new D1GameRepository(database), players: new D1PlayerRepository(database), properties: new D1PropertyRepository(database), trades: new D1PropertyTradeRepository(database), transactions: new D1TransactionRepository(database), operations: new D1BankingOperationRepository(database), createId: () => commandId }); }
   private async finishGame(gameId: string, winnerPlayerIds: readonly string[]): Promise<GameDetails> {
     const beforeFinish = await this.gameService().getGame(gameId);
     if (winnerPlayerIds.some((id) => !beforeFinish.players.some((player) => player.id === id))) throw new ValidationError('winnerPlayerIds must belong to this game.');

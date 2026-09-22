@@ -48,6 +48,8 @@ export interface Game {
   updatedAt: string;
   startedAt?: string | null;
   finishedAt?: string | null;
+  /** The board this game opted into; `null` (or absent) for a game that only banks money. */
+  boardId?: string | null;
 }
 
 export interface Player {
@@ -59,6 +61,9 @@ export interface Player {
   status?: PlayerStatus;
   isInJail?: boolean;
   consecutiveDoubles?: number;
+  /** The receipt of the last recorded roll, kept only so utility rent can be settled server-side. */
+  lastRollTotal?: number | null;
+  lastRollAt?: string | null;
   /** Set when this wallet belongs to a registered Monopoly Bank account. */
   userId?: string | null;
   createdAt: string;

@@ -1,5 +1,47 @@
-import type { BankruptcyRequest, CreateBankingCommandResponse, CreateTransactionRequest, GameDetails, PaymentRequestActionResponse } from './api.js';
+import type {
+  BankruptcyRequest,
+  CreateBankingCommandResponse,
+  CreateTradeRequest,
+  CreateTransactionRequest,
+  CreateTransactionResponse,
+  DiceRollRequest,
+  DiceRollResponse,
+  GameDetails,
+  JailBailRequest,
+  PaymentRequestActionResponse,
+  PropertyBuildRequest,
+  PropertyMortgageRequest,
+  PropertyOperationResponse,
+  PropertyPurchaseRequest,
+  PropertyRentRequest,
+  PropertySellBuildingsRequest,
+  PropertyUnmortgageRequest,
+  TradeActionResponse,
+} from './api.js';
 import type { Player, Transaction } from '../types/monopoly.js';
+
+/**
+ * The property operations a single `PROPERTY_OPERATION` command can carry. Rent
+ * travels as the wire request only: the owner who may authorize a claim is
+ * resolved from the stored deed by whoever executes the command, never trusted
+ * from the payload.
+ */
+export type PropertyOperation =
+  | { operation: 'PURCHASE'; request: PropertyPurchaseRequest }
+  | { operation: 'RENT'; request: PropertyRentRequest }
+  | { operation: 'BUILD'; request: PropertyBuildRequest }
+  | { operation: 'SELL_BUILDINGS'; request: PropertySellBuildingsRequest }
+  | { operation: 'MORTGAGE'; request: PropertyMortgageRequest }
+  | { operation: 'UNMORTGAGE'; request: PropertyUnmortgageRequest };
+
+/** The intersection distributes over the union, so `operation` still narrows `request`. */
+export type PropertyOperationCommand = PropertyOperation & { type: 'PROPERTY_OPERATION'; commandId: string };
+
+export type PropertyOperationKind = PropertyOperation['operation'];
+export const propertyOperationKinds = ['PURCHASE', 'RENT', 'BUILD', 'SELL_BUILDINGS', 'MORTGAGE', 'UNMORTGAGE'] as const satisfies readonly PropertyOperationKind[];
+
+export type TradeResolution = 'accept' | 'decline' | 'cancel';
+export const tradeResolutions = ['accept', 'decline', 'cancel'] as const satisfies readonly TradeResolution[];
 
 /** Commands are accepted only by the game coordinator, never peer-to-peer. */
 export type LiveMutationCommand =
@@ -10,7 +52,12 @@ export type LiveMutationCommand =
   | { type: 'DECLARE_BANKRUPTCY'; commandId: string; request: BankruptcyRequest }
   | { type: 'START_GAME'; commandId: string }
   | { type: 'JOIN_LOBBY'; commandId: string; playerId: string; nickname: string; color: string; startingBalance: number }
-  | { type: 'FINISH_GAME'; commandId: string; winnerPlayerIds: string[] };
+  | { type: 'FINISH_GAME'; commandId: string; winnerPlayerIds: string[] }
+  | PropertyOperationCommand
+  | { type: 'PROPOSE_TRADE'; commandId: string; request: CreateTradeRequest }
+  | { type: 'RESOLVE_TRADE'; commandId: string; tradeId: string; action: TradeResolution }
+  | { type: 'JAIL_BAIL'; commandId: string; request: JailBailRequest }
+  | { type: 'DICE_ROLL'; commandId: string; request: DiceRollRequest };
 
 export interface LiveGameState {
   stateVersion: number;
@@ -27,14 +74,49 @@ export type LiveServerEvent =
   | { type: 'PRESENCE_UPDATED'; stateVersion: number; connectedActors: number }
   | { type: 'HEARTBEAT'; stateVersion: number };
 
-export type LiveMutationResponse = CreateBankingCommandResponse | PaymentRequestActionResponse | GameDetails;
+export type LiveMutationResponse =
+  | CreateBankingCommandResponse
+  | PaymentRequestActionResponse
+  | GameDetails
+  | PropertyOperationResponse
+  | TradeActionResponse
+  | CreateTransactionResponse
+  | DiceRollResponse;
 
+const commandIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+/**
+ * A structural check only: it confirms the envelope names a known command and
+ * carries the fields that command needs. Field contents are validated by the
+ * API parsers before the command is built, and authority is checked by the
+ * coordinator before it is executed.
+ */
 export function isLiveMutationCommand(value: unknown): value is LiveMutationCommand {
-  if (value === null || typeof value !== 'object' || !('type' in value) || !('commandId' in value)) return false;
-  const command = value as { type?: unknown; commandId?: unknown };
-  return typeof command.commandId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(command.commandId)
-    && (command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY' || command.type === 'FINISH_GAME' || command.type === 'ACCEPT_PAYMENT_REQUEST' || command.type === 'DECLINE_PAYMENT_REQUEST' || command.type === 'CANCEL_PAYMENT_REQUEST' || command.type === 'START_GAME' || command.type === 'JOIN_LOBBY')
-    && ((command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY') ? 'request' in value : command.type === 'FINISH_GAME' ? Array.isArray((value as { winnerPlayerIds?: unknown }).winnerPlayerIds) && ((value as { winnerPlayerIds?: unknown[] }).winnerPlayerIds ?? []).every((id) => typeof id === 'string') : command.type === 'START_GAME' ? true : command.type === 'JOIN_LOBBY' ? typeof (value as { playerId?: unknown }).playerId === 'string' && typeof (value as { nickname?: unknown }).nickname === 'string' && typeof (value as { color?: unknown }).color === 'string' && typeof (value as { startingBalance?: unknown }).startingBalance === 'number' : typeof (value as { paymentRequestId?: unknown }).paymentRequestId === 'string');
+  if (!isRecord(value) || typeof value.commandId !== 'string' || !commandIdPattern.test(value.commandId)) return false;
+  switch (value.type) {
+    case 'CREATE_TRANSACTION':
+    case 'DECLARE_BANKRUPTCY':
+    case 'PROPOSE_TRADE':
+    case 'JAIL_BAIL':
+    case 'DICE_ROLL':
+      return isRecord(value.request);
+    case 'PROPERTY_OPERATION':
+      return isRecord(value.request) && typeof value.operation === 'string' && (propertyOperationKinds as readonly string[]).includes(value.operation);
+    case 'RESOLVE_TRADE':
+      return typeof value.tradeId === 'string' && typeof value.action === 'string' && (tradeResolutions as readonly string[]).includes(value.action);
+    case 'FINISH_GAME':
+      return Array.isArray(value.winnerPlayerIds) && value.winnerPlayerIds.every((id) => typeof id === 'string');
+    case 'START_GAME':
+      return true;
+    case 'JOIN_LOBBY':
+      return typeof value.playerId === 'string' && typeof value.nickname === 'string' && typeof value.color === 'string' && typeof value.startingBalance === 'number';
+    case 'ACCEPT_PAYMENT_REQUEST':
+    case 'DECLINE_PAYMENT_REQUEST':
+    case 'CANCEL_PAYMENT_REQUEST':
+      return typeof value.paymentRequestId === 'string';
+    default:
+      return false;
+  }
 }
 
 export function isLiveServerEvent(value: unknown): value is LiveServerEvent {
