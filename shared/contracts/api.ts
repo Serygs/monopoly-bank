@@ -1,4 +1,8 @@
 import type { BoardDefinition, BoardSpace, BuildingBank, Game, GameProperty, PaymentMode, Player, SelectableCurrency, Transaction, TransactionType } from '../types/monopoly.js';
+import type { MortgageResolution } from '../domain/property-trade.js';
+
+/** The rule lives in the domain; the wire shape re-exports it so clients import one name. */
+export type { MortgageResolution };
 
 export interface ApiSuccess<T> {
   data: T;
@@ -194,12 +198,74 @@ interface PropertyRequestBase {
 }
 
 export interface PropertyPurchaseRequest extends PropertyRequestBase { playerId: string; }
-/** `diceTotal` is required only for a utility, whose rent is the dice total times the board multiplier. */
-export interface PropertyRentRequest extends PropertyRequestBase { payerPlayerId: string; diceTotal?: number; }
+/**
+ * `diceTotal` is required only for a utility, whose rent is the dice total times
+ * the board multiplier. `chargedByOwner` says the owner is the one claiming the
+ * rent, which is what decides whose controller must authorize it — the request
+ * deliberately cannot name that owner, because the owner of a space is whatever
+ * the stored deed says. See `rentBankingCommand` in `shared/domain/player-control.ts`.
+ */
+export interface PropertyRentRequest extends PropertyRequestBase { payerPlayerId: string; chargedByOwner?: boolean; diceTotal?: number; }
 export interface PropertyBuildRequest extends PropertyRequestBase { playerId: string; count: number; }
 export interface PropertySellBuildingsRequest extends PropertyRequestBase { playerId: string; count: number; }
 export interface PropertyMortgageRequest extends PropertyRequestBase { playerId: string; }
 export interface PropertyUnmortgageRequest extends PropertyRequestBase { playerId: string; }
+/** The winning bid is whatever the table agreed, so it is not bounded by the catalogue price. */
+export interface PropertyAuctionRequest extends PropertyRequestBase { winnerPlayerId: string; price: number; }
+export interface JailBailRequest { playerId: string; comment?: string; }
+
+export const propertyTradeStates = ['PENDING', 'ACCEPTED', 'DECLINED', 'CANCELLED', 'EXPIRED'] as const;
+export type PropertyTradeState = (typeof propertyTradeStates)[number];
+
+/** One deed moving in a trade. `mortgageResolution` stays null unless the deed is mortgaged. */
+export interface PropertyTradeItem {
+  boardSpaceId: string;
+  fromPlayerId: string;
+  mortgageResolution: MortgageResolution | null;
+}
+
+export interface PropertyTrade {
+  id: string;
+  gameId: string;
+  proposerPlayerId: string;
+  responderPlayerId: string;
+  cashFromProposer: number;
+  cashFromResponder: number;
+  items: PropertyTradeItem[];
+  state: PropertyTradeState;
+  expiresAt: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  transactionId: string | null;
+}
+
+export interface TradeOffer {
+  boardSpaceId: string;
+  mortgageResolution?: MortgageResolution;
+}
+
+export interface CreateTradeRequest {
+  proposerPlayerId: string;
+  responderPlayerId: string;
+  cashFromProposer?: number;
+  cashFromResponder?: number;
+  propertiesFromProposer?: TradeOffer[];
+  propertiesFromResponder?: TradeOffer[];
+  comment?: string;
+}
+
+/**
+ * Every trade action answers with the trade itself. The settling transaction and
+ * the board slice appear only on acceptance, which is the one action that moves
+ * money and deeds.
+ */
+export interface TradeActionResponse {
+  trade: PropertyTrade;
+  players: Player[];
+  transaction?: Transaction;
+  properties?: GameProperty[];
+  buildingBank?: BuildingBank;
+}
 
 /** The board slice a client needs to render ownership: the catalogue, who owns what, and what the bank still holds. */
 export interface PropertyStateResponse {

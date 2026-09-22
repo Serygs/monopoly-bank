@@ -3,14 +3,18 @@ import { describe, expect, it } from 'vitest';
 import {
   allToPlayer,
   bankToPlayer,
+  declareBankruptcy,
+  IncompleteEstateError,
   InsufficientFundsError,
   InvalidAmountError,
   passGo,
   playerToAll,
   playerToBank,
   playerToPlayer,
+  type BankruptcyCommand,
+  type BankruptcyResult,
 } from './banking.js';
-import type { Game, Player } from '../types/monopoly.js';
+import type { BoardSpace, Game, GameProperty, Player } from '../types/monopoly.js';
 
 const game: Game = {
   id: 'game-1',
@@ -215,5 +219,125 @@ describe('banking domain operations', () => {
 
     expect(balances(result)).toEqual([0]);
     expect(result.affectedPlayers.every((change) => change.balanceAfter >= 0)).toBe(true);
+  });
+});
+
+const estateSpaces: BoardSpace[] = [
+  { id: 'space-01', boardIndex: 1, kind: 'STREET', colorGroup: 'BROWN', translationKey: 'space-01', customName: null, price: 60, mortgageValue: 30, houseCost: 50, rents: [2, 10, 30, 90, 160, 250] },
+  { id: 'space-03', boardIndex: 3, kind: 'STREET', colorGroup: 'BROWN', translationKey: 'space-03', customName: null, price: 60, mortgageValue: 30, houseCost: 50, rents: [4, 20, 60, 180, 320, 450] },
+  { id: 'space-12', boardIndex: 12, kind: 'UTILITY', colorGroup: 'UTILITY', translationKey: 'space-12', customName: null, price: 150, mortgageValue: 75, houseCost: null, rents: [] },
+];
+
+function estate(): GameProperty[] {
+  return [
+    { boardSpaceId: 'space-01', ownerPlayerId: 'player-1', houses: 3, mortgaged: false },
+    { boardSpaceId: 'space-12', ownerPlayerId: 'player-1', houses: 0, mortgaged: true },
+    { boardSpaceId: 'space-03', ownerPlayerId: 'player-2', houses: 0, mortgaged: false },
+  ];
+}
+
+describe('bankruptcy without a board', () => {
+  it('hands the whole remaining balance to the creditor and settles no estate', () => {
+    const result = declareBankruptcy({ game, players: createPlayers([400, 700]), playerId: 'player-1', creditorPlayerId: 'player-2' });
+
+    expect(result.transaction).toMatchObject({ type: 'BANKRUPTCY_TRANSFER', amount: 400, totalAmount: 400 });
+    expect(balances(result)).toEqual([0, 1100]);
+    expect(result.propertyChanges).toEqual([]);
+    expect(result.buildingBankDelta).toEqual({ houses: 0, hotels: 0 });
+  });
+
+  it('records the placeholder transaction for a player who is already at zero', () => {
+    const result = declareBankruptcy({ game, players: createPlayers([0, 700]), playerId: 'player-1', creditorPlayerId: 'player-2' });
+
+    expect(result.transaction).toEqual({
+      gameId: game.id,
+      type: 'BANKRUPTCY_TRANSFER',
+      amount: 1,
+      totalAmount: 1,
+      comment: null,
+      participants: [],
+    });
+    expect(result.affectedPlayers).toEqual([]);
+    expect(result.propertyChanges).toEqual([]);
+  });
+});
+
+describe('bankruptcy with an estate', () => {
+  it('passes every deed to the creditor with its mortgage state and sells the buildings back', () => {
+    const result = declareBankruptcy({
+      game,
+      players: createPlayers([400, 700]),
+      playerId: 'player-1',
+      creditorPlayerId: 'player-2',
+      spaces: estateSpaces,
+      properties: estate(),
+    });
+
+    // 400 in cash plus 3 houses x floor(50 / 2) = 475 to the creditor.
+    expect(result.transaction).toMatchObject({ type: 'BANKRUPTCY_TRANSFER', amount: 475, totalAmount: 475 });
+    expect(balances(result)).toEqual([0, 1175]);
+    expect(result.propertyChanges).toEqual([
+      { boardSpaceId: 'space-01', ownerPlayerId: 'player-2', houses: 0, mortgaged: false },
+      { boardSpaceId: 'space-12', ownerPlayerId: 'player-2', houses: 0, mortgaged: true },
+    ]);
+    expect(result.buildingBankDelta).toEqual({ houses: 3, hotels: 0 });
+  });
+
+  it('releases every deed to nobody when the bankruptcy is to the bank', () => {
+    const result = declareBankruptcy({
+      game,
+      players: createPlayers([400, 700]),
+      playerId: 'player-1',
+      spaces: estateSpaces,
+      properties: estate(),
+    });
+
+    expect(balances(result)).toEqual([0]);
+    expect(result.propertyChanges).toEqual([
+      { boardSpaceId: 'space-01', ownerPlayerId: null, houses: 0, mortgaged: false },
+      { boardSpaceId: 'space-12', ownerPlayerId: null, houses: 0, mortgaged: true },
+    ]);
+    expect(result.buildingBankDelta).toEqual({ houses: 3, hotels: 0 });
+  });
+
+  it('returns a hotel rather than five houses', () => {
+    const result = declareBankruptcy({
+      game,
+      players: createPlayers([0, 700]),
+      playerId: 'player-1',
+      creditorPlayerId: 'player-2',
+      spaces: estateSpaces,
+      properties: [{ boardSpaceId: 'space-01', ownerPlayerId: 'player-1', houses: 5, mortgaged: false }],
+    });
+
+    // No cash at all, so the bankrupt carries no participant row: only the 125 of
+    // building proceeds moves, and the bank takes its hotel back.
+    expect(result.transaction).toMatchObject({ type: 'BANKRUPTCY_TRANSFER', amount: 125, totalAmount: 125, participants: [{ playerId: 'player-2', balanceDelta: 125 }] });
+    expect(balances(result)).toEqual([825]);
+    expect(result.buildingBankDelta).toEqual({ houses: 0, hotels: 1 });
+  });
+});
+
+describe('bankruptcy handed half an estate', () => {
+  const halfEstate = (estateInput: Partial<BankruptcyCommand>): (() => BankruptcyResult) => () =>
+    declareBankruptcy({ game, players: createPlayers([400, 700]), playerId: 'player-1', creditorPlayerId: 'player-2', ...estateInput });
+
+  it.each([
+    ['deeds without the spaces they stand on', { properties: estate() }],
+    ['spaces without the deeds standing on them', { spaces: estateSpaces }],
+  ])('refuses a bankruptcy given %s instead of silently leaving every deed with the bankrupt', (_label, estateInput) => {
+    expect(halfEstate(estateInput)).toThrow(IncompleteEstateError);
+  });
+
+  it('reports the incomplete estate as a client error naming the missing field', () => {
+    let thrown: unknown;
+    try {
+      halfEstate({ properties: estate() })();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(IncompleteEstateError);
+    expect(thrown).toMatchObject({ code: 'INCOMPLETE_ESTATE', status: 400, details: { missing: ['spaces'] } });
   });
 });

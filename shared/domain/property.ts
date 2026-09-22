@@ -5,20 +5,22 @@ import type {
   Game,
   GameProperty,
   Player,
-  TransactionType,
 } from '../types/monopoly.js';
 import { hotelHouseLevel } from '../types/monopoly.js';
 import {
   BankingDomainError,
-  InsufficientFundsError,
-  InvalidAmountError,
+  createBalanceChange,
+  createResult,
+  ensureActive,
+  ensureDifferentPlayers,
+  ensureSufficientFunds,
+  findPlayer,
   InvalidGameStateError,
-  PlayerBankruptError,
-  PlayerNotFoundError,
-  SameSourceAndDestinationError,
+  multiplyPositiveAmounts,
+  validateAmount,
+  validateGame,
   type BankingOperationResult,
-  type PlayerBalanceChange,
-} from './banking.js';
+} from './banking-rules.js';
 
 /**
  * Every property operation takes the same slice of the world: the game, its
@@ -325,7 +327,7 @@ export function buildHouses(command: BuildHousesCommand): PropertyOperationResul
   const drawnHotels = targetHouses === hotelHouseLevel ? 1 : 0;
   ensureBuildingsAvailable(command.buildingBank, drawnHouses, drawnHotels);
 
-  const totalCost = multiplyAmounts(houseCost, command.count);
+  const totalCost = multiplyPositiveAmounts(houseCost, command.count);
   ensureSufficientFunds(player, totalCost);
 
   return {
@@ -359,7 +361,7 @@ export function sellBuildings(command: SellBuildingsCommand): PropertyOperationR
   ensureBuildingsAvailable(command.buildingBank, property.houses === hotelHouseLevel ? hotelHouseLevel - 1 : 0, 0);
 
   const pricePerBuilding = Math.floor(houseCost / 2);
-  const totalProceeds = multiplyAmounts(pricePerBuilding, command.count);
+  const totalProceeds = multiplyPositiveAmounts(pricePerBuilding, command.count);
   validateAmount(totalProceeds);
 
   return {
@@ -467,7 +469,7 @@ function utilityRent(command: CalculateRentCommand, space: BoardSpace, ownerPlay
     (groupSpace) => findProperty(command.properties, groupSpace.id).ownerPlayerId === ownerPlayerId,
   ).length;
   const multiplier = owned > 1 ? command.board.utilityMultiplierPair : command.board.utilityMultiplierSingle;
-  return multiplyAmounts(diceTotal, multiplier);
+  return multiplyPositiveAmounts(diceTotal, multiplier);
 }
 
 function rentLevel(space: BoardSpace, level: number): number {
@@ -561,96 +563,25 @@ function findProperty(properties: readonly GameProperty[], boardSpaceId: string)
   );
 }
 
-function validateGame(game: Game, players: readonly Player[]): readonly Player[] {
-  if (game.status !== 'ACTIVE') {
-    throw new InvalidGameStateError(`game status is ${game.status}`);
+/**
+ * What the bank pays back for the `houses` buildings standing on `space`: half
+ * the house cost each, floored, with a hotel counting as the five buildings its
+ * level represents. Bankruptcy and trades liquidate whole spaces through this.
+ */
+export function buildingSaleProceeds(space: BoardSpace, houses: number): number {
+  if (houses <= 0) {
+    return 0;
   }
-  if (players.length < 2 || players.length > 6) {
-    throw new InvalidGameStateError('a game must contain between 2 and 6 players');
-  }
-
-  const playerIds = new Set<string>();
-  for (const player of players) {
-    if (player.gameId !== game.id) {
-      throw new InvalidGameStateError(`player "${player.id}" belongs to another game`);
-    }
-    if (!Number.isSafeInteger(player.balance) || player.balance < 0) {
-      throw new InvalidGameStateError(`player "${player.id}" has an invalid balance`);
-    }
-    if (playerIds.has(player.id)) {
-      throw new InvalidGameStateError(`player "${player.id}" appears more than once`);
-    }
-    playerIds.add(player.id);
-  }
-
-  return players;
+  return Math.floor(buildableHouseCost(space) / 2) * houses;
 }
 
-function validateAmount(amount: number): void {
-  if (!Number.isSafeInteger(amount) || amount <= 0) {
-    throw new InvalidAmountError(amount);
-  }
-}
-
-function findPlayer(players: readonly Player[], playerId: string): Player {
-  const player = players.find((candidate) => candidate.id === playerId);
-  if (player === undefined) {
-    throw new PlayerNotFoundError(playerId);
-  }
-  return player;
-}
-
-function ensureActive(player: Player): void {
-  if (player.status === 'BANKRUPT') {
-    throw new PlayerBankruptError(player.id);
-  }
-}
-
-function ensureDifferentPlayers(source: Player, destination: Player): void {
-  if (source.id === destination.id) {
-    throw new SameSourceAndDestinationError(source.id);
-  }
-}
-
-function ensureSufficientFunds(player: Player, requiredAmount: number): void {
-  if (player.balance < requiredAmount) {
-    throw new InsufficientFundsError(player.id, player.balance, requiredAmount);
-  }
-}
-
-function multiplyAmounts(amount: number, multiplier: number): number {
-  const totalAmount = amount * multiplier;
-  if (!Number.isSafeInteger(totalAmount) || totalAmount <= 0) {
-    throw new InvalidAmountError(totalAmount);
-  }
-  return totalAmount;
-}
-
-function createBalanceChange(player: Player, balanceDelta: number): PlayerBalanceChange {
-  const balanceAfter = player.balance + balanceDelta;
-  if (!Number.isSafeInteger(balanceAfter) || balanceAfter < 0) {
-    throw new InvalidGameStateError(`operation would produce an invalid balance for player "${player.id}"`);
-  }
-  return { player, balanceBefore: player.balance, balanceAfter, balanceDelta };
-}
-
-function createResult(
-  gameId: string,
-  type: TransactionType,
-  amount: number,
-  totalAmount: number,
-  comment: string | null | undefined,
-  affectedPlayers: PlayerBalanceChange[],
-): BankingOperationResult {
-  return {
-    transaction: {
-      gameId,
-      type,
-      amount,
-      totalAmount,
-      comment: comment ?? null,
-      participants: affectedPlayers.map(({ player, balanceDelta }) => ({ playerId: player.id, balanceDelta })),
-    },
-    affectedPlayers,
-  };
-}
+/**
+ * The board primitives, under names that read outside this module. Bankruptcy
+ * and trades settle whole deeds with exactly the lookups and the bank arithmetic
+ * the single-space operations use, rather than a second copy of them.
+ */
+export {
+  findSpace as findBoardSpace,
+  findProperty as findGameProperty,
+  buildingBankDelta as buildingBankDeltaBetween,
+};

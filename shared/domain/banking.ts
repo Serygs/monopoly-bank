@@ -1,5 +1,47 @@
-import type { Game, Player, TransactionParticipant, TransactionType } from '../types/monopoly.js';
-import { AppError } from '../../worker/services/errors.js';
+import type { BoardDefinition, BoardSpace, BuildingBank, GameProperty, Player } from '../types/monopoly.js';
+import {
+  BankingDomainError,
+  createBalanceChange,
+  createResult,
+  ensureActive,
+  ensureDifferentPlayers,
+  ensureSufficientFunds,
+  findPlayer,
+  multiplyAmounts,
+  validateAmount,
+  validateGame,
+  type BankingCommand,
+  type BankingOperationResult,
+} from './banking-rules.js';
+import {
+  buildingBankDeltaBetween,
+  buildingSaleProceeds,
+  findBoardSpace,
+  type BuildingBankDelta,
+  type PropertyChange,
+} from './property.js';
+
+/**
+ * The shared rules, the error classes and the result types live in
+ * `banking-rules.ts` so property, trade and jail operations can reuse them
+ * without importing this module. They are re-exported here unchanged: every
+ * importer that predates the split keeps its import path.
+ */
+export {
+  BankingDomainError,
+  InsufficientFundsError,
+  InvalidAmountError,
+  InvalidGameStateError,
+  PlayerBankruptError,
+  PlayerNotFoundError,
+  SameSourceAndDestinationError,
+} from './banking-rules.js';
+export type {
+  BankingErrorCode,
+  BankingOperationResult,
+  PendingTransaction,
+  PlayerBalanceChange,
+} from './banking-rules.js';
 
 export interface PlayerToPlayerCommand extends BankingCommand {
   sourcePlayerId: string;
@@ -27,118 +69,49 @@ export interface AllToPlayerCommand extends BankingCommand {
   amountPerPlayer: number;
 }
 
-export interface PassGoCommand {
-  game: Game;
-  players: readonly Player[];
+export interface PassGoCommand extends BankingCommand {
   playerId: string;
-  comment?: string | null;
 }
 
+/**
+ * The four board fields travel together and are all optional: a game that never
+ * opted into a board passes none of them and keeps the pre-board behaviour, down
+ * to the `balance === 0` placeholder transaction. `spaces` and `properties` are
+ * the estate, and they are all-or-nothing: one without the other is refused with
+ * `IncompleteEstateError` rather than settled as an empty estate.
+ *
+ * `board` and `buildingBank` are accepted so a caller can spread the same board
+ * slice it passes to every other property operation, but neither is read: a
+ * bankruptcy charges no mortgage interest (the deed moves still mortgaged) and
+ * only ever hands buildings back, so it can never exhaust the bank.
+ */
 export interface BankruptcyCommand extends BankingCommand {
   playerId: string;
   creditorPlayerId?: string;
+  board?: BoardDefinition;
+  spaces?: readonly BoardSpace[];
+  properties?: readonly GameProperty[];
+  buildingBank?: BuildingBank;
 }
 
-interface BankingCommand {
-  game: Game;
-  players: readonly Player[];
-  comment?: string | null;
-}
+/**
+ * A bankruptcy handed only half of what it needs to settle an estate. Dropping
+ * the estate silently would report a successful bankruptcy while leaving every
+ * deed with the bankrupt player, so the incomplete command is refused instead.
+ */
+export class IncompleteEstateError extends BankingDomainError {
+  readonly code = 'INCOMPLETE_ESTATE' as const;
+  readonly missing: readonly string[];
 
-export interface BankingOperationResult {
-  transaction: PendingTransaction;
-  affectedPlayers: PlayerBalanceChange[];
-}
-
-export interface PendingTransaction {
-  gameId: string;
-  type: TransactionType;
-  amount: number;
-  totalAmount: number;
-  comment: string | null;
-  participants: TransactionParticipant[];
-}
-
-export interface PlayerBalanceChange {
-  player: Player;
-  balanceBefore: number;
-  balanceAfter: number;
-  balanceDelta: number;
-}
-
-export type BankingErrorCode =
-  | 'INVALID_AMOUNT'
-  | 'PLAYER_NOT_FOUND'
-  | 'SAME_SOURCE_AND_DESTINATION'
-  | 'INSUFFICIENT_FUNDS'
-  | 'GAME_FINISHED'
-  | 'PLAYER_BANKRUPT';
-
-export abstract class BankingDomainError extends AppError {}
-
-export class InvalidAmountError extends BankingDomainError {
-  readonly code = 'INVALID_AMOUNT' as const;
-  readonly amount: number;
-
-  constructor(amount: number) {
-    super({ code: 'INVALID_AMOUNT', message: 'Amount must be a positive safe integer.', status: 400, details: { field: 'amount' } });
-    this.amount = amount;
+  constructor(missing: readonly string[]) {
+    super({ code: 'INCOMPLETE_ESTATE', message: 'The estate of a bankruptcy needs both the board spaces and the properties.', status: 400, details: { missing: [...missing] } });
+    this.missing = missing;
   }
 }
 
-export class PlayerNotFoundError extends BankingDomainError {
-  readonly code = 'PLAYER_NOT_FOUND' as const;
-  readonly playerId: string;
-
-  constructor(playerId: string) {
-    super({ code: 'PLAYER_NOT_FOUND', message: 'Player not found.', status: 404 });
-    this.playerId = playerId;
-  }
-}
-
-export class SameSourceAndDestinationError extends BankingDomainError {
-  readonly code = 'SAME_SOURCE_AND_DESTINATION' as const;
-  readonly playerId: string;
-
-  constructor(playerId: string) {
-    super({ code: 'SAME_SOURCE_AND_DESTINATION', message: 'The source and destination players must be different.', status: 400 });
-    this.playerId = playerId;
-  }
-}
-
-export class InsufficientFundsError extends BankingDomainError {
-  readonly code = 'INSUFFICIENT_FUNDS' as const;
-  readonly playerId: string;
-  readonly currentBalance: number;
-  readonly requiredAmount: number;
-  readonly shortfall: number;
-
-  constructor(
-    playerId: string,
-    currentBalance: number,
-    requiredAmount: number,
-  ) {
-    super({ code: 'INSUFFICIENT_FUNDS', message: 'Player does not have enough funds.', status: 409, details: { playerId, currentBalance, requiredAmount, shortfall: requiredAmount - currentBalance } });
-    this.playerId = playerId;
-    this.currentBalance = currentBalance;
-    this.requiredAmount = requiredAmount;
-    this.shortfall = requiredAmount - currentBalance;
-  }
-}
-
-export class InvalidGameStateError extends BankingDomainError {
-  readonly code = 'GAME_FINISHED' as const;
-  readonly reason: string;
-
-  constructor(reason: string) {
-    super({ code: 'GAME_FINISHED', message: 'This game is finished.', status: 409 });
-    this.reason = reason;
-  }
-}
-
-export class PlayerBankruptError extends BankingDomainError {
-  readonly code = 'PLAYER_BANKRUPT' as const;
-  constructor(playerId: string) { super({ code: 'PLAYER_BANKRUPT', message: 'This player is bankrupt.', status: 409, details: { playerId } }); }
+export interface BankruptcyResult extends BankingOperationResult {
+  propertyChanges: PropertyChange[];
+  buildingBankDelta: BuildingBankDelta;
 }
 
 export function playerToPlayer(command: PlayerToPlayerCommand): BankingOperationResult {
@@ -263,121 +236,75 @@ export function passGo(command: PassGoCommand): BankingOperationResult {
   );
 }
 
-export function declareBankruptcy(command: BankruptcyCommand): BankingOperationResult {
+/**
+ * Canonical bankruptcy. The estate is liquidated first — every building the
+ * bankrupt still owns goes back to the bank at half its house cost — and the
+ * proceeds ride along with the cash. With a creditor the deeds change hands
+ * keeping their mortgage state; without one they are released to nobody, which
+ * is what lets the table auction them afterwards.
+ */
+export function declareBankruptcy(command: BankruptcyCommand): BankruptcyResult {
   const players = validateGame(command.game, command.players);
   const bankruptPlayer = findPlayer(players, command.playerId);
   ensureActive(bankruptPlayer);
   const creditor = command.creditorPlayerId === undefined ? null : findPlayer(players, command.creditorPlayerId);
   if (creditor !== null) { ensureActive(creditor); ensureDifferentPlayers(bankruptPlayer, creditor); }
-  if (bankruptPlayer.balance === 0) {
-    return createResult(command.game.id, 'BANKRUPTCY_TRANSFER', 1, 1, null, []);
+
+  const estate = liquidateEstate(command, bankruptPlayer, creditor);
+  const transferred = bankruptPlayer.balance + estate.proceeds;
+  if (transferred === 0) {
+    return { ...createResult(command.game.id, 'BANKRUPTCY_TRANSFER', 1, 1, null, []), ...estate.settlement };
   }
-  return createResult(command.game.id, 'BANKRUPTCY_TRANSFER', bankruptPlayer.balance, bankruptPlayer.balance, null, [
+
+  // A bankrupt holding nothing but buildings ends with a zero cash delta, and a
+  // participant row of zero is not a thing the ledger stores.
+  const affectedPlayers = [
     createBalanceChange(bankruptPlayer, -bankruptPlayer.balance),
-    ...(creditor === null ? [] : [createBalanceChange(creditor, bankruptPlayer.balance)]),
-  ]);
-}
-
-function validateGame(game: Game, players: readonly Player[]): readonly Player[] {
-  if (game.status !== 'ACTIVE') {
-    throw new InvalidGameStateError(`game status is ${game.status}`);
-  }
-
-  if (players.length < 2 || players.length > 6) {
-    throw new InvalidGameStateError('a game must contain between 2 and 6 players');
-  }
-
-  const playerIds = new Set<string>();
-  for (const player of players) {
-    if (player.gameId !== game.id) {
-      throw new InvalidGameStateError(`player "${player.id}" belongs to another game`);
-    }
-    if (!Number.isSafeInteger(player.balance) || player.balance < 0) {
-      throw new InvalidGameStateError(`player "${player.id}" has an invalid balance`);
-    }
-    if (playerIds.has(player.id)) {
-      throw new InvalidGameStateError(`player "${player.id}" appears more than once`);
-    }
-    playerIds.add(player.id);
-  }
-
-  return players;
-}
-
-function validateAmount(amount: number): void {
-  if (!Number.isSafeInteger(amount) || amount <= 0) {
-    throw new InvalidAmountError(amount);
-  }
-}
-
-function findPlayer(players: readonly Player[], playerId: string): Player {
-  const player = players.find((candidate) => candidate.id === playerId);
-  if (player === undefined) {
-    throw new PlayerNotFoundError(playerId);
-  }
-  return player;
-}
-
-function ensureDifferentPlayers(source: Player, destination: Player): void {
-  if (source.id === destination.id) {
-    throw new SameSourceAndDestinationError(source.id);
-  }
-}
-
-function ensureSufficientFunds(player: Player, requiredAmount: number): void {
-  if (player.balance < requiredAmount) {
-    throw new InsufficientFundsError(player.id, player.balance, requiredAmount);
-  }
-}
-
-function ensureActive(player: Player): void {
-  if (player.status === 'BANKRUPT') {
-    throw new PlayerBankruptError(player.id);
-  }
-}
-
-function multiplyAmounts(amount: number, multiplier: number): number {
-  const totalAmount = amount * multiplier;
-  if (!Number.isSafeInteger(totalAmount)) {
-    throw new InvalidAmountError(totalAmount);
-  }
-  return totalAmount;
-}
-
-function createBalanceChange(player: Player, balanceDelta: number): PlayerBalanceChange {
-  const balanceAfter = player.balance + balanceDelta;
-  if (!Number.isSafeInteger(balanceAfter) || balanceAfter < 0) {
-    throw new InvalidGameStateError(`operation would produce an invalid balance for player "${player.id}"`);
-  }
+    ...(creditor === null ? [] : [createBalanceChange(creditor, transferred)]),
+  ].filter((change) => change.balanceDelta !== 0);
 
   return {
-    player,
-    balanceBefore: player.balance,
-    balanceAfter,
-    balanceDelta,
+    ...createResult(command.game.id, 'BANKRUPTCY_TRANSFER', transferred, transferred, null, affectedPlayers),
+    ...estate.settlement,
   };
 }
 
-function createResult(
-  gameId: string,
-  type: TransactionType,
-  amount: number,
-  totalAmount: number,
-  comment: string | null | undefined,
-  affectedPlayers: PlayerBalanceChange[],
-): BankingOperationResult {
-  return {
-    transaction: {
-      gameId,
-      type,
-      amount,
-      totalAmount,
-      comment: comment ?? null,
-      participants: affectedPlayers.map(({ player, balanceDelta }) => ({
-        playerId: player.id,
-        balanceDelta,
-      })),
-    },
-    affectedPlayers,
-  };
+interface EstateLiquidation {
+  proceeds: number;
+  settlement: { propertyChanges: PropertyChange[]; buildingBankDelta: BuildingBankDelta };
+}
+
+function liquidateEstate(command: BankruptcyCommand, bankruptPlayer: Player, creditor: Player | null): EstateLiquidation {
+  const empty: EstateLiquidation = { proceeds: 0, settlement: { propertyChanges: [], buildingBankDelta: { houses: 0, hotels: 0 } } };
+  const spaces = command.spaces;
+  const properties = command.properties;
+  if (spaces === undefined && properties === undefined) {
+    return empty;
+  }
+
+  // The two estate fields are one all-or-nothing group. Half of them is a caller
+  // bug, and settling nothing on it would report a successful bankruptcy that
+  // silently left every deed with the bankrupt player.
+  if (spaces === undefined || properties === undefined) {
+    throw new IncompleteEstateError(spaces === undefined ? ['spaces'] : ['properties']);
+  }
+
+  const owned = properties.filter((property) => property.ownerPlayerId === bankruptPlayer.id);
+  return owned.reduce<EstateLiquidation>((estate, property) => {
+    const space = findBoardSpace(spaces, property.boardSpaceId);
+    const returned = buildingBankDeltaBetween(property.houses, 0);
+    return {
+      proceeds: estate.proceeds + buildingSaleProceeds(space, property.houses),
+      settlement: {
+        propertyChanges: [
+          ...estate.settlement.propertyChanges,
+          { boardSpaceId: property.boardSpaceId, ownerPlayerId: creditor === null ? null : creditor.id, houses: 0, mortgaged: property.mortgaged },
+        ],
+        buildingBankDelta: {
+          houses: estate.settlement.buildingBankDelta.houses + returned.houses,
+          hotels: estate.settlement.buildingBankDelta.hotels + returned.hotels,
+        },
+      },
+    };
+  }, empty);
 }
