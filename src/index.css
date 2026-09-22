@@ -1,93 +1,40 @@
-:root {
-  --font-ui: "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+@import '@fontsource-variable/inter/wght.css';
+@import './styles/visual-styles/classic-bank.css';
+@import './styles/visual-styles/liquid-glass.css';
 
-  /* Semantic colour template. Components use roles instead of theme-specific colours. */
-  --color-canvas: #eee8d5;
-  --color-canvas-pattern: rgb(23 74 49 / .035);
-  --color-surface: #fff;
-  --color-surface-raised: #fffdf2;
-  --color-surface-banknote: #f9f3d9;
-  --color-surface-subtle: #f1faf3;
-  --color-text: #17251f;
-  --color-text-heading: #123e2c;
-  --color-text-muted: #455e51;
-  --color-text-on-brand: #fffdf2;
-  --color-text-accent: #397653;
-  --color-border: #dce4dc;
-  --color-border-strong: #8ca491;
-  --color-brand: #1f6b45;
-  --color-brand-strong: #123e2c;
-  --color-brass: #c8a958;
-  --color-income-surface: #e1f3e6;
-  --color-income-border: #3c8258;
-  --color-income-text: #153f28;
-  --color-expense-surface: #f8e3e3;
-  --color-expense-border: #b9464d;
-  --color-expense-text: #682128;
-  --color-paper: #fff9e9;
-  --color-paper-rule: rgb(31 107 69 / .11);
-  --color-felt-deep: #0f3828;
-  --color-felt-mid: #1d6748;
-  --color-rail: #c83d3f;
-  --color-gold-light: #f3dda0;
-  --shadow-surface: 0 8px 22px rgb(37 54 44 / .08);
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-7: 48px;
-  --radius-control: 12px;
-  --radius-panel: 12px;
-  --radius-panel-large: 18px;
-  --focus-ring: 3px solid var(--color-brass);
-  --motion-fast: .16s ease;
+:root {
   --app-safe-top: env(safe-area-inset-top, 0px);
   --app-safe-right: env(safe-area-inset-right, 0px);
-  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
   --app-safe-left: env(safe-area-inset-left, 0px);
-
-  font-family: var(--font-ui);
-  color: var(--color-text);
+  color: var(--color-text-primary);
   background: var(--color-canvas);
+  font-family: var(--font-ui);
   font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
-[data-theme='dark'] {
-  color-scheme: dark;
-  --color-canvas: #10231b;
-  --color-canvas-pattern: rgb(174 212 185 / .045);
-  --color-surface: #193229;
-  --color-surface-raised: #1d3d30;
-  --color-surface-banknote: #203827;
-  --color-surface-subtle: #173326;
-  --color-text: #edf5ee;
-  --color-text-heading: #fff6cb;
-  --color-text-muted: #c3d5c7;
-  --color-text-on-brand: #fffdf2;
-  --color-text-accent: #8ec9a0;
-  --color-border: #52695e;
-  --color-border-strong: #5a7968;
-  --color-brand: #2d895d;
-  --color-brand-strong: #d7ecda;
-  --color-brass: #dfc96d;
-  --color-income-surface: #174c32;
-  --color-income-border: #76ca93;
-  --color-income-text: #f0fbf2;
-  --color-expense-surface: #572a31;
-  --color-expense-border: #f08a90;
-  --color-expense-text: #fff2f2;
-  --color-paper: #1b392c;
-  --color-paper-rule: rgb(215 236 218 / .09);
-  --color-felt-deep: #091c15;
-  --color-felt-mid: #174b35;
-  --color-rail: #d85b62;
-  --color-gold-light: #ebd881;
-  --shadow-surface: 0 12px 28px rgb(0 0 0 / .24);
-}
+:root[data-color-mode='light'] { color-scheme: light; }
+:root[data-color-mode='dark'] { color-scheme: dark; }
+
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; overflow-x: hidden; color: var(--color-text); background-color: var(--color-canvas); background-image: linear-gradient(var(--color-canvas-pattern) 1px, transparent 1px), linear-gradient(90deg, var(--color-canvas-pattern) 1px, transparent 1px), radial-gradient(circle at 15% 10%, rgb(255 255 255 / .85), transparent 34rem); background-size: 32px 32px, 32px 32px, auto; }
-button, input { font: inherit; }
+
+body {
+  min-width: 320px;
+  margin: 0;
+  overflow-x: hidden;
+  color: var(--color-text-primary);
+  background: var(--color-canvas);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-body);
+}
+
+button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
-button:disabled { cursor: not-allowed; opacity: .55; }
+button:disabled { cursor: not-allowed; }
+
+::selection {
+  color: var(--color-text-on-inverse);
+  background: var(--color-accent);
+}
