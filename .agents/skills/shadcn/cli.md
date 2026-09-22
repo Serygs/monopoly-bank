@@ -1,5 +1,9 @@
 # shadcn CLI Reference
 
+> **Monopoly Bank:** do not apply a preset or allow generated theme/font changes
+> to become a separate design source. Follow `docs/ui-design-system.md` and
+> preview any CLI-authored CSS changes before accepting them.
+
 Configuration is read from `components.json`.
 
 > **IMPORTANT:** Always run commands using the project's package runner: `npx shadcn@latest`, `pnpm dlx shadcn@latest`, or `bunx --bun shadcn@latest`. Check `packageManager` from project context to choose the right one. Examples below use `npx shadcn@latest` but substitute the correct runner for the project.

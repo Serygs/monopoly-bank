@@ -26,8 +26,8 @@ describe('transaction history formatting', () => {
     expect(transactionDescription(bankTransaction('PROPERTY_PURCHASE', -60), players)).toBe('John → Bank · Bought a deed');
     expect(transactionDescription(bankTransaction('PROPERTY_MORTGAGE', 30), players, 'uk')).toBe('Банк → John · Застава поля');
     expect(transactionDescription({ ...rent, type: 'PROPERTY_RENT' }, players, 'uk')).toBe('John → Alex · Оренда');
-    expect(transactionDescription({ ...rent, type: 'PROPERTY_TRADE', participants: [] }, players)).toBe('Trade');
-    expect(transactionDescription(bankTransaction('JAIL_BAIL', -50), players)).toBe('John → Bank · Jail bail');
+    expect(transactionDescription({ ...rent, type: 'PROPERTY_TRADE', participants: [] }, players)).toBe('Trade settled');
+    expect(transactionDescription(bankTransaction('JAIL_BAIL', -50), players)).toBe('John → Bank · Paid jail bail');
   });
 
   it('shows per-building and total figures for a multi-house build', () => {

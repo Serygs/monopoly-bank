@@ -81,7 +81,7 @@ describe('GamePage for a game on a board', () => {
   async function renderGamePage(): Promise<void> {
     const value = { language: 'en' as const, locale: 'en-US', setLanguage: () => undefined, t: (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate('en', key, values) };
     await act(async () => {
-      root.render(<StrictMode><LanguageContext value={value}><GamePage gameId="game-1" onBack={() => undefined} preferences={{ theme: 'light', sound: false, vibration: false }} offline={false} onPaymentFlowChange={() => undefined} /></LanguageContext></StrictMode>);
+      root.render(<StrictMode><LanguageContext value={value}><GamePage gameId="game-1" onBack={() => undefined} preferences={{ visualStyle: 'classic-bank', colorMode: 'light', sound: false, vibration: false }} offline={false} onPaymentFlowChange={() => undefined} /></LanguageContext></StrictMode>);
     });
     await act(async () => { await Promise.resolve(); });
   }

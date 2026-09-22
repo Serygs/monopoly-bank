@@ -1,6 +1,10 @@
-import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type Browser, type BrowserContext, type Page, type TestInfo } from '@playwright/test';
 
+import type { ActivityPage, GameDetails, GameSummary, LedgerStatistics, UserProfile } from '../shared/contracts/api';
+import type { Game, Player, Transaction } from '../shared/types/monopoly';
+import { translate, type Language } from '../src/i18n/translations';
 import { EMAIL_FEATURES_ENABLED } from '../src/utils/email-features';
+import type { VisualStyleId } from '../src/appearance/visual-styles';
 
 const baseURL = process.env.E2E_BASE_URL;
 const runE2E = baseURL !== undefined && process.env.E2E_RUN === 'true';
@@ -102,27 +106,491 @@ test.describe('production browser pyramid', () => {
   });
 });
 
+// Coverage is governed by docs/ui-design-system.md; screenshots remain diagnostic attachments rather than baselines.
 test.describe('visual and accessibility matrix', () => {
   test.skip(!runE2E, 'Set E2E_BASE_URL and E2E_RUN=true against an isolated staging environment.');
+
+  const responsiveCases = [
+    { width: 320, language: 'en', colorScheme: 'light', reducedMotion: 'no-preference' },
+    { width: 390, language: 'uk', colorScheme: 'dark', reducedMotion: 'reduce' },
+    { width: 430, language: 'en', colorScheme: 'dark', reducedMotion: 'no-preference' },
+    { width: 768, language: 'uk', colorScheme: 'light', reducedMotion: 'reduce' },
+    { width: 1024, language: 'en', colorScheme: 'dark', reducedMotion: 'reduce' },
+    { width: 1280, language: 'uk', colorScheme: 'light', reducedMotion: 'no-preference' },
+    { width: 1440, language: 'en', colorScheme: 'light', reducedMotion: 'no-preference' },
+  ] as const;
+
+  for (const visualCase of responsiveCases) {
+    test(`major routes at ${visualCase.width}px ${visualCase.language} ${visualCase.colorScheme}`, async ({ browser }, testInfo) => {
+      const context = await createVisualContext(browser, visualCase);
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await exerciseMajorViews(page, visualCase.language, `${visualCase.width}-${visualCase.language}-${visualCase.colorScheme}`, testInfo);
+      await context.close();
+    });
+  }
+
   for (const language of ['en', 'uk'] as const) {
-    for (const width of [320, 390, 768, 1280]) {
-      for (const colorScheme of ['light', 'dark'] as const) {
-        for (const reducedMotion of ['reduce', 'no-preference'] as const) {
-          test(`${language} ${width}px ${colorScheme} ${reducedMotion}`, async ({ browser }, testInfo) => {
-          const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme, reducedMotion });
-          await context.addInitScript((selectedLanguage) => window.localStorage.setItem('monopoly-bank-language', selectedLanguage), language);
+    for (const colorScheme of ['light', 'dark'] as const) {
+      for (const reducedMotion of ['reduce', 'no-preference'] as const) {
+        for (const visualStyle of ['classic-bank', 'liquid-glass'] as const) {
+        test(`${visualStyle} ${language} ${colorScheme} ${reducedMotion}`, async ({ browser }, testInfo) => {
+          const context = await createVisualContext(browser, { width: 390, language, colorScheme, reducedMotion, visualStyle });
           const page = await context.newPage();
+          await mockVisualApi(page);
           await page.goto('/');
-          await expect(page.locator('html')).toHaveAttribute('lang', language);
-          await expect(page.locator('body')).toEvaluate((body) => body.scrollWidth <= window.innerWidth);
-          await testInfo.attach(`matrix-${language}-${width}-${colorScheme}-${reducedMotion}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+          await assertSearchFieldGeometry(page);
+          await openGame(page, language);
+          await assertViewportHealth(page);
+          await expect(page.locator('html')).toHaveAttribute('data-visual-style', visualStyle);
+          await expect(page.locator('html')).toHaveAttribute('data-color-mode', colorScheme);
+          if (reducedMotion === 'reduce') {
+            const motion = await page.locator('.wallet-card').first().evaluate((element) => {
+              const style = getComputedStyle(element);
+              return { animation: style.animationName, transition: style.transitionDuration };
+            });
+            expect(motion).toEqual({ animation: 'none', transition: '0s' });
+          }
+          await openActivity(page, language);
+          await attachPage(page, testInfo, `${visualStyle}-${language}-${colorScheme}-${reducedMotion}-activity`);
+          await page.keyboard.press('Escape');
+          await openStatistics(page, language);
+          await attachPage(page, testInfo, `${visualStyle}-${language}-${colorScheme}-${reducedMotion}-statistics`);
+          await page.keyboard.press('Escape');
+          await openSettings(page, language);
+          await attachPage(page, testInfo, `${visualStyle}-${language}-${colorScheme}-${reducedMotion}-settings`);
           await context.close();
         });
+        }
       }
     }
   }
+
+  for (const visualStyle of ['classic-bank', 'liquid-glass'] as const) {
+    for (const colorScheme of ['light', 'dark'] as const) {
+      test(`${visualStyle} desktop ${colorScheme}`, async ({ browser }, testInfo) => {
+        const context = await createVisualContext(browser, { width: 1280, language: 'en', colorScheme, reducedMotion: 'no-preference', visualStyle });
+        const page = await context.newPage();
+        await mockVisualApi(page);
+        await exerciseMajorViews(page, 'en', `${visualStyle}-1280-en-${colorScheme}`, testInfo);
+        await context.close();
+      });
+    }
+  }
+
+  const liquidGlassQaCases = [
+    { width: 320, language: 'en', colorScheme: 'light' },
+    { width: 390, language: 'uk', colorScheme: 'dark' },
+    { width: 430, language: 'uk', colorScheme: 'light' },
+    { width: 768, language: 'en', colorScheme: 'dark' },
+    { width: 1024, language: 'uk', colorScheme: 'light' },
+    { width: 1280, language: 'en', colorScheme: 'dark' },
+    { width: 1440, language: 'uk', colorScheme: 'light' },
+    { width: 1920, language: 'en', colorScheme: 'dark' },
+  ] as const;
+
+  for (const visualCase of liquidGlassQaCases) {
+    test(`liquid-glass functional surfaces at ${visualCase.width}px ${visualCase.colorScheme}`, async ({ browser }) => {
+      const context = await createVisualContext(browser, { ...visualCase, reducedMotion: 'no-preference', visualStyle: 'liquid-glass' });
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await exerciseLiquidGlassSurfaces(page, visualCase.language, visualCase.colorScheme);
+      await context.close();
+    });
+  }
+
+  for (const width of [390, 1280] as const) {
+    test(`liquid-glass saved-game menu exposes duplicate and delete at ${width}px`, async ({ browser }) => {
+      const context = await createVisualContext(browser, { width, language: 'en', colorScheme: 'light', reducedMotion: 'no-preference', visualStyle: 'liquid-glass' });
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await page.goto('/');
+      await page.getByRole('button', { name: translate('en', 'gameActions', { name: visualGame.name }), exact: true }).click();
+      await expect(page.getByRole('menuitem', { name: translate('en', 'duplicate'), exact: true })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: translate('en', 'removeGame'), exact: true })).toBeVisible();
+      await context.close();
+    });
+  }
+
+  for (const visualCase of [
+    { width: 430, colorScheme: 'light' },
+    { width: 1280, colorScheme: 'dark' },
+  ] as const) {
+    test(`liquid-glass incoming payments at ${visualCase.width}px ${visualCase.colorScheme}`, async ({ browser }) => {
+      const context = await createVisualContext(browser, { ...visualCase, language: 'en', reducedMotion: 'no-preference', visualStyle: 'liquid-glass' });
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await mockActivePaymentInbox(page);
+      await openGame(page, 'en');
+      await expect(page.getByRole('heading', { name: translate('en', 'paymentInbox'), exact: true })).toBeVisible();
+      await assertViewportHealth(page);
+      await assertNoHorizontalOverflow(page, '.payment-inbox');
+      await assertNoHorizontalOverflow(page, '.payment-inbox li');
+      await context.close();
+    });
+  }
+
+  for (const width of [320, 390, 768, 1280, 1440] as const) {
+    test(`liquid-glass settings remain contained after switching to Ukrainian at ${width}px`, async ({ browser }, testInfo) => {
+      const context = await createVisualContext(browser, { width, language: 'en', colorScheme: 'light', reducedMotion: 'no-preference', visualStyle: 'liquid-glass' });
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await openGame(page, 'en');
+      await openSettings(page, 'en');
+      await page.getByRole('button', { name: translate('en', 'ukrainian'), exact: true }).click();
+      const panel = page.getByRole('dialog');
+      await expect(panel.getByRole('heading', { name: translate('uk', 'settings'), exact: true })).toBeVisible();
+      await expect(page.locator('html')).toHaveAttribute('lang', 'uk');
+      await assertNoHorizontalOverflow(page, '.settings-panel');
+      await assertNoHorizontalOverflow(page, '.settings-panel h2');
+      await assertDescendantsContained(page, '.settings-panel', 'button, input');
+      if (width >= 768) await assertSettingsAnchor(page, 'uk');
+      await attachPage(page, testInfo, `liquid-glass-${width}-settings-switched-uk`);
+      await context.close();
+    });
+  }
+
+  for (const zoom of [1.25, 1.5] as const) {
+    test(`liquid-glass functional surfaces at ${zoom * 100}% zoom`, async ({ browser }) => {
+      const context = await createVisualContext(browser, { width: 1280, language: 'en', colorScheme: 'light', reducedMotion: 'no-preference', visualStyle: 'liquid-glass' });
+      const page = await context.newPage();
+      await mockVisualApi(page);
+      await page.goto(`/games/${visualGame.id}`);
+      await page.locator('body').evaluate((body, scale) => { body.style.zoom = String(scale); }, zoom);
+      await exerciseLiquidGlassSurfaces(page, 'en', 'light', false);
+      await context.close();
+    });
   }
 });
+
+type VisualCase = {
+  width: number;
+  language: Language;
+  colorScheme: 'light' | 'dark';
+  reducedMotion: 'reduce' | 'no-preference';
+  visualStyle?: VisualStyleId;
+};
+
+async function createVisualContext(browser: Browser, visualCase: VisualCase): Promise<BrowserContext> {
+  const context = await browser.newContext({
+    viewport: { width: visualCase.width, height: visualCase.width <= 430 ? 780 : 900 },
+    colorScheme: visualCase.colorScheme,
+    reducedMotion: visualCase.reducedMotion,
+    serviceWorkers: 'block',
+  });
+  await context.addInitScript(({ language, colorMode, visualStyle }) => {
+    try {
+      window.localStorage.setItem('monopoly-bank-language', language);
+      window.localStorage.setItem('monopoly-bank-device-preferences', JSON.stringify({ visualStyle, colorMode, sound: false, vibration: false }));
+    } catch { /* The initial opaque about:blank document does not expose storage. */ }
+  }, { language: visualCase.language, colorMode: visualCase.colorScheme, visualStyle: visualCase.visualStyle ?? 'classic-bank' });
+  return context;
+}
+
+async function exerciseMajorViews(page: Page, language: Language, attachmentPrefix: string, testInfo: TestInfo): Promise<void> {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: translate(language, 'savedGames'), exact: true })).toBeVisible();
+  await assertSearchFieldGeometry(page);
+  await assertViewportHealth(page);
+  await attachPage(page, testInfo, `${attachmentPrefix}-saved-games`);
+
+  await page.goto('/profile');
+  await expect(page.getByRole('heading', { name: translate(language, 'playerProfile'), exact: true }).first()).toBeVisible();
+  await assertViewportHealth(page);
+  await attachPage(page, testInfo, `${attachmentPrefix}-profile`);
+
+  await page.goto('/games/new');
+  await expect(page.getByRole('heading', { name: translate(language, 'createLobby'), exact: true })).toBeVisible();
+  await assertViewportHealth(page);
+  await attachPage(page, testInfo, `${attachmentPrefix}-create-game`);
+
+  await page.goto('/games/join');
+  await expect(page.getByRole('heading', { name: translate(language, 'joinGame'), exact: true })).toBeVisible();
+  await assertViewportHealth(page);
+  await attachPage(page, testInfo, `${attachmentPrefix}-join-game`);
+
+  await openGame(page, language);
+  await assertViewportHealth(page);
+  await attachPage(page, testInfo, `${attachmentPrefix}-game`);
+
+  const activityTrigger = page.getByRole('button', { name: translate(language, 'activity'), exact: true });
+  await openActivity(page, language);
+  if (language === 'uk') {
+    await expect(page.getByText(translate(language, 'bankruptcyTransactionDescription', { source: visualPlayers[2].name, destination: visualPlayers[1].name }), { exact: true })).toBeVisible();
+    await expect(page.getByText('declared bankruptcy', { exact: false })).toHaveCount(0);
+  }
+  await attachPage(page, testInfo, `${attachmentPrefix}-operations`);
+  await page.getByRole('tab', { name: translate(language, 'activityAll'), exact: true }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: translate(language, 'activityMine'), exact: true })).toBeFocused();
+  await page.locator('.activity-scroll').evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect(page.getByRole('heading', { name: translate(language, 'activity'), exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(activityTrigger).toBeFocused();
+
+  await openStatistics(page, language);
+  if (language === 'uk') {
+    await expect(page.getByText('2h 40m', { exact: true })).toHaveCount(0);
+    await expect(page.getByText(translate(language, 'durationHoursMinutes', { hours: 2, minutes: 40 }), { exact: true })).toBeVisible();
+  }
+  await attachPage(page, testInfo, `${attachmentPrefix}-statistics`);
+  await page.keyboard.press('Escape');
+
+  const settingsTrigger = page.getByRole('button', { name: translate(language, 'settings'), exact: true });
+  await openSettings(page, language);
+  await assertViewportHealth(page);
+  await attachPage(page, testInfo, `${attachmentPrefix}-settings`);
+  await page.keyboard.press('Escape');
+  await expect(settingsTrigger).toBeFocused();
+}
+
+async function openGame(page: Page, language: Language): Promise<void> {
+  await page.goto(`/games/${visualGame.id}`);
+  await expect(page.getByRole('heading', { name: visualGame.name, exact: true })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('lang', language);
+}
+
+async function openActivity(page: Page, language: Language): Promise<void> {
+  await page.getByRole('button', { name: translate(language, 'activity'), exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('heading', { name: translate(language, 'activity'), exact: true })).toBeVisible();
+  await waitForOverlayMotion(page);
+  const scroll = page.locator('.activity-scroll');
+  await expect(scroll).toBeVisible();
+  expect(await scroll.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+}
+
+async function openStatistics(page: Page, language: Language): Promise<void> {
+  await page.getByRole('button', { name: translate(language, 'statistics'), exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('heading', { name: translate(language, 'statistics'), exact: true })).toBeVisible();
+  await waitForOverlayMotion(page);
+}
+
+async function openSettings(page: Page, language: Language, assertAnchor = true): Promise<void> {
+  const trigger = page.getByRole('button', { name: translate(language, 'settings'), exact: true });
+  await trigger.click();
+  await expect(page.getByRole('dialog').getByRole('heading', { name: translate(language, 'settings'), exact: true })).toBeVisible();
+  await waitForOverlayMotion(page);
+  if (assertAnchor && (page.viewportSize()?.width ?? 0) >= 768) await assertSettingsAnchor(page, language);
+}
+
+async function assertSettingsAnchor(page: Page, language: Language): Promise<void> {
+  const trigger = page.getByRole('button', { name: translate(language, 'settings'), exact: true });
+  const [triggerBox, panelBox] = await Promise.all([trigger.boundingBox(), page.getByRole('dialog').boundingBox()]);
+  expect(triggerBox).not.toBeNull();
+  expect(panelBox).not.toBeNull();
+  if (triggerBox !== null && panelBox !== null) {
+    expect(panelBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height + 11);
+    expect(Math.abs((panelBox.x + panelBox.width) - (triggerBox.x + triggerBox.width))).toBeLessThanOrEqual(2);
+  }
+}
+
+async function waitForOverlayMotion(page: Page): Promise<void> {
+  await page.getByRole('dialog').evaluate(async (element) => {
+    await Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)));
+  });
+}
+
+async function exerciseLiquidGlassSurfaces(page: Page, language: Language, colorScheme: 'light' | 'dark', navigate = true): Promise<void> {
+  if (navigate) await openGame(page, language);
+  else await expect(page.getByRole('heading', { name: visualGame.name, exact: true })).toBeVisible();
+
+  await assertViewportHealth(page);
+  await assertNoHorizontalOverflow(page, '.wallets-section');
+  const activeWallet = page.locator('.wallet-card-active').first();
+  await expect(activeWallet).toBeVisible();
+  const activeWalletColors = await activeWallet.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { color: style.color, background: style.backgroundColor };
+  });
+  if (colorScheme === 'light') {
+    expect(activeWalletColors.color).toBe('rgb(20, 32, 51)');
+    expect(activeWalletColors.background).not.toBe('rgba(0, 0, 0, 0)');
+  }
+
+  await openActivity(page, language);
+  await assertFunctionalDialog(page);
+  await page.keyboard.press('Escape');
+
+  await openStatistics(page, language);
+  await assertFunctionalDialog(page);
+  await assertNoHorizontalOverflow(page, '.statistics-report');
+  await page.keyboard.press('Escape');
+
+  await openSettings(page, language, navigate);
+  await assertNoHorizontalOverflow(page, '.settings-panel');
+  await assertNoHorizontalOverflow(page, '.style-preview-grid');
+  await assertNoHorizontalOverflow(page, '.settings-segmented');
+  await page.keyboard.press('Escape');
+}
+
+async function assertFunctionalDialog(page: Page): Promise<void> {
+  const dialog = page.getByRole('dialog');
+  await assertNoHorizontalOverflow(page, '.dialog');
+  const styles = await dialog.evaluate((element) => {
+    const dialogStyle = getComputedStyle(element);
+    const backdropStyle = getComputedStyle(element.parentElement!);
+    return {
+      color: dialogStyle.color,
+      background: dialogStyle.backgroundColor,
+      backdropBackground: backdropStyle.backgroundColor,
+      backdropFilter: backdropStyle.backdropFilter || backdropStyle.getPropertyValue('-webkit-backdrop-filter'),
+    };
+  });
+  expect(styles.background).not.toBe('rgba(0, 0, 0, 0)');
+  expect(styles.backdropBackground).not.toBe('rgba(0, 0, 0, 0)');
+  expect(styles.backdropFilter).toContain('blur');
+}
+
+async function assertNoHorizontalOverflow(page: Page, selector: string): Promise<void> {
+  const element = page.locator(selector).first();
+  await expect(element).toBeVisible();
+  expect(await element.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+}
+
+async function assertDescendantsContained(page: Page, containerSelector: string, descendantSelector: string): Promise<void> {
+  const overflow = await page.locator(containerSelector).first().evaluate((container, selector) => {
+    const bounds = container.getBoundingClientRect();
+    return Array.from(container.querySelectorAll<HTMLElement>(selector)).filter((element) => {
+      const child = element.getBoundingClientRect();
+      return child.left < bounds.left - 1 || child.right > bounds.right + 1;
+    }).map((element) => element.getAttribute('aria-label') ?? element.textContent?.trim() ?? element.tagName);
+  }, descendantSelector);
+  expect(overflow).toEqual([]);
+}
+
+async function assertViewportHealth(page: Page): Promise<void> {
+  expect(await page.locator('body').evaluate((body) => body.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const primaryTargets = page.locator('.button-primary:visible');
+  const targetCount = await primaryTargets.count();
+  for (let index = 0; index < targetCount; index += 1) {
+    const box = await primaryTargets.nth(index).boundingBox();
+    expect(box === null || (box.height >= 44 && box.width >= 44)).toBe(true);
+  }
+}
+
+async function assertSearchFieldGeometry(page: Page): Promise<void> {
+  const input = page.locator('.saved-games-search input');
+  const icon = page.locator('.saved-games-search-icon');
+  await expect(input).toBeVisible();
+
+  const assertGeometry = async () => {
+    const [inputBox, iconBox, padding] = await Promise.all([
+      input.boundingBox(),
+      icon.boundingBox(),
+      input.evaluate((element) => getComputedStyle(element).paddingInlineStart),
+    ]);
+    expect(inputBox).not.toBeNull();
+    expect(iconBox).not.toBeNull();
+    expect(padding).toBe('48px');
+    if (inputBox !== null && iconBox !== null) {
+      const scale = iconBox.width / 20;
+      expect(Math.abs((iconBox.y + iconBox.height / 2) - (inputBox.y + inputBox.height / 2))).toBeLessThanOrEqual(1);
+      expect(Math.abs((iconBox.x - inputBox.x) - 16 * scale)).toBeLessThanOrEqual(1);
+    }
+  };
+
+  await assertGeometry();
+  await page.locator('body').evaluate((body) => { body.style.zoom = '1.25'; });
+  await assertGeometry();
+  await page.locator('body').evaluate((body) => { body.style.zoom = ''; });
+}
+
+async function attachPage(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const outputDirectory = process.env.VISUAL_QA_OUTPUT;
+  const body = await page.screenshot({ fullPage: true, ...(outputDirectory === undefined ? {} : { path: `${outputDirectory}/${name}.png` }) });
+  await testInfo.attach(name, { body, contentType: 'image/png' });
+}
+
+async function mockVisualApi(page: Page): Promise<void> {
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    let data: unknown;
+    if (url.pathname === '/api/profile') data = visualProfile;
+    else if (url.pathname === '/api/games') data = visualGames;
+    else if (url.pathname === `/api/games/${visualGame.id}/activity`) data = url.searchParams.get('scope') === 'PENDING' ? visualPendingActivity : visualActivity;
+    else if (url.pathname === `/api/games/${visualGame.id}/summary`) data = visualStatistics;
+    else if (url.pathname === `/api/games/${visualGame.id}`) data = visualGameDetails;
+    else {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data }) });
+  });
+}
+
+async function mockActivePaymentInbox(page: Page): Promise<void> {
+  await page.route(`**/api/games/${visualGame.id}/payment-requests`, async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: visualPendingActivity.paymentRequests }) });
+  });
+  await page.route(`**/api/games/${visualGame.id}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { ...visualGameDetails, game: { ...visualGameDetails.game, status: 'ACTIVE', finishedAt: null } } }),
+    });
+  });
+}
+
+const visualGame: Game = {
+  id: 'visual-regression-game',
+  name: 'Transcontinental Railway & Utilities Championship — 2026',
+  startingBalance: 1_500,
+  passGoReward: 200,
+  currency: 'K',
+  paymentMode: 'CONFIRMATION',
+  status: 'FINISHED',
+  createdAt: '2026-09-20T08:00:00.000Z',
+  updatedAt: '2026-09-20T10:40:00.000Z',
+  startedAt: '2026-09-20T08:00:00.000Z',
+  finishedAt: '2026-09-20T10:40:00.000Z',
+};
+
+const visualPlayers: Player[] = [
+  { id: 'player-one', gameId: visualGame.id, name: 'Oleksandra Very-Long-Double-Barrelled Rail Baron', color: '#d83f55', balance: 9_007_199_254_740_000, status: 'ACTIVE', userId: 'visual-user', createdAt: visualGame.createdAt },
+  { id: 'player-two', gameId: visualGame.id, name: 'Богдан Надзвичайно-Довге-Ім’я Власника Комунальних Служб', color: '#2878d0', balance: 888_888_888_888, status: 'ACTIVE', createdAt: visualGame.createdAt },
+  { id: 'player-three', gameId: visualGame.id, name: 'Casey', color: '#238b57', balance: 0, status: 'BANKRUPT', createdAt: visualGame.createdAt },
+];
+
+const visualProfile: UserProfile = { id: 'visual-user', nickname: visualPlayers[0].name, avatar: '🎩', accountType: 'REGISTERED', email: null, emailVerified: false, gamesPlayed: 9_876, gamesWon: 5_432, gamesLost: 4_444, winRate: 0.55, createdAt: visualGame.createdAt, updatedAt: visualGame.updatedAt };
+const visualGames: GameSummary[] = [{ game: visualGame, playerCount: visualPlayers.length }];
+const visualGameDetails: GameDetails = { game: visualGame, players: visualPlayers, favoriteAmounts: [100, 500], recentAmounts: [2_000], controlledPlayerIds: ['player-one'], controlledWallets: [{ playerId: 'player-one', kind: 'PRIMARY' }], canManage: true };
+
+const visualTransactions: Transaction[] = Array.from({ length: 48 }, (_, index) => {
+  const amount = index === 0 ? 500 : 9_000_000_000 + index;
+  return {
+    id: `transaction-${index}`,
+    gameId: visualGame.id,
+    type: index === 0 ? 'BANKRUPTCY_TRANSFER' : 'PLAYER_TO_PLAYER',
+    amount,
+    totalAmount: amount,
+    comment: index % 9 === 0 ? 'Railway auction settlement' : null,
+    createdAt: new Date(Date.parse('2026-09-20T10:39:00.000Z') - index * 60_000).toISOString(),
+    participants: [{ playerId: index === 0 ? 'player-three' : 'player-one', balanceDelta: -amount }, { playerId: 'player-two', balanceDelta: amount }],
+  };
+});
+
+const visualActivity: ActivityPage = { transactions: visualTransactions, paymentRequests: [], nextCursor: null };
+const visualPendingActivity: ActivityPage = { transactions: [], paymentRequests: [{ id: 'pending-1', gameId: visualGame.id, payerPlayerId: 'player-one', recipientPlayerId: 'player-two', creatorPlayerId: 'player-two', approverPlayerId: 'player-one', amount: 7_777_777_777, comment: 'Boardwalk settlement', state: 'PENDING', expiresAt: '2026-09-20T11:00:00.000Z', createdAt: '2026-09-20T10:38:00.000Z', resolvedAt: null, transactionId: null }], nextCursor: null };
+
+const visualStatistics: { game: Game; winners: Player[] } & LedgerStatistics = {
+  game: visualGame,
+  winners: [visualPlayers[0]],
+  durationMs: 9_600_000,
+  totalTransactions: 12_345,
+  totalMoneyTransferred: 9_007_199_254_740_000,
+  largestSinglePayment: 888_888_888_888,
+  richestActivePlayer: visualPlayers[0],
+  lowestActiveBalance: visualPlayers[1].balance,
+  players: visualPlayers.map((player) => ({ player, totalReceived: 100, totalPaid: 50, passGoCount: 2, transactionCount: 10 })),
+  playerToPlayerTotal: 8_888_888_888,
+  paidToBank: 777_777_777,
+  receivedFromBank: 666_666_666,
+  largestTransaction: 888_888_888_888,
+  biggestSenderId: 'player-one',
+  leastSenderId: 'player-three',
+  biggestPayerRecipient: { payerId: 'player-one', recipientId: 'player-two', amount: 555_555_555, transactionCount: 42 },
+  cashLeaderboard: visualPlayers.map((player, index) => ({ player, sent: 900_000_000 - index, received: 800_000_000 - index, passGoCount: 12 - index, transactionCount: 4_000 - index })),
+};
 
 async function register(browser: Browser, nickname: string): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext();

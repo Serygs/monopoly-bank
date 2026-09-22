@@ -9,9 +9,8 @@
 
 ## UI and localization
 
+- Read `docs/ui-design-system.md` before UI work. It is the sole authority for visual styles, colour modes, tokens, responsive behaviour, overlays, motion, accessibility, and visual validation; current screenshots and CSS are implementation evidence, not additional design requirements.
 - The UI supports English and Ukrainian. Every visible label, action, placeholder, accessibility label, dialog text, and client-side error must be added to `src/i18n/translations.ts` and rendered with `useLanguage().t`.
-- Use the single UI font token `var(--font-ui)`, declared in `src/index.css`. Do not introduce per-component font families. It must render Ukrainian glyphs well.
-- Preserve the existing Monopoly-bank visual language: deep green, cream, brass accents, rounded 8–18px panels, and high-contrast actions. Check both light and dark themes and a 320px-wide viewport for UI work.
 - Avatars are emoji or a centered, browser-cropped 256×256 JPEG data URL. Avatar images are always shown with `object-fit: cover` in a circular frame. Do not accept SVG avatar uploads or external image URLs.
 - Reuse `Avatar` and `AvatarPicker` from `src/components/AvatarPicker.tsx` and `AVATAR_OPTIONS` from `src/utils/avatar.ts`; do not duplicate avatar option lists.
 

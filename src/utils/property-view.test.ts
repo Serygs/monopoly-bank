@@ -133,7 +133,7 @@ describe('space actions', () => {
 
 describe('colour group tokens', () => {
   // vitest stubs `.css` imports (even `?raw`), so the stylesheet is read from disk.
-  const indexCss = readFileSync(new URL('../index.css', import.meta.url), 'utf8');
+  const indexCss = readFileSync(new URL('../styles/visual-styles/classic-bank.css', import.meta.url), 'utf8');
   const tokenNames = ['brown', 'light-blue', 'pink', 'orange', 'red', 'yellow', 'green', 'dark-blue', 'railroad', 'utility'];
   const themeBlock = (selector: string) => {
     const start = indexCss.indexOf(selector);
@@ -142,7 +142,7 @@ describe('colour group tokens', () => {
   };
   const tokens = (block: string) => Object.fromEntries([...block.matchAll(/--group-([a-z-]+):\s*(#[0-9a-fA-F]{6})/g)].map((match) => [match[1], match[2]]));
 
-  it.each([[':root {'], ["[data-theme='dark'] {"]])('defines the ten group tokens and a label colour with ≥ 4.5:1 contrast in %s', (selector) => {
+  it.each([[":root[data-visual-style='classic-bank'] {"], [":root[data-visual-style='classic-bank'][data-color-mode='dark'] {"]])('defines the ten group tokens and a label colour with ≥ 4.5:1 contrast in %s', (selector) => {
     const themeTokens = tokens(themeBlock(selector));
     expect(themeTokens['label-text']).toBeDefined();
     for (const name of tokenNames) {

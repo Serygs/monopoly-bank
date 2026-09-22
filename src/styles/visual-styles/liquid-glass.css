@@ -1,0 +1,548 @@
+:root[data-visual-style='liquid-glass'] {
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, "Segoe UI", sans-serif;
+  --font-money: var(--font-body);
+  --font-ui: var(--font-body);
+  --text-display: clamp(2.625rem, 4vw, 4rem);
+  --text-heading-lg: clamp(2rem, 3vw, 3rem);
+  --text-heading-md: 1.2rem;
+  --text-body: 1rem;
+  --text-small: .875rem;
+  --text-meta: .78rem;
+  --text-money-lg: clamp(1.55rem, 5vw, 2.25rem);
+  --text-money-xl: clamp(2.45rem, 10vw, 4rem);
+  --text-button: .9375rem;
+  --weight-regular: 450;
+  --weight-medium: 600;
+  --weight-semibold: 700;
+  --weight-bold: 760;
+  --leading-tight: 1.01;
+  --leading-body: 1.55;
+  --tracking-display: -.035em;
+  --tracking-meta: .08em;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+
+  --layout-content-max: 1280px;
+  --layout-content-narrow: 760px;
+  --layout-page-inline-compact: 16px;
+  --layout-page-inline-medium: 24px;
+  --layout-page-inline-wide: clamp(32px, 5vw, 72px);
+  --layout-page-block-compact: 24px;
+  --layout-page-block-medium: 32px;
+  --layout-page-block-wide: 36px;
+  --layout-gap-compact: 16px;
+  --layout-gap-medium: 22px;
+  --layout-gap-wide: 24px;
+  --layout-section-gap-compact: 24px;
+  --layout-section-gap-medium: 28px;
+  --layout-section-gap-wide: 30px;
+  --layout-header-height-compact: 64px;
+  --layout-header-height-medium: 68px;
+  --layout-header-height-wide: 72px;
+
+  --radius-sm: 12px;
+  --radius-md: 15px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+  --radius-control: 14px;
+  --radius-card: 18px;
+  --radius-card-large: 24px;
+  --control-height-md: 44px;
+  --control-height-lg: 48px;
+  --duration-fast: 140ms;
+  --duration-normal: 220ms;
+  --duration-slow: 420ms;
+  --ease-standard: cubic-bezier(.2, .8, .2, 1);
+  --ease-emphasized: cubic-bezier(.2, .8, .2, 1);
+
+  --color-canvas: #f2f5f9;
+  --color-surface-elevated: rgb(255 255 255 / .52);
+  --color-surface-subtle: rgb(232 237 242 / .66);
+  --color-surface-inverse: #213044;
+  --color-surface-inverse-elevated: #354b66;
+  --color-text-primary: #142033;
+  --color-text-secondary: #556274;
+  --color-text-muted: #798696;
+  --color-text-on-accent: #fff;
+  --color-text-on-danger: #fff;
+  --color-text-on-inverse: #fff;
+  --color-border: rgb(255 255 255 / .58);
+  --color-border-strong: rgb(85 98 116 / .26);
+  --color-accent: #5d7fa8;
+  --color-accent-hover: #466b96;
+  --color-accent-pressed: #395a80;
+  --color-accent-soft: rgb(220 235 250 / .68);
+  --color-highlight: #8f86ad;
+  --color-danger: #cc6470;
+  --color-danger-hover: #b65360;
+  --color-danger-soft: rgb(251 232 235 / .78);
+  --color-success: #3c9b79;
+  --color-success-soft: rgb(220 237 232 / .82);
+  --color-overlay: rgb(20 32 51 / .52);
+  --color-focus-ring: #466b96;
+  --color-inverse-hover: rgb(255 255 255 / .22);
+  --color-qr-background: #fff;
+
+  --color-player-red: #d83f55;
+  --color-player-blue: #2878d0;
+  --color-player-green: #238b57;
+  --color-player-orange: #d97721;
+  --color-player-purple: #8b4cc5;
+  --color-player-teal: #087f78;
+  --color-text-on-player: #fff;
+
+  --shadow-sm: 0 6px 18px rgb(40 60 90 / .08), inset 0 1px 0 rgb(255 255 255 / .52);
+  --shadow-md: 0 14px 40px rgb(50 70 100 / .10), inset 0 1px 0 rgb(255 255 255 / .65);
+  --shadow-lg: 0 24px 64px rgb(35 52 78 / .16), inset 0 1px 0 rgb(255 255 255 / .58);
+  --shadow-hover: 0 18px 42px rgb(40 60 90 / .13), inset 0 1px 0 rgb(255 255 255 / .72);
+
+  --background-shell: radial-gradient(circle at 12% 8%, rgb(201 220 244 / .88), transparent 30%), radial-gradient(circle at 88% 18%, rgb(231 226 244 / .82), transparent 30%), radial-gradient(circle at 38% 94%, rgb(220 237 232 / .86), transparent 36%), radial-gradient(circle at 68% 76%, rgb(255 244 232 / .62), transparent 28%), linear-gradient(135deg, #f5f7fa, #eef2f7);
+  --background-header: rgb(247 250 255 / .48);
+  --background-hero: linear-gradient(135deg, rgb(255 255 255 / .44), rgb(220 235 250 / .36));
+  --background-invitation: var(--color-surface-subtle);
+  --background-banking: rgb(255 255 255 / .68);
+  --color-status-surface: var(--color-success-soft);
+  --color-status-border: color-mix(in srgb, var(--color-success) 38%, transparent);
+  --color-status-text: #246f58;
+  --color-danger-border: color-mix(in srgb, var(--color-danger) 36%, transparent);
+  --color-focus-halo: rgb(93 127 168 / .24);
+  --color-dialog-divider: rgb(255 255 255 / .56);
+  --shadow-header: 0 8px 28px rgb(50 70 100 / .08), inset 0 -1px 0 rgb(255 255 255 / .5);
+  --shadow-balance-inset: inset 0 1px 0 rgb(255 255 255 / .45);
+  --shadow-player-inset: inset 0 -4px 8px rgb(0 0 0 / .1);
+  --focus-ring: 3px solid var(--color-focus-ring);
+
+  --ui-canvas: var(--color-canvas);
+  --ui-surface: var(--color-surface-elevated);
+  --ui-surface-raised: var(--color-surface-elevated);
+  --ui-surface-subtle: var(--color-surface-subtle);
+  --ui-text: var(--color-text-primary);
+  --ui-text-secondary: var(--color-text-secondary);
+  --ui-text-muted: var(--color-text-muted);
+  --ui-border: var(--color-border);
+  --ui-border-strong: var(--color-border-strong);
+  --ui-accent: var(--color-accent);
+  --ui-accent-hover: var(--color-accent-hover);
+  --ui-accent-pressed: var(--color-accent-pressed);
+  --ui-danger: var(--color-danger);
+  --ui-success: var(--color-success);
+  --ui-radius-sm: var(--radius-sm);
+  --ui-radius-md: var(--radius-md);
+  --ui-radius-lg: var(--radius-lg);
+  --ui-radius-xl: var(--radius-xl);
+  --ui-shadow-sm: var(--shadow-sm);
+  --ui-shadow-md: var(--shadow-md);
+  --ui-shadow-lg: var(--shadow-lg);
+  --ui-motion-fast: var(--duration-fast);
+  --ui-motion-normal: var(--duration-normal);
+  --ui-motion-slow: var(--duration-slow);
+  /* Colour groups of the board (deeds). Contrast of --group-label-text on each swatch is asserted ≥ 4.5:1
+     in src/utils/property-view.test.ts. */
+  --group-label-text: #fffdf2;
+  --group-brown: #7a4a22;
+  --group-light-blue: #1f6f9a;
+  --group-pink: #b02a6b;
+  --group-orange: #b04d08;
+  --group-red: #b3262e;
+  --group-yellow: #8f6b00;
+  --group-green: #1f7a3f;
+  --group-dark-blue: #23408f;
+  --group-railroad: #3d4a52;
+  --group-utility: #5b6b4a;
+}
+
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] {
+  --color-canvas: #10151c;
+  --color-surface-elevated: rgb(40 49 62 / .58);
+  --color-surface-subtle: rgb(50 61 76 / .54);
+  --color-surface-inverse: #151c25;
+  --color-surface-inverse-elevated: #253142;
+  --color-text-primary: #f5f7fa;
+  --color-text-secondary: #bdc6d2;
+  --color-text-muted: #84909f;
+  --color-text-on-accent: #fff;
+  --color-text-on-danger: #fff;
+  --color-text-on-inverse: #f5f7fa;
+  --color-border: rgb(255 255 255 / .18);
+  --color-border-strong: rgb(180 203 230 / .32);
+  --color-accent: #89a9cf;
+  --color-accent-hover: #9ebcdf;
+  --color-accent-pressed: #718fb5;
+  --color-accent-soft: rgb(74 97 126 / .45);
+  --color-highlight: #c0acd2;
+  --color-danger: #ef8b96;
+  --color-danger-hover: #f19da7;
+  --color-danger-soft: rgb(99 49 62 / .58);
+  --color-success: #75c5a7;
+  --color-success-soft: rgb(38 91 75 / .58);
+  --color-overlay: rgb(4 8 13 / .7);
+  --color-focus-ring: #aec9e8;
+  --color-inverse-hover: rgb(255 255 255 / .1);
+  --color-status-text: #9bdec5;
+  --background-shell: radial-gradient(circle at 12% 7%, rgb(66 94 129 / .42), transparent 31%), radial-gradient(circle at 88% 17%, rgb(99 77 121 / .31), transparent 30%), radial-gradient(circle at 40% 96%, rgb(39 91 78 / .27), transparent 36%), radial-gradient(circle at 70% 72%, rgb(118 88 67 / .18), transparent 27%), linear-gradient(135deg, #10151c, #151c25);
+  --background-header: rgb(21 28 37 / .58);
+  --background-hero: linear-gradient(135deg, rgb(58 72 92 / .54), rgb(48 55 77 / .46));
+  --background-banking: rgb(40 49 62 / .78);
+  --shadow-sm: 0 6px 18px rgb(0 0 0 / .2), inset 0 1px 0 rgb(255 255 255 / .12);
+  --shadow-md: 0 16px 42px rgb(0 0 0 / .27), inset 0 1px 0 rgb(255 255 255 / .16);
+  --shadow-lg: 0 26px 68px rgb(0 0 0 / .4), inset 0 1px 0 rgb(255 255 255 / .14);
+  --shadow-hover: 0 20px 48px rgb(0 0 0 / .34), inset 0 1px 0 rgb(255 255 255 / .2);
+  --shadow-header: 0 8px 30px rgb(0 0 0 / .2), inset 0 -1px 0 rgb(255 255 255 / .09);
+  /* Colour groups of the board, dark: bright swatches under a canvas-dark label. */
+  --group-label-text: #10231b;
+  --group-brown: #c98a5b;
+  --group-light-blue: #7fc4ea;
+  --group-pink: #ef7fb8;
+  --group-orange: #f0913a;
+  --group-red: #ef6b6b;
+  --group-yellow: #f2d35b;
+  --group-green: #6fcf8f;
+  --group-dark-blue: #7f9ff2;
+  --group-railroad: #b8c2c9;
+  --group-utility: #d9d3b8;
+}
+
+:root[data-visual-style='liquid-glass'] .app-shell {
+  position: relative;
+  isolation: isolate;
+  background: var(--background-shell);
+  background-attachment: fixed;
+  background-size: 106% 106%;
+  animation: liquid-ambient 24s ease-in-out infinite alternate;
+}
+
+:root[data-visual-style='liquid-glass'] .app-header {
+  color: var(--color-text-primary);
+  background: var(--background-header);
+  border-bottom-color: rgb(255 255 255 / .36);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+}
+
+:root[data-visual-style='liquid-glass'] .brand-mark {
+  color: #fff;
+  background: linear-gradient(145deg, #6f91ba, #354d71);
+  border-color: rgb(255 255 255 / .44);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .36), 0 6px 16px rgb(50 70 100 / .14);
+}
+
+:root[data-visual-style='liquid-glass'] .profile-menu-button,
+:root[data-visual-style='liquid-glass'] .settings-button {
+  border: 1px solid rgb(255 255 255 / .4);
+  background: rgb(255 255 255 / .22);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .38), 0 5px 16px rgb(40 60 90 / .07);
+}
+
+:root[data-visual-style='liquid-glass'] .page-header--hero,
+:root[data-visual-style='liquid-glass'] .game-card {
+  --glass-pointer-x: 50%;
+  --glass-pointer-y: 50%;
+  --glass-rotate-x: 0deg;
+  --glass-rotate-y: 0deg;
+  isolation: isolate;
+  transform: perspective(1000px) rotateX(var(--glass-rotate-x)) rotateY(var(--glass-rotate-y));
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+:root[data-visual-style='liquid-glass'] .page-header--hero {
+  color: var(--color-text-primary);
+  background: var(--background-hero);
+  border-color: rgb(255 255 255 / .6);
+  box-shadow: var(--shadow-lg);
+}
+
+:root[data-visual-style='liquid-glass'] .page-header--hero h1,
+:root[data-visual-style='liquid-glass'] .page-header--hero .lede { color: var(--color-text-primary); }
+:root[data-visual-style='liquid-glass'] .page-header--hero .eyebrow { color: color-mix(in srgb, var(--color-accent-hover) 88%, var(--color-text-primary)); }
+:root[data-visual-style='liquid-glass'] .page-header--hero::after {
+  width: 42%;
+  opacity: .82;
+  background: radial-gradient(circle at 70% 34%, rgb(255 244 232 / .9), transparent 13%), radial-gradient(circle at 45% 65%, rgb(201 220 244 / .92), transparent 22%), radial-gradient(circle at 80% 72%, rgb(231 226 244 / .84), transparent 26%);
+}
+
+:root[data-visual-style='liquid-glass'] .page-header--hero::before,
+:root[data-visual-style='liquid-glass'] .game-card::after {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  content: '';
+  background: radial-gradient(340px circle at var(--glass-pointer-x) var(--glass-pointer-y), rgb(255 255 255 / .25), transparent 58%);
+  opacity: .72;
+  pointer-events: none;
+}
+
+:root[data-visual-style='liquid-glass'] .game-card > * { position: relative; z-index: 1; }
+
+:root[data-visual-style='liquid-glass'] .game-card {
+  overflow: hidden;
+  background: rgb(255 255 255 / .5);
+  border-color: rgb(255 255 255 / .62);
+  box-shadow: var(--shadow-md);
+}
+
+:root[data-visual-style='liquid-glass'] .game-card:has(.overflow-menu-trigger[aria-expanded='true']) { overflow: visible; }
+
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .game-card { background: rgb(40 49 62 / .62); }
+
+:root[data-visual-style='liquid-glass'] .game-card::before {
+  height: 2px;
+  background: linear-gradient(90deg, rgb(255 255 255 / .72), color-mix(in srgb, var(--color-accent) 66%, transparent), rgb(255 255 255 / .18));
+}
+
+:root[data-visual-style='liquid-glass'] .button-primary {
+  color: #fff;
+  background: linear-gradient(180deg, rgb(48 65 86 / .8), rgb(28 41 58 / .86));
+  border-color: rgb(255 255 255 / .3);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .3), 0 8px 20px rgb(32 49 73 / .16);
+}
+
+:root[data-visual-style='liquid-glass'] .button-secondary,
+:root[data-visual-style='liquid-glass'] .button-filter,
+:root[data-visual-style='liquid-glass'] .overflow-menu-trigger {
+  color: var(--color-text-primary);
+  background: rgb(255 255 255 / .36);
+  border-color: rgb(255 255 255 / .62);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .55), 0 6px 18px rgb(40 60 90 / .08);
+}
+
+:root[data-visual-style='liquid-glass'] .button-filter.active {
+  color: #fff;
+  background: rgb(45 65 90 / .8);
+  border-color: rgb(255 255 255 / .34);
+}
+
+:root[data-visual-style='liquid-glass'] .saved-games-search input,
+:root[data-visual-style='liquid-glass'] .saved-games-sort select {
+  background-color: rgb(255 255 255 / .42);
+  border-color: rgb(255 255 255 / .58);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .62), 0 8px 24px rgb(40 60 90 / .07);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+}
+
+:root[data-visual-style='liquid-glass'] .amount-unit-toggle {
+  border-color: rgb(255 255 255 / .58);
+  background: rgb(255 255 255 / .38);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .56);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+}
+
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .amount-unit-toggle {
+  border-color: rgb(255 255 255 / .2);
+  background: rgb(50 61 76 / .56);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .1);
+}
+
+:root[data-visual-style='liquid-glass'] .dialog,
+:root[data-visual-style='liquid-glass'] .settings-panel,
+:root[data-visual-style='liquid-glass'] .auth-card,
+:root[data-visual-style='liquid-glass'] .wallet-card,
+:root[data-visual-style='liquid-glass'] .dice-roller,
+:root[data-visual-style='liquid-glass'] .table-calculator {
+  background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(22px) saturate(1.35);
+  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+}
+
+:root[data-visual-style='liquid-glass'] .dialog-backdrop:not(.dialog-backdrop--popover) {
+  background: var(--color-overlay);
+  backdrop-filter: blur(8px) saturate(.9);
+  -webkit-backdrop-filter: blur(8px) saturate(.9);
+}
+
+:root[data-visual-style='liquid-glass'] .dialog-backdrop { animation: liquid-backdrop-in var(--duration-normal) var(--ease-standard); }
+:root[data-visual-style='liquid-glass'] .dialog { transform-origin: center; animation: liquid-dialog-in var(--duration-normal) var(--ease-emphasized); }
+:root[data-visual-style='liquid-glass'] .dialog:not(.settings-panel) {
+  color: var(--color-text-primary);
+  background: rgb(255 255 255 / .76);
+  border-color: rgb(255 255 255 / .72);
+  box-shadow: 0 24px 64px rgb(35 52 78 / .2), inset 0 1px 0 rgb(255 255 255 / .8);
+  backdrop-filter: blur(26px) saturate(1.3);
+  -webkit-backdrop-filter: blur(26px) saturate(1.3);
+}
+
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .dialog:not(.settings-panel) {
+  background: rgb(32 40 52 / .9);
+  border-color: rgb(255 255 255 / .2);
+}
+
+:root[data-visual-style='liquid-glass'] .dialog-close {
+  flex: 0 0 auto;
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-surface-subtle) 76%, transparent);
+}
+
+:root[data-visual-style='liquid-glass'] .activity-sticky {
+  background: rgb(255 255 255 / .88);
+  border-color: rgb(85 98 116 / .16);
+}
+
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .activity-sticky { background: rgb(32 40 52 / .96); }
+
+:root[data-visual-style='liquid-glass'] .activity-tabs,
+:root[data-visual-style='liquid-glass'] .statistics-grid > div,
+:root[data-visual-style='liquid-glass'] .cash-leaderboard li {
+  border-color: rgb(85 98 116 / .16);
+  background: rgb(255 255 255 / .54);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .68);
+}
+
+:root[data-visual-style='liquid-glass'] .activity-dialog,
+:root[data-visual-style='liquid-glass'] .activity-sticky,
+:root[data-visual-style='liquid-glass'] .activity-scroll { min-width: 0; max-width: 100%; }
+:root[data-visual-style='liquid-glass'] .activity-tabs {
+  display: grid;
+  min-width: 0;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow-x: hidden;
+}
+:root[data-visual-style='liquid-glass'] .activity-tabs > * { min-width: 0; width: 100%; padding-inline: var(--space-2); white-space: normal; }
+:root[data-visual-style='liquid-glass'] .activity-ledger li { border-color: rgb(85 98 116 / .16); }
+:root[data-visual-style='liquid-glass'] .statistics-report > header { border-color: color-mix(in srgb, var(--color-accent) 48%, transparent); }
+
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .activity-tabs,
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .statistics-grid > div,
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .cash-leaderboard li {
+  border-color: rgb(255 255 255 / .14);
+  background: rgb(50 61 76 / .68);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .1);
+}
+
+:root[data-visual-style='liquid-glass'] .wallet-card {
+  color: var(--color-text-primary);
+  background: rgb(255 255 255 / .54);
+  border-color: rgb(85 98 116 / .14);
+  border-inline-start-color: var(--wallet-player-color);
+  box-shadow: var(--shadow-sm);
+}
+
+:root[data-visual-style='liquid-glass'] .wallet-card-active {
+  color: var(--color-text-primary);
+  background: rgb(255 255 255 / .68);
+  border-color: color-mix(in srgb, var(--color-accent) 48%, rgb(255 255 255 / .78));
+  border-inline-start-color: var(--wallet-player-color);
+  box-shadow: 0 16px 42px rgb(50 70 100 / .14), 0 0 0 1px rgb(93 127 168 / .14), inset 0 1px 0 rgb(255 255 255 / .82);
+}
+
+:root[data-visual-style='liquid-glass'] .wallet-card-active .player-color { border-color: rgb(255 255 255 / .86); }
+:root[data-visual-style='liquid-glass'] .wallet-card-active .wallet-card-footer {
+  border-top-color: rgb(85 98 116 / .16);
+  color: var(--color-text-secondary);
+}
+:root[data-visual-style='liquid-glass'] .wallet-active-indicator {
+  color: var(--color-accent-hover);
+  background: color-mix(in srgb, var(--color-accent-soft) 72%, transparent);
+}
+
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .wallet-card { background: rgb(40 49 62 / .64); border-color: rgb(255 255 255 / .14); border-inline-start-color: var(--wallet-player-color); }
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .wallet-card-active {
+  color: var(--color-text-primary);
+  background: rgb(50 61 76 / .82);
+  border-color: color-mix(in srgb, var(--color-accent) 48%, rgb(255 255 255 / .2));
+  border-inline-start-color: var(--wallet-player-color);
+  box-shadow: 0 18px 46px rgb(0 0 0 / .3), 0 0 0 1px rgb(137 169 207 / .12), inset 0 1px 0 rgb(255 255 255 / .16);
+}
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .wallet-card-active .player-color { border-color: rgb(255 255 255 / .34); }
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .wallet-card-active .wallet-card-footer { border-top-color: rgb(255 255 255 / .14); }
+
+:root[data-visual-style='liquid-glass'] .payment-inbox {
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  background: rgb(255 255 255 / .5);
+}
+:root[data-visual-style='liquid-glass'] .payment-inbox li { border-color: rgb(85 98 116 / .14); background: rgb(255 255 255 / .62); }
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .payment-inbox { background: rgb(40 49 62 / .6); }
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .payment-inbox li { border-color: rgb(255 255 255 / .14); background: rgb(50 61 76 / .68); }
+
+:root[data-visual-style='liquid-glass'] .settings-panel {
+  min-width: 0;
+  max-width: min(22.5rem, calc(100vw - 2 * var(--space-3)));
+  overflow-x: hidden;
+  background: rgb(255 255 255 / .76);
+  border-color: rgb(255 255 255 / .65);
+  box-shadow: 0 18px 45px rgb(40 60 90 / .14), inset 0 1px 0 rgb(255 255 255 / .65);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+}
+:root[data-visual-style='liquid-glass'][data-color-mode='dark'] .settings-panel { background: rgb(40 49 62 / .88); border-color: rgb(255 255 255 / .24); }
+:root[data-visual-style='liquid-glass'] .settings-options,
+:root[data-visual-style='liquid-glass'] .settings-segmented,
+:root[data-visual-style='liquid-glass'] .style-preview-grid,
+:root[data-visual-style='liquid-glass'] .style-preview-card { min-width: 0; }
+:root[data-visual-style='liquid-glass'] .settings-panel > header > div { min-width: 0; }
+:root[data-visual-style='liquid-glass'] .settings-panel > header h2 {
+  max-width: 100%;
+  font-size: 1.75rem;
+  white-space: nowrap;
+}
+:root[data-visual-style='liquid-glass'] .settings-segmented,
+:root[data-visual-style='liquid-glass'] .style-preview-grid { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+:root[data-visual-style='liquid-glass'] .settings-segmented--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+:root[data-visual-style='liquid-glass'] .settings-segmented button,
+:root[data-visual-style='liquid-glass'] .style-preview-card { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+:root[data-visual-style='liquid-glass'] .settings-segmented button { padding-inline: var(--space-1); }
+:root[data-visual-style='liquid-glass'] .settings-toggle { min-width: 0; }
+:root[data-visual-style='liquid-glass'] .settings-toggle input { flex: 0 0 auto; }
+
+:root[data-visual-style='liquid-glass'] .page-header--hero::after,
+:root[data-visual-style='liquid-glass'] .game-card::before { pointer-events: none; }
+
+@media (min-width: 48rem) {
+  :root[data-visual-style='liquid-glass'] .dialog-backdrop--popover .settings-panel {
+    width: min(22.5rem, calc(100vw - 2 * var(--space-3)));
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :root[data-visual-style='liquid-glass'] .button-primary:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgb(64 84 109 / .84), rgb(35 51 70 / .9));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .36), 0 10px 24px rgb(32 49 73 / .2);
+  }
+  :root[data-visual-style='liquid-glass'] .game-card:hover { transform: perspective(1000px) translateY(-2px) rotateX(var(--glass-rotate-x)) rotateY(var(--glass-rotate-y)); }
+}
+
+@media (max-width: 47.99rem) {
+  :root[data-visual-style='liquid-glass'] .app-header { backdrop-filter: blur(16px) saturate(1.22); -webkit-backdrop-filter: blur(16px) saturate(1.22); }
+  :root[data-visual-style='liquid-glass'] .settings-panel,
+  :root[data-visual-style='liquid-glass'] .game-card { backdrop-filter: blur(16px) saturate(1.24); -webkit-backdrop-filter: blur(16px) saturate(1.24); }
+  :root[data-visual-style='liquid-glass'] .dialog:not(.settings-panel) { backdrop-filter: blur(24px) saturate(1.24); -webkit-backdrop-filter: blur(24px) saturate(1.24); }
+  :root[data-visual-style='liquid-glass'] .dialog-backdrop--popover { background: var(--color-overlay); backdrop-filter: blur(6px) saturate(.92); -webkit-backdrop-filter: blur(6px) saturate(.92); }
+  :root[data-visual-style='liquid-glass'] .page-header--hero { transform: none; }
+}
+
+@keyframes liquid-ambient {
+  from { background-position: 0% 0%, 100% 0%, 35% 100%, 70% 75%, 0 0; }
+  to { background-position: 2% 1%, 98% 2%, 39% 97%, 68% 78%, 0 0; }
+}
+@keyframes liquid-backdrop-in { from { opacity: 0; } }
+@keyframes liquid-dialog-in { from { opacity: 0; transform: translateY(5px) scale(.99); } }
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-visual-style='liquid-glass'] .app-shell { animation: none; }
+  :root[data-visual-style='liquid-glass'] .page-header--hero,
+  :root[data-visual-style='liquid-glass'] .game-card { transform: none !important; will-change: auto; }
+  :root[data-visual-style='liquid-glass'] .page-header--hero::before,
+  :root[data-visual-style='liquid-glass'] .game-card::after { display: none; }
+}
+
+@media (forced-colors: active) {
+  :root[data-visual-style='liquid-glass'] .page-header--hero,
+  :root[data-visual-style='liquid-glass'] .game-card,
+  :root[data-visual-style='liquid-glass'] .dialog { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
