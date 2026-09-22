@@ -74,7 +74,8 @@ export default {
     const privacy = new D1PrivacyRepository(env.MONOPOLY_BANK_DB);
     const auth = new AuthService(new D1UserRepository(env.MONOPOLY_BANK_DB), new D1SessionRepository(env.MONOPOLY_BANK_DB), new D1AuthTokenRepository(env.MONOPOLY_BANK_DB), new ResendTransactionalEmailProvider(authEnv.RESEND_API_KEY, authEnv.RESEND_FROM_EMAIL, fetch, metrics), () => crypto.randomUUID(), authEnv.APP_ORIGIN, privacy);
     const rateLimits = new D1SecurityRateLimitRepository(env.MONOPOLY_BANK_DB);
-    ctx.waitUntil(Promise.all([auth.cleanupExpired(), rateLimits.cleanup(), privacy.cleanupExpiredGuests(), privacy.cleanupExpiredOperationalData()]).then(() => metrics.record('cleanup', 'scheduled', 'success')).catch(() => metrics.record('cleanup', 'scheduled', 'failure')));
+    const trades = new D1PropertyTradeRepository(env.MONOPOLY_BANK_DB);
+    ctx.waitUntil(Promise.all([auth.cleanupExpired(), rateLimits.cleanup(), privacy.cleanupExpiredGuests(), privacy.cleanupExpiredOperationalData(), trades.expireOverdue(new Date())]).then(() => metrics.record('cleanup', 'scheduled', 'success')).catch(() => metrics.record('cleanup', 'scheduled', 'failure')));
   },
 } satisfies ExportedHandler<Env>;
 

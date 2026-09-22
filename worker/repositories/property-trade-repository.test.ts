@@ -30,6 +30,16 @@ describe('D1PropertyTradeRepository', () => {
     expect(trades[1]).toMatchObject({ id: 'stale', state: 'EXPIRED', items: [] });
   });
 
+  it('sweeps every overdue pending offer across games into EXPIRED, bound to the moment the sweep ran', async () => {
+    const database = new FakeDatabase();
+    await new D1PropertyTradeRepository(database as unknown as D1Database).expireOverdue(new Date('2026-06-01T12:00:00.000Z'));
+    const statement = database.statements.at(-1);
+    expect(statement?.query).toMatch(/UPDATE property_trades SET state = 'EXPIRED'/u);
+    expect(statement?.query).toMatch(/WHERE state = 'PENDING' AND expires_at < \?/u);
+    expect(statement?.query).not.toContain('game_id');
+    expect(statement?.values).toEqual(['2026-06-01T12:00:00.000Z']);
+  });
+
   it('declines or cancels only a pending trade of the given game', async () => {
     const database = new FakeDatabase();
     await new D1PropertyTradeRepository(database as unknown as D1Database).resolve('game-1', 'trade-1', 'CANCELLED');

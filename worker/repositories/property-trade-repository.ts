@@ -34,6 +34,8 @@ export interface PropertyTradeRepository {
   getById(gameId: string, tradeId: string): Promise<PropertyTrade | null>;
   listByGameId(gameId: string): Promise<PropertyTrade[]>;
   expirePending(gameId: string): Promise<void>;
+  /** The scheduled sweep: every pending offer of every game whose expiry is before `now` becomes `EXPIRED`. */
+  expireOverdue(now: Date): Promise<void>;
   resolve(gameId: string, tradeId: string, state: Extract<PropertyTradeState, 'DECLINED' | 'CANCELLED'>): Promise<boolean>;
 }
 
@@ -81,6 +83,11 @@ export class D1PropertyTradeRepository implements PropertyTradeRepository {
   async expirePending(gameId: string): Promise<void> {
     await this.database.prepare(`UPDATE property_trades SET state = 'EXPIRED', resolved_at = CURRENT_TIMESTAMP
       WHERE game_id = ? AND state = 'PENDING' AND expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).bind(gameId).run();
+  }
+
+  async expireOverdue(now: Date): Promise<void> {
+    await this.database.prepare(`UPDATE property_trades SET state = 'EXPIRED', resolved_at = COALESCE(resolved_at, CURRENT_TIMESTAMP)
+      WHERE state = 'PENDING' AND expires_at < ?`).bind(now.toISOString()).run();
   }
 
   async resolve(gameId: string, tradeId: string, state: Extract<PropertyTradeState, 'DECLINED' | 'CANCELLED'>): Promise<boolean> {
