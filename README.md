@@ -80,32 +80,32 @@ flowchart TB
 
 ### Components and tools
 
-| Area                        | Components and tools                                                | Responsibility                                                                                                  |
-| --------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Client                      | React 19, React DOM, TypeScript, HTML/CSS                           | Single responsive English/Ukrainian UI for owners, registered players, and guests.                              |
-| PWA                         | Web App Manifest, service worker, Cache Storage                     | Standalone installation, icons/theme metadata, update handling, and an offline static shell.                    |
-| Client communication        | Fetch API, WebSocket API, shared TypeScript contracts               | Typed REST operations plus real-time per-game updates and commands.                                             |
-| Edge backend                | Cloudflare Workers, API router, scheduled handler                   | API entry point, security boundary, dependency wiring, error mapping, and cleanup jobs.                         |
-| Real time                   | Cloudflare Durable Objects, WebSocket Hibernation API               | One coordinator per game for ordered/idempotent mutations, presence, and fan-out.                               |
-| Persistence                 | Cloudflare D1, SQL migrations, repository layer                     | Authoritative accounts, access, games, balances, transaction ledger, payment requests, and statistics.          |
-| Observability and email     | Cloudflare Analytics Engine, Resend API                             | Operational metrics and transactional verification/password-reset email.                                        |
-| Shared code                 | `shared/contracts`, `shared/domain`, `shared/types`                 | Stable API/live contracts and financial rules used across browser and Worker code.                              |
-| Build and local development | npm, Vite 8, Cloudflare Vite plugin, TypeScript 6, Wrangler         | Runs the integrated client/Worker locally, builds assets and Worker code, manages D1, and deploys.              |
-| Quality                     | ESLint, Vitest, Playwright, Node.js validation/load/restore scripts | Static checks, unit/contract tests, D1 migration checks, browser tests, load tests, and operational rehearsals. |
-| Delivery                    | GitHub Actions, Wrangler                                            | Validates pull requests and deploys isolated development, staging, and production environments with migrations. |
+| Area | Components and tools | Responsibility |
+| --- | --- | --- |
+| Client | React 19, React DOM, TypeScript, HTML/CSS | Single responsive English/Ukrainian UI for owners, registered players, and guests. |
+| PWA | Web App Manifest, service worker, Cache Storage | Standalone installation, icons/theme metadata, update handling, and an offline static shell. |
+| Client communication | Fetch API, WebSocket API, shared TypeScript contracts | Typed REST operations plus real-time per-game updates and commands. |
+| Edge backend | Cloudflare Workers, API router, scheduled handler | API entry point, security boundary, dependency wiring, error mapping, and cleanup jobs. |
+| Real time | Cloudflare Durable Objects, WebSocket Hibernation API | One coordinator per game for ordered/idempotent mutations, presence, and fan-out. |
+| Persistence | Cloudflare D1, SQL migrations, repository layer | Authoritative accounts, access, games, balances, transaction ledger, payment requests, and statistics. |
+| Observability and email | Cloudflare Analytics Engine, Resend API | Operational metrics and transactional verification/password-reset email. |
+| Shared code | `shared/contracts`, `shared/domain`, `shared/types` | Stable API/live contracts and financial rules used across browser and Worker code. |
+| Build and local development | npm, Vite 8, Cloudflare Vite plugin, TypeScript 6, Wrangler | Runs the integrated client/Worker locally, builds assets and Worker code, manages D1, and deploys. |
+| Quality | ESLint, Vitest, Playwright, Node.js validation/load/restore scripts | Static checks, unit/contract tests, D1 migration checks, browser tests, load tests, and operational rehearsals. |
+| Delivery | GitHub Actions, Wrangler | Validates pull requests and deploys isolated development, staging, and production environments with migrations. |
 
 ### Repository map
 
-| Path                 | Role                                                                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/`               | React application, pages, reusable UI, localization, browser utilities, and the typed API client.                                    |
-| `public/`            | PWA manifest, service worker, favicon, and install icons copied as static assets.                                                    |
-| `shared/`            | Contracts, domain rules, and types shared by the client and Worker.                                                                  |
-| `worker/`            | Worker entry point, API routing/validation, services, D1 repositories, security, metrics, email integration, and the Durable Object. |
-| `migrations/`        | Ordered D1 schema migrations and database constraints.                                                                               |
-| `scripts/`           | Deployment preparation, migration checks, smoke/load tests, and restore rehearsal.                                                   |
-| `e2e/`               | Playwright production-pyramid browser scenarios.                                                                                     |
-| `.github/workflows/` | CI plus development, staging, and production delivery workflows.                                                                     |
+| Path | Role |
+| --- | --- |
+| `src/` | React application, pages, reusable UI, localization, browser utilities, and the typed API client. |
+| `public/` | PWA manifest, service worker, favicon, and install icons copied as static assets. |
+| `shared/` | Contracts, domain rules, and types shared by the client and Worker. |
+| `worker/` | Worker entry point, API routing/validation, services, D1 repositories, security, metrics, email integration, and the Durable Object. |
+| `migrations/` | Ordered D1 schema migrations and database constraints. |
+| `scripts/` | Deployment preparation, migration checks, smoke/load tests, and restore rehearsal. |
+| `e2e/` | Playwright production-pyramid browser scenarios. |
+| `.github/workflows/` | CI plus development, staging, and production delivery workflows. |
 
 UI work is governed by the canonical [UI design system](docs/ui-design-system.md).
 Current CSS and screenshots describe builds; they do not define a separate
@@ -141,47 +141,6 @@ npm run dev
 ```
 
 The Vite Cloudflare plugin runs the React UI and Worker together. Local D1 data is held in `.wrangler/`, which is ignored by Git.
-
-## Branch and commit conventions
-
-`main` is the protected release branch and `dev` is the protected integration
-branch. Do not push directly to either branch. Create every change from the
-latest `dev`, open a pull request back to `dev`, then promote validated changes
-through a `dev` → `main` pull request.
-
-Use one of these branch-name patterns, with a short lowercase, hyphenated
-description:
-
-- `feat/<description>` — new user-facing capability
-- `fix/<description>` — defect correction
-- `ref/<description>` — behavior-preserving code restructuring
-- `chore/<description>` — maintenance, tooling, or dependency work
-
-Use Conventional Commits for commit messages:
-
-```text
-<type>(<optional-scope>): <imperative summary>
-```
-
-Allowed types are `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`,
-`build`, `perf`, and `revert`. Keep the summary concise, lowercase, and without
-a trailing period. For example:
-
-```text
-feat(lobby): add expiring invitation links
-fix(banking): reject duplicate transfer commands
-docs: describe the production release process
-```
-
-Run the validation commands below before opening a pull request.
-
-### Commit-time formatting
-
-After `npm install`, Husky installs a pre-commit hook. It runs ESLint fixes and
-Prettier only on staged files, then stages the formatting changes automatically.
-Use `npm run format` to format the working tree or `npm run format:check` to
-verify formatting without modifying files. Hooks are a local convenience; CI
-remains the required merge gate.
 
 ### Transactional email (temporarily disabled)
 
