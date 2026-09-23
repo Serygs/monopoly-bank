@@ -15,7 +15,11 @@ export function rollDice(random: () => number = Math.random): DiceRoll {
   return { first, second, total: first + second, isDouble: first === second };
 }
 
-export interface DoublesState { consecutiveDoubles: number; isInJail: boolean; thirdDouble: boolean; }
+export interface DoublesState {
+  consecutiveDoubles: number;
+  isInJail: boolean;
+  thirdDouble: boolean;
+}
 
 export function applyDiceResult(currentDoubles: number, roll: DiceRoll): DoublesState {
   if (!roll.isDouble) return { consecutiveDoubles: 0, isInJail: false, thirdDouble: false };
