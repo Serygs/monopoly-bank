@@ -54,7 +54,10 @@ describe('amount input state', () => {
     expect(Number.isSafeInteger(Number(canonical))).toBe(true);
   });
   it('clears digits when the unit changes', () => {
-    expect(changeAmountUnit({ digits: '123', unit: 'THOUSANDS' }, 'MILLIONS')).toEqual({ digits: '', unit: 'MILLIONS' });
+    expect(changeAmountUnit({ digits: '123', unit: 'THOUSANDS' }, 'MILLIONS')).toEqual({
+      digits: '',
+      unit: 'MILLIONS',
+    });
   });
   it('keeps the same state when the unit is unchanged', () => {
     const state: AmountInputState = { digits: '123', unit: 'THOUSANDS' };
@@ -65,9 +68,15 @@ describe('amount input state', () => {
     expect(syncCanonicalAmount(state, '5000')).toBe(state);
   });
   it('adopts an external canonical value in thousands', () => {
-    expect(syncCanonicalAmount({ digits: '5', unit: 'MILLIONS' }, '100')).toEqual({ digits: '100', unit: 'THOUSANDS' });
+    expect(syncCanonicalAmount({ digits: '5', unit: 'MILLIONS' }, '100')).toEqual({
+      digits: '100',
+      unit: 'THOUSANDS',
+    });
   });
   it('resets to empty thousands when the canonical value is cleared', () => {
-    expect(syncCanonicalAmount({ digits: '5', unit: 'MILLIONS' }, '')).toEqual({ digits: '', unit: 'THOUSANDS' });
+    expect(syncCanonicalAmount({ digits: '5', unit: 'MILLIONS' }, '')).toEqual({
+      digits: '',
+      unit: 'THOUSANDS',
+    });
   });
 });

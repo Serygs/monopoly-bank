@@ -9,35 +9,76 @@ describe('device preferences', () => {
     stored = null;
     vi.stubGlobal('localStorage', {
       getItem: vi.fn(() => stored),
-      setItem: vi.fn((_key: string, value: string) => { stored = value; }),
+      setItem: vi.fn((_key: string, value: string) => {
+        stored = value;
+      }),
     });
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it.each(['light', 'dark', 'system'])('migrates legacy %s without resetting feedback settings', (theme) => {
-    stored = JSON.stringify({ theme, sound: false, vibration: false });
-    const preferences = readPreferences();
-    expect(preferences).toEqual({ visualStyle: 'classic-bank', colorMode: theme, sound: false, vibration: false });
-    writePreferences(preferences);
-    expect(localStorage.setItem).toHaveBeenCalledWith(key, JSON.stringify(preferences));
-    expect(readPreferences()).toEqual(preferences);
-  });
+  it.each(['light', 'dark', 'system'])(
+    'migrates legacy %s without resetting feedback settings',
+    (theme) => {
+      stored = JSON.stringify({ theme, sound: false, vibration: false });
+      const preferences = readPreferences();
+      expect(preferences).toEqual({
+        visualStyle: 'classic-bank',
+        colorMode: theme,
+        sound: false,
+        vibration: false,
+      });
+      writePreferences(preferences);
+      expect(localStorage.setItem).toHaveBeenCalledWith(key, JSON.stringify(preferences));
+      expect(readPreferences()).toEqual(preferences);
+    },
+  );
 
   it('retains the new mode over a legacy theme and round-trips independent settings', () => {
-    stored = JSON.stringify({ visualStyle: 'classic-bank', colorMode: 'light', theme: 'dark', sound: false, vibration: true });
+    stored = JSON.stringify({
+      visualStyle: 'classic-bank',
+      colorMode: 'light',
+      theme: 'dark',
+      sound: false,
+      vibration: true,
+    });
     const preferences = readPreferences();
     writePreferences(preferences);
-    expect(readPreferences()).toEqual({ visualStyle: 'classic-bank', colorMode: 'light', sound: false, vibration: true });
+    expect(readPreferences()).toEqual({
+      visualStyle: 'classic-bank',
+      colorMode: 'light',
+      sound: false,
+      vibration: true,
+    });
   });
 
   it('falls back for unknown styles and modes without resetting valid feedback settings', () => {
-    stored = JSON.stringify({ visualStyle: 'unknown-style', colorMode: 'sepia', sound: true, vibration: false });
-    expect(readPreferences()).toEqual({ visualStyle: 'classic-bank', colorMode: 'system', sound: true, vibration: false });
+    stored = JSON.stringify({
+      visualStyle: 'unknown-style',
+      colorMode: 'sepia',
+      sound: true,
+      vibration: false,
+    });
+    expect(readPreferences()).toEqual({
+      visualStyle: 'classic-bank',
+      colorMode: 'system',
+      sound: true,
+      vibration: false,
+    });
   });
 
   it('retains the independently persisted Liquid Glass style', () => {
-    stored = JSON.stringify({ visualStyle: 'liquid-glass', colorMode: 'dark', sound: true, vibration: false });
-    expect(readPreferences()).toEqual({ visualStyle: 'liquid-glass', colorMode: 'dark', sound: true, vibration: false });
+    stored = JSON.stringify({
+      visualStyle: 'liquid-glass',
+      colorMode: 'dark',
+      sound: true,
+      vibration: false,
+    });
+    expect(readPreferences()).toEqual({
+      visualStyle: 'liquid-glass',
+      colorMode: 'dark',
+      sound: true,
+      vibration: false,
+    });
   });
 
   it('can recover the legacy mode when a new mode is invalid', () => {
@@ -45,15 +86,27 @@ describe('device preferences', () => {
     expect(readPreferences().colorMode).toBe('dark');
   });
 
-  it.each([null, 'null', '[]', '42', '"dark"', '{broken'])('uses defaults for malformed or absent storage: %s', (value) => {
-    stored = value;
-    expect(readPreferences()).toEqual({ visualStyle: 'classic-bank', colorMode: 'system', sound: true, vibration: true });
-  });
+  it.each([null, 'null', '[]', '42', '"dark"', '{broken'])(
+    'uses defaults for malformed or absent storage: %s',
+    (value) => {
+      stored = value;
+      expect(readPreferences()).toEqual({
+        visualStyle: 'classic-bank',
+        colorMode: 'system',
+        sound: true,
+        vibration: true,
+      });
+    },
+  );
 
   it('works when browser storage is unavailable', () => {
     vi.stubGlobal('localStorage', {
-      getItem: () => { throw new Error('Storage disabled'); },
-      setItem: () => { throw new Error('Storage disabled'); },
+      getItem: () => {
+        throw new Error('Storage disabled');
+      },
+      setItem: () => {
+        throw new Error('Storage disabled');
+      },
     });
     const preferences = readPreferences();
     expect(preferences.colorMode).toBe('system');
@@ -68,12 +121,16 @@ describe('amount unit preference', () => {
     store = new Map();
     vi.stubGlobal('localStorage', {
       getItem: (storageKey: string) => store.get(storageKey) ?? null,
-      setItem: (storageKey: string, value: string) => { store.set(storageKey, value); },
+      setItem: (storageKey: string, value: string) => {
+        store.set(storageKey, value);
+      },
     });
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('defaults to thousands when nothing is stored', () => { expect(readAmountUnit()).toBe('THOUSANDS'); });
+  it('defaults to thousands when nothing is stored', () => {
+    expect(readAmountUnit()).toBe('THOUSANDS');
+  });
   it('defaults to thousands for an invalid stored value', () => {
     store.set('monopoly-bank-amount-unit', 'BILLIONS');
     expect(readAmountUnit()).toBe('THOUSANDS');
@@ -85,7 +142,14 @@ describe('amount unit preference', () => {
     expect(store.has('monopoly-bank-device-preferences')).toBe(false);
   });
   it('does not throw when storage is unavailable', () => {
-    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('storage unavailable'); }, setItem: () => { throw new Error('storage unavailable'); } });
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('storage unavailable');
+      },
+      setItem: () => {
+        throw new Error('storage unavailable');
+      },
+    });
     expect(() => writeAmountUnit('MILLIONS')).not.toThrow();
     expect(readAmountUnit()).toBe('THOUSANDS');
   });

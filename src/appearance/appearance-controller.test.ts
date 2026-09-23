@@ -18,22 +18,32 @@ describe('root appearance controller', () => {
     });
     vi.stubGlobal('window', {
       matchMedia: vi.fn(() => ({
-        get matches() { return systemDark; },
-        addEventListener: (_event: string, listener: (event: { matches: boolean }) => void) => listeners.add(listener),
-        removeEventListener: (_event: string, listener: (event: { matches: boolean }) => void) => listeners.delete(listener),
+        get matches() {
+          return systemDark;
+        },
+        addEventListener: (_event: string, listener: (event: { matches: boolean }) => void) =>
+          listeners.add(listener),
+        removeEventListener: (_event: string, listener: (event: { matches: boolean }) => void) =>
+          listeners.delete(listener),
       })),
     });
   });
-  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-
-  it.each(['light', 'dark'] as const)('applies explicit %s independently of system appearance without subscribing', (colorMode) => {
-    systemDark = colorMode === 'light';
-    const cleanup = mountAppearance({ visualStyle: 'classic-bank', colorMode });
-    expect(dataset).toEqual({ visualStyle: 'classic-bank', colorMode });
-    expect(window.matchMedia).not.toHaveBeenCalled();
-    expect(listeners.size).toBe(0);
-    cleanup();
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
+
+  it.each(['light', 'dark'] as const)(
+    'applies explicit %s independently of system appearance without subscribing',
+    (colorMode) => {
+      systemDark = colorMode === 'light';
+      const cleanup = mountAppearance({ visualStyle: 'classic-bank', colorMode });
+      expect(dataset).toEqual({ visualStyle: 'classic-bank', colorMode });
+      expect(window.matchMedia).not.toHaveBeenCalled();
+      expect(listeners.size).toBe(0);
+      cleanup();
+    },
+  );
 
   it('applies system appearance before render and follows OS changes while mounted', () => {
     systemDark = true;

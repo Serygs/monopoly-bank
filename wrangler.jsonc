@@ -3,54 +3,54 @@
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "monopoly-bank",
-	"main": "worker/index.ts",
-	"compatibility_date": "2026-08-31",
-	"assets": {
-		"not_found_handling": "single-page-application"
-	},
-	"observability": {
-		"enabled": true
-	},
-	"analytics_engine_datasets": [
-		{ "binding": "OPERATIONAL_METRICS", "dataset": "monopoly_bank_operational" }
-	],
-	"triggers": { "crons": ["0 3 * * *"] },
-	"upload_source_maps": true,
-	"durable_objects": {
-		"bindings": [{ "name": "GAME_SESSIONS", "class_name": "GameSession" }]
-	},
-	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameSession"] }],
-	"d1_databases": [
-		{
-			"binding": "MONOPOLY_BANK_DB",
-			"database_name": "monopoly-bank",
-			"migrations_dir": "migrations",
-			"database_id": "d9a99c5e-be1d-4112-a8e1-cba4b910a77d"
-		}
-	]
-	/**
-	 * Smart Placement
-	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
-	 */
-	// "placement": {  "mode": "smart" }
-	/**
-	 * Bindings
-	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
-	 * databases, object storage, AI inference, real-time communication and more.
-	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
-	 */
-	/**
-	 * Environment Variables
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
-	 * Note: Use secrets to store sensitive data.
-	 * https://developers.cloudflare.com/workers/configuration/secrets/
-	 */
-	// "vars": {  "MY_VARIABLE": "production_value" }
-	/**
-	 * Service Bindings (communicate between multiple Workers)
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
-	 */
-	// "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "monopoly-bank",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-31",
+  "assets": {
+    "not_found_handling": "single-page-application",
+  },
+  "observability": {
+    "enabled": true,
+  },
+  "analytics_engine_datasets": [
+    { "binding": "OPERATIONAL_METRICS", "dataset": "monopoly_bank_operational" },
+  ],
+  "triggers": { "crons": ["0 3 * * *"] },
+  "upload_source_maps": true,
+  "durable_objects": {
+    "bindings": [{ "name": "GAME_SESSIONS", "class_name": "GameSession" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameSession"] }],
+  "d1_databases": [
+    {
+      "binding": "MONOPOLY_BANK_DB",
+      "database_name": "monopoly-bank",
+      "migrations_dir": "migrations",
+      "database_id": "d9a99c5e-be1d-4112-a8e1-cba4b910a77d",
+    },
+  ],
+  /**
+   * Smart Placement
+   * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
+   */
+  // "placement": {  "mode": "smart" }
+  /**
+   * Bindings
+   * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
+   * databases, object storage, AI inference, real-time communication and more.
+   * https://developers.cloudflare.com/workers/runtime-apis/bindings/
+   */
+  /**
+   * Environment Variables
+   * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
+   * Note: Use secrets to store sensitive data.
+   * https://developers.cloudflare.com/workers/configuration/secrets/
+   */
+  // "vars": {  "MY_VARIABLE": "production_value" }
+  /**
+   * Service Bindings (communicate between multiple Workers)
+   * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
+   */
+  // "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
 }

@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 describe('0012 account email and token migration', () => {
   it('keeps existing accounts registered and stores only bounded, consumable token state', async () => {
-    const sql = await readFile(new URL('./0012_account_email_and_tokens.sql', import.meta.url), 'utf8');
+    const sql = await readFile(
+      new URL('./0012_account_email_and_tokens.sql', import.meta.url),
+      'utf8',
+    );
 
     expect(sql).toContain("account_type TEXT NOT NULL DEFAULT 'REGISTERED'");
     expect(sql).toContain('CREATE UNIQUE INDEX users_by_normalized_email');

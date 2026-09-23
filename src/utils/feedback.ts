@@ -11,8 +11,11 @@ export function playPaymentFeedback(enabled: boolean): void {
     gain.gain.exponentialRampToValueAtTime(0.05, context.currentTime + 0.015);
     gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
     oscillator.connect(gain).connect(context.destination);
-    oscillator.start(); oscillator.stop(context.currentTime + 0.19);
-  } catch { /* Browser audio is optional. */ }
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.19);
+  } catch {
+    /* Browser audio is optional. */
+  }
 }
 
 export function vibrate(pattern: number | number[], enabled: boolean): void {

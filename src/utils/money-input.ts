@@ -1,12 +1,17 @@
 import type { AmountUnit } from './preferences';
 
-export interface AmountInputState { digits: string; unit: AmountUnit; }
+export interface AmountInputState {
+  digits: string;
+  unit: AmountUnit;
+}
 
 const maxMoneyInput = 9_999_999_999;
 
 export const AMOUNT_UNIT_FACTOR: Record<AmountUnit, number> = { THOUSANDS: 1, MILLIONS: 1000 };
 
-export function maxDigitsFor(unit: AmountUnit): number { return Math.floor(maxMoneyInput / AMOUNT_UNIT_FACTOR[unit]); }
+export function maxDigitsFor(unit: AmountUnit): number {
+  return Math.floor(maxMoneyInput / AMOUNT_UNIT_FACTOR[unit]);
+}
 
 export function appendMoneyDigit(digits: string, digit: string, unit: AmountUnit): string {
   if (!/^\d$/.test(digit)) return digits;
@@ -15,7 +20,9 @@ export function appendMoneyDigit(digits: string, digit: string, unit: AmountUnit
   return Number(next) > maxDigitsFor(unit) ? normalized : next;
 }
 
-export function removeMoneyDigit(digits: string): string { return digits.slice(0, -1); }
+export function removeMoneyDigit(digits: string): string {
+  return digits.slice(0, -1);
+}
 
 export function sanitizeMoneyInput(value: string, unit: AmountUnit): string {
   const digits = value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');

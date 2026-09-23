@@ -8,11 +8,22 @@ describe('UI translations', () => {
   });
 
   it('interpolates values without changing user-provided text', () => {
-    expect(translate('uk', 'gameRemoved', { name: 'Friday Game' })).toBe('Гру Friday Game видалено.');
+    expect(translate('uk', 'gameRemoved', { name: 'Friday Game' })).toBe(
+      'Гру Friday Game видалено.',
+    );
   });
 
   it('localizes the amount unit toggle in both languages', () => {
-    const keys = ['amountUnitGroup', 'amountUnitThousandsShort', 'amountUnitMillionsShort', 'amountUnitThousands', 'amountUnitMillions', 'inThousands', 'inMillions', 'amountTotalHint'] as const;
+    const keys = [
+      'amountUnitGroup',
+      'amountUnitThousandsShort',
+      'amountUnitMillionsShort',
+      'amountUnitThousands',
+      'amountUnitMillions',
+      'inThousands',
+      'inMillions',
+      'amountTotalHint',
+    ] as const;
     for (const key of keys) {
       expect(translate('en', key).trim()).not.toBe('');
       expect(translate('uk', key).trim()).not.toBe('');

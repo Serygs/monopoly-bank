@@ -34,11 +34,11 @@ Visual style and colour mode are orthogonal. Never encode one in the other.
 A visual style defines the product's aesthetic expression: materials, colour
 families, typography, shape, depth, imagery, and optional presentation effects.
 
-| Style ID | Status | Intent |
-| --- | --- | --- |
-| `classic-bank` | Implemented | A modern, premium interpretation of classic Monopoly banking. |
-| `liquid-glass` | Implemented | Translucent, refractive surfaces with an optional reduced-motion-safe pointer highlight. |
-| `minimal-finance` | Future architecture example only | A possible restrained finance presentation. |
+| Style ID          | Status                           | Intent                                                                                   |
+| ----------------- | -------------------------------- | ---------------------------------------------------------------------------------------- |
+| `classic-bank`    | Implemented                      | A modern, premium interpretation of classic Monopoly banking.                            |
+| `liquid-glass`    | Implemented                      | Translucent, refractive surfaces with an optional reduced-motion-safe pointer highlight. |
+| `minimal-finance` | Future architecture example only | A possible restrained finance presentation.                                              |
 
 New styles must be registered; page components must not gain style-specific
 business branches.
@@ -189,34 +189,34 @@ grouping should prefer spacing and subtle surface contrast.
 values. Shared and feature CSS must use the following roles rather than adding
 raw palette names.
 
-| Group | Tokens | Contract |
-| --- | --- | --- |
-| Canvas and surfaces | `--color-canvas`, `--color-surface-elevated`, `--color-surface-subtle`, `--color-surface-inverse`, `--color-surface-inverse-elevated` | Ivory canvas and clean neutral surfaces in light mode; deep neutral-green canvas and progressively lighter green-neutral surfaces in dark mode. |
-| Text | `--color-text-primary`, `--color-text-secondary`, `--color-text-muted`, `--color-text-on-accent`, `--color-text-on-danger`, `--color-text-on-inverse` | Primary content, supporting copy, de-emphasized metadata, and contrast-safe text on filled roles. |
-| Structure | `--color-border`, `--color-border-strong`, `--color-dialog-divider` | Use the quiet border by default. Strong borders are for selected, interactive, or unusually dense boundaries. |
-| Brand/action | `--color-accent`, `--color-accent-hover`, `--color-accent-pressed`, `--color-accent-soft` | Deep premium green in light mode and a brighter accessible green in dark mode. This is the primary action and selection family. |
-| Highlight | `--color-highlight` | Muted brass for compact identity details and limited emphasis; never the default control fill. |
-| Feedback | `--color-danger`, `--color-danger-hover`, `--color-danger-soft`, `--color-success`, `--color-success-soft`, plus status/border aliases | Restrained red for destructive/error states and green for positive/live states. Always pair colour with text, iconography, or semantics. |
-| Player identity | `--color-player-red`, `--color-player-blue`, `--color-player-green`, `--color-player-orange`, `--color-player-purple`, `--color-player-teal`, `--color-text-on-player` | Stable values matching persisted player colours. Keep all six distinguishable in both modes. |
-| Focus and overlay | `--color-focus-ring`, `--color-focus-halo`, `--color-overlay`, `--focus-ring` | Brass focus treatment remains visible on light, dark, and inverse surfaces. Classic Bank overlays are opaque and must not blur content. |
+| Group               | Tokens                                                                                                                                                                 | Contract                                                                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canvas and surfaces | `--color-canvas`, `--color-surface-elevated`, `--color-surface-subtle`, `--color-surface-inverse`, `--color-surface-inverse-elevated`                                  | Ivory canvas and clean neutral surfaces in light mode; deep neutral-green canvas and progressively lighter green-neutral surfaces in dark mode. |
+| Text                | `--color-text-primary`, `--color-text-secondary`, `--color-text-muted`, `--color-text-on-accent`, `--color-text-on-danger`, `--color-text-on-inverse`                  | Primary content, supporting copy, de-emphasized metadata, and contrast-safe text on filled roles.                                               |
+| Structure           | `--color-border`, `--color-border-strong`, `--color-dialog-divider`                                                                                                    | Use the quiet border by default. Strong borders are for selected, interactive, or unusually dense boundaries.                                   |
+| Brand/action        | `--color-accent`, `--color-accent-hover`, `--color-accent-pressed`, `--color-accent-soft`                                                                              | Deep premium green in light mode and a brighter accessible green in dark mode. This is the primary action and selection family.                 |
+| Highlight           | `--color-highlight`                                                                                                                                                    | Muted brass for compact identity details and limited emphasis; never the default control fill.                                                  |
+| Feedback            | `--color-danger`, `--color-danger-hover`, `--color-danger-soft`, `--color-success`, `--color-success-soft`, plus status/border aliases                                 | Restrained red for destructive/error states and green for positive/live states. Always pair colour with text, iconography, or semantics.        |
+| Player identity     | `--color-player-red`, `--color-player-blue`, `--color-player-green`, `--color-player-orange`, `--color-player-purple`, `--color-player-teal`, `--color-text-on-player` | Stable values matching persisted player colours. Keep all six distinguishable in both modes.                                                    |
+| Focus and overlay   | `--color-focus-ring`, `--color-focus-halo`, `--color-overlay`, `--focus-ring`                                                                                          | Brass focus treatment remains visible on light, dark, and inverse surfaces. Classic Bank overlays are opaque and must not blur content.         |
 
 The resolved core palette is:
 
-| Role | Light | Dark |
-| --- | --- | --- |
-| Canvas | `#f4efdf` | `#091d18` |
-| Elevated surface | `#fff9ea` | `#102a23` |
-| Subtle surface | `#f6f0df` | `#1a3b31` |
-| Primary text | `#10372e` | `#f8f4e8` |
-| Secondary text | `#50675e` | `#c4cec8` |
-| Muted text | `#75867f` | `#8fa39a` |
-| Border / strong border | `#d9cead` / `#9baf9f` | `rgb(220 202 151 / .22)` / `#547166` |
-| Accent / hover / pressed | `#126247` / `#176f51` / `#0b4a38` | `#4fa779` / `#65b98b` / `#3d8d65` |
-| Accent soft | `#e6f0e9` | `#193b2d` |
-| Highlight | `#c5a34d` | `#d0ae58` |
-| Danger / hover / soft | `#c94d56` / `#98363d` / `#f8e7e8` | `#e06d75` / `#ef8188` / `#43242a` |
-| Success / soft | `#2e9b68` / `#e4f2e9` | `#6eb88b` / `#173928` |
-| Focus ring | `#8b6322` | `#d5b86f` |
+| Role                     | Light                             | Dark                                 |
+| ------------------------ | --------------------------------- | ------------------------------------ |
+| Canvas                   | `#f4efdf`                         | `#091d18`                            |
+| Elevated surface         | `#fff9ea`                         | `#102a23`                            |
+| Subtle surface           | `#f6f0df`                         | `#1a3b31`                            |
+| Primary text             | `#10372e`                         | `#f8f4e8`                            |
+| Secondary text           | `#50675e`                         | `#c4cec8`                            |
+| Muted text               | `#75867f`                         | `#8fa39a`                            |
+| Border / strong border   | `#d9cead` / `#9baf9f`             | `rgb(220 202 151 / .22)` / `#547166` |
+| Accent / hover / pressed | `#126247` / `#176f51` / `#0b4a38` | `#4fa779` / `#65b98b` / `#3d8d65`    |
+| Accent soft              | `#e6f0e9`                         | `#193b2d`                            |
+| Highlight                | `#c5a34d`                         | `#d0ae58`                            |
+| Danger / hover / soft    | `#c94d56` / `#98363d` / `#f8e7e8` | `#e06d75` / `#ef8188` / `#43242a`    |
+| Success / soft           | `#2e9b68` / `#e4f2e9`             | `#6eb88b` / `#173928`                |
+| Focus ring               | `#8b6322`                         | `#d5b86f`                            |
 
 Dark mode is designed independently; do not derive it by inversion. Stable
 player values are red `#d83f55`, blue `#2878d0`, green `#238b57`, orange
@@ -293,11 +293,11 @@ may compose them but must not create a second visual language.
 - Monopoly Bank has three responsive layout groups. They are shared rules, not
   page-specific breakpoint guesses:
 
-  | Group | Range | Composition |
-  | --- | --- | --- |
-  | Compact | under `48rem` / 768px | One primary task column; labelled header controls collapse to icons; page actions become a stable local grid; dialogs and settings use bottom sheets. |
-  | Medium | `48rem` / 768px through under `64rem` / 1024px | Moderate page padding; labelled header controls return; actions may wrap in their local header region; dialogs and settings are anchored/centered surfaces. |
-  | Wide | `64rem` / 1024px and above | Controlled `1280px` content maximum; intentional outer whitespace; page title and actions may share a row; feature grids use available table space. |
+  | Group   | Range                                          | Composition                                                                                                                                                 |
+  | ------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | Compact | under `48rem` / 768px                          | One primary task column; labelled header controls collapse to icons; page actions become a stable local grid; dialogs and settings use bottom sheets.       |
+  | Medium  | `48rem` / 768px through under `64rem` / 1024px | Moderate page padding; labelled header controls return; actions may wrap in their local header region; dialogs and settings are anchored/centered surfaces. |
+  | Wide    | `64rem` / 1024px and above                     | Controlled `1280px` content maximum; intentional outer whitespace; page title and actions may share a row; feature grids use available table space.         |
 
 - Use `--layout-*` tokens for content measures, inline/block padding, header
   height, section gaps, and grid gaps. `src/styles/layout.css` owns the three

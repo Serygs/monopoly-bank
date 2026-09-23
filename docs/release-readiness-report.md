@@ -5,15 +5,15 @@
 
 ## Evidence collected
 
-| Control | Evidence | Result |
-| --- | --- | --- |
-| Empty-database schema | `npm run test:d1` applies all migrations to isolated local D1 and asserts financial constraints and foreign keys. | Pass |
-| Upgrade path | The same command creates a fixture at migration `0015`, then applies `0016` and later migrations and verifies identity preservation and foreign keys. | Pass |
-| Application quality | `npm test` | 39 files / 137 tests passed |
-| Static validation | `npm run lint` | Pass with 2 pre-existing generated-type warnings |
-| Production build | `npm run build` | Pass |
-| Staging isolation | Generated config with an injected non-production D1 UUID passed `npm run check:bindings`. | Pass |
-| Deployment configuration | `wrangler deploy --dry-run --config dist/monopoly_bank/wrangler.staging.json` reported only `GAME_SESSIONS`, `MONOPOLY_BANK_DB`, and `ENVIRONMENT=staging`; it exited before deployment. | Pass |
+| Control                  | Evidence                                                                                                                                                                                 | Result                                           |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Empty-database schema    | `npm run test:d1` applies all migrations to isolated local D1 and asserts financial constraints and foreign keys.                                                                        | Pass                                             |
+| Upgrade path             | The same command creates a fixture at migration `0015`, then applies `0016` and later migrations and verifies identity preservation and foreign keys.                                    | Pass                                             |
+| Application quality      | `npm test`                                                                                                                                                                               | 39 files / 137 tests passed                      |
+| Static validation        | `npm run lint`                                                                                                                                                                           | Pass with 2 pre-existing generated-type warnings |
+| Production build         | `npm run build`                                                                                                                                                                          | Pass                                             |
+| Staging isolation        | Generated config with an injected non-production D1 UUID passed `npm run check:bindings`.                                                                                                | Pass                                             |
+| Deployment configuration | `wrangler deploy --dry-run --config dist/monopoly_bank/wrangler.staging.json` reported only `GAME_SESSIONS`, `MONOPOLY_BANK_DB`, and `ENVIRONMENT=staging`; it exited before deployment. | Pass                                             |
 
 The D1 migration runner is the authoritative verification for migration ordering: D1 records applied files in its migration table and applies them in filename order. See [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/).
 

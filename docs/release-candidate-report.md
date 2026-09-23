@@ -8,20 +8,20 @@ eligible until every blocking item below is closed and independently reviewed.
 
 ## Evidence collected
 
-| Gate | Result | Evidence |
-| --- | --- | --- |
-| Unit, domain, route, and Durable Object tests | PASS | Phase 8 follow-up, 2026-09-22: `npm test` passed 47 files and 181 tests. |
-| Focused Worker integration | PASS | `npm run test:worker`: 2 files, 32 tests passed. |
-| D1 migrations and constraints | PASS | `npm run test:d1`: clean database and upgraded production-like fixture completed successfully. |
-| Local restore rehearsal | PASS | `npm run test:restore` against `scripts/fixtures/restore-rehearsal.sql` restored into disposable local D1; foreign keys, schema, and fixture lookup passed. |
-| Lint | PASS WITH WARNINGS | `npm run lint`: zero errors; two pre-existing, generated `worker-configuration.d.ts` unused-disable warnings. |
-| Production build | PASS | `npm run build`: Worker and client production artifacts built successfully. |
-| Production binding validation | PASS | Generated config matches the approved Worker name, D1 ID/name, and Durable Object binding. |
-| Deployment dry-run | PASS | `npx wrangler deploy --dry-run`: artifact assembled; no Worker or D1 changes made. |
-| Security regression suite | PARTIAL | Covered by the local suite; a deployed-origin security/header check remains pending staging. |
-| Playwright six-device, visual, keyboard, and accessibility matrix | PARTIAL | Phase 8 follow-up, 2026-09-22: all 15 non-mutating, API-mocked visual/responsive cases passed locally. The three staging mutation/convergence cases remain pending an isolated deployment. |
-| Staging migration dry-run and real migration application | NOT RUN | No staging D1 name or Cloudflare staging credentials were available. |
-| 2x peak soak | NOT RUN | No private 60-game staging scenario or isolated staging endpoint was available. |
+| Gate                                                              | Result             | Evidence                                                                                                                                                                                   |
+| ----------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Unit, domain, route, and Durable Object tests                     | PASS               | Phase 8 follow-up, 2026-09-22: `npm test` passed 47 files and 181 tests.                                                                                                                   |
+| Focused Worker integration                                        | PASS               | `npm run test:worker`: 2 files, 32 tests passed.                                                                                                                                           |
+| D1 migrations and constraints                                     | PASS               | `npm run test:d1`: clean database and upgraded production-like fixture completed successfully.                                                                                             |
+| Local restore rehearsal                                           | PASS               | `npm run test:restore` against `scripts/fixtures/restore-rehearsal.sql` restored into disposable local D1; foreign keys, schema, and fixture lookup passed.                                |
+| Lint                                                              | PASS WITH WARNINGS | `npm run lint`: zero errors; two pre-existing, generated `worker-configuration.d.ts` unused-disable warnings.                                                                              |
+| Production build                                                  | PASS               | `npm run build`: Worker and client production artifacts built successfully.                                                                                                                |
+| Production binding validation                                     | PASS               | Generated config matches the approved Worker name, D1 ID/name, and Durable Object binding.                                                                                                 |
+| Deployment dry-run                                                | PASS               | `npx wrangler deploy --dry-run`: artifact assembled; no Worker or D1 changes made.                                                                                                         |
+| Security regression suite                                         | PARTIAL            | Covered by the local suite; a deployed-origin security/header check remains pending staging.                                                                                               |
+| Playwright six-device, visual, keyboard, and accessibility matrix | PARTIAL            | Phase 8 follow-up, 2026-09-22: all 15 non-mutating, API-mocked visual/responsive cases passed locally. The three staging mutation/convergence cases remain pending an isolated deployment. |
+| Staging migration dry-run and real migration application          | NOT RUN            | No staging D1 name or Cloudflare staging credentials were available.                                                                                                                       |
+| 2x peak soak                                                      | NOT RUN            | No private 60-game staging scenario or isolated staging endpoint was available.                                                                                                            |
 
 The load runner now accepts only explicit, bounded levels: 30 games (peak) or
 60 games (2x peak). The 2x scenario opens 360 sockets and must run for 30–60

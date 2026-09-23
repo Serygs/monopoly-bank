@@ -49,17 +49,55 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
         ),
     );
 
-    const statusStatement = input.bankruptPlayerId === undefined ? [] : [this.database.prepare("UPDATE players SET status = 'BANKRUPT', balance = 0 WHERE id = ? AND game_id = ? AND status = 'ACTIVE'").bind(input.bankruptPlayerId, input.transaction.gameId)];
+    const statusStatement =
+      input.bankruptPlayerId === undefined
+        ? []
+        : [
+            this.database
+              .prepare(
+                "UPDATE players SET status = 'BANKRUPT', balance = 0 WHERE id = ? AND game_id = ? AND status = 'ACTIVE'",
+              )
+              .bind(input.bankruptPlayerId, input.transaction.gameId),
+          ];
     try {
-      const recentStatements = input.recentAmount === undefined ? [] : recentAmountStatements(this.database, input.transaction.gameId, input.recentAmount);
-      await this.database.batch([balanceStatement, transactionStatement, ...participantStatements, ...statusStatement, ...recentStatements]);
+      const recentStatements =
+        input.recentAmount === undefined
+          ? []
+          : recentAmountStatements(this.database, input.transaction.gameId, input.recentAmount);
+      await this.database.batch([
+        balanceStatement,
+        transactionStatement,
+        ...participantStatements,
+        ...statusStatement,
+        ...recentStatements,
+      ]);
     } catch (cause) {
       throw new DatabaseError({ operation: 'persistBankingOperation', cause });
     }
   }
 }
 
-function recentAmountStatements(database: D1Database, gameId: string, amount: number): D1PreparedStatement[] { return [database.prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?').bind(gameId, amount), database.prepare('INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES (?, ?, CURRENT_TIMESTAMP)').bind(gameId, amount), database.prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount NOT IN (SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5)').bind(gameId, gameId)]; }
+function recentAmountStatements(
+  database: D1Database,
+  gameId: string,
+  amount: number,
+): D1PreparedStatement[] {
+  return [
+    database
+      .prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?')
+      .bind(gameId, amount),
+    database
+      .prepare(
+        'INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+      )
+      .bind(gameId, amount),
+    database
+      .prepare(
+        'DELETE FROM game_recent_amounts WHERE game_id = ? AND amount NOT IN (SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5)',
+      )
+      .bind(gameId, gameId),
+  ];
+}
 
 function createBalanceUpdateStatement(
   database: D1Database,
