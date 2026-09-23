@@ -81,7 +81,12 @@ export class InvalidAmountError extends BankingDomainError {
   readonly amount: number;
 
   constructor(amount: number) {
-    super({ code: 'INVALID_AMOUNT', message: 'Amount must be a positive safe integer.', status: 400, details: { field: 'amount' } });
+    super({
+      code: 'INVALID_AMOUNT',
+      message: 'Amount must be a positive safe integer.',
+      status: 400,
+      details: { field: 'amount' },
+    });
     this.amount = amount;
   }
 }
@@ -101,7 +106,11 @@ export class SameSourceAndDestinationError extends BankingDomainError {
   readonly playerId: string;
 
   constructor(playerId: string) {
-    super({ code: 'SAME_SOURCE_AND_DESTINATION', message: 'The source and destination players must be different.', status: 400 });
+    super({
+      code: 'SAME_SOURCE_AND_DESTINATION',
+      message: 'The source and destination players must be different.',
+      status: 400,
+    });
     this.playerId = playerId;
   }
 }
@@ -113,12 +122,18 @@ export class InsufficientFundsError extends BankingDomainError {
   readonly requiredAmount: number;
   readonly shortfall: number;
 
-  constructor(
-    playerId: string,
-    currentBalance: number,
-    requiredAmount: number,
-  ) {
-    super({ code: 'INSUFFICIENT_FUNDS', message: 'Player does not have enough funds.', status: 409, details: { playerId, currentBalance, requiredAmount, shortfall: requiredAmount - currentBalance } });
+  constructor(playerId: string, currentBalance: number, requiredAmount: number) {
+    super({
+      code: 'INSUFFICIENT_FUNDS',
+      message: 'Player does not have enough funds.',
+      status: 409,
+      details: {
+        playerId,
+        currentBalance,
+        requiredAmount,
+        shortfall: requiredAmount - currentBalance,
+      },
+    });
     this.playerId = playerId;
     this.currentBalance = currentBalance;
     this.requiredAmount = requiredAmount;
@@ -138,7 +153,14 @@ export class InvalidGameStateError extends BankingDomainError {
 
 export class PlayerBankruptError extends BankingDomainError {
   readonly code = 'PLAYER_BANKRUPT' as const;
-  constructor(playerId: string) { super({ code: 'PLAYER_BANKRUPT', message: 'This player is bankrupt.', status: 409, details: { playerId } }); }
+  constructor(playerId: string) {
+    super({
+      code: 'PLAYER_BANKRUPT',
+      message: 'This player is bankrupt.',
+      status: 409,
+      details: { playerId },
+    });
+  }
 }
 
 export function playerToPlayer(command: PlayerToPlayerCommand): BankingOperationResult {
@@ -205,7 +227,9 @@ export function playerToAll(command: PlayerToAllCommand): BankingOperationResult
 
   const payer = findPlayer(players, command.payerPlayerId);
   ensureActive(payer);
-  const recipients = players.filter((player) => player.id !== payer.id && player.status !== 'BANKRUPT');
+  const recipients = players.filter(
+    (player) => player.id !== payer.id && player.status !== 'BANKRUPT',
+  );
   const totalAmount = multiplyAmounts(command.amountPerPlayer, recipients.length);
   ensureSufficientFunds(payer, totalAmount);
 
@@ -228,7 +252,9 @@ export function allToPlayer(command: AllToPlayerCommand): BankingOperationResult
 
   const recipient = findPlayer(players, command.recipientPlayerId);
   ensureActive(recipient);
-  const payers = players.filter((player) => player.id !== recipient.id && player.status !== 'BANKRUPT');
+  const payers = players.filter(
+    (player) => player.id !== recipient.id && player.status !== 'BANKRUPT',
+  );
   for (const payer of payers) {
     ensureSufficientFunds(payer, command.amountPerPlayer);
   }
@@ -267,15 +293,26 @@ export function declareBankruptcy(command: BankruptcyCommand): BankingOperationR
   const players = validateGame(command.game, command.players);
   const bankruptPlayer = findPlayer(players, command.playerId);
   ensureActive(bankruptPlayer);
-  const creditor = command.creditorPlayerId === undefined ? null : findPlayer(players, command.creditorPlayerId);
-  if (creditor !== null) { ensureActive(creditor); ensureDifferentPlayers(bankruptPlayer, creditor); }
+  const creditor =
+    command.creditorPlayerId === undefined ? null : findPlayer(players, command.creditorPlayerId);
+  if (creditor !== null) {
+    ensureActive(creditor);
+    ensureDifferentPlayers(bankruptPlayer, creditor);
+  }
   if (bankruptPlayer.balance === 0) {
     return createResult(command.game.id, 'BANKRUPTCY_TRANSFER', 1, 1, null, []);
   }
-  return createResult(command.game.id, 'BANKRUPTCY_TRANSFER', bankruptPlayer.balance, bankruptPlayer.balance, null, [
-    createBalanceChange(bankruptPlayer, -bankruptPlayer.balance),
-    ...(creditor === null ? [] : [createBalanceChange(creditor, bankruptPlayer.balance)]),
-  ]);
+  return createResult(
+    command.game.id,
+    'BANKRUPTCY_TRANSFER',
+    bankruptPlayer.balance,
+    bankruptPlayer.balance,
+    null,
+    [
+      createBalanceChange(bankruptPlayer, -bankruptPlayer.balance),
+      ...(creditor === null ? [] : [createBalanceChange(creditor, bankruptPlayer.balance)]),
+    ],
+  );
 }
 
 function validateGame(game: Game, players: readonly Player[]): readonly Player[] {
@@ -347,7 +384,9 @@ function multiplyAmounts(amount: number, multiplier: number): number {
 function createBalanceChange(player: Player, balanceDelta: number): PlayerBalanceChange {
   const balanceAfter = player.balance + balanceDelta;
   if (!Number.isSafeInteger(balanceAfter) || balanceAfter < 0) {
-    throw new InvalidGameStateError(`operation would produce an invalid balance for player "${player.id}"`);
+    throw new InvalidGameStateError(
+      `operation would produce an invalid balance for player "${player.id}"`,
+    );
   }
 
   return {

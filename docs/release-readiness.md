@@ -6,12 +6,12 @@
 
 Before the first staging run, create the following GitHub `staging` environment configuration:
 
-| Kind | Name | Purpose |
-| --- | --- | --- |
-| secret | `CLOUDFLARE_API_TOKEN` | Least-privilege token for the staging Worker and staging D1 only. |
-| secret | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier. |
-| variable | `CLOUDFLARE_STAGING_D1_DATABASE_NAME` | Isolated staging D1 database name. |
-| variable | `CLOUDFLARE_STAGING_WORKER_NAME` | Optional non-production Worker name; defaults to `monopoly-bank-staging`. |
+| Kind     | Name                                  | Purpose                                                                   |
+| -------- | ------------------------------------- | ------------------------------------------------------------------------- |
+| secret   | `CLOUDFLARE_API_TOKEN`                | Least-privilege token for the staging Worker and staging D1 only.         |
+| secret   | `CLOUDFLARE_ACCOUNT_ID`               | Cloudflare account identifier.                                            |
+| variable | `CLOUDFLARE_STAGING_D1_DATABASE_NAME` | Isolated staging D1 database name.                                        |
+| variable | `CLOUDFLARE_STAGING_WORKER_NAME`      | Optional non-production Worker name; defaults to `monopoly-bank-staging`. |
 
 Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `APP_ORIGIN` as staging Worker secrets before a release. `APP_ORIGIN` must equal the HTTPS staging custom domain. The workflow verifies only secret names; it never prints values.
 

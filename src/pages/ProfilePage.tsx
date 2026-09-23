@@ -7,26 +7,261 @@ import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { EMAIL_FEATURES_ENABLED } from '../utils/email-features';
 
-export function ProfilePage({ profile, onUpdated, onBack }: { profile: UserProfile; onUpdated: (profile: UserProfile) => void; onBack: () => void }) {
+export function ProfilePage({
+  profile,
+  onUpdated,
+  onBack,
+}: {
+  profile: UserProfile;
+  onUpdated: (profile: UserProfile) => void;
+  onBack: () => void;
+}) {
   const { t } = useLanguage();
-  const [nickname, setNickname] = useState(profile.nickname); const [avatar, setAvatar] = useState(profile.avatar); const [error, setError] = useState<unknown>(null); const [saved, setSaved] = useState(false); const [saving, setSaving] = useState(false);
-  const save = async (event: FormEvent) => { event.preventDefault(); setSaving(true); setError(null); setSaved(false); try { onUpdated(await monopolyBankApi.updateProfile({ nickname, avatar })); setSaved(true); } catch (caught) { setError(caught); } finally { setSaving(false); } };
-  return <main className="page profile-page"><PageHeader eyebrow={t('playerProfile')} title={t('playerProfile')} description={t('profileDescription')} backAction={<button className="button button-quiet" type="button" onClick={onBack}>{t('savedGames')}</button>} /><div className="profile-layout"><section className="profile-overview"><div className="profile-summary"><Avatar avatar={avatar} label={nickname} className="profile-avatar" /><div><h2>{nickname}</h2><p className="muted">{profile.accountType === 'GUEST' ? t('guestAccount') : t('playerProfile')}</p></div></div><dl className="profile-statistics"><div><dt>{t('gamesPlayed')}</dt><dd>{profile.gamesPlayed}</dd></div><div><dt>{t('gamesWon')}</dt><dd>{profile.gamesWon}</dd></div><div><dt>{t('gamesLost')}</dt><dd>{profile.gamesLost}</dd></div><div><dt>{t('winRate')}</dt><dd>{Math.round(profile.winRate * 100)}%</dd></div></dl></section><section className="profile-editor"><form className="game-form profile-form" onSubmit={(event) => void save(event)}><label>{t('nickname')}<input value={nickname} minLength={2} maxLength={40} onChange={(event) => setNickname(event.target.value)} required /></label><AvatarPicker avatar={avatar} onChange={setAvatar} label={t('avatar')} uploadLabel={t('avatarUpload')} uploadHint={t('avatarUploadHint')} invalidImageMessage={t('avatarUploadError')} allowUpload />{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableUpdateProfile')}</p>}{saved && <p className="notice notice-success" role="status">{t('profileUpdated')}</p>}<button className="button button-primary profile-save" disabled={saving}>{saving ? t('savingProfile') : t('saveProfile')}</button></form>{EMAIL_FEATURES_ENABLED && (profile.accountType === 'GUEST' ? <GuestUpgradeForm onUpgraded={onUpdated} /> : profile.email === null ? <LegacyEmailForm onAdded={onUpdated} /> : !profile.emailVerified && <VerificationNotice />)}</section></div></main>;
+  const [nickname, setNickname] = useState(profile.nickname);
+  const [avatar, setAvatar] = useState(profile.avatar);
+  const [error, setError] = useState<unknown>(null);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      onUpdated(await monopolyBankApi.updateProfile({ nickname, avatar }));
+      setSaved(true);
+    } catch (caught) {
+      setError(caught);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <main className="page profile-page">
+      <PageHeader
+        eyebrow={t('playerProfile')}
+        title={t('playerProfile')}
+        description={t('profileDescription')}
+        backAction={
+          <button className="button button-quiet" type="button" onClick={onBack}>
+            {t('savedGames')}
+          </button>
+        }
+      />
+      <div className="profile-layout">
+        <section className="profile-overview">
+          <div className="profile-summary">
+            <Avatar avatar={avatar} label={nickname} className="profile-avatar" />
+            <div>
+              <h2>{nickname}</h2>
+              <p className="muted">
+                {profile.accountType === 'GUEST' ? t('guestAccount') : t('playerProfile')}
+              </p>
+            </div>
+          </div>
+          <dl className="profile-statistics">
+            <div>
+              <dt>{t('gamesPlayed')}</dt>
+              <dd>{profile.gamesPlayed}</dd>
+            </div>
+            <div>
+              <dt>{t('gamesWon')}</dt>
+              <dd>{profile.gamesWon}</dd>
+            </div>
+            <div>
+              <dt>{t('gamesLost')}</dt>
+              <dd>{profile.gamesLost}</dd>
+            </div>
+            <div>
+              <dt>{t('winRate')}</dt>
+              <dd>{Math.round(profile.winRate * 100)}%</dd>
+            </div>
+          </dl>
+        </section>
+        <section className="profile-editor">
+          <form className="game-form profile-form" onSubmit={(event) => void save(event)}>
+            <label>
+              {t('nickname')}
+              <input
+                value={nickname}
+                minLength={2}
+                maxLength={40}
+                onChange={(event) => setNickname(event.target.value)}
+                required
+              />
+            </label>
+            <AvatarPicker
+              avatar={avatar}
+              onChange={setAvatar}
+              label={t('avatar')}
+              uploadLabel={t('avatarUpload')}
+              uploadHint={t('avatarUploadHint')}
+              invalidImageMessage={t('avatarUploadError')}
+              allowUpload
+            />
+            {error !== null && (
+              <p className="notice notice-error" role="alert">
+                {apiErrorMessage(error, t, 'unableUpdateProfile')}
+              </p>
+            )}
+            {saved && (
+              <p className="notice notice-success" role="status">
+                {t('profileUpdated')}
+              </p>
+            )}
+            <button className="button button-primary profile-save" disabled={saving}>
+              {saving ? t('savingProfile') : t('saveProfile')}
+            </button>
+          </form>
+          {EMAIL_FEATURES_ENABLED &&
+            (profile.accountType === 'GUEST' ? (
+              <GuestUpgradeForm onUpgraded={onUpdated} />
+            ) : profile.email === null ? (
+              <LegacyEmailForm onAdded={onUpdated} />
+            ) : (
+              !profile.emailVerified && <VerificationNotice />
+            ))}
+        </section>
+      </div>
+    </main>
+  );
 }
 
 function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) => void }) {
-  const { t } = useLanguage(); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState<unknown>(null);
-  const upgrade = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(null); try { onUpgraded(await monopolyBankApi.upgradeGuest({ email, password })); } catch (caught) { setError(caught); } finally { setBusy(false); } };
-  return <form className="game-form profile-form" onSubmit={(event) => void upgrade(event)}><h2>{t('secureGuestAccount')}</h2><p className="muted">{t('secureGuestDescription')}</p><label>{t('email')}<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>{t('password')}<input type="password" minLength={6} maxLength={256} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableAuthenticate')}</p>}<button className="button button-primary" disabled={busy}>{busy ? t('pleaseWait') : t('secureGuestAccount')}</button></form>;
+  const { t } = useLanguage();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const upgrade = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      onUpgraded(await monopolyBankApi.upgradeGuest({ email, password }));
+    } catch (caught) {
+      setError(caught);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form className="game-form profile-form" onSubmit={(event) => void upgrade(event)}>
+      <h2>{t('secureGuestAccount')}</h2>
+      <p className="muted">{t('secureGuestDescription')}</p>
+      <label>
+        {t('email')}
+        <input
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          required
+        />
+      </label>
+      <label>
+        {t('password')}
+        <input
+          type="password"
+          minLength={6}
+          maxLength={256}
+          autoComplete="new-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          required
+        />
+      </label>
+      {error !== null && (
+        <p className="notice notice-error" role="alert">
+          {apiErrorMessage(error, t, 'unableAuthenticate')}
+        </p>
+      )}
+      <button className="button button-primary" disabled={busy}>
+        {busy ? t('pleaseWait') : t('secureGuestAccount')}
+      </button>
+    </form>
+  );
 }
 
 function VerificationNotice() {
-  const { t } = useLanguage(); const [busy, setBusy] = useState(false); const [error, setError] = useState<unknown>(null); const [sent, setSent] = useState(false); const resend = async () => { setBusy(true); setError(null); setSent(false); try { await monopolyBankApi.resendVerification(); setSent(true); } catch (caught) { setError(caught); } finally { setBusy(false); } };
-  return <section className="verification-notice"><div className="notice notice-success" role="status"><p>{sent ? t('verificationSent') : t('verificationPending')}</p><button className="button button-secondary" type="button" disabled={busy} onClick={() => void resend()}>{busy ? t('pleaseWait') : t('resendVerification')}</button></div>{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'errorEmailDelivery')}</p>}</section>;
+  const { t } = useLanguage();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [sent, setSent] = useState(false);
+  const resend = async () => {
+    setBusy(true);
+    setError(null);
+    setSent(false);
+    try {
+      await monopolyBankApi.resendVerification();
+      setSent(true);
+    } catch (caught) {
+      setError(caught);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="verification-notice">
+      <div className="notice notice-success" role="status">
+        <p>{sent ? t('verificationSent') : t('verificationPending')}</p>
+        <button
+          className="button button-secondary"
+          type="button"
+          disabled={busy}
+          onClick={() => void resend()}
+        >
+          {busy ? t('pleaseWait') : t('resendVerification')}
+        </button>
+      </div>
+      {error !== null && (
+        <p className="notice notice-error" role="alert">
+          {apiErrorMessage(error, t, 'errorEmailDelivery')}
+        </p>
+      )}
+    </section>
+  );
 }
 
 function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void }) {
-  const { t } = useLanguage(); const [email, setEmail] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState<unknown>(null);
-  const add = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(null); try { onAdded(await monopolyBankApi.addEmailToLegacyAccount({ email })); } catch (caught) { setError(caught); } finally { setBusy(false); } };
-  return <form className="game-form profile-form" onSubmit={(event) => void add(event)}><h2>{t('addAccountEmail')}</h2><p className="muted">{t('addAccountEmailDescription')}</p><label>{t('email')}<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableAuthenticate')}</p>}<button className="button button-primary" disabled={busy}>{busy ? t('pleaseWait') : t('addAccountEmail')}</button></form>;
+  const { t } = useLanguage();
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const add = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      onAdded(await monopolyBankApi.addEmailToLegacyAccount({ email }));
+    } catch (caught) {
+      setError(caught);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form className="game-form profile-form" onSubmit={(event) => void add(event)}>
+      <h2>{t('addAccountEmail')}</h2>
+      <p className="muted">{t('addAccountEmailDescription')}</p>
+      <label>
+        {t('email')}
+        <input
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          required
+        />
+      </label>
+      {error !== null && (
+        <p className="notice notice-error" role="alert">
+          {apiErrorMessage(error, t, 'unableAuthenticate')}
+        </p>
+      )}
+      <button className="button button-primary" disabled={busy}>
+        {busy ? t('pleaseWait') : t('addAccountEmail')}
+      </button>
+    </form>
+  );
 }
