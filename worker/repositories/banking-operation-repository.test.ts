@@ -29,13 +29,25 @@ describe('D1BankingOperationRepository', () => {
           balanceDelta: -100,
         },
         {
-          player: { id: 'recipient-1', gameId: 'game-1', name: 'Recipient 1', color: '#222', balance: 50 },
+          player: {
+            id: 'recipient-1',
+            gameId: 'game-1',
+            name: 'Recipient 1',
+            color: '#222',
+            balance: 50,
+          },
           balanceBefore: 50,
           balanceAfter: 100,
           balanceDelta: 50,
         },
         {
-          player: { id: 'recipient-2', gameId: 'game-1', name: 'Recipient 2', color: '#333', balance: 50 },
+          player: {
+            id: 'recipient-2',
+            gameId: 'game-1',
+            name: 'Recipient 2',
+            color: '#333',
+            balance: 50,
+          },
           balanceBefore: 50,
           balanceAfter: 100,
           balanceDelta: 50,
@@ -46,10 +58,19 @@ describe('D1BankingOperationRepository', () => {
     expect(database.batches).toHaveLength(1);
     expect(database.batches[0]).toHaveLength(5);
     expect(database.batches[0][0].values).toEqual([
-      'payer', 150, 50,
-      'recipient-1', 50, 100,
-      'recipient-2', 50, 100,
-      'game-1', 'payer', 'recipient-1', 'recipient-2',
+      'payer',
+      150,
+      50,
+      'recipient-1',
+      50,
+      100,
+      'recipient-2',
+      50,
+      100,
+      'game-1',
+      'payer',
+      'recipient-1',
+      'recipient-2',
     ]);
     expect(database.batches[0][1].values).toEqual([
       'transaction-1',
@@ -67,15 +88,54 @@ describe('D1BankingOperationRepository', () => {
 
     await repository.persist({
       transactionId: 'transaction-1',
-      transaction: { gameId: 'game-1', type: 'BANKRUPTCY_TRANSFER', amount: 400, totalAmount: 400, comment: null, participants: [{ playerId: 'bankrupt-player', balanceDelta: -400 }, { playerId: 'creditor', balanceDelta: 400 }] },
+      transaction: {
+        gameId: 'game-1',
+        type: 'BANKRUPTCY_TRANSFER',
+        amount: 400,
+        totalAmount: 400,
+        comment: null,
+        participants: [
+          { playerId: 'bankrupt-player', balanceDelta: -400 },
+          { playerId: 'creditor', balanceDelta: 400 },
+        ],
+      },
       balanceChanges: [
-        { player: { id: 'bankrupt-player', gameId: 'game-1', name: 'Bankrupt', color: '#111', balance: 400 }, balanceBefore: 400, balanceAfter: 0, balanceDelta: -400 },
-        { player: { id: 'creditor', gameId: 'game-1', name: 'Creditor', color: '#222', balance: 600 }, balanceBefore: 600, balanceAfter: 1000, balanceDelta: 400 },
+        {
+          player: {
+            id: 'bankrupt-player',
+            gameId: 'game-1',
+            name: 'Bankrupt',
+            color: '#111',
+            balance: 400,
+          },
+          balanceBefore: 400,
+          balanceAfter: 0,
+          balanceDelta: -400,
+        },
+        {
+          player: {
+            id: 'creditor',
+            gameId: 'game-1',
+            name: 'Creditor',
+            color: '#222',
+            balance: 600,
+          },
+          balanceBefore: 600,
+          balanceAfter: 1000,
+          balanceDelta: 400,
+        },
       ],
       bankruptPlayerId: 'bankrupt-player',
     });
 
-    expect(database.batches[0][1].values).toEqual(['transaction-1', 'game-1', 'BANKRUPTCY_TRANSFER', 400, 400, null]);
+    expect(database.batches[0][1].values).toEqual([
+      'transaction-1',
+      'game-1',
+      'BANKRUPTCY_TRANSFER',
+      400,
+      400,
+      null,
+    ]);
     expect(database.batches[0][4].values).toEqual(['bankrupt-player', 'game-1']);
   });
 });

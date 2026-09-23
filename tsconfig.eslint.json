@@ -1,0 +1,20 @@
+{
+  // ESLint-only TypeScript project used for type-aware linting of src/, worker/ and shared/.
+  // The build projects (tsconfig.app.json, tsconfig.worker.json) exclude test files, so this
+  // project exists to give every linted file a program. `tsc -b` never reads it.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["node", "vite/client", "./worker-configuration.d.ts"],
+    "allowArbitraryExtensions": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true
+  },
+  "include": ["src", "worker", "shared"]
+}

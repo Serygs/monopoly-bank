@@ -12,12 +12,16 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(storageKey, language);
   }, [language]);
 
-  const value = useMemo(() => ({
-    language,
-    locale: languageLocale(language),
-    setLanguage,
-    t: (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(language, key, values),
-  }), [language]);
+  const value = useMemo(
+    () => ({
+      language,
+      locale: languageLocale(language),
+      setLanguage,
+      t: (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) =>
+        translate(language, key, values),
+    }),
+    [language],
+  );
 
   return <LanguageContext value={value}>{children}</LanguageContext>;
 }

@@ -13,7 +13,13 @@ interface Props {
   onGuestJoined?: (profile: UserProfile, gameId: string) => void;
 }
 
-export function JoinGamePage({ initialJoinCode, invitationToken, onJoined, onBack, onGuestJoined }: Props) {
+export function JoinGamePage({
+  initialJoinCode,
+  invitationToken,
+  onJoined,
+  onBack,
+  onGuestJoined,
+}: Props) {
   const { t } = useLanguage();
   const [joinCode, setJoinCode] = useState(initialJoinCode.toUpperCase());
   const [gameAccessPassword, setGameAccessPassword] = useState('');
@@ -23,9 +29,13 @@ export function JoinGamePage({ initialJoinCode, invitationToken, onJoined, onBac
   const [submitting, setSubmitting] = useState(false);
   const hasInvitation = invitationToken !== '';
   const guest = onGuestJoined !== undefined;
-  const credentials = () => hasInvitation
-    ? { invitationToken }
-    : { joinCode: joinCode.trim().toUpperCase(), ...(gameAccessPassword === '' ? {} : { gameAccessPassword }) };
+  const credentials = () =>
+    hasInvitation
+      ? { invitationToken }
+      : {
+          joinCode: joinCode.trim().toUpperCase(),
+          ...(gameAccessPassword === '' ? {} : { gameAccessPassword }),
+        };
 
   const join = async (event: FormEvent) => {
     event.preventDefault();
@@ -36,7 +46,11 @@ export function JoinGamePage({ initialJoinCode, invitationToken, onJoined, onBac
         const details = await monopolyBankApi.joinGame(credentials());
         onJoined(details.game.id);
       } else {
-        const result = await monopolyBankApi.joinGameAsGuest({ nickname, avatar, ...credentials() });
+        const result = await monopolyBankApi.joinGameAsGuest({
+          nickname,
+          avatar,
+          ...credentials(),
+        });
         onGuestJoined(result.profile, result.game.game.id);
       }
     } catch (caught) {
@@ -46,28 +60,97 @@ export function JoinGamePage({ initialJoinCode, invitationToken, onJoined, onBac
     }
   };
 
-  return <main className="page page-narrow auth-page">
-    <section className="auth-card join-card">
-      <button className="button button-quiet auth-back" type="button" onClick={onBack}>← {t('savedGames')}</button>
-      <div className="auth-card-heading">
-        <span className="auth-card-mark" aria-hidden="true">MB</span>
-        <div><p className="eyebrow">{t('lobby')}</p><h1>{guest ? t('joinAsGuest') : t('joinGame')}</h1></div>
-      </div>
-      <p className="lede">{guest ? t('guestJoinDescription') : hasInvitation ? t('secureInviteDescription') : t('joinGameDescription')}</p>
-      <form className="game-form auth-form" onSubmit={(event) => void join(event)}>
-        {guest && <>
-          <label>{t('nickname')}<input value={nickname} minLength={2} maxLength={40} autoComplete="nickname" placeholder={t('yourNickname')} onChange={(event) => setNickname(event.target.value)} required /></label>
-          <AvatarPicker avatar={avatar} onChange={setAvatar} label={t('avatar')} uploadLabel={t('avatarUpload')} uploadHint={t('avatarUploadHint')} invalidImageMessage={t('avatarUploadError')} />
-        </>}
-        {hasInvitation
-          ? <p className="notice notice-success" role="status">{t('secureInviteReady')}</p>
-          : <>
-              <label>{t('invitationCode')}<input value={joinCode} autoCapitalize="characters" autoComplete="off" minLength={6} maxLength={12} placeholder={t('invitationCodeExample')} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} required /></label>
-              <label>{t('optionalPassword')}<input type="password" value={gameAccessPassword} minLength={4} maxLength={256} autoComplete="current-password" placeholder={t('tablePassword')} onChange={(event) => setGameAccessPassword(event.target.value)} /><span className="field-hint">{t('gamePasswordMinLength')}</span></label>
-            </>}
-        {error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableJoinGame')}</p>}
-        <button className="button button-primary" disabled={submitting}>{submitting ? t('joining') : guest ? t('joinAsGuest') : t('joinGame')}</button>
-      </form>
-    </section>
-  </main>;
+  return (
+    <main className="page page-narrow auth-page">
+      <section className="auth-card join-card">
+        <button className="button button-quiet auth-back" type="button" onClick={onBack}>
+          ← {t('savedGames')}
+        </button>
+        <div className="auth-card-heading">
+          <span className="auth-card-mark" aria-hidden="true">
+            MB
+          </span>
+          <div>
+            <p className="eyebrow">{t('lobby')}</p>
+            <h1>{guest ? t('joinAsGuest') : t('joinGame')}</h1>
+          </div>
+        </div>
+        <p className="lede">
+          {guest
+            ? t('guestJoinDescription')
+            : hasInvitation
+              ? t('secureInviteDescription')
+              : t('joinGameDescription')}
+        </p>
+        <form className="game-form auth-form" onSubmit={(event) => void join(event)}>
+          {guest && (
+            <>
+              <label>
+                {t('nickname')}
+                <input
+                  value={nickname}
+                  minLength={2}
+                  maxLength={40}
+                  autoComplete="nickname"
+                  placeholder={t('yourNickname')}
+                  onChange={(event) => setNickname(event.target.value)}
+                  required
+                />
+              </label>
+              <AvatarPicker
+                avatar={avatar}
+                onChange={setAvatar}
+                label={t('avatar')}
+                uploadLabel={t('avatarUpload')}
+                uploadHint={t('avatarUploadHint')}
+                invalidImageMessage={t('avatarUploadError')}
+              />
+            </>
+          )}
+          {hasInvitation ? (
+            <p className="notice notice-success" role="status">
+              {t('secureInviteReady')}
+            </p>
+          ) : (
+            <>
+              <label>
+                {t('invitationCode')}
+                <input
+                  value={joinCode}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  minLength={6}
+                  maxLength={12}
+                  placeholder={t('invitationCodeExample')}
+                  onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+                  required
+                />
+              </label>
+              <label>
+                {t('optionalPassword')}
+                <input
+                  type="password"
+                  value={gameAccessPassword}
+                  minLength={4}
+                  maxLength={256}
+                  autoComplete="current-password"
+                  placeholder={t('tablePassword')}
+                  onChange={(event) => setGameAccessPassword(event.target.value)}
+                />
+                <span className="field-hint">{t('gamePasswordMinLength')}</span>
+              </label>
+            </>
+          )}
+          {error !== null && (
+            <p className="notice notice-error" role="alert">
+              {apiErrorMessage(error, t, 'unableJoinGame')}
+            </p>
+          )}
+          <button className="button button-primary" disabled={submitting}>
+            {submitting ? t('joining') : guest ? t('joinAsGuest') : t('joinGame')}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
 }

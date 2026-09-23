@@ -4,7 +4,8 @@ const english = {
   appName: 'Monopoly Bank',
   bankOpen: 'Bank open',
   offlineShellTitle: 'You are offline',
-  offlineShellDescription: 'Reconnect to open your bank securely. No account or payment data is stored on this device.',
+  offlineShellDescription:
+    'Reconnect to open your bank securely. No account or payment data is stored on this device.',
   staleSnapshot: 'Offline — showing the last live snapshot. Banking actions are read-only.',
   updateReady: 'An update is ready.',
   updateApp: 'Update app',
@@ -18,7 +19,8 @@ const english = {
   close: 'Close',
   back: 'Back',
   finishGame: 'Finish game',
-  finishGameDescription: 'Finish this game and finalize the linked player statistics? Financial actions will become read-only.',
+  finishGameDescription:
+    'Finish this game and finalize the linked player statistics? Financial actions will become read-only.',
   declareBankrupt: 'Declare bankrupt',
   declareBankruptcyTitle: 'Declare {name} bankrupt',
   bankruptcyToBank: 'Remaining money is returned to the Bank.',
@@ -70,7 +72,8 @@ const english = {
   removeGame: 'Remove game',
   closeTable: 'Close the table',
   removeGameTitle: 'Remove {name}?',
-  removeGameWarning: 'This permanently removes the game, all {count} player wallets, and its transaction history.',
+  removeGameWarning:
+    'This permanently removes the game, all {count} player wallets, and its transaction history.',
   removing: 'Removing…',
   gameRemoved: '{name} was removed.',
   newBank: 'New bank',
@@ -264,7 +267,8 @@ const english = {
   nickname: 'Nickname',
   avatar: 'Avatar',
   avatarUpload: 'Upload photo',
-  avatarUploadHint: 'Large photos are compressed automatically, cropped to a square, and shown as a circle.',
+  avatarUploadHint:
+    'Large photos are compressed automatically, cropped to a square, and shown as a circle.',
   avatarUploadError: 'Choose a valid JPG, PNG, or WebP image.',
   saveProfile: 'Save profile',
   savingProfile: 'Saving…',
@@ -279,7 +283,8 @@ const english = {
   password: 'Password',
   passwordPlaceholder: 'At least 6 characters',
   passwordReset: 'Reset password',
-  passwordResetDescription: 'Enter your email. If an account matches it, we will send a reset link.',
+  passwordResetDescription:
+    'Enter your email. If an account matches it, we will send a reset link.',
   passwordResetRequested: 'If an account matches this email, a reset link is on its way.',
   newPassword: 'New password',
   passwordChanged: 'Password changed. Sign in with your new password.',
@@ -288,7 +293,8 @@ const english = {
   emailVerified: 'Email verified.',
   guestAccount: 'Guest account',
   secureGuestAccount: 'Secure this guest account',
-  secureGuestDescription: 'Add an email and password without changing this player, their games, or their statistics.',
+  secureGuestDescription:
+    'Add an email and password without changing this player, their games, or their statistics.',
   verificationPending: 'Your email is not verified yet.',
   resendVerification: 'Resend verification email',
   verificationSent: 'Verification email sent. Check your inbox and spam folder.',
@@ -326,7 +332,8 @@ const english = {
   optionalPasswordHint: 'Leave blank to let any registered player join this lobby.',
   ownerPlayer: 'Your account player',
   localPlayers: 'Local players',
-  localPlayersHint: 'Add people playing on this device. Account players join themselves from their own device.',
+  localPlayersHint:
+    'Add people playing on this device. Account players join themselves from their own device.',
   createLobby: 'Create lobby',
   startingLobby: 'Creating lobby…',
   invalidLobbyPlayerCount: 'A lobby needs one to six players.',
@@ -341,12 +348,15 @@ const english = {
   localPlayer: 'Local player',
   accountPasswordMinLength: 'Use at least 6 characters for your account password.',
   gamePasswordMinLength: 'Use at least 4 characters for a game password.',
-  secureInviteDescription: 'This secure invitation grants access to the correct lobby without revealing its password.',
+  secureInviteDescription:
+    'This secure invitation grants access to the correct lobby without revealing its password.',
   secureInviteReady: 'Secure invitation ready. Join this lobby as your account player.',
   joinAsGuest: 'Join as guest',
-  guestJoinDescription: 'Play at this table without creating an account. You can secure your guest profile later.',
+  guestJoinDescription:
+    'Play at this table without creating an account. You can secure your guest profile later.',
   invitePlayers: 'Invite players',
-  inviteDescription: 'Create a secure link for this lobby. It expires in 7 days and does not reveal the game password.',
+  inviteDescription:
+    'Create a secure link for this lobby. It expires in 7 days and does not reveal the game password.',
   createInviteLink: 'Create invite link',
   copyInviteLink: 'Copy invite link',
   inviteLinkCopied: 'Invite link copied.',
@@ -390,7 +400,8 @@ type TranslationCatalog = Record<TranslationKey, string>;
 
 const ukrainian: TranslationCatalog = {
   finishGame: 'Завершити гру',
-  finishGameDescription: 'Завершіть гру та зафіксуйте статистику пов’язаних гравців. Фінансові дії стануть доступними лише для перегляду.',
+  finishGameDescription:
+    'Завершіть гру та зафіксуйте статистику пов’язаних гравців. Фінансові дії стануть доступними лише для перегляду.',
   declareBankrupt: 'Оголосити банкрутство',
   declareBankruptcyTitle: 'Оголосити {name} банкрутом',
   bankruptcyToBank: 'Залишок коштів повернеться до банку.',
@@ -410,8 +421,10 @@ const ukrainian: TranslationCatalog = {
   appName: 'Банк Монополії',
   bankOpen: 'Банк відкрито',
   offlineShellTitle: 'Немає з’єднання',
-  offlineShellDescription: 'Відновіть з’єднання, щоб безпечно відкрити банк. Дані акаунта й платежів не зберігаються на пристрої.',
-  staleSnapshot: 'Немає з’єднання — показано останній live-знімок. Банківські дії доступні лише для перегляду.',
+  offlineShellDescription:
+    'Відновіть з’єднання, щоб безпечно відкрити банк. Дані акаунта й платежів не зберігаються на пристрої.',
+  staleSnapshot:
+    'Немає з’єднання — показано останній live-знімок. Банківські дії доступні лише для перегляду.',
   updateReady: 'Доступне оновлення.',
   updateApp: 'Оновити застосунок',
   updateLater: 'Пізніше',
@@ -616,7 +629,8 @@ const ukrainian: TranslationCatalog = {
   errorUnexpected: 'Сталася помилка. Спробуйте ще раз.',
   errorEmailDelivery: 'Не вдалося надіслати лист для підтвердження. Спробуйте ще раз.',
   errorNicknameTaken: 'Цей псевдонім вже зайнятий. Оберіть інший.',
-  errorInvalidJoinCode: 'Код запрошення або пароль столу неправильний, прострочений чи відкликаний.',
+  errorInvalidJoinCode:
+    'Код запрошення або пароль столу неправильний, прострочений чи відкликаний.',
   errorLobbyClosed: 'Це лобі закрите, гра вже почалася або всі місця зайняті.',
   errorRateLimited: 'Забагато спроб. Зачекайте та спробуйте ще раз.',
   errorSessionExpired: 'Сеанс завершився. Увійдіть знову та повторіть дію.',
@@ -652,7 +666,8 @@ const ukrainian: TranslationCatalog = {
   nickname: 'Псевдонім',
   avatar: 'Аватар',
   avatarUpload: 'Завантажити фото',
-  avatarUploadHint: 'Великі фото стискаються автоматично, обрізаються до квадрата та відображаються колом.',
+  avatarUploadHint:
+    'Великі фото стискаються автоматично, обрізаються до квадрата та відображаються колом.',
   avatarUploadError: 'Оберіть коректне зображення JPG, PNG або WebP.',
   saveProfile: 'Зберегти профіль',
   savingProfile: 'Збереження…',
@@ -667,7 +682,8 @@ const ukrainian: TranslationCatalog = {
   password: 'Пароль',
   passwordPlaceholder: 'Щонайменше 10 символів',
   passwordReset: 'Відновити пароль',
-  passwordResetDescription: 'Введіть email. Якщо обліковий запис існує, ми надішлемо посилання для відновлення.',
+  passwordResetDescription:
+    'Введіть email. Якщо обліковий запис існує, ми надішлемо посилання для відновлення.',
   passwordResetRequested: 'Якщо обліковий запис із цим email існує, посилання вже надсилається.',
   newPassword: 'Новий пароль',
   passwordChanged: 'Пароль змінено. Увійдіть із новим паролем.',
@@ -676,12 +692,14 @@ const ukrainian: TranslationCatalog = {
   emailVerified: 'Email підтверджено.',
   guestAccount: 'Гостьовий обліковий запис',
   secureGuestAccount: 'Захистити гостьовий обліковий запис',
-  secureGuestDescription: 'Додайте email і пароль без зміни цього гравця, його ігор або статистики.',
+  secureGuestDescription:
+    'Додайте email і пароль без зміни цього гравця, його ігор або статистики.',
   verificationPending: 'Ваш email ще не підтверджено.',
   resendVerification: 'Надіслати лист підтвердження ще раз',
   verificationSent: 'Лист для підтвердження надіслано. Перевірте вхідні та спам.',
   addAccountEmail: 'Додати email до цього облікового запису',
-  addAccountEmailDescription: 'Збережіть поточний обліковий запис із псевдонімом і додайте вхід через email.',
+  addAccountEmailDescription:
+    'Збережіть поточний обліковий запис із псевдонімом і додайте вхід через email.',
   pleaseWait: 'Зачекайте…',
   signIn: 'Увійти',
   alreadyHaveAccount: 'Вже маєте обліковий запис?',
@@ -711,10 +729,12 @@ const ukrainian: TranslationCatalog = {
   publicLobby: 'Відкрите лобі',
   privateLobby: 'Приватне лобі',
   optionalPassword: 'Пароль (необов’язково)',
-  optionalPasswordHint: 'Залиште поле порожнім, щоб будь-який зареєстрований гравець міг приєднатися.',
+  optionalPasswordHint:
+    'Залиште поле порожнім, щоб будь-який зареєстрований гравець міг приєднатися.',
   ownerPlayer: 'Ваш гравець акаунта',
   localPlayers: 'Локальні гравці',
-  localPlayersHint: 'Додайте людей, які грають з цього пристрою. Гравці з акаунтами приєднуються самостійно.',
+  localPlayersHint:
+    'Додайте людей, які грають з цього пристрою. Гравці з акаунтами приєднуються самостійно.',
   createLobby: 'Створити лобі',
   startingLobby: 'Створення лобі…',
   invalidLobbyPlayerCount: 'У лобі має бути від одного до шести гравців.',
@@ -729,12 +749,15 @@ const ukrainian: TranslationCatalog = {
   localPlayer: 'Локальний гравець',
   accountPasswordMinLength: 'Використайте щонайменше 6 символів для пароля акаунта.',
   gamePasswordMinLength: 'Використайте щонайменше 4 символи для пароля гри.',
-  secureInviteDescription: 'Це безпечне запрошення відкриває потрібне лобі без розкриття пароля гри.',
+  secureInviteDescription:
+    'Це безпечне запрошення відкриває потрібне лобі без розкриття пароля гри.',
   secureInviteReady: 'Безпечне запрошення готове. Приєднайтеся до лобі як гравець акаунта.',
   joinAsGuest: 'Приєднатися як гість',
-  guestJoinDescription: 'Грайте за цим столом без облікового запису. Ви зможете захистити гостьовий профіль пізніше.',
+  guestJoinDescription:
+    'Грайте за цим столом без облікового запису. Ви зможете захистити гостьовий профіль пізніше.',
   invitePlayers: 'Запросити гравців',
-  inviteDescription: 'Створіть безпечне посилання для цього лобі. Воно діє 7 днів і не містить пароль гри.',
+  inviteDescription:
+    'Створіть безпечне посилання для цього лобі. Воно діє 7 днів і не містить пароль гри.',
   createInviteLink: 'Створити посилання-запрошення',
   copyInviteLink: 'Копіювати посилання-запрошення',
   inviteLinkCopied: 'Посилання-запрошення скопійовано.',
@@ -778,8 +801,14 @@ const catalogs: Record<Language, TranslationCatalog> = { en: english, uk: ukrain
 export type TranslationValues = Record<string, string | number>;
 export type Translate = (key: TranslationKey, values?: TranslationValues) => string;
 
-export function translate(language: Language, key: TranslationKey, values: TranslationValues = {}): string {
-  return catalogs[language][key].replace(/\{(\w+)\}/g, (match, name: string) => String(values[name] ?? match));
+export function translate(
+  language: Language,
+  key: TranslationKey,
+  values: TranslationValues = {},
+): string {
+  return catalogs[language][key].replace(/\{(\w+)\}/g, (match, name: string) =>
+    String(values[name] ?? match),
+  );
 }
 
 export function languageLocale(language: Language): string {

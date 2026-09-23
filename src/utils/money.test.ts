@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { formatMoney, formatMoneyDelta, formatThousands } from './money';
 
 describe('money formatting', () => {
-  it.each([['USD', '$1 000'], ['EUR', '€1 000'], ['UAH', '₴1 000'], ['K', '1 000k']] as const)('formats %s currency', (currency, expected) => {
+  it.each([
+    ['USD', '$1 000'],
+    ['EUR', '€1 000'],
+    ['UAH', '₴1 000'],
+    ['K', '1 000k'],
+  ] as const)('formats %s currency', (currency, expected) => {
     expect(formatMoney(1000, currency)).toBe(expected);
   });
   it('always groups displayed amounts with spaces', () => {

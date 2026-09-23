@@ -1,6 +1,8 @@
 import type {
+  BankruptcyRequest,
   CreateTransactionRequest,
   CreateBankingCommandResponse,
+  CreatePaymentRequestResponse,
   CreateTransactionResponse,
   PaymentRequest,
   PaymentRequestActionResponse,
@@ -24,7 +26,10 @@ import type { PaymentRequestRepository } from '../repositories/payment-request-r
 import { ConflictError, PersistenceConsistencyError, ResourceNotFoundError } from './errors.js';
 
 export interface BankingService {
-  createTransaction(gameId: string, request: CreateTransactionRequest): Promise<CreateBankingCommandResponse>;
+  createTransaction(
+    gameId: string,
+    request: CreateTransactionRequest,
+  ): Promise<CreateBankingCommandResponse>;
   listPaymentRequests(gameId: string, payerPlayerIds: readonly string[]): Promise<PaymentRequest[]>;
   acceptPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse>;
   declinePaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse>;
@@ -32,7 +37,7 @@ export interface BankingService {
   getPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequest | null>;
   listTransactions(gameId: string, limit: number): Promise<Transaction[]>;
   listPlayerTransactions(gameId: string, playerId: string, limit: number): Promise<Transaction[]>;
-  declareBankruptcy(gameId: string, request: import('../../shared/contracts/api.js').BankruptcyRequest): Promise<CreateTransactionResponse>;
+  declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<CreateTransactionResponse>;
 }
 
 export interface BankingServiceDependencies {
@@ -67,13 +72,17 @@ export class DefaultBankingService implements BankingService {
   ): Promise<CreateBankingCommandResponse> {
     const transactionId = this.createId();
     const existing = await this.transactions.getById(gameId, transactionId);
-    if (existing !== null) return { transaction: existing, players: await this.players.listByGameId(gameId) };
+    if (existing !== null)
+      return { transaction: existing, players: await this.players.listByGameId(gameId) };
     const game = await this.games.getById(gameId);
     if (game === null) {
       throw new ResourceNotFoundError('Game');
     }
     const players = await this.players.listByGameId(gameId);
-    if (game.paymentMode === 'CONFIRMATION' && (request.type === 'PLAYER_TO_PLAYER' || request.type === 'ALL_TO_PLAYER')) {
+    if (
+      game.paymentMode === 'CONFIRMATION' &&
+      (request.type === 'PLAYER_TO_PLAYER' || request.type === 'ALL_TO_PLAYER')
+    ) {
       return this.createConfirmationRequests(gameId, request, players, transactionId);
     }
     const result = executeOperation(game, players, request);
@@ -95,7 +104,10 @@ export class DefaultBankingService implements BankingService {
     };
   }
 
-  async listPaymentRequests(gameId: string, payerPlayerIds: readonly string[]): Promise<PaymentRequest[]> {
+  async listPaymentRequests(
+    gameId: string,
+    payerPlayerIds: readonly string[],
+  ): Promise<PaymentRequest[]> {
     return this.paymentRequests.listForPayers(gameId, payerPlayerIds);
   }
 
@@ -104,33 +116,75 @@ export class DefaultBankingService implements BankingService {
     return this.paymentRequests.getById(gameId, requestId);
   }
 
-  async acceptPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse> {
+  async acceptPaymentRequest(
+    gameId: string,
+    requestId: string,
+  ): Promise<PaymentRequestActionResponse> {
     await this.paymentRequests.expirePending(gameId);
     const paymentRequest = await this.requirePaymentRequest(gameId, requestId);
     if (paymentRequest.state === 'ACCEPTED') {
-      const transaction = paymentRequest.transactionId === null ? null : await this.transactions.getById(gameId, paymentRequest.transactionId);
+      const transaction =
+        paymentRequest.transactionId === null
+          ? null
+          : await this.transactions.getById(gameId, paymentRequest.transactionId);
       if (transaction === null) throw new PersistenceConsistencyError();
       return { paymentRequest, transaction, players: await this.players.listByGameId(gameId) };
     }
-    if (paymentRequest.state !== 'PENDING') throw new ConflictError('PAYMENT_REQUEST_NOT_PENDING', 'This payment request is no longer pending.');
-    const game = await this.games.getById(gameId); if (game === null) throw new ResourceNotFoundError('Game');
+    if (paymentRequest.state !== 'PENDING')
+      throw new ConflictError(
+        'PAYMENT_REQUEST_NOT_PENDING',
+        'This payment request is no longer pending.',
+      );
+    const game = await this.games.getById(gameId);
+    if (game === null) throw new ResourceNotFoundError('Game');
     const players = await this.players.listByGameId(gameId);
-    const result = playerToPlayer({ game, players, sourcePlayerId: paymentRequest.payerPlayerId, destinationPlayerId: paymentRequest.recipientPlayerId, amount: paymentRequest.amount, ...(paymentRequest.comment === null ? {} : { comment: paymentRequest.comment }) });
+    const result = playerToPlayer({
+      game,
+      players,
+      sourcePlayerId: paymentRequest.payerPlayerId,
+      destinationPlayerId: paymentRequest.recipientPlayerId,
+      amount: paymentRequest.amount,
+      ...(paymentRequest.comment === null ? {} : { comment: paymentRequest.comment }),
+    });
     const transactionId = this.createId();
-    await this.paymentRequests.settle({ requestId, transactionId, transaction: result.transaction, balanceChanges: result.affectedPlayers });
-    const transaction = await this.transactions.getById(gameId, transactionId); if (transaction === null) throw new PersistenceConsistencyError();
+    await this.paymentRequests.settle({
+      requestId,
+      transactionId,
+      transaction: result.transaction,
+      balanceChanges: result.affectedPlayers,
+    });
+    const transaction = await this.transactions.getById(gameId, transactionId);
+    if (transaction === null) throw new PersistenceConsistencyError();
     const accepted = await this.requirePaymentRequest(gameId, requestId);
-    return { paymentRequest: accepted, transaction, players: await this.players.listByGameId(gameId) };
+    return {
+      paymentRequest: accepted,
+      transaction,
+      players: await this.players.listByGameId(gameId),
+    };
   }
 
-  async declinePaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse> { return this.resolvePaymentRequest(gameId, requestId, 'DECLINED'); }
-  async cancelPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse> { return this.resolvePaymentRequest(gameId, requestId, 'CANCELLED'); }
+  async declinePaymentRequest(
+    gameId: string,
+    requestId: string,
+  ): Promise<PaymentRequestActionResponse> {
+    return this.resolvePaymentRequest(gameId, requestId, 'DECLINED');
+  }
+  async cancelPaymentRequest(
+    gameId: string,
+    requestId: string,
+  ): Promise<PaymentRequestActionResponse> {
+    return this.resolvePaymentRequest(gameId, requestId, 'CANCELLED');
+  }
 
   async listTransactions(gameId: string, limit: number): Promise<Transaction[]> {
     return this.transactions.listByGameId(gameId, limit);
   }
 
-  async listPlayerTransactions(gameId: string, playerId: string, limit: number): Promise<Transaction[]> {
+  async listPlayerTransactions(
+    gameId: string,
+    playerId: string,
+    limit: number,
+  ): Promise<Transaction[]> {
     const [players, transactions] = await Promise.all([
       this.players.listByGameId(gameId),
       this.transactions.listByPlayerId(gameId, playerId, limit),
@@ -141,42 +195,101 @@ export class DefaultBankingService implements BankingService {
     return transactions;
   }
 
-  async declareBankruptcy(gameId: string, request: import('../../shared/contracts/api.js').BankruptcyRequest): Promise<CreateTransactionResponse> {
-    const game = await this.games.getById(gameId); if (game === null) throw new ResourceNotFoundError('Game');
+  async declareBankruptcy(
+    gameId: string,
+    request: BankruptcyRequest,
+  ): Promise<CreateTransactionResponse> {
+    const game = await this.games.getById(gameId);
+    if (game === null) throw new ResourceNotFoundError('Game');
     const players = await this.players.listByGameId(gameId);
     const result = declareBankruptcy({ game, players, ...request });
     const transactionId = this.createId();
-    const existing = await this.transactions.getById(gameId, transactionId); if (existing !== null) return { transaction: existing, players: await this.players.listByGameId(gameId) };
-    await this.operations.persist({ transactionId, transaction: result.transaction, balanceChanges: result.affectedPlayers, bankruptPlayerId: request.playerId });
-    const transaction = await this.transactions.getById(gameId, transactionId); if (transaction === null) throw new PersistenceConsistencyError();
+    const existing = await this.transactions.getById(gameId, transactionId);
+    if (existing !== null)
+      return { transaction: existing, players: await this.players.listByGameId(gameId) };
+    await this.operations.persist({
+      transactionId,
+      transaction: result.transaction,
+      balanceChanges: result.affectedPlayers,
+      bankruptPlayerId: request.playerId,
+    });
+    const transaction = await this.transactions.getById(gameId, transactionId);
+    if (transaction === null) throw new PersistenceConsistencyError();
     return { transaction, players: await this.players.listByGameId(gameId) };
   }
 
-  private async createConfirmationRequests(gameId: string, request: Extract<CreateTransactionRequest, { type: 'PLAYER_TO_PLAYER' | 'ALL_TO_PLAYER' }>, players: Awaited<ReturnType<PlayerRepository['listByGameId']>>, commandId: string): Promise<import('../../shared/contracts/api.js').CreatePaymentRequestResponse> {
-    const pairs = request.type === 'PLAYER_TO_PLAYER'
-      ? [{ payerPlayerId: request.sourcePlayerId, recipientPlayerId: request.destinationPlayerId, creatorPlayerId: request.sourcePlayerId, approverPlayerId: request.destinationPlayerId, amount: request.amount, comment: request.comment ?? null }]
-      : players.filter((player) => player.id !== request.recipientPlayerId).map((player) => ({ payerPlayerId: player.id, recipientPlayerId: request.recipientPlayerId, creatorPlayerId: request.recipientPlayerId, approverPlayerId: player.id, amount: request.amountPerPlayer, comment: request.comment ?? null }));
+  private async createConfirmationRequests(
+    gameId: string,
+    request: Extract<CreateTransactionRequest, { type: 'PLAYER_TO_PLAYER' | 'ALL_TO_PLAYER' }>,
+    players: Awaited<ReturnType<PlayerRepository['listByGameId']>>,
+    commandId: string,
+  ): Promise<CreatePaymentRequestResponse> {
+    const pairs =
+      request.type === 'PLAYER_TO_PLAYER'
+        ? [
+            {
+              payerPlayerId: request.sourcePlayerId,
+              recipientPlayerId: request.destinationPlayerId,
+              creatorPlayerId: request.sourcePlayerId,
+              approverPlayerId: request.destinationPlayerId,
+              amount: request.amount,
+              comment: request.comment ?? null,
+            },
+          ]
+        : players
+            .filter((player) => player.id !== request.recipientPlayerId)
+            .map((player) => ({
+              payerPlayerId: player.id,
+              recipientPlayerId: request.recipientPlayerId,
+              creatorPlayerId: request.recipientPlayerId,
+              approverPlayerId: player.id,
+              amount: request.amountPerPlayer,
+              comment: request.comment ?? null,
+            }));
     for (const pair of pairs) {
       const payer = players.find((player) => player.id === pair.payerPlayerId);
-      if (payer === undefined || pair.payerPlayerId === pair.recipientPlayerId) throw new ConflictError('INVALID_PAYMENT_REQUEST', 'Payment request participants are invalid.');
+      if (payer === undefined || pair.payerPlayerId === pair.recipientPlayerId)
+        throw new ConflictError(
+          'INVALID_PAYMENT_REQUEST',
+          'Payment request participants are invalid.',
+        );
       const reserved = await this.paymentRequests.pendingReservedAmount(gameId, payer.id);
-      if (payer.balance - reserved < pair.amount) throw new ConflictError('INSUFFICIENT_AVAILABLE_FUNDS', 'Player does not have enough available funds.');
+      if (payer.balance - reserved < pair.amount)
+        throw new ConflictError(
+          'INSUFFICIENT_AVAILABLE_FUNDS',
+          'Player does not have enough available funds.',
+        );
     }
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    const paymentRequests = await Promise.all(pairs.map(async (pair, index) => {
-      const id = commandScopedId(commandId, index);
-      const paymentRequest: Omit<PaymentRequest, 'createdAt' | 'resolvedAt' | 'transactionId'> = { id, gameId, ...pair, state: 'PENDING', expiresAt };
-      await this.paymentRequests.create(paymentRequest);
-      return (await this.paymentRequests.getById(gameId, id)) as PaymentRequest;
-    }));
+    const paymentRequests = await Promise.all(
+      pairs.map(async (pair, index) => {
+        const id = commandScopedId(commandId, index);
+        const paymentRequest: Omit<PaymentRequest, 'createdAt' | 'resolvedAt' | 'transactionId'> = {
+          id,
+          gameId,
+          ...pair,
+          state: 'PENDING',
+          expiresAt,
+        };
+        await this.paymentRequests.create(paymentRequest);
+        return (await this.paymentRequests.getById(gameId, id)) as PaymentRequest;
+      }),
+    );
     return { paymentRequests, players };
   }
 
-  private async resolvePaymentRequest(gameId: string, requestId: string, state: 'DECLINED' | 'CANCELLED'): Promise<PaymentRequestActionResponse> {
+  private async resolvePaymentRequest(
+    gameId: string,
+    requestId: string,
+    state: 'DECLINED' | 'CANCELLED',
+  ): Promise<PaymentRequestActionResponse> {
     await this.paymentRequests.expirePending(gameId);
     const current = await this.requirePaymentRequest(gameId, requestId);
     if (current.state === 'PENDING') await this.paymentRequests.resolve(requestId, state);
-    return { paymentRequest: await this.requirePaymentRequest(gameId, requestId), players: await this.players.listByGameId(gameId) };
+    return {
+      paymentRequest: await this.requirePaymentRequest(gameId, requestId),
+      players: await this.players.listByGameId(gameId),
+    };
   }
 
   private async requirePaymentRequest(gameId: string, requestId: string): Promise<PaymentRequest> {
@@ -186,7 +299,9 @@ export class DefaultBankingService implements BankingService {
   }
 }
 
-function commandScopedId(commandId: string, index: number): string { return `${commandId.slice(0, -1)}${index.toString(16)}`; }
+function commandScopedId(commandId: string, index: number): string {
+  return `${commandId.slice(0, -1)}${index.toString(16)}`;
+}
 
 function executeOperation(
   game: Parameters<typeof playerToPlayer>[0]['game'],
