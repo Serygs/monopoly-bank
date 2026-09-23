@@ -1,0 +1,6 @@
+# Commits that only reformat code and should be hidden from `git blame`.
+# Enable once per clone with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: format the repository with prettier (one-off repository-wide pass)
+91c373a5d9f22634646414a02d4167db5151d4c7
