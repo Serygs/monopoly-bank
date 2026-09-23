@@ -80,28 +80,33 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
     );
 
     const statusStatement = input.bankruptPlayerId === undefined ? [] : [this.database.prepare("UPDATE players SET status = 'BANKRUPT', balance = 0 WHERE id = ? AND game_id = ? AND status = 'ACTIVE'").bind(input.bankruptPlayerId, gameId)];
+    const recentStatements = input.recentAmount === undefined ? [] : recentAmountStatements(this.database, gameId, input.recentAmount);
+    // Order matters beyond atomicity: the trade and payment-request settlements
+    // write `transaction_id`, a foreign key to `transactions(id, game_id)`
+    // (migrations 0014 and 0020), and SQLite checks it immediately — so the
+    // transaction row must already exist when they run.
+    const leading = [...propertyStatements, ...bankStatements, ...jailStatements];
+    const settlements = [...tradeStatements, ...paymentRequestStatements];
+    const statements = [
+      ...leading,
+      balanceStatement,
+      transactionStatement,
+      ...participantStatements,
+      ...settlements,
+      ...statusStatement,
+      ...recentStatements,
+    ];
+    // Every guarded statement is a compare-and-set that must touch exactly one row.
+    const settlementsStart = leading.length + 1 + 1 + participantStatements.length;
+    const guardedIndexes = [...leading.keys(), ...settlements.map((_, offset) => settlementsStart + offset)];
     let results: D1Result[];
     try {
-      const recentStatements = input.recentAmount === undefined ? [] : recentAmountStatements(this.database, gameId, input.recentAmount);
-      results = await this.database.batch([
-        ...propertyStatements,
-        ...bankStatements,
-        ...jailStatements,
-        ...tradeStatements,
-        ...paymentRequestStatements,
-        balanceStatement,
-        transactionStatement,
-        ...participantStatements,
-        ...statusStatement,
-        ...recentStatements,
-      ]);
+      results = await this.database.batch(statements);
     } catch (cause) {
       throw new DatabaseError({ operation: 'persistBankingOperation', cause });
     }
 
-    // The CAS statements lead the batch, so their results are the first entries.
-    const guarded = propertyStatements.length + bankStatements.length + jailStatements.length + tradeStatements.length + paymentRequestStatements.length;
-    for (let index = 0; index < guarded; index += 1) {
+    for (const index of guardedIndexes) {
       const changes = results[index]?.meta?.changes;
       if (changes !== undefined && changes === 0) throw new PersistenceConsistencyError();
     }

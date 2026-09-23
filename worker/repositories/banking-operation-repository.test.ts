@@ -126,7 +126,11 @@ describe('D1BankingOperationRepository', () => {
       tradeSettlement: { tradeId: 'trade-1' },
       paymentRequestSettlement: { requestId: 'request-1' },
     });
-    const [jail, trade, paymentRequest] = database.batches[0];
+    // jail flag, balance CAS, the transaction and its participant, then the two settlements that reference it
+    const [jail, , transaction, participant, trade, paymentRequest] = database.batches[0];
+    expect(database.batches[0]).toHaveLength(6);
+    expect(transaction.query).toContain('INSERT INTO transactions (');
+    expect(participant.query).toContain('INSERT INTO transaction_participants');
     expect(jail.query).toContain('UPDATE players SET is_in_jail = ? WHERE id = ? AND game_id = ?');
     expect(jail.values).toEqual([0, 'ada', 'game-1']);
     expect(trade.query).toContain("UPDATE property_trades");
@@ -134,6 +138,21 @@ describe('D1BankingOperationRepository', () => {
     expect(trade.values).toEqual(['transaction-1', 'game-1', 'trade-1']);
     expect(paymentRequest.query).toContain('UPDATE payment_requests');
     expect(paymentRequest.values).toEqual(['transaction-1', 'game-1', 'request-1']);
+  });
+
+  it('writes the transaction before the settlements that reference it, and still guards the settlement CAS', async () => {
+    const database = new FakeDatabase();
+    // deed CAS ok, balance ok, transaction ok, participant ok, trade settlement matched nothing
+    database.results = [{ meta: { changes: 1 } }, { meta: { changes: 1 } }, { meta: { changes: 1 } }, { meta: { changes: 1 } }, { meta: { changes: 0 } }];
+    await expect(new D1BankingOperationRepository(database as unknown as D1Database).persist({
+      transactionId: 'transaction-1',
+      transaction: { gameId: 'game-1', type: 'PROPERTY_TRADE', amount: 100, totalAmount: 100, comment: null, participants: [{ playerId: 'ada', balanceDelta: -100 }] },
+      balanceChanges: [{ player: { id: 'ada', gameId: 'game-1', name: 'Ada', color: '#111', balance: 500 }, balanceBefore: 500, balanceAfter: 400, balanceDelta: -100 }],
+      propertyChanges: [{ previous: { boardSpaceId: 'space-01', ownerPlayerId: 'bob', houses: 0, mortgaged: false }, change: { boardSpaceId: 'space-01', ownerPlayerId: 'ada', houses: 0, mortgaged: false } }],
+      tradeSettlement: { tradeId: 'trade-1' },
+    })).rejects.toBeInstanceOf(PersistenceConsistencyError);
+    const queries = database.batches[0].map((statement) => statement.query);
+    expect(queries.findIndex((query) => query.includes('INSERT INTO transactions ('))).toBeLessThan(queries.findIndex((query) => query.includes('UPDATE property_trades')));
   });
 
   it('fails with PersistenceConsistencyError when a compare-and-set deed update touched no row', async () => {
@@ -162,6 +181,22 @@ describe('D1BankingOperationRepository', () => {
   });
 });
 
+/**
+ * The real D1 checks `transaction_id` foreign keys (`payment_requests`, `property_trades`)
+ * the moment a statement runs, even inside a batch. Mirror that here so a settlement
+ * UPDATE that precedes the `transactions` INSERT fails the test the way it fails in D1.
+ */
+function enforceTransactionForeignKey(statements: FakeStatement[]): void {
+  const inserted = new Set<string>();
+  for (const statement of statements) {
+    if (statement.query.includes('INSERT INTO transactions (')) inserted.add(String(statement.values[0]));
+    if (/UPDATE (property_trades|payment_requests)/.test(statement.query) && statement.query.includes('transaction_id = ?')) {
+      const transactionId = String(statement.values[0]);
+      if (!inserted.has(transactionId)) throw new Error(`FOREIGN KEY constraint failed: transaction_id ${transactionId} is not inserted yet`);
+    }
+  }
+}
+
 class FakeDatabase {
   readonly batches: FakeStatement[][] = [];
   results: Array<{ meta: { changes: number } }> = [];
@@ -174,6 +209,7 @@ class FakeDatabase {
   async batch(statements: FakeStatement[]): Promise<Array<{ meta: { changes: number } }>> {
     this.batches.push(statements);
     if (this.failWith !== null) throw this.failWith;
+    enforceTransactionForeignKey(statements);
     return this.results;
   }
 }

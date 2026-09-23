@@ -107,11 +107,7 @@ test.describe('board scenarios against the local Worker', () => {
     await closeTable(table);
   });
 
-  // FIXME (open defect, see plan/SUMMARY.md “Відкриті дефекти” #1): accepting a trade answers 500. `D1BankingOperationRepository.persist`
-  // runs the `property_trades` settlement UPDATE, which sets `transaction_id`, before the `transactions` INSERT of the same batch, and
-  // `property_trades.transaction_id` is a foreign key to `transactions` (migrations/0020_property_trades.sql). SQLite checks the key at once,
-  // so D1 rejects the whole batch with `FOREIGN KEY constraint failed`. Re-enable once the transaction row is written first.
-  test.fixme('trade: an accepted offer moves the deed and the cash and updates both panels without a reload', async ({ browser }) => {
+  test('trade: an accepted offer moves the deed and the cash and updates both panels without a reload', async ({ browser }) => {
     const table = await openTable(browser, 'FAST');
     const { owner, guest, gameId, ownerPlayerId } = table;
     await performDeedAction(owner.page, mediterranean, new RegExp(`^${en('buyFor', { amount: '' }).trim()}`));
@@ -191,11 +187,7 @@ test.describe('board scenarios against the local Worker', () => {
     await closeTable(table);
   });
 
-  // FIXME (open defect, see plan/SUMMARY.md “Відкриті дефекти” #1): accepting the rent bill answers 500 for the same reason as the trade above.
-  // `DefaultBankingService.settleRentRequest` → `persist` runs the `payment_requests` settlement UPDATE (setting `transaction_id`) before
-  // the `transactions` INSERT, and `payment_requests.transaction_id` references `transactions` (migrations/0014_payment_requests.sql).
-  // A plain CONFIRMATION payment without a board fails the same way since `settle()` started delegating to `persist` in phase 4.
-  test.fixme('CONFIRMATION: the owner bills rent, the payer sees the deed on the request and accepting commits it', async ({ browser }) => {
+  test('CONFIRMATION: the owner bills rent, the payer sees the deed on the request and accepting commits it', async ({ browser }) => {
     const table = await openTable(browser, 'CONFIRMATION');
     const { owner, guest, gameId, guestPlayerId } = table;
     await performDeedAction(owner.page, mediterranean, new RegExp(`^${en('buyFor', { amount: '' }).trim()}`));
@@ -326,13 +318,14 @@ test.describe('board scenarios against the local Worker', () => {
 
   test('reconnect: a fresh browser context sees the same deeds, houses and capital as the one that played', async ({ browser }) => {
     const table = await openTable(browser, 'FAST');
-    const { owner, guest, gameId } = table;
+    const { owner, guest, gameId, ownerName } = table;
     await performDeedAction(owner.page, mediterranean, new RegExp(`^${en('buyFor', { amount: '' }).trim()}`));
     await performDeedAction(guest.page, mediterranean, new RegExp(`^${en('payRentAmount', { amount: '' }).trim()}`));
     await performDeedAction(owner.page, baltic, new RegExp(`^${en('buyFor', { amount: '' }).trim()}`));
     await performDeedAction(owner.page, mediterranean, new RegExp(`^${en('buildFor', { amount: '' }).trim()}`));
-    const played = await panelState(owner.page);
-    expect(played.deeds).toEqual([`${mediterranean} · ${en('houseOne')}`, baltic]);
+    // The panel follows the live commit, so wait for the house to show rather than read the panel the instant the sheet closes.
+    await expect.poll(async () => (await panelState(owner.page, ownerName)).deeds).toEqual([`${mediterranean} · ${en('houseOne')}`, baltic]);
+    const played = await panelState(owner.page, ownerName);
 
     // The same account on another device, in Ukrainian: the snapshot delivers the same table.
     const reconnected = await browser.newContext({ ...tableContext(), storageState: await owner.context.storageState() });
@@ -340,7 +333,7 @@ test.describe('board scenarios against the local Worker', () => {
     const page = await reconnected.newPage();
     await page.goto(`/games/${gameId}`);
     await expect(page.getByText(uk('connectionLive'), { exact: true })).toBeVisible();
-    const seen = await panelState(page);
+    const seen = await panelState(page, ownerName);
     expect(seen.deeds).toEqual([`${uk('boardSpaceMediterraneanAvenue')} · ${uk('houseOne')}`, uk('boardSpaceBalticAvenue')]);
     expect(seen.balance).toBe(played.balance);
     expect(seen.netWorth).toBe(played.netWorth);
@@ -441,9 +434,10 @@ async function pressKeypad(scope: Locator, digit: string): Promise<void> {
 function activeBalance(page: Page): Locator { return page.locator('.wallet-card-active .wallet-balance'); }
 function ownerSection(page: Page, playerName: string): Locator { return page.getByTestId('property-panel').locator('.property-owner').filter({ has: page.getByRole('heading', { name: playerName, exact: true }) }); }
 
-async function panelState(page: Page): Promise<{ deeds: string[]; balance: string | null; netWorth: string | null; freeCount: number }> {
+/** The owner's section is picked by name: the panel lists players in table order, which is not the order they joined. */
+async function panelState(page: Page, ownerName: string): Promise<{ deeds: string[]; balance: string | null; netWorth: string | null; freeCount: number }> {
   const controlled = page.locator('.wallet-group-controlled');
-  const deeds = await page.getByTestId('property-panel').locator('.property-owner').first().locator('.deed-chip-button').evaluateAll((chips) => chips.map((chip) => chip.getAttribute('aria-label') ?? ''));
+  const deeds = await page.getByTestId('property-panel').locator('.property-owner', { hasText: ownerName }).locator('.deed-chip-button').evaluateAll((chips) => chips.map((chip) => chip.getAttribute('aria-label') ?? ''));
   // The free-deed counter is localized copy around a number; only the number is compared across languages.
   return { deeds, balance: await controlled.locator('.wallet-balance').textContent(), netWorth: await controlled.getByTestId('net-worth').locator('b').textContent(), freeCount: await readAmount(page.locator('.property-free summary .status-pill')) };
 }
