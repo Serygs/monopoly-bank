@@ -1,5 +1,7 @@
 # Release readiness report
 
+> **Archived.** This is a frozen assessment dated 2026-09-06, retained for history. It is not a description of the current system. For the live release procedure and environment isolation rules see [deployment](../deployment.md).
+
 **Assessment date:** 2026-09-06  
 **Scope:** release controls and local evidence only. No staging or production deployment was performed.
 
@@ -19,7 +21,7 @@ The D1 migration runner is the authoritative verification for migration ordering
 
 ## Release gates still required
 
-1. Configure the isolated GitHub `staging` environment and Worker secrets described in [release readiness](./release-readiness.md).
+1. Configure the isolated GitHub `staging` environment and Worker secrets described in [deployment](../deployment.md) (formerly `docs/release-readiness.md`).
 2. Execute one manual **Staging release**. Its backup export is restored only into disposable local D1; verify the job log shows successful integrity, foreign-key, and fixture checks.
 3. Run the staged browser and realtime load suites against that staging URL and attach their results to the release approval.
 4. Have an authorized reviewer approve the GitHub `production` environment. Provide the production HTTPS URL only at manual dispatch time.

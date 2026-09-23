@@ -1,5 +1,7 @@
 # Release candidate report — 2026-09-06
 
+> **Archived.** This is a frozen assessment dated 2026-09-06, retained for history. It is not a description of the current system: the NO-GO verdict below applied to that release candidate only. For the live release procedure see [deployment](../deployment.md).
+
 ## Decision: NO-GO
 
 No production deployment was attempted. The local release artifact is valid, but

@@ -88,6 +88,6 @@ console.log(`
 Next steps:
   • npm run dev                        start the client and the Worker with the local D1
   • npx playwright install chromium    one-time browser download, required before
-                                       npm run test:e2e:local (and npm run test:e2e)
+                                       npm run test:e2e
   • npm run check                      lint + unit tests; npm run typecheck for tsc -b only
 `);

@@ -1,4 +1,4 @@
-# Phase 8 real-time deployment
+# Real-time Durable Objects
 
 The `GAME_SESSIONS` Durable Object binding is declared in `wrangler.jsonc`. `GameSession` uses Cloudflare's WebSocket Hibernation API and one deterministic object name per game ID. D1 remains the durable source for game data, history, and statistics.
 
@@ -17,6 +17,8 @@ npx wrangler deploy
 npm run deploy
 ```
 
-For local development, use `npx wrangler d1 migrations apply monopoly-bank --local` before `npm run dev` when a local D1 database is required.
+For local development, `npm run setup` applies the migrations to the local D1 database before `npm run dev`; the equivalent manual command is `npx wrangler d1 migrations apply monopoly-bank --local`.
 
 Do not manually create a second Durable Object class migration with the same `v1` tag. Any future class rename or deletion needs a new Wrangler migration tag.
+
+The full release procedure, including the isolated development and staging environments, is in [deployment](deployment.md).
