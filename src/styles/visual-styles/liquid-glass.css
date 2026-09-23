@@ -147,6 +147,19 @@
   --ui-motion-fast: var(--duration-fast);
   --ui-motion-normal: var(--duration-normal);
   --ui-motion-slow: var(--duration-slow);
+  /* Colour groups of the board (deeds). Contrast of --group-label-text on each swatch is asserted ≥ 4.5:1
+     in src/utils/property-view.test.ts. */
+  --group-label-text: #fffdf2;
+  --group-brown: #7a4a22;
+  --group-light-blue: #1f6f9a;
+  --group-pink: #b02a6b;
+  --group-orange: #b04d08;
+  --group-red: #b3262e;
+  --group-yellow: #8f6b00;
+  --group-green: #1f7a3f;
+  --group-dark-blue: #23408f;
+  --group-railroad: #3d4a52;
+  --group-utility: #5b6b4a;
 }
 
 :root[data-visual-style='liquid-glass'][data-color-mode='dark'] {
@@ -186,6 +199,18 @@
   --shadow-lg: 0 26px 68px rgb(0 0 0 / .4), inset 0 1px 0 rgb(255 255 255 / .14);
   --shadow-hover: 0 20px 48px rgb(0 0 0 / .34), inset 0 1px 0 rgb(255 255 255 / .2);
   --shadow-header: 0 8px 30px rgb(0 0 0 / .2), inset 0 -1px 0 rgb(255 255 255 / .09);
+  /* Colour groups of the board, dark: bright swatches under a canvas-dark label. */
+  --group-label-text: #10231b;
+  --group-brown: #c98a5b;
+  --group-light-blue: #7fc4ea;
+  --group-pink: #ef7fb8;
+  --group-orange: #f0913a;
+  --group-red: #ef6b6b;
+  --group-yellow: #f2d35b;
+  --group-green: #6fcf8f;
+  --group-dark-blue: #7f9ff2;
+  --group-railroad: #b8c2c9;
+  --group-utility: #d9d3b8;
 }
 
 :root[data-visual-style='liquid-glass'] .app-shell {

@@ -14,6 +14,15 @@ interface GameRow {
   updated_at: string;
   started_at: string | null;
   finished_at: string | null;
+  board_id?: string | null;
+}
+
+/** The board a new game opts into: its id and the spaces that get an ownership row each, plus the bank limits to seed. */
+export interface CreateGameBoardInput {
+  id: string;
+  spaceIds: readonly string[];
+  houseBankLimit: number;
+  hotelBankLimit: number;
 }
 
 export interface CreateGameInput {
@@ -28,6 +37,7 @@ export interface CreateGameInput {
   joinCode: string;
   gameAccessPasswordHash: string | null;
   gameAccessPasswordSalt: string | null;
+  board?: CreateGameBoardInput;
 }
 
 export interface UpdateGameMetadataInput {
@@ -61,10 +71,15 @@ export class D1GameRepository implements GameRepository {
   async createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void> {
     const gameStatement = this.database
       .prepare(
-        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, payment_mode, status, owner_user_id, join_code, game_access_password_hash, game_access_password_salt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, payment_mode, status, owner_user_id, join_code, game_access_password_hash, game_access_password_salt, board_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.paymentMode ?? 'FAST', input.status ?? 'LOBBY', input.ownerUserId, input.joinCode, input.gameAccessPasswordHash, input.gameAccessPasswordSalt);
+      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.paymentMode ?? 'FAST', input.status ?? 'LOBBY', input.ownerUserId, input.joinCode, input.gameAccessPasswordHash, input.gameAccessPasswordSalt, input.board?.id ?? null);
+    // A game with a board gets every ownership row and its building bank in the same batch as the game itself.
+    const boardStatements = input.board === undefined ? [] : [
+      ...input.board.spaceIds.map((spaceId) => this.database.prepare('INSERT INTO game_properties (game_id, board_space_id, board_id, owner_player_id, houses, mortgaged) VALUES (?, ?, ?, NULL, 0, 0)').bind(input.id, spaceId, input.board?.id ?? null)),
+      this.database.prepare('INSERT INTO game_building_banks (game_id, houses_available, hotels_available) VALUES (?, ?, ?)').bind(input.id, input.board.houseBankLimit, input.board.hotelBankLimit),
+    ];
     const playerStatements = players.map((player) =>
       this.database
         .prepare(
@@ -77,13 +92,13 @@ export class D1GameRepository implements GameRepository {
     const ownerPlayerId = players[0]?.id;
     const memberStatement = this.database.prepare("INSERT INTO game_members (game_id, user_id, role, player_id) VALUES (?, ?, 'OWNER', ?)").bind(input.id, input.ownerUserId, ownerPlayerId ?? null);
     const controllerStatement = ownerPlayerId === undefined ? [] : [this.database.prepare("INSERT INTO player_controllers (game_id, player_id, user_id, controller_kind) VALUES (?, ?, ?, 'PRIMARY')").bind(input.id, ownerPlayerId, input.ownerUserId)];
-    await this.database.batch([gameStatement, ...playerStatements, memberStatement, ...controllerStatement]);
+    await this.database.batch([gameStatement, ...playerStatements, ...boardStatements, memberStatement, ...controllerStatement]);
   }
 
   async getById(id: string): Promise<Game | null> {
     const row = await this.database
       .prepare(
-        `SELECT id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at
+        `SELECT id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at, board_id
          FROM games
          WHERE id = ?`,
       )
@@ -96,7 +111,7 @@ export class D1GameRepository implements GameRepository {
   async list(): Promise<Game[]> {
     const result = await this.database
       .prepare(
-        `SELECT id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at
+        `SELECT id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at, board_id
          FROM games
          ORDER BY updated_at DESC, id DESC`,
       )
@@ -109,7 +124,7 @@ export class D1GameRepository implements GameRepository {
     const result = await this.database
       .prepare(
         `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode,
-                games.status, games.created_at, games.updated_at, games.started_at, games.finished_at,
+                games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, games.board_id,
                 COUNT(players.id) AS player_count
          FROM games
          LEFT JOIN players ON players.game_id = games.id
@@ -126,7 +141,7 @@ export class D1GameRepository implements GameRepository {
 
   async listSummariesForUser(userId: string): Promise<GameSummary[]> {
     const result = await this.database.prepare(
-      `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode, games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, COUNT(players.id) AS player_count,
+      `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode, games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, games.board_id, COUNT(players.id) AS player_count,
               CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN 1 ELSE 0 END AS is_public_lobby,
               CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN games.join_code ELSE NULL END AS public_join_code
        FROM games LEFT JOIN game_members ON game_members.game_id = games.id AND game_members.user_id = ? LEFT JOIN players ON players.game_id = games.id
@@ -163,7 +178,7 @@ export class D1GameRepository implements GameRepository {
         `UPDATE games
          SET ${assignments.join(', ')}
          WHERE id = ?
-         RETURNING id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at`,
+         RETURNING id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at, board_id`,
       )
       .bind(...values)
       .first<GameRow>();
@@ -180,7 +195,7 @@ export class D1GameRepository implements GameRepository {
            started_at = CASE WHEN ? = 'ACTIVE' THEN CURRENT_TIMESTAMP ELSE started_at END,
            finished_at = CASE WHEN ? = 'ARCHIVED' THEN CURRENT_TIMESTAMP ELSE finished_at END
        WHERE id = ? AND status = ?
-       RETURNING id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at`,
+       RETURNING id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at, board_id`,
     ).bind(storedTo, storedTo, storedTo, id, storedFrom).first<GameRow>();
     return row === null ? null : mapGame(row);
   }
@@ -238,5 +253,6 @@ function mapGame(row: GameRow): Game {
     updatedAt: row.updated_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
+    boardId: row.board_id ?? null,
   };
 }

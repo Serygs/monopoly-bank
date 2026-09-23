@@ -1,14 +1,165 @@
-import type { AddAccountEmailRequest, AuthTokenRequest, BankruptcyRequest, CreateGameRequest, CreateTransactionRequest, DuplicateGameRequest, FinishGameRequest, GuestJoinGameRequest, JoinGameRequest, LoginRequest, PasswordResetConfirmationRequest, PasswordResetRequest, RegisterRequest, UpdateProfileRequest, UpgradeGuestRequest } from '../../shared/contracts/api.js';
-import { paymentModes, selectableCurrencies, transactionTypes, type PaymentMode, type SelectableCurrency, type TransactionType } from '../../shared/types/monopoly.js';
+import type { AddAccountEmailRequest, AuthTokenRequest, BankruptcyRequest, CreateBoardRequest, CreateGameRequest, CreateTradeRequest, CreateTransactionRequest, DiceRollRequest, DuplicateGameRequest, FinishGameRequest, GuestJoinGameRequest, JailBailRequest, JoinGameRequest, LoginRequest, MortgageResolution, PasswordResetConfirmationRequest, PasswordResetRequest, PropertyAuctionRequest, PropertyBuildRequest, PropertyMortgageRequest, PropertyPurchaseRequest, PropertyRentRequest, PropertySellBuildingsRequest, PropertyUnmortgageRequest, RegisterRequest, TradeOffer, UpdateProfileRequest, UpgradeGuestRequest } from '../../shared/contracts/api.js';
+import { hotelHouseLevel, paymentModes, selectableCurrencies, type PaymentMode, type SelectableCurrency } from '../../shared/types/monopoly.js';
 import { ValidationError } from '../services/errors.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Board and space ids are either the seeded canonical slugs (`board-classic-space-01`) or UUIDs of user copies. */
+const catalogIdPattern = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/u;
+const controlCharacterPattern = /\p{Cc}/u;
+/** Every board copy carries exactly the ownable spaces of the classic layout. */
+export const boardSpaceCount = 28;
+export const boardNameMaxLength = 40;
+export const boardSpaceNameMaxLength = 32;
 
 export class ApiValidationError extends ValidationError { constructor(message: string, details: Record<string, unknown> = {}) { super(message, details); } }
 
 export function parseResourceId(value: string, field: string): string {
   if (!uuidPattern.test(value)) {
     throw new ApiValidationError(`${field} must be a UUID.`);
+  }
+  return value;
+}
+
+export function parseCatalogId(value: string, field: string): string {
+  if (!catalogIdPattern.test(value)) {
+    throw new ApiValidationError(`${field} must be a board catalogue id.`);
+  }
+  return value;
+}
+
+export async function parsePropertyPurchaseRequest(request: Request): Promise<PropertyPurchaseRequest> {
+  const body = await parseJsonObject(request);
+  const comment = readOptionalComment(body);
+  return { boardSpaceId: readCatalogId(body, 'boardSpaceId'), playerId: readUuid(body, 'playerId'), ...(comment === undefined ? {} : { comment }) };
+}
+
+export async function parsePropertyRentRequest(request: Request): Promise<PropertyRentRequest> {
+  const body = await parseJsonObject(request);
+  const comment = readOptionalComment(body);
+  const chargedByOwner = readOptionalBoolean(body, 'chargedByOwner');
+  const diceTotal = body.diceTotal === undefined ? undefined : readBoundedInteger(body, 'diceTotal', 2, 12);
+  return {
+    boardSpaceId: readCatalogId(body, 'boardSpaceId'),
+    payerPlayerId: readUuid(body, 'payerPlayerId'),
+    ...(chargedByOwner === undefined ? {} : { chargedByOwner }),
+    ...(diceTotal === undefined ? {} : { diceTotal }),
+    ...(comment === undefined ? {} : { comment }),
+  };
+}
+
+export async function parsePropertyBuildRequest(request: Request): Promise<PropertyBuildRequest> { return parseBuildingCountRequest(request); }
+export async function parsePropertySellBuildingsRequest(request: Request): Promise<PropertySellBuildingsRequest> { return parseBuildingCountRequest(request); }
+export async function parsePropertyMortgageRequest(request: Request): Promise<PropertyMortgageRequest> { return parsePlayerSpaceRequest(request); }
+export async function parsePropertyUnmortgageRequest(request: Request): Promise<PropertyUnmortgageRequest> { return parsePlayerSpaceRequest(request); }
+
+/** The winning bid is whatever the table agreed: a positive integer, deliberately not bounded by the catalogue price. */
+export async function parsePropertyAuctionRequest(request: Request): Promise<PropertyAuctionRequest> {
+  const body = await parseJsonObject(request);
+  const comment = readOptionalComment(body);
+  return { boardSpaceId: readCatalogId(body, 'boardSpaceId'), winnerPlayerId: readUuid(body, 'winnerPlayerId'), price: readPositiveInteger(body, 'price'), ...(comment === undefined ? {} : { comment }) };
+}
+
+export async function parseJailBailRequest(request: Request): Promise<JailBailRequest> {
+  const body = await parseJsonObject(request);
+  const comment = readOptionalComment(body);
+  return { playerId: readUuid(body, 'playerId'), ...(comment === undefined ? {} : { comment }) };
+}
+
+export async function parseDiceRollRequest(request: Request): Promise<DiceRollRequest> {
+  const body = await parseJsonObject(request);
+  return { playerId: readUuid(body, 'playerId'), first: readBoundedInteger(body, 'first', 1, 6), second: readBoundedInteger(body, 'second', 1, 6) };
+}
+
+export async function parseCreateTradeRequest(request: Request): Promise<CreateTradeRequest> {
+  const body = await parseJsonObject(request);
+  const proposerPlayerId = readUuid(body, 'proposerPlayerId');
+  const responderPlayerId = readUuid(body, 'responderPlayerId');
+  if (proposerPlayerId === responderPlayerId) throw new ApiValidationError('proposerPlayerId and responderPlayerId must be different players.');
+  const cashFromProposer = body.cashFromProposer === undefined ? undefined : readNonNegativeInteger(body, 'cashFromProposer');
+  const cashFromResponder = body.cashFromResponder === undefined ? undefined : readNonNegativeInteger(body, 'cashFromResponder');
+  const propertiesFromProposer = body.propertiesFromProposer === undefined ? undefined : readTradeOffers(body, 'propertiesFromProposer');
+  const propertiesFromResponder = body.propertiesFromResponder === undefined ? undefined : readTradeOffers(body, 'propertiesFromResponder');
+  const comment = readOptionalComment(body);
+  return {
+    proposerPlayerId,
+    responderPlayerId,
+    ...(cashFromProposer === undefined ? {} : { cashFromProposer }),
+    ...(cashFromResponder === undefined ? {} : { cashFromResponder }),
+    ...(propertiesFromProposer === undefined ? {} : { propertiesFromProposer }),
+    ...(propertiesFromResponder === undefined ? {} : { propertiesFromResponder }),
+    ...(comment === undefined ? {} : { comment }),
+  };
+}
+
+export async function parseCreateBoardRequest(request: Request): Promise<CreateBoardRequest> {
+  const body = await parseJsonObject(request);
+  const name = readDisplayName(body, 'name', boardNameMaxLength);
+  const sourceBoardId = readCatalogId(body, 'sourceBoardId');
+  const names = readObject(body.spaceNames, 'spaceNames');
+  const entries = Object.entries(names);
+  if (entries.length !== boardSpaceCount) throw new ApiValidationError(`spaceNames must contain exactly ${boardSpaceCount} space names.`, { provided: entries.length, expected: boardSpaceCount });
+  const spaceNames: Record<string, string> = {};
+  for (const [spaceId] of entries) {
+    spaceNames[parseCatalogId(spaceId, 'spaceNames key')] = readDisplayName(names, spaceId, boardSpaceNameMaxLength, `spaceNames[${spaceId}]`);
+  }
+  return { name, sourceBoardId, spaceNames };
+}
+
+async function parsePlayerSpaceRequest(request: Request): Promise<PropertyMortgageRequest> {
+  const body = await parseJsonObject(request);
+  const comment = readOptionalComment(body);
+  return { boardSpaceId: readCatalogId(body, 'boardSpaceId'), playerId: readUuid(body, 'playerId'), ...(comment === undefined ? {} : { comment }) };
+}
+
+async function parseBuildingCountRequest(request: Request): Promise<PropertyBuildRequest> {
+  const body = await parseJsonObject(request);
+  const comment = readOptionalComment(body);
+  return { boardSpaceId: readCatalogId(body, 'boardSpaceId'), playerId: readUuid(body, 'playerId'), count: readBoundedInteger(body, 'count', 1, hotelHouseLevel), ...(comment === undefined ? {} : { comment }) };
+}
+
+const mortgageResolutions = ['PAY_INTEREST', 'REDEEM'] as const satisfies readonly MortgageResolution[];
+
+function readTradeOffers(body: Record<string, unknown>, field: string): TradeOffer[] {
+  return readArray(body, field).map((entry, index) => {
+    const offer = readObject(entry, `${field}[${index}]`);
+    const boardSpaceId = readCatalogId(offer, 'boardSpaceId', `${field}[${index}].boardSpaceId`);
+    if (offer.mortgageResolution === undefined || offer.mortgageResolution === null) return { boardSpaceId };
+    if (typeof offer.mortgageResolution !== 'string' || !(mortgageResolutions as readonly string[]).includes(offer.mortgageResolution)) throw new ApiValidationError(`${field}[${index}].mortgageResolution must be PAY_INTEREST or REDEEM.`);
+    return { boardSpaceId, mortgageResolution: offer.mortgageResolution as MortgageResolution };
+  });
+}
+
+function readCatalogId(body: Record<string, unknown>, key: string, field = key): string {
+  return parseCatalogId(readRequiredString(body, key, field), field);
+}
+
+/** A trimmed, single-line human name: no control characters, bounded length. */
+function readDisplayName(body: Record<string, unknown>, key: string, maxLength: number, field = key): string {
+  const value = readRequiredString(body, key, field);
+  if (value.length > maxLength) throw new ApiValidationError(`${field} must be at most ${maxLength} characters.`, { maxLength });
+  if (controlCharacterPattern.test(value)) throw new ApiValidationError(`${field} must not contain control characters.`);
+  return value;
+}
+
+function readOptionalBoolean(body: Record<string, unknown>, key: string): boolean | undefined {
+  const value = body[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') throw new ApiValidationError(`${key} must be a boolean.`);
+  return value;
+}
+
+function readBoundedInteger(body: Record<string, unknown>, key: string, min: number, max: number): number {
+  const value = body[key];
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) {
+    throw new ApiValidationError(`${key} must be an integer between ${min} and ${max}.`, { min, max });
+  }
+  return value;
+}
+
+function readNonNegativeInteger(body: Record<string, unknown>, key: string): number {
+  const value = body[key];
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new ApiValidationError(`${key} must be a non-negative integer.`);
   }
   return value;
 }
@@ -37,6 +188,7 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     ...(body.paymentMode === undefined ? {} : { paymentMode: readPaymentMode(body) }),
     ...(body.gameAccessPassword === undefined ? {} : { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }),
     players,
+    ...(body.boardId === undefined ? {} : { boardId: readCatalogId(body, 'boardId') }),
   };
 }
 
@@ -180,12 +332,25 @@ function readPositiveInteger(body: Record<string, unknown>, key: string): number
   return value;
 }
 
-function readTransactionType(body: Record<string, unknown>): Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'> {
+/**
+ * The banking endpoint accepts only the manual money moves. Rent, bankruptcy and
+ * every property transaction are raised by their own routes, never by this body.
+ */
+const bankingTransactionTypes = [
+  'PLAYER_TO_PLAYER',
+  'PLAYER_TO_BANK',
+  'BANK_TO_PLAYER',
+  'PLAYER_TO_ALL',
+  'ALL_TO_PLAYER',
+  'PASS_GO',
+] as const satisfies readonly CreateTransactionRequest['type'][];
+
+function readTransactionType(body: Record<string, unknown>): CreateTransactionRequest['type'] {
   const value = body.type;
-  if (typeof value !== 'string' || !transactionTypes.includes(value as TransactionType) || value === 'PAY_RENT' || value === 'BANKRUPTCY_TRANSFER') {
+  if (typeof value !== 'string' || !bankingTransactionTypes.includes(value as CreateTransactionRequest['type'])) {
     throw new ApiValidationError('type must be a supported transaction type.');
   }
-  return value as Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'>;
+  return value as CreateTransactionRequest['type'];
 }
 
 function readOptionalComment(body: Record<string, unknown>): string | undefined {

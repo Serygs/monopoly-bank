@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import type { CreateGameRequest, CreateTransactionRequest, GameDetails, GameSummary } from '../../shared/contracts/api.js';
-import { InsufficientFundsError } from '../../shared/domain/banking.js';
+import type { CreateGameRequest, CreateTransactionRequest, GameDetails, GameSummary, LedgerStatistics } from '../../shared/contracts/api.js';
+import { classicBoard, classicBuildingBank, classicSpaces, emptyClassicProperties } from '../classic-board.test-support.js';
+import { IncompleteEstateError, InsufficientFundsError } from '../../shared/domain/banking.js';
+import { PlayerNotInJailError } from '../../shared/domain/jail.js';
+import { DiceTotalRequiredError, IncompleteColorGroupError, PropertyAlreadyOwnedError } from '../../shared/domain/property.js';
+import { MortgageResolutionRequiredError, TradeStateChangedError } from '../../shared/domain/property-trade.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { BankingService } from '../services/banking-service.js';
-import { ForbiddenError, ResourceNotFoundError } from '../services/errors.js';
+import { BoardRequiredError, ConflictError, ForbiddenError, ResourceNotFoundError } from '../services/errors.js';
 import type { GameService } from '../services/game-service.js';
 import { createApiRouter } from './api-router.js';
 
@@ -380,6 +384,285 @@ describe('API router', () => {
       error: { code: 'VALIDATION_ERROR', message: 'gameId must be a UUID.' },
     });
   });
+});
+
+describe('board and property routes', () => {
+  const boardSpaceId = 'board-classic-space-01';
+  const tradeId = '00000000-0000-4000-8000-000000000077';
+  const commandId = '00000000-0000-4000-8000-000000000088';
+  const ownerId = '00000000-0000-4000-8000-000000000099';
+  const spaceNames = Object.fromEntries(Array.from({ length: 28 }, (_, index) => [`board-classic-space-${String(index).padStart(2, '0')}`, `Street ${index}`]));
+
+  it('passes a boardId through to game creation', async () => {
+    let received: CreateGameRequest | undefined;
+    const router = createTestRouter({ createGame: async (request) => { received = request; return gameDetails; } });
+    const response = await router(jsonRequest('POST', '/api/games', { name: 'Board table', startingBalance: 1500, passGoReward: 200, currency: 'USD', boardId: 'board-classic', players: [{ name: 'Ada', color: '#123456' }] }));
+    expect(response.status).toBe(201);
+    expect(received?.boardId).toBe('board-classic');
+  });
+
+  it('returns the board slice to a member and refuses a game without a board with BOARD_REQUIRED', async () => {
+    const { router, properties } = createPropertyRouter();
+    const response = await router(new Request(`https://example.test/api/games/${gameId}/properties`));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ data: { properties: [{ boardSpaceId, ownerPlayerId: secondPlayerId }] } });
+    properties.state.mockRejectedValueOnce(new BoardRequiredError());
+    const legacy = await router(new Request(`https://example.test/api/games/${gameId}/properties`));
+    expect(legacy.status).toBe(400);
+    await expect(legacy.json()).resolves.toMatchObject({ error: { code: 'BOARD_REQUIRED' } });
+  });
+
+  it('buys a deed for a controlled wallet and answers 201 with the operation result', async () => {
+    const { router, properties } = createPropertyRouter();
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/properties/purchase`, { playerId: firstPlayerId, boardSpaceId }));
+    expect(response.status).toBe(201);
+    expect(properties.purchase).toHaveBeenCalledWith(gameId, { playerId: firstPlayerId, boardSpaceId });
+    await expect(response.json()).resolves.toMatchObject({ data: { transaction: { type: 'PROPERTY_PURCHASE' } } });
+  });
+
+  it('rejects a purchase from a wallet the actor does not control before any service call', async () => {
+    const { router, properties, live } = createPropertyRouter({ controlled: [firstPlayerId], live: true });
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/properties/purchase`, { playerId: secondPlayerId, boardSpaceId }));
+    expect(response.status).toBe(403);
+    expect(properties.purchase).not.toHaveBeenCalled();
+    expect(live.mutate).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 PROPERTY_NOT_OWNED for rent on a deed nobody owns, without touching the service', async () => {
+    const { router, properties } = createPropertyRouter({ owner: null });
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/properties/rent`, { payerPlayerId: firstPlayerId, boardSpaceId, chargedByOwner: true }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'PROPERTY_NOT_OWNED', details: { boardSpaceId } } });
+    expect(properties.chargeRent).not.toHaveBeenCalled();
+  });
+
+  it('authorizes an owner-raised rent claim against the stored owner and a payer-raised one against the payer', async () => {
+    const claimed = createPropertyRouter({ owner: secondPlayerId, controlled: [secondPlayerId] });
+    const claim = await claimed.router(jsonRequest('POST', `/api/games/${gameId}/properties/rent`, { payerPlayerId: firstPlayerId, boardSpaceId, chargedByOwner: true, ownerPlayerId: firstPlayerId }));
+    expect(claim.status).toBe(201);
+    expect(claimed.controllers).toEqual([secondPlayerId]);
+    expect(claimed.properties.chargeRent).toHaveBeenCalledWith(gameId, { payerPlayerId: firstPlayerId, boardSpaceId, chargedByOwner: true });
+
+    const paid = createPropertyRouter({ owner: secondPlayerId, controlled: [secondPlayerId] });
+    const payment = await paid.router(jsonRequest('POST', `/api/games/${gameId}/properties/rent`, { payerPlayerId: firstPlayerId, boardSpaceId }));
+    expect(payment.status).toBe(403);
+    expect(paid.controllers).toEqual([firstPlayerId]);
+    expect(paid.properties.chargeRent).not.toHaveBeenCalled();
+  });
+
+  it('records an auction for the winner\'s controller at a bid above the catalogue price, and rejects a zero bid before any service call', async () => {
+    const { router, properties, controllers } = createPropertyRouter({ controlled: [secondPlayerId] });
+    properties.recordAuction.mockResolvedValueOnce({ transaction: { ...transactionResponse().transaction, type: 'PROPERTY_AUCTION' as const, amount: 999, totalAmount: 999 }, players: gameDetails.players, properties: [{ boardSpaceId, ownerPlayerId: secondPlayerId, houses: 0, mortgaged: false }], buildingBank: { housesAvailable: 32, hotelsAvailable: 12 } });
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/properties/auction`, { winnerPlayerId: secondPlayerId, boardSpaceId, price: 999 }));
+    expect(response.status).toBe(201);
+    expect(controllers).toEqual([secondPlayerId]);
+    expect(properties.recordAuction).toHaveBeenCalledWith(gameId, { winnerPlayerId: secondPlayerId, boardSpaceId, price: 999 });
+    await expect(response.json()).resolves.toMatchObject({ data: { transaction: { type: 'PROPERTY_AUCTION', amount: 999 } } });
+
+    const zero = await router(jsonRequest('POST', `/api/games/${gameId}/properties/auction`, { winnerPlayerId: secondPlayerId, boardSpaceId, price: 0 }));
+    expect(zero.status).toBe(400);
+    await expect(zero.json()).resolves.toMatchObject({ error: { code: 'VALIDATION_ERROR', message: 'price must be a positive integer.' } });
+    expect(properties.recordAuction).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers PROPERTY_ALREADY_OWNED for an auction of a held deed and refuses a bid for a wallet the actor does not control', async () => {
+    const { router, properties } = createPropertyRouter();
+    properties.recordAuction.mockRejectedValueOnce(new PropertyAlreadyOwnedError(boardSpaceId, firstPlayerId));
+    const held = await router(jsonRequest('POST', `/api/games/${gameId}/properties/auction`, { winnerPlayerId: secondPlayerId, boardSpaceId, price: 120 }));
+    expect(held.status).toBe(409);
+    await expect(held.json()).resolves.toMatchObject({ error: { code: 'PROPERTY_ALREADY_OWNED', details: { boardSpaceId } } });
+
+    const foreign = createPropertyRouter({ controlled: [firstPlayerId], live: true });
+    const response = await foreign.router(jsonRequest('POST', `/api/games/${gameId}/properties/auction`, { winnerPlayerId: secondPlayerId, boardSpaceId, price: 120 }));
+    expect(response.status).toBe(403);
+    expect(foreign.properties.recordAuction).not.toHaveBeenCalled();
+    expect(foreign.live.mutate).not.toHaveBeenCalled();
+  });
+
+  it('routes every property operation through the live coordinator as a PROPERTY_OPERATION command', async () => {
+    const { router, live, properties } = createPropertyRouter({ live: true });
+    const headers = { 'content-type': 'application/json', 'x-command-id': commandId };
+    for (const [action, operation, body] of [
+      ['purchase', 'PURCHASE', { playerId: firstPlayerId, boardSpaceId }],
+      ['build', 'BUILD', { playerId: firstPlayerId, boardSpaceId, count: 2 }],
+      ['sell-buildings', 'SELL_BUILDINGS', { playerId: firstPlayerId, boardSpaceId, count: 1 }],
+      ['mortgage', 'MORTGAGE', { playerId: firstPlayerId, boardSpaceId }],
+      ['unmortgage', 'UNMORTGAGE', { playerId: firstPlayerId, boardSpaceId }],
+      ['auction', 'AUCTION', { winnerPlayerId: firstPlayerId, boardSpaceId, price: 75 }],
+    ] as const) {
+      await router(new Request(`https://example.test/api/games/${gameId}/properties/${action}`, { method: 'POST', headers, body: JSON.stringify(body) }));
+      expect(live.mutate).toHaveBeenLastCalledWith(gameId, expect.anything(), { type: 'PROPERTY_OPERATION', commandId, operation, request: body });
+    }
+    expect(properties.purchase).not.toHaveBeenCalled();
+    const missing = await router(jsonRequest('POST', `/api/games/${gameId}/properties/purchase`, { playerId: firstPlayerId, boardSpaceId }));
+    expect(missing.status).toBe(400);
+  });
+
+  it.each([
+    ['PROPERTY_ALREADY_OWNED', 409, () => new PropertyAlreadyOwnedError(boardSpaceId, secondPlayerId)],
+    ['INCOMPLETE_COLOR_GROUP', 409, () => new IncompleteColorGroupError('BROWN')],
+    ['TRADE_STATE_CHANGED', 409, () => new TradeStateChangedError(boardSpaceId, { ownerPlayerId: firstPlayerId, houses: 0, mortgaged: false }, { ownerPlayerId: firstPlayerId, houses: 0, mortgaged: true })],
+    ['MORTGAGE_RESOLUTION_REQUIRED', 400, () => new MortgageResolutionRequiredError(boardSpaceId)],
+    ['PLAYER_NOT_IN_JAIL', 409, () => new PlayerNotInJailError(firstPlayerId)],
+    ['INSUFFICIENT_FUNDS', 409, () => new InsufficientFundsError(firstPlayerId, 10, 60)],
+    ['INCOMPLETE_ESTATE', 400, () => new IncompleteEstateError(['properties'])],
+    ['DICE_TOTAL_REQUIRED', 400, () => new DiceTotalRequiredError(boardSpaceId)],
+  ] as const)('returns the domain code %s with the domain status %i', async (code, status, error) => {
+    const { router, properties } = createPropertyRouter();
+    properties.purchase.mockRejectedValueOnce(error());
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/properties/purchase`, { playerId: firstPlayerId, boardSpaceId }));
+    expect(response.status).toBe(status);
+    await expect(response.json()).resolves.toMatchObject({ error: { code } });
+  });
+
+  it('proposes a trade for the proposer\'s controller and lists trades for members', async () => {
+    const { router, trades, controllers } = createPropertyRouter();
+    const body = { proposerPlayerId: firstPlayerId, responderPlayerId: secondPlayerId, cashFromProposer: 50, propertiesFromProposer: [{ boardSpaceId }] };
+    const response = await router(jsonRequest('POST', `/api/games/${gameId}/trades`, body));
+    expect(response.status).toBe(201);
+    expect(controllers).toEqual([firstPlayerId]);
+    expect(trades.propose).toHaveBeenCalledWith(gameId, body);
+    const list = await router(new Request(`https://example.test/api/games/${gameId}/trades`));
+    expect(list.status).toBe(200);
+    await expect(list.json()).resolves.toEqual({ data: [expect.objectContaining({ id: tradeId })] });
+  });
+
+  it('lets only the responder accept or decline and only the proposer cancel a trade', async () => {
+    const responder = createPropertyRouter({ controlled: [secondPlayerId] });
+    expect((await responder.router(jsonRequest('POST', `/api/games/${gameId}/trades/${tradeId}/accept`, {}))).status).toBe(200);
+    expect(responder.trades.accept).toHaveBeenCalledWith(gameId, tradeId);
+    expect((await responder.router(jsonRequest('POST', `/api/games/${gameId}/trades/${tradeId}/cancel`, {}))).status).toBe(403);
+    expect(responder.trades.cancel).not.toHaveBeenCalled();
+
+    const proposer = createPropertyRouter({ controlled: [firstPlayerId] });
+    expect((await proposer.router(jsonRequest('POST', `/api/games/${gameId}/trades/${tradeId}/accept`, {}))).status).toBe(403);
+    expect(proposer.trades.accept).not.toHaveBeenCalled();
+    expect((await proposer.router(jsonRequest('POST', `/api/games/${gameId}/trades/${tradeId}/cancel`, {}))).status).toBe(200);
+    expect(proposer.trades.cancel).toHaveBeenCalledWith(gameId, tradeId);
+
+    const missing = createPropertyRouter({ trade: null });
+    expect((await missing.router(jsonRequest('POST', `/api/games/${gameId}/trades/${tradeId}/decline`, {}))).status).toBe(404);
+  });
+
+  it('pays bail and records dice rolls for the wallet\'s controller only', async () => {
+    const { router, properties, controllers } = createPropertyRouter();
+    expect((await router(jsonRequest('POST', `/api/games/${gameId}/jail/bail`, { playerId: firstPlayerId }))).status).toBe(201);
+    expect(properties.payJailBail).toHaveBeenCalledWith(gameId, { playerId: firstPlayerId });
+    expect((await router(jsonRequest('POST', `/api/games/${gameId}/dice-rolls`, { playerId: firstPlayerId, first: 4, second: 4 }))).status).toBe(201);
+    expect(properties.recordDiceRoll).toHaveBeenCalledWith(gameId, { playerId: firstPlayerId, first: 4, second: 4 });
+    expect(controllers).toEqual([firstPlayerId, firstPlayerId]);
+    const foreign = createPropertyRouter({ controlled: [secondPlayerId] });
+    expect((await foreign.router(jsonRequest('POST', `/api/games/${gameId}/dice-rolls`, { playerId: firstPlayerId, first: 4, second: 4 }))).status).toBe(403);
+    expect(foreign.properties.recordDiceRoll).not.toHaveBeenCalled();
+  });
+
+  it('ranks capital in the live statistics of a board game and omits the field for a game without a board', async () => {
+    const deeds = emptyClassicProperties().map((deed) => (deed.boardSpaceId === 'board-classic-space-39' ? { ...deed, ownerPlayerId: secondPlayerId, houses: 1 } : deed));
+    const boardGame: GameDetails = { ...gameDetails, game: { ...gameDetails.game, boardId: 'board-classic' }, board: classicBoard, boardSpaces: classicSpaces, properties: deeds, buildingBank: classicBuildingBank };
+    const statistics = { calculate: vi.fn(async () => ledgerStatistics()), getFinalSnapshot: vi.fn(async () => null), saveFinalSnapshot: vi.fn(async () => undefined) };
+    const withBoard = await createStatisticsRouter(boardGame, statistics)(new Request(`https://example.test/api/games/${gameId}/statistics`));
+    expect(withBoard.status).toBe(200);
+    const ranked = (await withBoard.json() as { data: { netWorth: Array<{ player: { id: string }; netWorth: number }> } }).data.netWorth;
+    expect(ranked.map((entry) => [entry.player.id, entry.netWorth])).toEqual([[secondPlayerId, 1500 + 400 + 200], [firstPlayerId, 1500]]);
+    expect(statistics.getFinalSnapshot).not.toHaveBeenCalled();
+
+    const plain = await createStatisticsRouter(gameDetails, statistics)(new Request(`https://example.test/api/games/${gameId}/summary`));
+    expect(plain.status).toBe(200);
+    expect((await plain.json() as { data: object }).data).not.toHaveProperty('netWorth');
+  });
+
+  it('finishing a board game writes the capital ranking and the deed table into the final snapshot with the winners the owner named', async () => {
+    const deeds = emptyClassicProperties().map((deed) => (deed.boardSpaceId === 'board-classic-space-01' ? { ...deed, ownerPlayerId: firstPlayerId } : deed));
+    const boardGame: GameDetails = { ...gameDetails, game: { ...gameDetails.game, boardId: 'board-classic' }, board: classicBoard, boardSpaces: classicSpaces, properties: deeds, buildingBank: classicBuildingBank };
+    const statistics = { calculate: vi.fn(async () => ledgerStatistics()), getFinalSnapshot: vi.fn(async () => null), saveFinalSnapshot: vi.fn(async () => undefined) };
+    const response = await createStatisticsRouter(boardGame, statistics)(jsonRequest('POST', `/api/games/${gameId}/finish`, { winnerPlayerIds: [secondPlayerId] }));
+    expect(response.status).toBe(200);
+    expect(statistics.saveFinalSnapshot).toHaveBeenCalledTimes(1);
+    const [, winners, summary] = statistics.saveFinalSnapshot.mock.calls[0] as unknown as [string, string[], { netWorth?: Array<{ player: { id: string }; netWorth: number }>; propertyOwnership?: unknown[] }];
+    expect(winners).toEqual([secondPlayerId]);
+    expect(summary.netWorth?.map((entry) => entry.player.id)).toEqual([firstPlayerId, secondPlayerId]);
+    expect(summary.propertyOwnership).toHaveLength(28);
+    expect(summary.propertyOwnership?.[0]).toEqual({ boardSpaceId: 'board-classic-space-01', ownerPlayerId: firstPlayerId, houses: 0, mortgaged: false });
+  });
+
+  it('serves a finished game\'s summary from the stored snapshot, including the fields a board game kept', async () => {
+    const stored = { ...ledgerStatistics(), netWorth: [{ player: gameDetails.players[1], netWorth: 2100 }, { player: gameDetails.players[0], netWorth: 1500 }], propertyOwnership: [{ boardSpaceId: 'board-classic-space-39', ownerPlayerId: secondPlayerId, houses: 1, mortgaged: false }] };
+    const statistics = { calculate: vi.fn(async () => ledgerStatistics()), getFinalSnapshot: vi.fn(async () => ({ winnerPlayerIds: [secondPlayerId], summary: stored })), saveFinalSnapshot: vi.fn(async () => undefined) };
+    const finished: GameDetails = { ...gameDetails, game: { ...gameDetails.game, status: 'FINISHED', boardId: 'board-classic' } };
+    const response = await createStatisticsRouter(finished, statistics)(new Request(`https://example.test/api/games/${gameId}/summary`));
+    await expect(response.json()).resolves.toMatchObject({ data: { winners: [{ id: secondPlayerId }], netWorth: stored.netWorth, propertyOwnership: stored.propertyOwnership } });
+    expect(statistics.calculate).not.toHaveBeenCalled();
+  });
+
+  function createStatisticsRouter(details: GameDetails, statistics: { calculate: () => Promise<unknown>; getFinalSnapshot: () => Promise<unknown>; saveFinalSnapshot: () => Promise<void> }) {
+    return createApiRouter({
+      games: { getGame: async () => details, finishGame: async () => ({ ...details, game: { ...details.game, status: 'FINISHED' } }) } as never,
+      banking: {} as BankingService,
+      auth: { current: async () => ({ id: ownerId, nickname: 'Owner', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: { requireMember: async () => 'OWNER', requireOwner: async () => undefined, linkedMembers: async () => [] } as never,
+      profileStatistics: { recordCompletedGame: async () => undefined } as never,
+      statistics: statistics as never,
+    });
+  }
+
+  function ledgerStatistics(): LedgerStatistics {
+    return { durationMs: 0, totalTransactions: 0, totalMoneyTransferred: 0, largestSinglePayment: 0, richestActivePlayer: null, lowestActiveBalance: null, players: [], playerToPlayerTotal: 0, paidToBank: 0, receivedFromBank: 0, largestTransaction: 0, biggestSenderId: null, leastSenderId: null, biggestPayerRecipient: null, cashLeaderboard: [] };
+  }
+
+  it('serves the board catalogue to the authenticated actor', async () => {
+    const { router, boards } = createPropertyRouter();
+    expect((await router(new Request('https://example.test/api/boards'))).status).toBe(200);
+    expect(boards.list).toHaveBeenCalledWith(ownerId);
+    const created = await router(jsonRequest('POST', '/api/boards', { name: 'Kyiv', sourceBoardId: 'board-classic', spaceNames }));
+    expect(created.status).toBe(201);
+    expect(boards.create).toHaveBeenCalledWith(ownerId, { name: 'Kyiv', sourceBoardId: 'board-classic', spaceNames });
+    expect((await router(new Request('https://example.test/api/boards/board-classic'))).status).toBe(200);
+    expect(boards.get).toHaveBeenCalledWith('board-classic', ownerId);
+    expect((await router(new Request('https://example.test/api/boards/board-classic', { method: 'DELETE' }))).status).toBe(200);
+    expect(boards.delete).toHaveBeenCalledWith('board-classic', ownerId);
+    boards.delete.mockRejectedValueOnce(new ConflictError('BOARD_IN_USE', 'A game is still played on this board.'));
+    const inUse = await router(new Request('https://example.test/api/boards/board-classic', { method: 'DELETE' }));
+    expect(inUse.status).toBe(409);
+    await expect(inUse.json()).resolves.toMatchObject({ error: { code: 'BOARD_IN_USE' } });
+  });
+
+  function createPropertyRouter(options: { controlled?: string[]; owner?: string | null; live?: boolean; trade?: null } = {}) {
+    const controlled = options.controlled ?? [firstPlayerId, secondPlayerId];
+    const controllers: string[] = [];
+    const operation = { transaction: { ...transactionResponse().transaction, type: 'PROPERTY_PURCHASE' as const }, players: gameDetails.players, properties: [{ boardSpaceId, ownerPlayerId: secondPlayerId, houses: 0, mortgaged: false }], buildingBank: { housesAvailable: 32, hotelsAvailable: 12 } };
+    const trade = { id: tradeId, gameId, proposerPlayerId: firstPlayerId, responderPlayerId: secondPlayerId, cashFromProposer: 50, cashFromResponder: 0, items: [], state: 'PENDING' as const, expiresAt: '2999-01-01T00:00:00.000Z', createdAt: '', resolvedAt: null, transactionId: null };
+    const properties = {
+      state: vi.fn(async () => ({ board: { id: 'board-classic' }, boardSpaces: [], properties: operation.properties, buildingBank: operation.buildingBank })),
+      ownerOf: vi.fn(async () => (options.owner === undefined ? secondPlayerId : options.owner)),
+      purchase: vi.fn(async () => operation), chargeRent: vi.fn(async () => operation), build: vi.fn(async () => operation), sellBuildings: vi.fn(async () => operation), mortgage: vi.fn(async () => operation), unmortgage: vi.fn(async () => operation), recordAuction: vi.fn(async () => operation),
+      payJailBail: vi.fn(async () => ({ transaction: operation.transaction, players: gameDetails.players })),
+      recordDiceRoll: vi.fn(async () => ({ player: gameDetails.players[0], thirdDouble: false })),
+    };
+    const trades = {
+      list: vi.fn(async () => [trade]), get: vi.fn(async () => (options.trade === null ? null : trade)),
+      propose: vi.fn(async () => ({ trade, players: gameDetails.players })), accept: vi.fn(async () => ({ trade, players: gameDetails.players })), decline: vi.fn(async () => ({ trade, players: gameDetails.players })), cancel: vi.fn(async () => ({ trade, players: gameDetails.players })),
+    };
+    const boards = { list: vi.fn(async () => []), get: vi.fn(async () => ({ board: { id: 'board-classic' }, spaces: [] })), create: vi.fn(async () => ({ board: { id: 'copy' }, spaces: [] })), delete: vi.fn(async () => ({ boardId: 'board-classic' })) };
+    const live = { connect: vi.fn(async () => new Response()), mutate: vi.fn(async () => Response.json({ data: operation }, { status: 201 })) };
+    const access = {
+      requireMember: async () => 'PLAYER' as const,
+      requireOwner: async () => undefined,
+      requirePlayerController: async (_gameId: string, _userId: string, playerId: string) => { controllers.push(playerId); if (!controlled.includes(playerId)) throw new ForbiddenError(); },
+      controlledWallets: async () => controlled.map((playerId) => ({ playerId, kind: 'PRIMARY' as const })),
+    };
+    const router = createApiRouter({
+      games: { createGameForOwner: async () => gameDetails, getGame: async () => gameDetails } as never,
+      banking: {} as BankingService,
+      auth: { current: async () => ({ id: ownerId, nickname: 'Test', avatar: '🧩', gamesPlayed: 0, gamesWon: 0, winRate: 0, createdAt: '', updatedAt: '' }) } as never,
+      access: access as never,
+      profileStatistics: {} as never,
+      properties: properties as never,
+      trades: trades as never,
+      boards: boards as never,
+      ...(options.live === true ? { live } : {}),
+    });
+    return { router, properties, trades, boards, live, controllers };
+  }
 });
 
 function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {

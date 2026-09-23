@@ -9,8 +9,18 @@ interface PlayerRow {
   status: PlayerStatus;
   is_in_jail: number;
   consecutive_doubles: number;
+  last_roll_total?: number | null;
+  last_roll_at?: string | null;
   user_id: string | null;
   created_at: string;
+}
+
+export interface UpdateGameplayStateInput {
+  status?: PlayerStatus;
+  isInJail?: boolean;
+  consecutiveDoubles?: number;
+  lastRollTotal?: number | null;
+  lastRollAt?: string | null;
 }
 
 export interface CreatePlayerInput {
@@ -25,7 +35,7 @@ export interface PlayerRepository {
   createMany(inputs: CreatePlayerInput[]): Promise<Player[]>;
   listByGameId(gameId: string): Promise<Player[]>;
   updateBalance(playerId: string, balance: number): Promise<boolean>;
-  updateGameplayState(playerId: string, input: { status?: PlayerStatus; isInJail?: boolean; consecutiveDoubles?: number }): Promise<Player | null>;
+  updateGameplayState(playerId: string, input: UpdateGameplayStateInput): Promise<Player | null>;
 }
 
 export class D1PlayerRepository implements PlayerRepository {
@@ -61,7 +71,7 @@ export class D1PlayerRepository implements PlayerRepository {
   async listByGameId(gameId: string): Promise<Player[]> {
     const result = await this.database
       .prepare(
-        `SELECT players.id, players.game_id, players.name, players.color, players.balance, players.status, players.is_in_jail, players.consecutive_doubles, players.created_at, game_members.user_id
+        `SELECT players.id, players.game_id, players.name, players.color, players.balance, players.status, players.is_in_jail, players.consecutive_doubles, players.last_roll_total, players.last_roll_at, players.created_at, game_members.user_id
          FROM players LEFT JOIN game_members ON game_members.player_id = players.id AND game_members.game_id = players.game_id
          WHERE players.game_id = ?
          ORDER BY players.created_at ASC, players.id ASC`,
@@ -85,14 +95,16 @@ export class D1PlayerRepository implements PlayerRepository {
     return result.meta.changes > 0;
   }
 
-  async updateGameplayState(playerId: string, input: { status?: PlayerStatus; isInJail?: boolean; consecutiveDoubles?: number }): Promise<Player | null> {
+  async updateGameplayState(playerId: string, input: UpdateGameplayStateInput): Promise<Player | null> {
     const assignments: string[] = [];
-    const values: (string | number)[] = [];
+    const values: (string | number | null)[] = [];
     if (input.status !== undefined) { assignments.push('status = ?'); values.push(input.status); }
     if (input.isInJail !== undefined) { assignments.push('is_in_jail = ?'); values.push(input.isInJail ? 1 : 0); }
     if (input.consecutiveDoubles !== undefined) { assignments.push('consecutive_doubles = ?'); values.push(input.consecutiveDoubles); }
+    if (input.lastRollTotal !== undefined) { assignments.push('last_roll_total = ?'); values.push(input.lastRollTotal); }
+    if (input.lastRollAt !== undefined) { assignments.push('last_roll_at = ?'); values.push(input.lastRollAt); }
     if (assignments.length === 0) return null;
-    const row = await this.database.prepare(`UPDATE players SET ${assignments.join(', ')} WHERE id = ? RETURNING id, game_id, name, color, balance, status, is_in_jail, consecutive_doubles, created_at, NULL AS user_id`).bind(...values, playerId).first<PlayerRow>();
+    const row = await this.database.prepare(`UPDATE players SET ${assignments.join(', ')} WHERE id = ? RETURNING id, game_id, name, color, balance, status, is_in_jail, consecutive_doubles, last_roll_total, last_roll_at, created_at, NULL AS user_id`).bind(...values, playerId).first<PlayerRow>();
     return row === null ? null : mapPlayer(row);
   }
 }
@@ -107,6 +119,8 @@ function mapPlayer(row: PlayerRow): Player {
     status: row.status,
     isInJail: row.is_in_jail === 1,
     consecutiveDoubles: row.consecutive_doubles,
+    lastRollTotal: row.last_roll_total ?? null,
+    lastRollAt: row.last_roll_at ?? null,
     userId: row.user_id,
     createdAt: row.created_at,
   };

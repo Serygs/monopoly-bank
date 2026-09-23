@@ -1,9 +1,13 @@
-export interface DiceRoll {
-  first: number;
-  second: number;
-  total: number;
-  isDouble: boolean;
-}
+import type { DiceRoll } from '../../shared/domain/jail.js';
+
+/**
+ * Rolling is client-side randomness and stays here. The three-doubles rule that
+ * reads the roll is a table rule, so it lives in `shared/domain/jail.ts`; it is
+ * re-exported below under its original name so there is one copy of the rule and
+ * every existing caller keeps its import.
+ */
+export { applyDiceRoll as applyDiceResult } from '../../shared/domain/jail.js';
+export type { DiceRoll, DoublesState } from '../../shared/domain/jail.js';
 
 export function rollDie(random: () => number = Math.random): number {
   return Math.floor(random() * 6) + 1;
@@ -13,13 +17,4 @@ export function rollDice(random: () => number = Math.random): DiceRoll {
   const first = rollDie(random);
   const second = rollDie(random);
   return { first, second, total: first + second, isDouble: first === second };
-}
-
-export interface DoublesState { consecutiveDoubles: number; isInJail: boolean; thirdDouble: boolean; }
-
-export function applyDiceResult(currentDoubles: number, roll: DiceRoll): DoublesState {
-  if (!roll.isDouble) return { consecutiveDoubles: 0, isInJail: false, thirdDouble: false };
-  const next = currentDoubles + 1;
-  if (next >= 3) return { consecutiveDoubles: 0, isInJail: true, thirdDouble: true };
-  return { consecutiveDoubles: next, isInJail: false, thirdDouble: false };
 }

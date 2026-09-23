@@ -1,5 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page, type TestInfo } from '@playwright/test';
 
+import { balanceOf, createInvitation, createLobby, joinAsGuest, readGameDetails, readPlayerTransactions, register, startLobby } from './helpers';
+
 import type { ActivityPage, GameDetails, GameSummary, LedgerStatistics, UserProfile } from '../shared/contracts/api';
 import type { Game, Player, Transaction } from '../shared/types/monopoly';
 import { translate, type Language } from '../src/i18n/translations';
@@ -592,62 +594,8 @@ const visualStatistics: { game: Game; winners: Player[] } & LedgerStatistics = {
   cashLeaderboard: visualPlayers.map((player, index) => ({ player, sent: 900_000_000 - index, received: 800_000_000 - index, passGoCount: 12 - index, transactionCount: 4_000 - index })),
 };
 
-async function register(browser: Browser, nickname: string): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext();
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL ?? 'http://localhost' });
-  const page = await context.newPage();
-  await page.goto('/');
-  await page.getByRole('button', { name: /create your account|створіть обліковий запис/i }).click();
-  await page.getByLabel(/nickname|псевдонім/i).fill(`${nickname} ${Date.now()} ${Math.random().toString(36).slice(2, 7)}`);
-  await page.getByLabel(/^password$|^пароль$/i).fill('SafeE2EPassword123!');
-  await page.getByRole('button', { name: /create your account|створіть обліковий запис/i }).click();
-  await expect(page.getByRole('heading', { name: /saved games|збережені ігри/i })).toBeVisible();
-  return { context, page };
-}
-
-async function createLobby(page: Page, paymentMode: 'FAST' | 'CONFIRMATION', localPlayers: number): Promise<string> {
-  await page.getByRole('button', { name: /create.*game|створити.*гру/i }).click();
-  await page.getByLabel(/game name|назва гри/i).fill(`Load test ${paymentMode} ${Date.now()}`);
-  await page.getByLabel(/payment mode|режим платежів/i).selectOption(paymentMode);
-  for (let index = 0; index < localPlayers; index += 1) {
-    await page.getByRole('button', { name: /add player|додати гравця/i }).click();
-    await page.getByLabel(new RegExp(`player ${index + 2} name|ім.?я гравця ${index + 2}`, 'i')).fill(`Local ${index + 1}`);
-  }
-  await page.getByRole('button', { name: /create lobby|створити лобі/i }).click();
-  // `/games/new` also contains `/games/`, so match the created game's UUID instead.
-  await expect(page).toHaveURL(/\/games\/[0-9a-f-]{36}/i);
-  return page.url().split('/games/')[1];
-}
-
-async function createInvitation(page: Page): Promise<string> {
-  await page.getByRole('button', { name: /invite|запросити/i }).click();
-  await page.getByRole('button', { name: /create invite link|створити.*запрошення/i }).click();
-  await expect(page.locator('svg[role="img"]')).toBeVisible();
-  await page.getByRole('button', { name: /copy invite link|копіювати посилання-запрошення/i }).click();
-  const invitationUrl = await page.evaluate(() => navigator.clipboard.readText());
-  await page.getByRole('button', { name: /close|закрити/i }).first().click();
-  if (!invitationUrl.includes('#invite=')) throw new Error('The copied invitation is not a secure fragment URL.');
-  return invitationUrl;
-}
-
-async function joinAsGuest(browser: Browser, invitationUrl: string, nickname: string): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto(invitationUrl);
-  await page.getByLabel(/nickname|псевдонім/i).fill(nickname);
-  await page.getByRole('button', { name: /join as guest|приєднатися як гість/i }).click();
-  await expect(page).toHaveURL(/\/games\/[0-9a-f-]{36}$/i);
-  await expect(page.getByRole('heading', { name: /load test/i })).toBeVisible();
-  return { context, page };
-}
-
-async function startLobby(page: Page): Promise<void> { await page.getByRole('button', { name: /start game|почати гру/i }).click(); }
 async function openPayBank(page: Page): Promise<void> { await page.getByRole('button', { name: /open banking actions|відкрити банківські дії/i }).click(); await page.getByRole('button', { name: /^pay bank$|^заплатити банку$/i }).click(); }
 async function pressKeypadDigit(page: Page, digit: string): Promise<void> { await page.getByRole('group', { name: /numeric keypad|цифрова клавіатура/i }).getByRole('button', { name: digit, exact: true }).click(); }
-async function readGameDetails(page: Page, gameId: string): Promise<GameDetailsResponse> { return await page.evaluate(async (id) => (await fetch(`/api/games/${id}`)).json(), gameId) as GameDetailsResponse; }
-async function readPlayerTransactions(page: Page, gameId: string, playerId: string): Promise<{ data: Array<{ type: string; amount: number }> }> { return await page.evaluate(async ({ id, player }) => (await fetch(`/api/games/${id}/players/${player}/transactions`)).json(), { id: gameId, player: playerId }) as { data: Array<{ type: string; amount: number }> }; }
-function balanceOf(details: GameDetailsResponse, playerId: string): number { const player = details.data.players.find((candidate) => candidate.id === playerId); if (player === undefined) throw new Error(`Player ${playerId} is missing from the game details.`); return player.balance; }
-type GameDetailsResponse = { data: { controlledPlayerIds: string[]; players: Array<{ id: string; balance: number }> } };
 async function finishWithNoWinner(page: Page): Promise<void> { await page.getByRole('button', { name: /finish game|завершити гру/i }).click(); await page.getByRole('button', { name: /no winner|без переможця/i }).click(); }
 async function upgradeGuest(page: Page): Promise<void> {
   await page.getByRole('button', { name: /Guest 1/ }).click();

@@ -15,6 +15,9 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // The staging gate: HTTPS, transactional email, invitations and guests. `property.spec.ts` belongs to the local project below.
+    { name: 'chromium', testIgnore: /property\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    // The local board run started by `npm run test:e2e:local` against a throwaway D1; never retried, one worker.
+    { name: 'local', testMatch: /property\.spec\.ts/, retries: 0, use: { ...devices['Desktop Chrome'] } },
   ],
 });

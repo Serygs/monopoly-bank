@@ -1,5 +1,6 @@
-@import './layout.css';
 @import './primitives.css';
+@import './layout.css';
 @import './features.css';
 @import './game-page.css';
 @import './non-game-pages.css';
+@import './property.css';

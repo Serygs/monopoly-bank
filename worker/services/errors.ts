@@ -24,4 +24,8 @@ export class DatabaseError extends AppError { readonly operation: string; constr
 export class RealtimeError extends AppError { constructor(cause: unknown) { super({ code: 'REALTIME_ERROR', message: 'Internal server error.', status: 500, expose: false, cause }); } }
 export class InternalError extends AppError { constructor(cause?: unknown) { super({ code: 'INTERNAL_ERROR', message: 'Internal server error.', status: 500, expose: false, cause }); } }
 export class PersistenceConsistencyError extends InternalError { constructor() { super(); this.message = 'A persisted record could not be loaded.'; } }
+/** A property, trade, jail or dice route was called on a game that never opted into a board. */
+export class BoardRequiredError extends AppError { constructor() { super({ code: 'BOARD_REQUIRED', message: 'This game has no board.', status: 400 }); } }
+/** Rent was claimed on a space nobody owns: a bad request, not a rule conflict, because there is no owner to authorize it. */
+export class RentTargetUnownedError extends AppError { constructor(boardSpaceId: string) { super({ code: 'PROPERTY_NOT_OWNED', message: 'This property has no owner to collect rent.', status: 400, details: { boardSpaceId } }); } }
 export function isUniqueConstraintError(error: unknown): boolean { return error instanceof Error && /unique constraint|constraint failed/i.test(error.message); }

@@ -1,8 +1,9 @@
 import type { CreateGameRequest, DeleteGameResponse, GameDetails, GameSummary } from '../../shared/contracts/api.js';
 import type { Currency } from '../../shared/types/monopoly.js';
-import type { GameRepository } from '../repositories/game-repository.js';
+import type { CreateGameBoardInput, GameRepository } from '../repositories/game-repository.js';
 import type { CreatePlayerInput, PlayerRepository } from '../repositories/player-repository.js';
-import { ConflictError, ResourceNotFoundError } from './errors.js';
+import type { PropertyRepository } from '../repositories/property-repository.js';
+import { ConflictError, NotFoundError, ResourceNotFoundError } from './errors.js';
 import { hashPassword, randomToken } from './password-security.js';
 
 /** The API only lets a new game pick a selectable currency; duplicating keeps the source game's stored currency, including the legacy `K`. */
@@ -24,16 +25,20 @@ export interface GameServiceDependencies {
   games: GameRepository;
   players: PlayerRepository;
   createId: () => string;
+  /** Needed only for games that opt into a board; a service without it serves board-less games exactly as before. */
+  properties?: PropertyRepository;
 }
 
 export class DefaultGameService implements GameService {
   private readonly games: GameRepository;
   private readonly players: PlayerRepository;
+  private readonly properties: PropertyRepository | undefined;
   private readonly createId: () => string;
 
   constructor(dependencies: GameServiceDependencies) {
     this.games = dependencies.games;
     this.players = dependencies.players;
+    this.properties = dependencies.properties;
     this.createId = dependencies.createId;
   }
 
@@ -44,10 +49,25 @@ export class DefaultGameService implements GameService {
 
   async createGameForOwner(userId: string, request: CreateGameInput): Promise<GameDetails> {
     const gameAccessCredentials = request.gameAccessPassword === undefined ? { hash: '', salt: '' } : await hashPassword(request.gameAccessPassword);
-    return this.createGameInternal(request, { userId, joinCode: randomToken(5).toUpperCase().replace(/[^A-Z0-9]/gu, 'X').slice(0, 8), ...gameAccessCredentials, hasPassword: request.gameAccessPassword !== undefined });
+    const board = request.boardId === undefined ? undefined : await this.resolveBoardForCreation(userId, request.boardId);
+    return this.createGameInternal(request, { userId, joinCode: randomToken(5).toUpperCase().replace(/[^A-Z0-9]/gu, 'X').slice(0, 8), ...gameAccessCredentials, hasPassword: request.gameAccessPassword !== undefined }, board);
   }
 
-  private async createGameInternal(request: CreateGameInput, owner: { userId: string; joinCode: string; hash: string; salt: string; hasPassword: boolean }): Promise<GameDetails> {
+  /**
+   * A canonical board is open to everyone; a copy only to its owner. Somebody
+   * else's copy answers exactly like a board that does not exist, so the id
+   * space of private boards cannot be probed.
+   */
+  private async resolveBoardForCreation(userId: string, boardId: string): Promise<CreateGameBoardInput> {
+    if (this.properties === undefined) throw new NotFoundError('BOARD_NOT_FOUND', 'Board not found.');
+    const board = await this.properties.getBoard(boardId);
+    if (board === null || (board.ownerUserId !== null && board.ownerUserId !== userId)) throw new NotFoundError('BOARD_NOT_FOUND', 'Board not found.');
+    const spaces = await this.properties.listSpaces(boardId);
+    if (spaces.length === 0) throw new NotFoundError('BOARD_NOT_FOUND', 'Board not found.');
+    return { id: board.id, spaceIds: spaces.map((space) => space.id), houseBankLimit: board.houseBankLimit, hotelBankLimit: board.hotelBankLimit };
+  }
+
+  private async createGameInternal(request: CreateGameInput, owner: { userId: string; joinCode: string; hash: string; salt: string; hasPassword: boolean }, board?: CreateGameBoardInput): Promise<GameDetails> {
     const gameId = this.createId();
     const playerInputs: CreatePlayerInput[] = request.players.map((player) => ({
       id: this.createId(),
@@ -65,6 +85,7 @@ export class DefaultGameService implements GameService {
         passGoReward: request.passGoReward,
         currency: request.currency,
         status: 'LOBBY', paymentMode: request.paymentMode ?? 'FAST', ownerUserId: owner.userId, joinCode: owner.joinCode, gameAccessPasswordHash: owner.hasPassword ? owner.hash : null, gameAccessPasswordSalt: owner.hasPassword ? owner.salt : null,
+        ...(board === undefined ? {} : { board }),
       },
       playerInputs,
     );
@@ -78,11 +99,14 @@ export class DefaultGameService implements GameService {
       throw new ResourceNotFoundError('Game');
     }
 
+    // The four board fields exist only for a game that opted into a board; a board-less game omits them all.
+    const slice = game.boardId === null || game.boardId === undefined || this.properties === undefined ? null : await this.properties.loadPropertySlice(gameId);
     return {
       game,
       players: await this.players.listByGameId(gameId),
       favoriteAmounts: await this.games.listFavoriteAmounts(gameId),
       recentAmounts: await this.games.listRecentAmounts(gameId),
+      ...(slice === null ? {} : slice),
     };
   }
 
@@ -94,6 +118,12 @@ export class DefaultGameService implements GameService {
     return { gameId };
   }
 
+  /**
+   * A copy inherits the source's board and starts with a clean deed table, the
+   * same way `create` seeds one. Custom names live on the board, not the game,
+   * so nothing else is copied; a board that vanished under the source (which
+   * `RESTRICT` prevents, barring a race) answers `BOARD_NOT_FOUND` like any other.
+   */
   async duplicateGameForOwner(userId: string, gameId: string, gameAccessPassword: string): Promise<GameDetails> {
     const source = await this.getGame(gameId);
     return this.createGameForOwner(userId, {
@@ -104,6 +134,7 @@ export class DefaultGameService implements GameService {
       paymentMode: source.game.paymentMode,
       gameAccessPassword,
       players: source.players.map((player) => ({ name: player.name, color: player.color })),
+      ...(source.game.boardId === null || source.game.boardId === undefined ? {} : { boardId: source.game.boardId }),
     });
   }
 

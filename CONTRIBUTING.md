@@ -37,3 +37,9 @@ npm run lint
 npm test
 npm run build
 ```
+
+For changes under `worker/` or to a game on a board (deeds, rent, buildings, mortgages, trades, auctions, jail, custom boards) also run the local browser scenarios. They need a one-off `npx playwright install chromium` and no environment variable:
+
+```bash
+npm run test:e2e:local
+```

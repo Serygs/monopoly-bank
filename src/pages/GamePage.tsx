@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type MutableRefObject } from 'react';
-import type { CreateInvitationResponse, CreateTransactionRequest, GameDetails, LedgerStatistics, PaymentRequest, PlayerControllerKind } from '../../shared/contracts/api';
-import type { Currency, Game, Player, Transaction, TransactionType } from '../../shared/types/monopoly';
+import type { BankruptcyResponse, CreateInvitationResponse, CreateTransactionRequest, GameDetails, LedgerStatistics, PaymentRequest, PlayerControllerKind, PropertyTrade } from '../../shared/contracts/api';
+import type { BoardSpace, BuildingBank, Currency, Game, GameProperty, Player, Transaction, TransactionType } from '../../shared/types/monopoly';
 import { ActivityScreen } from './ActivityScreen';
 import { StatisticsScreen } from './StatisticsScreen';
 import type { FinalGameSummary } from '../../shared/domain/game-summary';
@@ -10,6 +10,15 @@ import { Dialog } from '../components/Dialog';
 import { PageHeader } from '../components/PageHeader';
 import { AmountSelector } from '../components/AmountSelector';
 import { TableCalculator } from '../components/TableCalculator';
+import { PlayerPicker } from '../components/PlayerPicker';
+import { PropertyPanel } from '../components/PropertyPanel';
+import { PropertyActionDialog } from '../components/PropertyActionDialog';
+import { AuctionDialog } from '../components/AuctionDialog';
+import { TradeDialog } from '../components/TradeDialog';
+import { TradeInbox } from '../components/TradeInbox';
+import type { DiceRoll } from '../utils/dice';
+import { boardSpaceName } from '../utils/board-space-name';
+import { boardState, hasBoard, mergeProperties, playerNetWorth } from '../utils/property-view';
 import type { DevicePreferences } from '../utils/preferences';
 import { playPaymentFeedback, vibrate } from '../utils/feedback';
 import { apiErrorMessage } from '../i18n/api-errors';
@@ -58,7 +67,15 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [paymentRequestNotice, setPaymentRequestNotice] = useState(false);
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
   const lastAppliedVersion = useRef(0);
-  useEffect(() => { onPaymentFlowChange(selectedPlayer !== null || bankruptPlayer !== null); return () => onPaymentFlowChange(false); }, [selectedPlayer, bankruptPlayer, onPaymentFlowChange]);
+  // Board-only state. None of it renders for a game without a board.
+  const [trades, setTrades] = useState<PropertyTrade[]>([]);
+  const [selectedSpace, setSelectedSpace] = useState<BoardSpace | null>(null);
+  const [auctionSpace, setAuctionSpace] = useState<BoardSpace | null>(null);
+  const [tradeOpen, setTradeOpen] = useState(false);
+  const [boardNotice, setBoardNotice] = useState<string | null>(null);
+  const [diceEvent, setDiceEvent] = useState<{ player: Player; thirdDouble: boolean } | null>(null);
+  const boardEnabled = details !== null && hasBoard(details);
+  useEffect(() => { onPaymentFlowChange(selectedPlayer !== null || bankruptPlayer !== null || selectedSpace !== null || auctionSpace !== null || tradeOpen); return () => onPaymentFlowChange(false); }, [selectedPlayer, bankruptPlayer, selectedSpace, auctionSpace, tradeOpen, onPaymentFlowChange]);
 
   useEffect(() => {
     let active = true;
@@ -71,6 +88,8 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
 
   const loadPaymentRequests = useCallback(() => void monopolyBankApi.listPaymentRequests(gameId).then(setPaymentRequests, () => undefined), [gameId]);
   useEffect(() => { if (details?.game.status === 'ACTIVE' && !offline) loadPaymentRequests(); }, [details?.game.status, loadPaymentRequests, offline]);
+  const loadTrades = useCallback(() => void monopolyBankApi.listTrades(gameId).then(setTrades, () => undefined), [gameId]);
+  useEffect(() => { if (details?.game.status === 'ACTIVE' && !offline && boardEnabled) loadTrades(); }, [details?.game.status, boardEnabled, loadTrades, offline]);
 
   useEffect(() => {
     if (details?.game.status !== 'ACTIVE' || offline) {
@@ -85,13 +104,13 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
       const nextSocket = new WebSocket(url);
       socket = nextSocket;
       nextSocket.onopen = () => { if (socket === nextSocket) { attempts = 0; setLiveStatus('live'); heartbeat = window.setInterval(() => { if (nextSocket.readyState === WebSocket.OPEN) nextSocket.send(JSON.stringify({ type: 'HEARTBEAT' })); }, 20_000); } };
-      nextSocket.onmessage = (message) => { if (socket !== nextSocket) return; try { const event: unknown = JSON.parse(String(message.data)); if (!isLiveServerEvent(event)) return; if (event.type === 'GAME_SNAPSHOT') { lastAppliedVersion.current = event.state.stateVersion; applyLiveEvent(event, setDetails, setHistory, historyCache); return; } if (!acceptsLiveVersion(lastAppliedVersion.current, event.stateVersion)) { nextSocket.close(4001, 'State version gap: resync required.'); return; } if (event.stateVersion > lastAppliedVersion.current) lastAppliedVersion.current = event.stateVersion; applyLiveEvent(event, setDetails, setHistory, historyCache); if (event.type === 'GAME_COMMITTED') setLiveTransactions((current) => [event.transaction, ...current.filter((item) => item.id !== event.transaction.id)].slice(0, 50)); if (event.type === 'PAYMENT_REQUESTS_UPDATED') loadPaymentRequests(); } catch { /* Ignore malformed network data. */ } };
+      nextSocket.onmessage = (message) => { if (socket !== nextSocket) return; try { const event: unknown = JSON.parse(String(message.data)); if (!isLiveServerEvent(event)) return; if (event.type === 'GAME_SNAPSHOT') { lastAppliedVersion.current = event.state.stateVersion; applyLiveEvent(event, setDetails, setHistory, historyCache); return; } if (!acceptsLiveVersion(lastAppliedVersion.current, event.stateVersion)) { nextSocket.close(4001, 'State version gap: resync required.'); return; } if (event.stateVersion > lastAppliedVersion.current) lastAppliedVersion.current = event.stateVersion; applyLiveEvent(event, setDetails, setHistory, historyCache); if (event.type === 'GAME_COMMITTED') setLiveTransactions((current) => [event.transaction, ...current.filter((item) => item.id !== event.transaction.id)].slice(0, 50)); if (event.type === 'PAYMENT_REQUESTS_UPDATED') loadPaymentRequests(); if (event.type === 'TRADES_UPDATED') loadTrades(); if (event.type === 'DICE_ROLLED') setDiceEvent({ player: event.player, thirdDouble: event.thirdDouble }); } catch { /* Ignore malformed network data. */ } };
       nextSocket.onclose = () => { if (heartbeat !== undefined) { window.clearInterval(heartbeat); heartbeat = undefined; } if (closed || socket !== nextSocket) return; setLiveStatus('offline'); attempts += 1; const base = Math.min(1000 * 2 ** (attempts - 1), 10_000); retry = window.setTimeout(connect, Math.round(base * (0.7 + Math.random() * 0.6))); };
       nextSocket.onerror = () => { if (socket === nextSocket) nextSocket.close(); };
     };
     connect();
     return () => { closed = true; if (retry !== undefined) window.clearTimeout(retry); if (heartbeat !== undefined) window.clearInterval(heartbeat); socket?.close(); };
-  }, [gameId, details?.game.status, loadPaymentRequests, offline]);
+  }, [gameId, details?.game.status, loadPaymentRequests, loadTrades, offline]);
 
   const loadHistory = async (player: Player | null = null) => {
     const scope = player === null ? 'all' : `player:${player.id}`;
@@ -133,6 +152,24 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const activeWallet = details.players.find((player) => player.id === activeControlledWalletId) ?? null;
   const otherPlayers = details.players.filter((player) => player.id !== activeWallet?.id);
   const canMutate = details.game.status === 'ACTIVE' && !offline;
+  const board = boardState(details);
+  const actor = canMutate ? activeWallet : null;
+  const spaceNameFor = board === null ? undefined : (boardSpaceId: string) => { const space = board.boardSpaces.find((candidate) => candidate.id === boardSpaceId); return space === undefined ? null : boardSpaceName(space, t); };
+  /** Every board mutation answers with fresh players and, when deeds moved, the full deed table and building bank. */
+  const applyBoardResult = (result: { players: Player[]; properties?: GameProperty[]; buildingBank?: BuildingBank; transaction?: Transaction; paymentRequests?: PaymentRequest[] }, label: string | null) => {
+    historyCache.current.clear();
+    if (result.paymentRequests !== undefined) { loadPaymentRequests(); setPaymentRequestNotice(true); } else { playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); if (label !== null) setBoardNotice(t('recorded', { action: label })); }
+    setDetails((current) => current === null ? current : { ...current, players: result.players, ...(result.properties === undefined ? {} : { properties: result.properties }), ...(result.buildingBank === undefined ? {} : { buildingBank: result.buildingBank }) });
+  };
+  const recordRoll = async (roll: DiceRoll) => {
+    if (activeWallet === null) return;
+    const result = await monopolyBankApi.recordDiceRoll(gameId, { playerId: activeWallet.id, first: roll.first, second: roll.second });
+    setDetails((current) => current === null ? current : { ...current, players: current.players.map((player) => player.id === result.player.id ? result.player : player) });
+    setDiceEvent({ player: result.player, thirdDouble: result.thirdDouble });
+  };
+  const payBail = async (player: Player) => {
+    try { const result = await monopolyBankApi.payJailBail(gameId, { playerId: player.id }); applyBoardResult(result, t('paidBail')); } catch (caught) { setBoardNotice(apiErrorMessage(caught, t, 'unableRecordTransaction')); }
+  };
 
   return <main className="page game-page">
     <PageHeader className="game-heading" eyebrow={t(gameStatusTranslationKey(details.game.status))} title={details.game.name} description={<span className="game-pass-go"><span>{t('passGoRewardLabel')}:</span><strong>{formatMoney(details.game.passGoReward, details.game.currency)}</strong></span>} backAction={<button className="button button-quiet game-back-link" type="button" onClick={onBack}><span aria-hidden="true">←</span>{t('savedGames')}</button>} actions={<div className="game-page-actions"><button className="button button-secondary" type="button" disabled={offline} onClick={() => setActivityOpen(true)}>{t('activity')}</button><button className="button button-secondary" type="button" disabled={offline} onClick={() => void monopolyBankApi.getGameSummary(gameId).then((result) => { setSummary(result); setStatisticsOpen(true); })}>{t('statistics')}</button>{details.canManage && details.game.status === 'LOBBY' && <button className="button button-secondary" type="button" disabled={offline} onClick={() => setInviteOpen(true)}>{t('invitePlayers')}</button>}{details.canManage && details.game.status === 'ACTIVE' && <button className="button button-danger" type="button" disabled={offline} onClick={() => setFinishing(true)}>{t('finishGame')}</button>}</div>}>
@@ -141,20 +178,27 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     {details.game.status === 'LOBBY' && <section className="notice notice-success game-state-banner" role="status"><p>{t('waitingForPlayers')} — {t('startGameHint')}</p>{details.canManage && <button className="button button-primary" type="button" disabled={offline || details.players.length < 2} onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}>{t('startGame')}</button>}</section>}
     {notice !== null && <section className="notice notice-success" role="status"><p>{t('recorded', { action: actionLabel(notice, t) })}</p><button className="button button-quiet" type="button" onClick={() => setNotice(null)}>{t('dismiss')}</button></section>}
     {paymentRequestNotice && <section className="notice notice-success" role="status"><p>{t('paymentRequestCreated')}</p><button className="button button-quiet" type="button" onClick={() => setPaymentRequestNotice(false)}>{t('dismiss')}</button></section>}
+    {boardNotice !== null && <section className="notice notice-success" role="status" data-testid="board-notice"><p>{boardNotice}</p><button className="button button-quiet" type="button" onClick={() => setBoardNotice(null)}>{t('dismiss')}</button></section>}
+    {diceEvent !== null && <section className={`notice ${diceEvent.thirdDouble ? 'notice-error' : 'notice-success'}`} role="status" data-testid="dice-notice"><p>{diceEvent.thirdDouble ? t('thirdDoubleJail', { name: diceEvent.player.name }) : t('rollRecordedFor', { total: diceEvent.player.lastRollTotal ?? 0, name: diceEvent.player.name })}</p><button className="button button-quiet" type="button" onClick={() => setDiceEvent(null)}>{t('dismiss')}</button></section>}
     <section className="wallets-section" aria-labelledby="player-wallets-title">
       <header className="wallets-heading"><h2 id="player-wallets-title">{t('playerWallets')}</h2></header>
       {controlledWallets.length > 0 && <fieldset className="wallet-switcher"><legend>{t('walletSwitcher')}</legend><div>{controlledWallets.map((wallet) => { const player = details.players.find((candidate) => candidate.id === wallet.playerId); if (player === undefined) return null; return <button className="button button-secondary" type="button" key={wallet.playerId} aria-pressed={activeControlledWalletId === wallet.playerId} onClick={() => setActiveWalletId(wallet.playerId)}>{controllerLabel(wallet.kind, t)}: {player.name}</button>; })}</div></fieldset>}
       <div className={`wallet-layout${activeWallet === null ? ' wallet-layout-readonly' : ''}`}>
-        {activeWallet !== null && <section className="wallet-group wallet-group-controlled" aria-label={t('walletTitle', { name: activeWallet.name })}><h3>{t('yourWallet')}</h3><WalletCard player={activeWallet} players={details.players} currency={details.game.currency} active gameActive={canMutate} prominent onOpen={() => setSelectedPlayer(activeWallet)} /></section>}
-        <div className="wallet-group wallet-group-others">{activeWallet !== null && <h3>{t('otherPlayers')}</h3>}<div className="wallet-grid">{otherPlayers.map((player) => <WalletCard key={player.id} player={player} players={details.players} currency={details.game.currency} active={false} gameActive={canMutate} onOpen={() => setSelectedPlayer(player)} />)}</div></div>
+        {activeWallet !== null && <section className="wallet-group wallet-group-controlled" aria-label={t('walletTitle', { name: activeWallet.name })}><h3>{t('yourWallet')}</h3><WalletCard player={activeWallet} players={details.players} currency={details.game.currency} active gameActive={canMutate} prominent onOpen={() => setSelectedPlayer(activeWallet)} netWorth={board === null ? undefined : playerNetWorth(activeWallet, board)} inJail={board === null ? undefined : activeWallet.isInJail === true} />{board !== null && canMutate && activeWallet.isInJail === true && <button className="button button-danger jail-bail" type="button" data-testid="jail-bail" onClick={() => void payBail(activeWallet)}>{t('payBail', { amount: formatMoney(board.board.jailFee, details.game.currency) })}</button>}</section>}
+        <div className="wallet-group wallet-group-others">{activeWallet !== null && <h3>{t('otherPlayers')}</h3>}<div className="wallet-grid">{otherPlayers.map((player) => <WalletCard key={player.id} player={player} players={details.players} currency={details.game.currency} active={false} gameActive={canMutate} onOpen={() => setSelectedPlayer(player)} netWorth={board === null ? undefined : playerNetWorth(player, board)} inJail={board === null ? undefined : player.isInJail === true} />)}</div></div>
       </div>
     </section>
-    {canMutate && <PaymentInbox requests={paymentRequests} players={details.players} currency={details.game.currency} onAction={async (request, action) => { const commandId = crypto.randomUUID(); const result = action === 'accept' ? await monopolyBankApi.acceptPaymentRequest(gameId, request.id, commandId) : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId); setPaymentRequests((current) => current.filter((item) => item.id !== request.id)); if (result.transaction !== undefined) { historyCache.current.clear(); playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails((current) => current === null ? current : { ...current, players: result.players }); } }} />}
-    {details.game.status === 'ACTIVE' && <div className="game-tools"><DiceRoller /><TableCalculator /></div>}
+    {board !== null && <PropertyPanel board={board.board} boardSpaces={board.boardSpaces} properties={board.properties} buildingBank={board.buildingBank} players={details.players} interactive={details.game.status === 'ACTIVE'} onSelect={setSelectedSpace} />}
+    {canMutate && <PaymentInbox requests={paymentRequests} players={details.players} currency={details.game.currency} onAction={async (request, action) => { const commandId = crypto.randomUUID(); const result = action === 'accept' ? await monopolyBankApi.acceptPaymentRequest(gameId, request.id, commandId) : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId); setPaymentRequests((current) => current.filter((item) => item.id !== request.id)); if (result.transaction !== undefined) { historyCache.current.clear(); playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails((current) => current === null ? current : { ...current, players: result.players }); } }} spaceName={spaceNameFor} />}
+    {canMutate && board !== null && <TradeInbox trades={trades} players={details.players} boardSpaces={board.boardSpaces} controlledPlayerIds={controlledWallets.map((wallet) => wallet.playerId)} currency={details.game.currency} canPropose={actor !== null} onPropose={() => setTradeOpen(true)} onAction={async (trade, action) => { const commandId = crypto.randomUUID(); const result = action === 'accept' ? await monopolyBankApi.acceptTrade(gameId, trade.id, commandId) : action === 'decline' ? await monopolyBankApi.declineTrade(gameId, trade.id, commandId) : await monopolyBankApi.cancelTrade(gameId, trade.id, commandId); setTrades((current) => current.filter((item) => item.id !== trade.id)); if (result.transaction !== undefined) applyBoardResult(result, t('tradedProperty')); }} />}
+    {details.game.status === 'ACTIVE' && <div className="game-tools"><DiceRoller board={board === null ? undefined : { player: actor, onRecord: recordRoll }} /><TableCalculator /></div>}
     {activityOpen && <ActivityScreen gameId={gameId} players={details.players} currency={details.game.currency} liveTransactions={liveTransactions} onClose={() => setActivityOpen(false)} />}
     {statisticsOpen && summary !== null && <StatisticsScreen summary={summary} currency={details.game.currency} onClose={() => setStatisticsOpen(false)} />}
     {selectedPlayer !== null && <BankingDialog gameId={gameId} player={selectedPlayer} players={details.players} passGoReward={details.game.passGoReward} currency={details.game.currency} favoriteAmounts={details.favoriteAmounts ?? []} recentAmounts={details.recentAmounts ?? []} onToggleFavorite={(amount) => void monopolyBankApi.toggleFavoriteAmount(gameId, amount).then((favoriteAmounts) => setDetails((current) => current === null ? current : { ...current, favoriteAmounts }))} onClose={() => setSelectedPlayer(null)} onBankrupt={() => { setBankruptPlayer(selectedPlayer); setSelectedPlayer(null); }} onViewHistory={(player) => { setSelectedPlayer(null); void loadHistory(player); }} onCompleted={(players, action, amount) => { historyCache.current.clear(); playPaymentFeedback(preferences.sound); vibrate(35, preferences.vibration); setDetails({ ...details, players, recentAmounts: amount === null ? details.recentAmounts : [amount, ...(details.recentAmounts ?? []).filter((value) => value !== amount)].slice(0, 5) }); setSelectedPlayer(null); setNotice(action); }} onPaymentRequested={() => { loadPaymentRequests(); setSelectedPlayer(null); setPaymentRequestNotice(true); }} />}
-    {bankruptPlayer !== null && <BankruptcyDialog gameId={gameId} player={bankruptPlayer} players={details.players} onClose={() => setBankruptPlayer(null)} onCompleted={(players) => { historyCache.current.clear(); setDetails({ ...details, players }); setBankruptPlayer(null); }} />}
+    {bankruptPlayer !== null && <BankruptcyDialog gameId={gameId} player={bankruptPlayer} players={details.players} onClose={() => setBankruptPlayer(null)} onCompleted={(result) => { historyCache.current.clear(); setDetails({ ...details, players: result.players, ...(result.properties === undefined ? {} : { properties: result.properties }), ...(result.buildingBank === undefined ? {} : { buildingBank: result.buildingBank }) }); setBankruptPlayer(null); }} />}
+    {selectedSpace !== null && board !== null && <PropertyActionDialog gameId={gameId} space={selectedSpace} context={{ game: details.game, players: details.players, state: board, actor }} currency={details.game.currency} paymentMode={details.game.paymentMode} onClose={() => setSelectedSpace(null)} onAuction={(space) => { setSelectedSpace(null); setAuctionSpace(space); }} onCompleted={(result, label) => { applyBoardResult(result, label); setSelectedSpace(null); }} />}
+    {auctionSpace !== null && <AuctionDialog gameId={gameId} space={auctionSpace} players={details.players} currency={details.game.currency} onClose={() => setAuctionSpace(null)} onCompleted={(result) => { applyBoardResult(result, t('wonAuction')); setAuctionSpace(null); }} />}
+    {tradeOpen && board !== null && actor !== null && <TradeDialog gameId={gameId} game={details.game} proposer={actor} players={details.players} state={board} currency={details.game.currency} onClose={() => setTradeOpen(false)} onProposed={() => { setTradeOpen(false); loadTrades(); setBoardNotice(t('tradeSent')); }} />}
     {inviteOpen && <InviteDialog gameId={gameId} onClose={() => setInviteOpen(false)} />}
     {finishing && <FinishGameDialog players={details.players} currency={details.game.currency} gameId={gameId} onFinished={(finished) => { setDetails((current) => withClientGameDetails(finished, current)); setFinishing(false); }} onClose={() => setFinishing(false)} />}
     {historyOpen && <HistoryDialog history={history} player={historyPlayer} players={details.players} currency={details.game.currency} error={historyError} language={language} locale={locale} onClose={() => { setHistoryOpen(false); setHistory(null); setHistoryError(null); }} onRetry={() => void loadHistory(historyPlayer)} />}
@@ -280,17 +324,19 @@ function BankingDialog({ gameId, player, players, passGoReward, currency, favori
   </Dialog>;
 }
 
-function WalletCard({ player, players, currency, active, gameActive, prominent = false, onOpen }: { player: Player; players: Player[]; currency: Currency; active: boolean; gameActive: boolean; prominent?: boolean; onOpen: () => void }) {
+function WalletCard({ player, players, currency, active, gameActive, prominent = false, onOpen, netWorth, inJail }: { player: Player; players: Player[]; currency: Currency; active: boolean; gameActive: boolean; prominent?: boolean; onOpen: () => void; netWorth?: number; inJail?: boolean }) {
   const { t } = useLanguage();
   const playerName = playerNameWithGameId(player, players);
   const unavailable = !gameActive || player.status === 'BANKRUPT';
+  // `netWorth` and `inJail` arrive only for a game on a board; without them the card renders exactly as it always did.
   const interactive = active && !unavailable;
   const balance = formatMoney(player.balance, currency);
   const balanceLengthClass = balance.length > 18 ? ' wallet-balance-very-long' : balance.length > 12 ? ' wallet-balance-long' : '';
   const cardStyle = { '--wallet-player-color': player.color } as CSSProperties;
   const content = <>
-    <span className="wallet-card-heading"><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{playerName}</span><span className="wallet-card-badges">{active && <span className="wallet-active-indicator">{t('activeWallet')}</span>}{player.status === 'BANKRUPT' && <span className="wallet-bankrupt-indicator">{t('bankrupt')}</span>}</span></span>
+    <span className="wallet-card-heading"><span className="player-color" style={{ backgroundColor: player.color }} aria-hidden="true" /><span className="wallet-name">{playerName}</span><span className="wallet-card-badges">{active && <span className="wallet-active-indicator">{t('activeWallet')}</span>}{player.status === 'BANKRUPT' && <span className="wallet-bankrupt-indicator">{t('bankrupt')}</span>}{inJail === true && <span className="jail-badge" data-testid="jail-badge">{t('inJail')}</span>}</span></span>
     <strong className={`wallet-balance${balanceLengthClass}`}>{balance}</strong>
+    {netWorth !== undefined && <span className="wallet-net-worth" data-testid="net-worth"><span>{t('netWorth')}</span> <b>{formatMoney(netWorth, currency)}</b></span>}
     <span className="wallet-card-footer"><span>{interactive ? t('walletAction') : t('walletReadOnly')}</span>{interactive && <span aria-hidden="true">→</span>}</span>
   </>;
   const accessibleLabel = t(interactive ? 'walletAria' : 'walletReadOnlyAria', { name: playerName, balance });
@@ -298,20 +344,20 @@ function WalletCard({ player, players, currency, active, gameActive, prominent =
   return <button className={`wallet-card wallet-card-button wallet-card-active${prominent ? ' wallet-card-prominent' : ''}`} type="button" disabled={unavailable} style={cardStyle} aria-label={accessibleLabel} onClick={onOpen}>{content}</button>;
 }
 
-function PaymentInbox({ requests, players, currency, onAction }: { requests: PaymentRequest[]; players: Player[]; currency: Currency; onAction: (request: PaymentRequest, action: 'accept' | 'decline') => Promise<void> }) {
+function PaymentInbox({ requests, players, currency, onAction, spaceName }: { requests: PaymentRequest[]; players: Player[]; currency: Currency; onAction: (request: PaymentRequest, action: 'accept' | 'decline') => Promise<void>; spaceName?: (boardSpaceId: string) => string | null }) {
   const { t, locale } = useLanguage();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<unknown | null>(null);
   const act = async (request: PaymentRequest, action: 'accept' | 'decline') => { setBusyId(request.id); setError(null); try { await onAction(request, action); } catch (caught) { setError(caught); } finally { setBusyId(null); } };
-  return <section className="payment-inbox" aria-labelledby="payment-inbox-title"><header><h2 id="payment-inbox-title">{t('paymentInbox')}</h2><span className="status-pill">{requests.length}</span></header>{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableRecordTransaction')}</p>}{requests.length === 0 ? <p className="muted">{t('noPaymentRequests')}</p> : <ol>{requests.map((request) => { const creator = players.find((player) => player.id === request.creatorPlayerId); return <li key={request.id}><div><strong>{t('paymentRequestFrom', { name: creator?.name ?? t('playerFallback'), amount: formatMoney(request.amount, currency) })}</strong><small>{t('paymentRequestExpires', { time: new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(new Date(request.expiresAt)) })}</small></div><div className="dialog-actions"><button className="button button-primary" type="button" disabled={busyId !== null} onClick={() => void act(request, 'accept')}>{t('acceptPayment')}</button><button className="button button-secondary" type="button" disabled={busyId !== null} onClick={() => void act(request, 'decline')}>{t('declinePayment')}</button></div></li>; })}</ol>}</section>;
+  return <section className="payment-inbox" aria-labelledby="payment-inbox-title"><header><h2 id="payment-inbox-title">{t('paymentInbox')}</h2><span className="status-pill">{requests.length}</span></header>{error !== null && <p className="notice notice-error" role="alert">{apiErrorMessage(error, t, 'unableRecordTransaction')}</p>}{requests.length === 0 ? <p className="muted">{t('noPaymentRequests')}</p> : <ol>{requests.map((request) => { const creator = players.find((player) => player.id === request.creatorPlayerId); const deed = spaceName !== undefined && request.boardSpaceId !== undefined && request.boardSpaceId !== null ? spaceName(request.boardSpaceId) : null; const label = `${t('paymentRequestFrom', { name: creator?.name ?? t('playerFallback'), amount: formatMoney(request.amount, currency) })}${deed === null ? '' : ` · ${deed}`}`; return <li key={request.id}><div><strong>{label}</strong><small>{t('paymentRequestExpires', { time: new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(new Date(request.expiresAt)) })}</small></div><div className="dialog-actions"><button className="button button-primary" type="button" disabled={busyId !== null} onClick={() => void act(request, 'accept')}>{t('acceptPayment')}</button><button className="button button-secondary" type="button" disabled={busyId !== null} onClick={() => void act(request, 'decline')}>{t('declinePayment')}</button></div></li>; })}</ol>}</section>;
 }
 
-function BankruptcyDialog({ gameId, player, players, onClose, onCompleted }: { gameId: string; player: Player; players: Player[]; onClose: () => void; onCompleted: (players: Player[]) => void }) {
+function BankruptcyDialog({ gameId, player, players, onClose, onCompleted }: { gameId: string; player: Player; players: Player[]; onClose: () => void; onCompleted: (result: BankruptcyResponse) => void }) {
   const { t } = useLanguage();
   const [creditorId, setCreditorId] = useState<string | null>(null); const [confirming, setConfirming] = useState(false); const [error, setError] = useState<string | null>(null);
   const creditor = players.find((candidate) => candidate.id === creditorId) ?? null;
   const title = t('declareBankruptcyTitle', { name: player.name });
-  const submit = async () => { try { const result = await monopolyBankApi.declareBankruptcy(gameId, { playerId: player.id, ...(creditorId === null ? {} : { creditorPlayerId: creditorId }) }); onCompleted(result.players); } catch (caught) { setError(apiErrorMessage(caught, t, 'unableRecordTransaction')); } };
+  const submit = async () => { try { onCompleted(await monopolyBankApi.declareBankruptcy(gameId, { playerId: player.id, ...(creditorId === null ? {} : { creditorPlayerId: creditorId }) })); } catch (caught) { setError(apiErrorMessage(caught, t, 'unableRecordTransaction')); } };
   return <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>{confirming ? <><p className="dialog-intro">{creditor === null ? t('bankruptcyToBank') : t('bankruptcyToPlayer', { name: player.name, creditor: creditor.name })} {t('bankruptcyIrreversible')}</p>{error !== null && <p className="notice notice-error" role="alert">{error}</p>}<div className="dialog-actions"><button className="button button-secondary" type="button" onClick={() => setConfirming(false)}>{t('back')}</button><button className="button button-danger" type="button" onClick={() => void submit()}>{t('confirmBankruptcy')}</button></div></> : <><p className="dialog-intro">{t('chooseBankruptcyDestination', { name: player.name })}</p><div className="action-grid"><button className={`button button-secondary${creditorId === null ? ' selected' : ''}`} type="button" onClick={() => setCreditorId(null)}>{t('toBank')}</button>{players.filter((candidate) => candidate.id !== player.id && candidate.status !== 'BANKRUPT').map((candidate) => <button className={`button button-secondary${creditorId === candidate.id ? ' selected' : ''}`} type="button" key={candidate.id} onClick={() => setCreditorId(candidate.id)}>{t('toPlayer', { name: candidate.name })}</button>)}</div><div className="dialog-actions"><button className="button button-secondary" type="button" onClick={onClose}>{t('cancel')}</button><button className="button button-danger" type="button" onClick={() => setConfirming(true)}>{t('reviewBankruptcy')}</button></div></>}</Dialog>;
 }
 
@@ -339,7 +385,9 @@ function HistoryDialog({ history, player, players, currency, error, language, lo
 function applyLiveEvent(event: LiveServerEvent, setDetails: React.Dispatch<React.SetStateAction<GameDetails | null>>, setHistory: React.Dispatch<React.SetStateAction<Transaction[] | null>>, historyCache: MutableRefObject<Map<string, Transaction[]>>) {
   if (event.type === 'GAME_SNAPSHOT') { historyCache.current.set('all', event.state.transactions); setDetails((current) => withClientGameDetails(event.state.details, current)); setHistory(event.state.transactions); return; }
   if (event.type === 'LOBBY_UPDATED') { setDetails((current) => current === null ? current : { ...current, game: event.details.game, players: event.details.players }); return; }
-  if (event.type === 'GAME_COMMITTED') { historyCache.current.clear(); setDetails((current) => current === null ? current : { ...current, players: event.players }); setHistory((current) => current === null ? current : [event.transaction, ...current.filter((transaction) => transaction.id !== event.transaction.id)]); return; }
+  // `properties` on a commit lists only the changed deed rows; they are merged by space id into the table the snapshot delivered.
+  if (event.type === 'GAME_COMMITTED') { historyCache.current.clear(); setDetails((current) => current === null ? current : { ...current, players: event.players, ...(event.properties === undefined || current.properties === undefined ? {} : { properties: mergeProperties(current.properties, event.properties) }), ...(event.buildingBank === undefined ? {} : { buildingBank: event.buildingBank }) }); setHistory((current) => current === null ? current : [event.transaction, ...current.filter((transaction) => transaction.id !== event.transaction.id)]); return; }
+  if (event.type === 'DICE_ROLLED') { setDetails((current) => current === null ? current : { ...current, players: current.players.map((player) => player.id === event.player.id ? event.player : player) }); return; }
   if (event.type === 'GAME_FINISHED') setDetails((current) => withClientGameDetails(event.details, current));
 }
 
@@ -348,10 +396,6 @@ function withClientGameDetails(details: GameDetails, current: GameDetails | null
 }
 
 function controllerLabel(kind: PlayerControllerKind, t: Translate): string { return kind === 'PRIMARY' ? t('primaryWallet') : t('localWallet'); }
-
-function PlayerPicker({ label, players, gamePlayers, value, currency, onChange }: { label: string; players: Player[]; gamePlayers: Player[]; value: string; currency: Currency; onChange: (id: string) => void }) {
-  return <fieldset className="player-picker"><legend>{label}</legend><div>{players.map((candidate) => <button className={`player-choice${value === candidate.id ? ' selected' : ''}`} type="button" key={candidate.id} aria-pressed={value === candidate.id} onClick={() => onChange(candidate.id)}><span className="player-color" style={{ backgroundColor: candidate.color }} /><span>{playerNameWithGameId(candidate, gamePlayers)}</span><small>{formatMoney(candidate.balance, currency)}</small></button>)}</div></fieldset>;
-}
 
 function Confirmation({ action, player, target, amount, passGoReward, currency, preview, comment }: { action: ActionType; player: Player; target: Player | null; amount: number; passGoReward: number; currency: Currency; preview: { player: Player; after: number; delta: number }[]; comment: string }) {
   const { t } = useLanguage();
@@ -410,7 +454,8 @@ function destinationFor(action: ActionType, player: Player, target: Player | nul
 }
 
 function transactionLabel(type: TransactionType, t: Translate): string {
-  return ({ PLAYER_TO_PLAYER: t('playerPayment'), PLAYER_TO_BANK: t('paidBank'), BANK_TO_PLAYER: t('receivedFromBank'), PLAYER_TO_ALL: t('paidEveryone'), ALL_TO_PLAYER: t('everyonePaidPlayer'), PAY_RENT: t('paidRent'), PASS_GO: t('passedGo'), BANKRUPTCY_TRANSFER: t('bankruptcyTransfer') })[type];
+  const labels: Record<TransactionType, string> = { PLAYER_TO_PLAYER: t('playerPayment'), PLAYER_TO_BANK: t('paidBank'), BANK_TO_PLAYER: t('receivedFromBank'), PLAYER_TO_ALL: t('paidEveryone'), ALL_TO_PLAYER: t('everyonePaidPlayer'), PAY_RENT: t('paidRent'), PASS_GO: t('passedGo'), BANKRUPTCY_TRANSFER: t('bankruptcyTransfer'), PROPERTY_PURCHASE: t('boughtProperty'), PROPERTY_RENT: t('propertyRentPaid'), PROPERTY_BUILD: t('builtHouses'), PROPERTY_SELL_BUILDINGS: t('soldBuildings'), PROPERTY_MORTGAGE: t('mortgagedProperty'), PROPERTY_UNMORTGAGE: t('redeemedProperty'), PROPERTY_AUCTION: t('wonAuction'), PROPERTY_TRADE: t('tradedProperty'), JAIL_BAIL: t('paidBail') };
+  return labels[type];
 }
 
 function isPositiveInteger(value: string) { return /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0; }
