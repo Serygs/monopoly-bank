@@ -2,6 +2,13 @@
 
 A responsive English/Ukrainian banking companion for an in-person Monopoly game. It stores games, player wallets, and explicit banking history in Cloudflare D1; it does not implement board or game-engine rules. The UI language switch is available in the header and the preference is retained in the browser.
 
+## Open source
+
+Monopoly Bank is licensed under the [MIT License](LICENSE). Contributions are
+welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). For security vulnerabilities,
+follow the private reporting process in [SECURITY.md](SECURITY.md) rather than
+opening a public issue.
+
 ## Project architecture
 
 The client is a player at the physical Monopoly table using a modern phone, tablet, or desktop browser. The same React application serves owners, registered players, and guests; authorization is enforced by the Worker. It can run in a browser tab or as a standalone PWA through [`public/manifest.webmanifest`](public/manifest.webmanifest). There is no native mobile client or separate administration application.
