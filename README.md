@@ -2,6 +2,13 @@
 
 A responsive English/Ukrainian banking companion for an in-person Monopoly game. Cloudflare D1 is the source of truth for wallets, the transaction ledger, the board catalogue and property ownership: a game created on a board tracks deeds, rent, houses, mortgages, trades, auctions and jail bail with server-computed amounts, while a game created without a board moves money only, exactly as before. The application does not add token movement, turn order, chance cards or other game-engine state; those stay at the physical table. The UI language switch is available in the header and the preference is retained in the browser.
 
+## Open source
+
+Monopoly Bank is licensed under the [MIT License](LICENSE). Contributions are
+welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). For security vulnerabilities,
+follow the private reporting process in [SECURITY.md](SECURITY.md) rather than
+opening a public issue.
+
 ## Project architecture
 
 The client is a player at the physical Monopoly table using a modern phone, tablet, or desktop browser. The same React application serves owners, registered players, and guests; authorization is enforced by the Worker. It can run in a browser tab or as a standalone PWA through [`public/manifest.webmanifest`](public/manifest.webmanifest). There is no native mobile client or separate administration application.
