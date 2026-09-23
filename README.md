@@ -209,7 +209,7 @@ npm run lint
 npm run build
 ```
 
-`npm run build` includes the TypeScript project build; there is no separate typecheck script.
+`npm run build` includes the TypeScript project build; `npm run typecheck` runs the same `tsc -b` on its own.
 
 ## Lobby invitations
 

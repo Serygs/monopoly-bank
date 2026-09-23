@@ -1,8 +1,9 @@
 import type { GameDetails } from '../shared/contracts/api.js';
 import { isLiveMutationCommand, type LiveGameState, type LiveMutationCommand, type LiveServerEvent } from '../shared/contracts/live.js';
 import { controlledPlayerIdForBankingCommand } from '../shared/domain/player-control.js';
+import type { Player, Transaction } from '../shared/types/monopoly.js';
 import { D1BankingOperationRepository } from './repositories/banking-operation-repository.js';
-import { D1CommandLedgerRepository, type CommandLedgerRepository } from './repositories/command-ledger-repository.js';
+import { D1CommandLedgerRepository, type CommandLedgerEntry, type CommandLedgerRepository } from './repositories/command-ledger-repository.js';
 import { D1GameAccessRepository } from './repositories/game-access-repository.js';
 import { D1GameCompletionRepository } from './repositories/game-completion-repository.js';
 import { D1GameRepository } from './repositories/game-repository.js';
@@ -108,7 +109,7 @@ export class GameSession {
   }
 
   /** Test seam for failures after a durable financial commit; production is a no-op. */
-  private async afterCommit(stage: 'executed' | 'ledger-completed' | 'version-incremented' | 'published'): Promise<void> { void stage; }
+  private afterCommit(stage: 'executed' | 'ledger-completed' | 'version-incremented' | 'published'): Promise<void> { void stage; return Promise.resolve(); }
 
   private async authorizeMutation(gameId: string, userId: string, command: LiveMutationCommand): Promise<void> {
     const access = this.access();
@@ -140,7 +141,7 @@ export class GameSession {
     }
     if (command.type === 'FINISH_GAME') { await this.broadcast({ type: 'GAME_FINISHED', stateVersion, details: data as GameDetails }); return; }
     if (command.type === 'CREATE_TRANSACTION' && 'paymentRequests' in (data as object)) { await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion }); return; }
-    const result = data as { transaction?: import('../shared/types/monopoly.js').Transaction; players?: import('../shared/types/monopoly.js').Player[] };
+    const result = data as { transaction?: Transaction; players?: Player[] };
     if (result.transaction !== undefined && result.players !== undefined) await this.broadcast({ type: 'GAME_COMMITTED', stateVersion, transaction: result.transaction, players: result.players, ...(command.type === 'DECLARE_BANKRUPTCY' ? { bankruptPlayerId: command.request.playerId } : {}) });
     if (command.type === 'ACCEPT_PAYMENT_REQUEST' || command.type === 'DECLINE_PAYMENT_REQUEST' || command.type === 'CANCEL_PAYMENT_REQUEST') await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion });
   }
@@ -152,7 +153,7 @@ export class GameSession {
   private async broadcastPresence(): Promise<void> { await this.broadcast({ type: 'PRESENCE_UPDATED', stateVersion: await this.stateVersion(), connectedActors: this.connectedActors() }); }
   private connectedActors(): number { return new Set(this.ctx.getWebSockets().map((ws) => { const attachment = ws.deserializeAttachment() as { userId?: unknown } | null; return typeof attachment?.userId === 'string' ? attachment.userId : null; }).filter((id): id is string => id !== null)).size; }
   private send(ws: WebSocket, event: LiveServerEvent): void { try { ws.send(JSON.stringify(event)); } catch { try { ws.close(1011, 'Socket delivery failed.'); } catch { /* already broken */ } } }
-  private async broadcast(event: LiveServerEvent): Promise<void> { for (const ws of this.ctx.getWebSockets()) this.send(ws, event); }
+  private broadcast(event: LiveServerEvent): Promise<void> { for (const ws of this.ctx.getWebSockets()) this.send(ws, event); return Promise.resolve(); }
   private async stateVersion(): Promise<number> { return (await this.ctx.storage.get<number>('stateVersion')) ?? (await this.ctx.storage.get<number>('version')) ?? 0; }
   private async incrementStateVersion(): Promise<number> { const value = (await this.stateVersion()) + 1; await this.ctx.storage.put('stateVersion', value); return value; }
   private transactions() { return new D1TransactionRepository(this.env.MONOPOLY_BANK_DB); }
@@ -179,5 +180,5 @@ function tryJson(value: string): unknown { try { return JSON.parse(value) as unk
 function isHeartbeat(value: unknown): value is { type: 'HEARTBEAT' } { return value !== null && typeof value === 'object' && (value as { type?: unknown }).type === 'HEARTBEAT' && Object.keys(value).length === 1; }
 async function commandPayloadHash(command: LiveMutationCommand): Promise<string> { const payload: Record<string, unknown> = { ...command }; delete payload.commandId; const encoded = new TextEncoder().encode(canonicalJson(payload)); const hash = await crypto.subtle.digest('SHA-256', encoded); return [...new Uint8Array(hash)].map((value) => value.toString(16).padStart(2, '0')).join(''); }
 function canonicalJson(value: unknown): string { if (value === null || typeof value !== 'object') return JSON.stringify(value); if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`; const object = value as Record<string, unknown>; return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(object[key])}`).join(',')}}`; }
-function replay(entry: import('./repositories/command-ledger-repository.js').CommandLedgerEntry): ResponsePayload { if (entry.resultStatus === null || entry.resultJson === null) throw new ValidationError('Completed command has no result.'); return { status: entry.resultStatus, data: JSON.parse(entry.resultJson) as unknown }; }
+function replay(entry: CommandLedgerEntry): ResponsePayload { if (entry.resultStatus === null || entry.resultJson === null) throw new ValidationError('Completed command has no result.'); return { status: entry.resultStatus, data: JSON.parse(entry.resultJson) as unknown }; }
 function transactionIdFor(data: unknown): string | null { if (data !== null && typeof data === 'object' && 'transaction' in data) { const transaction = (data as { transaction?: unknown }).transaction; if (transaction !== null && typeof transaction === 'object' && typeof (transaction as { id?: unknown }).id === 'string') return (transaction as { id: string }).id; } return null; }

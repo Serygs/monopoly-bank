@@ -1,9 +1,9 @@
 import type { ApiSuccess, GameDetails } from '../../shared/contracts/api.js';
 import type { BankingService } from '../services/banking-service.js';
 import type { GameService } from '../services/game-service.js';
-import { AuthService } from '../services/auth-service.js';
-import { GameAccessService } from '../services/game-access-service.js';
-import { ProfileStatisticsService } from '../services/profile-statistics-service.js';
+import type { AuthService } from '../services/auth-service.js';
+import type { GameAccessService } from '../services/game-access-service.js';
+import type { ProfileStatisticsService } from '../services/profile-statistics-service.js';
 import type { GameStatisticsRepository } from '../repositories/game-statistics-repository.js';
 import type { GameLiveGateway } from '../services/game-live-gateway.js';
 import { controlledPlayerIdForBankingCommand } from '../../shared/domain/player-control.js';

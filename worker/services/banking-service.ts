@@ -1,6 +1,8 @@
 import type {
+  BankruptcyRequest,
   CreateTransactionRequest,
   CreateBankingCommandResponse,
+  CreatePaymentRequestResponse,
   CreateTransactionResponse,
   PaymentRequest,
   PaymentRequestActionResponse,
@@ -32,7 +34,7 @@ export interface BankingService {
   getPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequest | null>;
   listTransactions(gameId: string, limit: number): Promise<Transaction[]>;
   listPlayerTransactions(gameId: string, playerId: string, limit: number): Promise<Transaction[]>;
-  declareBankruptcy(gameId: string, request: import('../../shared/contracts/api.js').BankruptcyRequest): Promise<CreateTransactionResponse>;
+  declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<CreateTransactionResponse>;
 }
 
 export interface BankingServiceDependencies {
@@ -141,7 +143,7 @@ export class DefaultBankingService implements BankingService {
     return transactions;
   }
 
-  async declareBankruptcy(gameId: string, request: import('../../shared/contracts/api.js').BankruptcyRequest): Promise<CreateTransactionResponse> {
+  async declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<CreateTransactionResponse> {
     const game = await this.games.getById(gameId); if (game === null) throw new ResourceNotFoundError('Game');
     const players = await this.players.listByGameId(gameId);
     const result = declareBankruptcy({ game, players, ...request });
@@ -152,7 +154,7 @@ export class DefaultBankingService implements BankingService {
     return { transaction, players: await this.players.listByGameId(gameId) };
   }
 
-  private async createConfirmationRequests(gameId: string, request: Extract<CreateTransactionRequest, { type: 'PLAYER_TO_PLAYER' | 'ALL_TO_PLAYER' }>, players: Awaited<ReturnType<PlayerRepository['listByGameId']>>, commandId: string): Promise<import('../../shared/contracts/api.js').CreatePaymentRequestResponse> {
+  private async createConfirmationRequests(gameId: string, request: Extract<CreateTransactionRequest, { type: 'PLAYER_TO_PLAYER' | 'ALL_TO_PLAYER' }>, players: Awaited<ReturnType<PlayerRepository['listByGameId']>>, commandId: string): Promise<CreatePaymentRequestResponse> {
     const pairs = request.type === 'PLAYER_TO_PLAYER'
       ? [{ payerPlayerId: request.sourcePlayerId, recipientPlayerId: request.destinationPlayerId, creatorPlayerId: request.sourcePlayerId, approverPlayerId: request.destinationPlayerId, amount: request.amount, comment: request.comment ?? null }]
       : players.filter((player) => player.id !== request.recipientPlayerId).map((player) => ({ payerPlayerId: player.id, recipientPlayerId: request.recipientPlayerId, creatorPlayerId: request.recipientPlayerId, approverPlayerId: player.id, amount: request.amountPerPlayer, comment: request.comment ?? null }));
