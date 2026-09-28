@@ -24,12 +24,12 @@ import {
 import type { UserProfile } from '../../shared/contracts/api';
 
 const colors = [
-  { value: '#d83f55', token: '--color-player-red', nameKey: 'playerColorRed' },
-  { value: '#2878d0', token: '--color-player-blue', nameKey: 'playerColorBlue' },
-  { value: '#238b57', token: '--color-player-green', nameKey: 'playerColorGreen' },
-  { value: '#d97721', token: '--color-player-orange', nameKey: 'playerColorOrange' },
-  { value: '#8b4cc5', token: '--color-player-purple', nameKey: 'playerColorPurple' },
-  { value: '#087f78', token: '--color-player-teal', nameKey: 'playerColorTeal' },
+  { value: '#d83f55', token: '--mb-color-player-red', nameKey: 'playerColorRed' },
+  { value: '#2878d0', token: '--mb-color-player-blue', nameKey: 'playerColorBlue' },
+  { value: '#238b57', token: '--mb-color-player-green', nameKey: 'playerColorGreen' },
+  { value: '#d97721', token: '--mb-color-player-orange', nameKey: 'playerColorOrange' },
+  { value: '#8b4cc5', token: '--mb-color-player-purple', nameKey: 'playerColorPurple' },
+  { value: '#087f78', token: '--mb-color-player-teal', nameKey: 'playerColorTeal' },
 ] as const;
 const defaultStartingBalance = 15_000_000;
 const defaultPassGoReward = 2_000_000;
