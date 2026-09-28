@@ -1,14 +1,37 @@
+/*
+ * Tailwind CSS v4 utility layer. Preflight (`@layer base`) is deliberately not
+ * imported: the existing unlayered CSS relies on browser defaults it would reset.
+ * Everything Tailwind emits lives in cascade layers, so the unlayered semantic
+ * classes (`.button`, `.dialog`, `.notice`, …) keep winning until each component
+ * is migrated and its legacy rule removed. Only `src/` is scanned for classes.
+ */
+@layer theme, base, components, utilities;
 @import '@fontsource-variable/inter/wght.css';
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source('./');
+@import './styles/tailwind-theme.css';
 @import './styles/visual-styles/classic-bank.css';
 @import './styles/visual-styles/liquid-glass.css';
 
+/*
+ * Appearance variants follow the root attributes set by
+ * `src/appearance/appearance-controller.ts`. `dark:` is bound to the resolved
+ * `data-color-mode`, never to `prefers-color-scheme`: `system` is already
+ * resolved to light/dark before render.
+ */
+@custom-variant classic (&:where(:root[data-visual-style='classic-bank'] *));
+@custom-variant glass (&:where(:root[data-visual-style='liquid-glass'] *));
+@custom-variant dark (&:where(:root[data-color-mode='dark'] *));
+@custom-variant fine-pointer (@media (hover: hover) and (pointer: fine));
+@custom-variant forced-colors (@media (forced-colors: active));
+
 :root {
-  --app-safe-top: env(safe-area-inset-top, 0px);
-  --app-safe-right: env(safe-area-inset-right, 0px);
-  --app-safe-left: env(safe-area-inset-left, 0px);
-  color: var(--color-text-primary);
-  background: var(--color-canvas);
-  font-family: var(--font-ui);
+  --mb-app-safe-top: env(safe-area-inset-top, 0px);
+  --mb-app-safe-right: env(safe-area-inset-right, 0px);
+  --mb-app-safe-left: env(safe-area-inset-left, 0px);
+  color: var(--mb-color-text-primary);
+  background: var(--mb-color-canvas);
+  font-family: var(--mb-font-ui);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -29,11 +52,11 @@ body {
   min-width: 320px;
   margin: 0;
   overflow-x: hidden;
-  color: var(--color-text-primary);
-  background: var(--color-canvas);
-  font-size: var(--text-body);
-  font-weight: var(--weight-regular);
-  line-height: var(--leading-body);
+  color: var(--mb-color-text-primary);
+  background: var(--mb-color-canvas);
+  font-size: var(--mb-text-body);
+  font-weight: var(--mb-weight-regular);
+  line-height: var(--mb-leading-body);
 }
 
 button,
@@ -50,6 +73,6 @@ button:disabled {
 }
 
 ::selection {
-  color: var(--color-text-on-inverse);
-  background: var(--color-accent);
+  color: var(--mb-color-text-on-inverse);
+  background: var(--mb-color-accent);
 }
