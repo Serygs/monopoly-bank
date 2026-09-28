@@ -1,4 +1,5 @@
 import type { Currency, Player } from '../../../shared/types/monopoly';
+import { cx } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney, formatMoneyDelta } from '../../utils/money';
 import {
@@ -20,6 +21,19 @@ export interface ConfirmationProps {
   comment: string;
 }
 
+/** Summary rows (label left, value right) and the resulting-balances list with colour dots. */
+const confirmationClass = cx(
+  '[&_dl]:m-0 [&_dl>div]:flex [&_dl>div]:justify-between [&_dl>div]:gap-[16px] [&_dl>div]:border-b [&_dl>div]:border-b-border [&_dl>div]:px-0 [&_dl>div]:py-[10px]',
+  '[&_dt]:text-secondary [&_dd]:m-0 [&_dd]:text-right [&_dd]:font-semibold',
+  '[&_h3]:mx-0 [&_h3]:mt-[22px] [&_h3]:mb-[10px] [&_h3]:text-[1rem]',
+  '[&_ul]:m-0 [&_ul]:grid [&_ul]:list-none [&_ul]:gap-[8px] [&_ul]:p-0',
+  '[&_li]:flex [&_li]:justify-between [&_li]:gap-[10px] [&_li]:px-0 [&_li]:py-[8px]',
+  '[&_li>span]:flex [&_li>span]:items-center [&_li>span]:gap-[8px] [&_i]:size-[10px] [&_i]:rounded-[50%]',
+);
+/** The resulting available balance row; `!` beats the shared row padding above. */
+const availableClass =
+  'mt-[8px] border-t-2 border-t-accent pt-[12px]! [&>dd]:text-[1.1rem] [&>dd]:text-primary';
+
 export function Confirmation({
   action,
   player,
@@ -40,7 +54,7 @@ export function Confirmation({
   const resultingBalance =
     preview.find(({ player: affected }) => affected.id === player.id)?.after ?? player.balance;
   return (
-    <section className="confirmation">
+    <section className={confirmationClass}>
       <dl>
         <div>
           <dt>{t('actor')}</dt>
@@ -69,7 +83,7 @@ export function Confirmation({
           <dt>{t('total')}</dt>
           <dd>{formatMoney(total, currency)}</dd>
         </div>
-        <div className="confirmation-available">
+        <div className={availableClass}>
           <dt>{t('resultingAvailableBalance')}</dt>
           <dd>{formatMoney(resultingBalance, currency)}</dd>
         </div>
@@ -81,7 +95,7 @@ export function Confirmation({
         )}
       </dl>
       <h3>{t('resultingBalances')}</h3>
-      <ul className="balance-preview">
+      <ul>
         {preview.map(({ player: affected, after, delta }) => (
           <li key={affected.id}>
             <span>

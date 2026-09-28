@@ -7,8 +7,27 @@ import { AmountInput } from './AmountInput';
 import { AMOUNT_UNIT_LABELS, useAmountInput } from './amount-input-state';
 import { NumericKeypad } from './NumericKeypad';
 import { FieldNote, MoneyValue } from './ui';
+import { cx } from './ui/class-names';
 
 const standardAmounts = [100_000, 200_000, 500_000, 1_000_000, 2_000_000] as const;
+
+const quickButtonClass = cx(
+  'border border-border bg-surface-elevated',
+  'transition-[color,background-color,border-color,box-shadow,transform] duration-(--mb-duration-fast) ease-standard',
+  'disabled:cursor-not-allowed disabled:opacity-48 motion-reduce:transition-none',
+);
+const amountChipClass = cx(
+  quickButtonClass,
+  'min-h-(--mb-control-height-md) rounded-[9px] px-[10px] py-[7px] font-semibold text-primary',
+  'aria-pressed:bg-accent aria-pressed:text-on-accent',
+);
+const favoriteToggleClass = cx(
+  quickButtonClass,
+  'min-w-(--mb-control-height-md) rounded-[0_9px_9px_0] border-s-0 text-[1.05rem] text-accent',
+);
+const sectionClass = 'col-span-full';
+const sectionLabelClass = 'mb-2 block text-[0.85rem] font-semibold text-secondary';
+const sectionChoicesClass = 'flex flex-wrap gap-2';
 
 export function AmountSelector({
   value,
@@ -40,10 +59,10 @@ export function AmountSelector({
     amounts.filter((amount, index) => amounts.indexOf(amount) === index && amount > 0);
   const renderAmounts = (amounts: readonly number[]) =>
     unique(amounts).map((amount) => (
-      <span className="amount-choice" key={amount}>
+      <span className="inline-flex" key={amount}>
         <button
           type="button"
-          className={`amount-chip ${selected === amount ? 'selected' : ''}`}
+          className={amountChipClass}
           aria-pressed={selected === amount}
           onClick={() => {
             onChange(String(amount));
@@ -55,7 +74,7 @@ export function AmountSelector({
         {onToggleFavorite !== undefined && (
           <button
             type="button"
-            className="favorite-toggle"
+            className={favoriteToggleClass}
             aria-label={
               favorites.includes(amount)
                 ? t('removeFavoriteAmount', { amount: formatMoney(amount, currency) })
@@ -69,8 +88,8 @@ export function AmountSelector({
       </span>
     ));
   return (
-    <div className="amount-selector">
-      <div className="dialog-field amount-field">
+    <div className="grid grid-cols-[minmax(0,1fr)_168px] gap-4 max-md:grid-cols-1">
+      <div className="dialog-field col-span-full">
         <label htmlFor={inputId}>
           {t('amount')}
           {unitNote !== undefined && (
@@ -88,20 +107,20 @@ export function AmountSelector({
         />
       </div>
       <NumericKeypad digits={synced.digits} unit={synced.unit} onChange={changeDigits} />
-      <div className="amount-section">
-        <span>{t('quickAmounts')}</span>
-        <div>{renderAmounts(standardAmounts)}</div>
+      <div className={sectionClass}>
+        <span className={sectionLabelClass}>{t('quickAmounts')}</span>
+        <div className={sectionChoicesClass}>{renderAmounts(standardAmounts)}</div>
       </div>
       {favorites.length > 0 && (
-        <div className="amount-section">
-          <span>{t('favoriteAmounts')}</span>
-          <div>{renderAmounts(favorites)}</div>
+        <div className={sectionClass}>
+          <span className={sectionLabelClass}>{t('favoriteAmounts')}</span>
+          <div className={sectionChoicesClass}>{renderAmounts(favorites)}</div>
         </div>
       )}
       {recent.length > 0 && (
-        <div className="amount-section">
-          <span>{t('recentAmounts')}</span>
-          <div>{renderAmounts(recent)}</div>
+        <div className={sectionClass}>
+          <span className={sectionLabelClass}>{t('recentAmounts')}</span>
+          <div className={sectionChoicesClass}>{renderAmounts(recent)}</div>
         </div>
       )}
     </div>

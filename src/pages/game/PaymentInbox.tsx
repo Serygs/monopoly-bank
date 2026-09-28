@@ -5,8 +5,25 @@ import { Button, DialogActions, Notice, StatPill } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
+import { cx, mutedClass } from '../../components/ui/class-names';
 
 export type PaymentRequestAction = 'accept' | 'decline';
+
+/*
+ * `payment-inbox` stays as the hook for the e2e overflow checks. Below `md` each request stacks
+ * and its two actions share a two-column row.
+ */
+const inboxClass = cx(
+  'payment-inbox my-(--mb-space-6) rounded-card-large border border-accent bg-surface-subtle p-(--mb-space-5) shadow-sm',
+  '[&>header]:flex [&>header]:items-center [&>header]:justify-between [&>header]:gap-(--mb-space-3)',
+  '[&>ol]:mx-0 [&>ol]:mt-(--mb-space-4) [&>ol]:mb-0 [&>ol]:grid [&>ol]:list-none [&>ol]:gap-(--mb-space-3) [&>ol]:p-0',
+  '[&_li]:flex [&_li]:items-center [&_li]:justify-between [&_li]:gap-(--mb-space-3) [&_li]:rounded-control [&_li]:border [&_li]:border-border [&_li]:bg-surface-elevated [&_li]:p-(--mb-space-4)',
+  'max-md:[&_li]:flex-col max-md:[&_li]:items-stretch [&_li>div:first-child]:grid [&_li>div:first-child]:gap-(--mb-space-1) [&_small]:text-secondary',
+  '[&_.dialog-actions]:items-center max-md:[&_.dialog-actions]:grid max-md:[&_.dialog-actions]:w-full max-md:[&_.dialog-actions]:grid-cols-2',
+  'glass:border-[color:color-mix(in_srgb,var(--mb-color-accent)_30%,transparent)] glass:bg-[rgb(255_255_255/0.5)] glass:dark:bg-[rgb(40_49_62/0.6)]',
+  'glass:[&_li]:border-[rgb(85_98_116/0.14)] glass:[&_li]:bg-[rgb(255_255_255/0.62)]',
+  'glass:dark:[&_li]:border-[rgb(255_255_255/0.14)] glass:dark:[&_li]:bg-[rgb(50_61_76/0.68)]',
+);
 
 export interface PaymentInboxProps {
   requests: PaymentRequest[];
@@ -31,7 +48,7 @@ export function PaymentInbox({ requests, players, currency, onAction }: PaymentI
     }
   };
   return (
-    <section className="payment-inbox" aria-labelledby="payment-inbox-title">
+    <section className={inboxClass} aria-labelledby="payment-inbox-title">
       <header>
         <h2 id="payment-inbox-title">{t('paymentInbox')}</h2>
         <StatPill variant="pill">{requests.length}</StatPill>
@@ -40,7 +57,7 @@ export function PaymentInbox({ requests, players, currency, onAction }: PaymentI
         <Notice tone="error">{apiErrorMessage(error, t, 'unableRecordTransaction')}</Notice>
       )}
       {requests.length === 0 ? (
-        <p className="muted">{t('noPaymentRequests')}</p>
+        <p className={mutedClass}>{t('noPaymentRequests')}</p>
       ) : (
         <ol>
           {requests.map((request) => {

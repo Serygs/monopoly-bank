@@ -14,6 +14,7 @@ import {
   MoneyValue,
   Notice,
 } from '../../components/ui';
+import { cx } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
@@ -47,6 +48,28 @@ export interface BankingDialogProps {
   onCompleted: (players: Player[], action: ActionType, amount: number | null) => void;
   onPaymentRequested: () => void;
 }
+
+/** Below `md` the sheet shows a grab handle above its header. */
+const sheetClass =
+  "max-md:before:mx-auto max-md:before:mt-[-10px] max-md:before:mb-[14px] max-md:before:block max-md:before:h-[4px] max-md:before:w-[42px] max-md:before:rounded-pill max-md:before:bg-border-strong max-md:before:content-['']";
+
+/** Inverse balance plate: the label in the highlight colour over the balance figure. */
+const balanceClass = cx(
+  'relative mx-0 mt-[18px] mb-[14px] grid gap-[4px] overflow-hidden rounded-[14px] border border-accent bg-surface-inverse px-[18px] py-[16px] shadow-balance-inset',
+  '*:relative *:z-1 [&_span]:text-small [&_span]:font-semibold [&_span]:text-highlight',
+  '[&_strong]:font-money [&_strong]:text-money-xl [&_strong]:leading-[0.98] [&_strong]:font-bold [&_strong]:tracking-[-0.05em] [&_strong]:text-on-inverse [&_strong]:tabular-nums [&_strong]:wrap-anywhere',
+);
+
+const advancedClass = cx(
+  'mt-[16px] border-t border-border [&_.action-grid]:mt-[4px]',
+  '[&>summary]:cursor-pointer [&>summary]:px-0 [&>summary]:pt-[16px] [&>summary]:pb-[10px] [&>summary]:font-bold [&>summary]:text-accent open:[&>summary]:text-primary',
+);
+
+/** Centred, capped-width danger action on its own row (in the single column below `md`). */
+const bankruptcyClass = 'col-span-full w-[min(100%,270px)] justify-self-center max-md:col-auto';
+
+const passGoClass =
+  'mx-0 my-[18px] rounded-[12px] border border-status-border bg-success-soft p-[14px] font-semibold text-status-text';
 
 export function BankingDialog({
   gameId,
@@ -162,13 +185,13 @@ export function BankingDialog({
       title={title}
       closeLabel={t('closeDialog', { title })}
       onClose={onClose}
-      className="banking-sheet"
+      className={sheetClass}
     >
       {transactionError !== null && <Notice tone="error">{transactionError}</Notice>}
       {action === null ? (
         <>
           <section
-            className="wallet-sheet-balance"
+            className={balanceClass}
             aria-label={t('walletBalanceAria', {
               name: player.name,
               balance: formatMoney(player.balance, currency),
@@ -180,23 +203,15 @@ export function BankingDialog({
             </strong>
           </section>
           <DialogBody>{t('walletSheetIntro')}</DialogBody>
-          <WalletActionGrid
-            className="wallet-action-grid"
-            actions={primaryWalletActions}
-            onSelect={selectAction}
-          />
-          <details className="wallet-advanced-actions">
+          <WalletActionGrid actions={primaryWalletActions} onSelect={selectAction} />
+          <details className={advancedClass}>
             <summary>{t('advancedActions')}</summary>
             <WalletActionGrid actions={advancedWalletActions} onSelect={selectAction}>
-              <Button variant="danger" className="bankruptcy-action" onClick={onBankrupt}>
+              <Button variant="danger" className={bankruptcyClass} onClick={onBankrupt}>
                 {t('declareBankrupt')}
               </Button>
             </WalletActionGrid>
-            <Button
-              variant="quiet"
-              className="player-history-button"
-              onClick={() => onViewHistory(player)}
-            >
+            <Button variant="quiet" className="mt-[14px]" onClick={() => onViewHistory(player)}>
               {t('viewPlayerHistory', { name: player.name })}
             </Button>
           </details>
@@ -264,7 +279,7 @@ export function BankingDialog({
             </FieldError>
           )}
           {action === 'PASS_GO' && (
-            <p className="pass-go-value">
+            <p className={passGoClass}>
               {t('passGoReceives', { amount: formatMoney(passGoReward, currency) })}
             </p>
           )}

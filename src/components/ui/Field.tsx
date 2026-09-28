@@ -74,14 +74,20 @@ export interface FieldTextProps {
   as?: 'span' | 'p';
 }
 
+/*
+ * `field-hint` / `field-note` stay as hooks: the create-lobby players heading resets the
+ * `.field-hint` margin, and `AvatarPicker` widens it on compact screens.
+ */
+const fieldTextClass = 'text-small font-regular text-muted';
+
 /** Supporting copy for a control (`field-hint`). */
 export function FieldHint({ as: Element = 'span', ...props }: FieldTextProps) {
-  return <Element className="field-hint" {...props} />;
+  return <Element className={cx('field-hint', fieldTextClass)} {...props} />;
 }
 
 /** Secondary label text (`field-note`). */
 export function FieldNote({ as: Element = 'span', ...props }: FieldTextProps) {
-  return <Element className="field-note" {...props} />;
+  return <Element className={cx('field-note', fieldTextClass)} {...props} />;
 }
 
 export interface FieldErrorProps extends FieldTextProps {
@@ -89,7 +95,13 @@ export interface FieldErrorProps extends FieldTextProps {
   announce?: boolean;
 }
 
-/** Validation message for a control (`field-error`). */
+/** Validation message for a control. */
 export function FieldError({ as: Element = 'span', announce = false, ...props }: FieldErrorProps) {
-  return <Element className="field-error" role={announce ? 'alert' : undefined} {...props} />;
+  return (
+    <Element
+      className="text-small font-semibold text-danger"
+      role={announce ? 'alert' : undefined}
+      {...props}
+    />
+  );
 }

@@ -2,8 +2,32 @@ import { useEffect, useRef, useState } from 'react';
 import { rollDice, type DiceRoll } from '../utils/dice';
 import { useLanguage } from '../i18n/language-context';
 import { Button } from './ui';
+import { cx, toolPanelClass, eyebrowClass, mutedClass } from './ui/class-names';
 
 const initialRoll: DiceRoll = { first: 1, second: 1, total: 2, isDouble: true };
+
+const dieClass =
+  'relative grid size-11 grid-cols-[repeat(3,1fr)] grid-rows-[repeat(3,1fr)] gap-[3px] rounded-sm border border-border-strong bg-surface-elevated p-[7px] shadow-sm';
+const rollingDieClass =
+  'animate-[dice-roll_var(--mb-duration-slow)_var(--mb-ease-emphasized)] motion-reduce:animate-none';
+const pipClass = 'size-[7px] place-self-center rounded-full bg-surface-inverse';
+
+/* Pip cells on the 3×3 die grid (row / column), by face value. */
+const tl = 'row-start-1 col-start-1';
+const tr = 'row-start-1 col-start-3';
+const ml = 'row-start-2 col-start-1';
+const mc = 'row-start-2 col-start-2';
+const mr = 'row-start-2 col-start-3';
+const bl = 'row-start-3 col-start-1';
+const br = 'row-start-3 col-start-3';
+const pipCells: Record<number, readonly string[]> = {
+  1: [mc],
+  2: [tl, br],
+  3: [tl, mc, br],
+  4: [tl, tr, bl, br],
+  5: [tl, tr, mc, bl, br],
+  6: [tl, tr, ml, mr, bl, br],
+};
 
 export function DiceRoller() {
   const { t } = useLanguage();
@@ -27,30 +51,35 @@ export function DiceRoller() {
     }, 650);
   };
   return (
-    <section className="dice-roller" aria-label={t('diceRoller')}>
+    <section className={toolPanelClass} aria-label={t('diceRoller')}>
       <div>
-        <p className="eyebrow">{t('tableTool')}</p>
-        <h2>{t('rollDice')}</h2>
-        <p className="muted">{t('diceStandalone')}</p>
+        <p className={eyebrowClass}>{t('tableTool')}</p>
+        <h2 className="m-0 text-primary">{t('rollDice')}</h2>
+        <p className={mutedClass}>{t('diceStandalone')}</p>
       </div>
-      <div className={`dice-results${rolling ? ' rolling' : ''}`} aria-live="polite">
-        <Die value={roll.first} label={t('dieValue', { value: roll.first })} />
-        <Die value={roll.second} label={t('dieValue', { value: roll.second })} />
+      <div className="flex flex-wrap items-center gap-[10px]" aria-live="polite">
+        <Die value={roll.first} rolling={rolling} label={t('dieValue', { value: roll.first })} />
+        <Die value={roll.second} rolling={rolling} label={t('dieValue', { value: roll.second })} />
         <strong>{t('totalDice', { total: roll.total })}</strong>
-        {roll.isDouble && <span className="double">{t('double')}</span>}
+        {roll.isDouble && <span className="font-bold text-status-text">{t('double')}</span>}
       </div>
-      <Button variant="primary" className="dice-button" disabled={rolling} onClick={rollDiceNow}>
+      <Button
+        variant="primary"
+        className="justify-self-start"
+        disabled={rolling}
+        onClick={rollDiceNow}
+      >
         {rolling ? t('rolling') : t('rollDice')}
       </Button>
     </section>
   );
 }
 
-function Die({ value, label }: { value: number; label: string }) {
+function Die({ value, rolling, label }: { value: number; rolling: boolean; label: string }) {
   return (
-    <span className={`die die-${value}`} aria-label={label}>
-      {Array.from({ length: value }, (_, index) => (
-        <i key={index} />
+    <span className={cx(dieClass, rolling && rollingDieClass)} aria-label={label}>
+      {(pipCells[value] ?? []).map((cell) => (
+        <i key={cell} className={cx(pipClass, cell)} />
       ))}
     </span>
   );

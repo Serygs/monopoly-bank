@@ -1,16 +1,19 @@
 import type { ComponentPropsWithRef } from 'react';
-import { cx } from './class-names';
+import { buttonClass, buttonCoreClass, cx, type ButtonTone } from './class-names';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger';
+export type ButtonVariant = ButtonTone;
 
 export interface ButtonProps extends ComponentPropsWithRef<'button'> {
-  /** Omit for feature buttons that compose `.button` with their own treatment. */
+  /**
+   * Omit for feature buttons that bring their own size and colours (filter chips, wallet
+   * actions); they get only the shared core (`.button`).
+   */
   variant?: ButtonVariant;
   /** Square icon treatment (`icon-button`). */
   iconOnly?: boolean;
 }
 
-/** Shared `.button` primitive; defaults to `type="button"` so forms submit only on purpose. */
+/** Shared button primitive; defaults to `type="button"` so forms submit only on purpose. */
 export function Button({
   variant,
   iconOnly = false,
@@ -22,9 +25,7 @@ export function Button({
     <button
       type={type}
       className={cx(
-        'button',
-        variant !== undefined && `button-${variant}`,
-        iconOnly && 'icon-button',
+        variant === undefined ? buttonCoreClass : buttonClass(variant, iconOnly),
         className,
       )}
       {...props}

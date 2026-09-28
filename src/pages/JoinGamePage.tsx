@@ -5,6 +5,13 @@ import { AvatarPicker } from '../components/AvatarPicker';
 import { Button, Field, Notice, PageShell } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
+import {
+  authFormClass,
+  authHeadingClass,
+  authSealClass,
+  eyebrowClass,
+  ledeClass,
+} from '../components/ui/class-names';
 
 interface Props {
   initialJoinCode: string;
@@ -63,26 +70,27 @@ export function JoinGamePage({
 
   return (
     <PageShell variant="auth" card="join">
-      <Button variant="quiet" className="auth-back" onClick={onBack}>
+      {/* `!` outranks the Button primitive's own centring and inline padding. */}
+      <Button variant="quiet" className="mb-(--mb-space-4) justify-start! px-0!" onClick={onBack}>
         ← {t('savedGames')}
       </Button>
-      <div className="auth-card-heading">
-        <span className="auth-card-mark" aria-hidden="true">
+      <div className={authHeadingClass}>
+        <span className={authSealClass} aria-hidden="true">
           MB
         </span>
         <div>
-          <p className="eyebrow">{t('lobby')}</p>
+          <p className={eyebrowClass}>{t('lobby')}</p>
           <h1>{guest ? t('joinAsGuest') : t('joinGame')}</h1>
         </div>
       </div>
-      <p className="lede">
+      <p className={ledeClass}>
         {guest
           ? t('guestJoinDescription')
           : hasInvitation
             ? t('secureInviteDescription')
             : t('joinGameDescription')}
       </p>
-      <form className="game-form auth-form" onSubmit={(event) => void join(event)}>
+      <form className={authFormClass} onSubmit={(event) => void join(event)}>
         {guest && (
           <>
             <Field label={t('nickname')}>

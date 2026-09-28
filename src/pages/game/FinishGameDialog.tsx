@@ -5,6 +5,7 @@ import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
 import { Button, DialogActions, DialogBody, MoneyValue, Notice, Toggle } from '../../components/ui';
 import { useLanguage } from '../../i18n/language-context';
+import { cx, mutedClass } from '../../components/ui/class-names';
 
 export interface FinishGameDialogProps {
   gameId: string;
@@ -13,6 +14,15 @@ export interface FinishGameDialogProps {
   onFinished: (details: GameDetails) => void;
   onClose: () => void;
 }
+
+const cashLeaderClass = 'rounded-[9px] border border-accent bg-surface-elevated p-[10px]';
+
+/** Native winner checkboxes, each with the player's colour dot. */
+const winnerPickerClass = cx(
+  'mx-0 my-[16px] grid gap-[8px] border-0 p-0 [&_legend]:mb-[6px] [&_legend]:font-bold [&_legend]:text-primary',
+  '[&_label]:flex [&_label]:min-h-(--mb-control-height-md) [&_label]:items-center [&_label]:gap-[8px] [&_i]:size-[12px] [&_i]:rounded-[50%]',
+  '[&_input[type=checkbox]]:size-[20px] [&_input[type=checkbox]]:accent-accent',
+);
 
 export function FinishGameDialog({
   gameId,
@@ -48,14 +58,14 @@ export function FinishGameDialog({
       closeDisabled={saving}
     >
       <DialogBody>{t('finishGameDescription')}</DialogBody>
-      <p className="muted">{t('finishWinnerHint')}</p>
+      <p className={mutedClass}>{t('finishWinnerHint')}</p>
       {leader !== undefined && (
-        <p className="cash-leader-inline">
+        <p className={cashLeaderClass}>
           <strong>{t('cashLeader')}:</strong> {leader.name} ·{' '}
           <MoneyValue amount={leader.balance} currency={currency} />
         </p>
       )}
-      <fieldset className="winner-picker">
+      <fieldset className={winnerPickerClass}>
         <legend>{t('chooseWinners')}</legend>
         {players.map((player) => (
           <Toggle

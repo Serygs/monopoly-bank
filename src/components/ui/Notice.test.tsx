@@ -8,20 +8,22 @@ describe('Notice', () => {
     const notice = screen.getByRole('alert');
     expect(notice).toHaveTextContent('Unable to save.');
     expect(notice.tagName).toBe('P');
-    expect(notice.getAttribute('class')).toBe('notice notice-error');
+    expect(notice).toHaveClass('border-danger-border', 'bg-danger-soft', 'text-danger');
   });
 
   it('announces success politely', () => {
     render(<Notice tone="success">Saved.</Notice>);
     const notice = screen.getByRole('status');
     expect(notice).toHaveTextContent('Saved.');
-    expect(notice.getAttribute('class')).toBe('notice notice-success');
+    expect(notice).toHaveClass('border-status-border', 'bg-status-surface', 'text-status-text');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('announces info politely without inventing a tone class', () => {
+  it('announces info politely on the neutral surface', () => {
     render(<Notice tone="info">Heads up.</Notice>);
-    expect(screen.getByRole('status').getAttribute('class')).toBe('notice');
+    const notice = screen.getByRole('status');
+    expect(notice).toHaveClass('border-border', 'bg-surface-elevated', 'text-primary');
+    expect(notice).not.toHaveClass('text-status-text');
   });
 
   it('renders the requested element with copy, action and extra classes', () => {
@@ -33,7 +35,8 @@ describe('Notice', () => {
     );
     const notice = screen.getByRole('status');
     expect(notice.tagName).toBe('SECTION');
-    expect(notice.getAttribute('class')).toBe('notice notice-success game-state-banner');
+    expect(notice).toHaveClass('text-status-text', 'game-state-banner');
+    expect(notice.getAttribute('class')).toMatch(/ game-state-banner$/);
     expect(notice).toContainElement(screen.getByRole('button', { name: 'Start' }));
   });
 });

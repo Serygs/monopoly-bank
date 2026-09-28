@@ -4,6 +4,7 @@ import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Button, Field, Notice, PageShell, StatPill } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
+import { authFormClass, ledeClass } from '../components/ui/class-names';
 
 export function VerifyEmailPage({
   token,
@@ -85,7 +86,7 @@ export function PasswordResetPage({ token, onBack }: { token: string; onBack: ()
       {changed ? (
         <Notice tone="success">{t('passwordChanged')}</Notice>
       ) : (
-        <form className="game-form auth-form" onSubmit={(event) => void submit(event)}>
+        <form className={authFormClass} onSubmit={(event) => void submit(event)}>
           <Field label={t('newPassword')}>
             <input
               type="password"
@@ -138,11 +139,11 @@ export function PasswordRecoveryPage({ onBack }: { onBack: () => void }) {
   return (
     <PageShell variant="auth" card="banknote">
       <h1>{t('passwordReset')}</h1>
-      <p className="lede">{t('passwordResetDescription')}</p>
+      <p className={ledeClass}>{t('passwordResetDescription')}</p>
       {requested ? (
         <Notice tone="success">{t('passwordResetRequested')}</Notice>
       ) : (
-        <form className="game-form auth-form" onSubmit={(event) => void submit(event)}>
+        <form className={authFormClass} onSubmit={(event) => void submit(event)}>
           <Field label={t('email')}>
             <input
               type="email"

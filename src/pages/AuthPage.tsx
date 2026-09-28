@@ -5,6 +5,13 @@ import { AvatarPicker } from '../components/AvatarPicker';
 import { Button, Field, Notice, PageShell, Toolbar } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
+import {
+  authFormClass,
+  authHeadingClass,
+  authSealClass,
+  eyebrowClass,
+  ledeClass,
+} from '../components/ui/class-names';
 
 export function AuthPage({ onAuthenticated }: { onAuthenticated: (profile: UserProfile) => void }) {
   const { t } = useLanguage();
@@ -38,17 +45,19 @@ export function AuthPage({ onAuthenticated }: { onAuthenticated: (profile: UserP
 
   return (
     <PageShell variant="auth">
-      <div className="auth-card-heading">
-        <span className="auth-card-mark" aria-hidden="true">
+      <div className={authHeadingClass}>
+        <span className={authSealClass} aria-hidden="true">
           MB
         </span>
         <div>
-          <p className="eyebrow">{t('appName')}</p>
+          <p className={eyebrowClass}>{t('appName')}</p>
           <h1>{registering ? t('createAccount') : t('welcomeBack')}</h1>
         </div>
       </div>
-      <p className="lede">{registering ? t('createAccountDescription') : t('signInDescription')}</p>
-      <form className="game-form auth-form" onSubmit={(event) => void submit(event)}>
+      <p className={ledeClass}>
+        {registering ? t('createAccountDescription') : t('signInDescription')}
+      </p>
+      <form className={authFormClass} onSubmit={(event) => void submit(event)}>
         <Field label={t('nickname')}>
           <input
             value={nickname}
