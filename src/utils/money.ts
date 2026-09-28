@@ -1,6 +1,6 @@
 import type { Currency } from '../../shared/types/monopoly';
 
-/** Formats the integer-thousands values stored by Monopoly Bank for display. */
+/** Groups the whole-unit integer amounts stored by Monopoly Bank for display. */
 export function formatThousands(value: number): string {
   return Math.abs(value)
     .toString()
