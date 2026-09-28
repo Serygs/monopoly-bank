@@ -8,9 +8,9 @@ import type {
 import type { Currency, Player, Transaction } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Dialog } from '../components/Dialog';
+import { TransactionRow } from '../components/game/TransactionRow';
 import { useLanguage } from '../i18n/language-context';
 import { Button, MoneyValue, Notice, Row, StatPill } from '../components/ui';
-import { transactionAmount, transactionDescription } from '../utils/transaction-history';
 
 const activityScopes: readonly ActivityScope[] = ['ALL', 'MINE', 'PENDING'];
 
@@ -170,17 +170,14 @@ export function ActivityScreen({
                 locale={locale}
               />
             ) : (
-              <li key={item.id}>
-                <Row
-                  title={transactionDescription(item, players, language)}
-                  timestamp={new Intl.DateTimeFormat(locale, {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  }).format(new Date(item.createdAt))}
-                />
-                <span>{transactionAmount(item, currency, language)}</span>
-                {item.comment !== null && <em>{item.comment}</em>}
-              </li>
+              <TransactionRow
+                key={item.id}
+                transaction={item}
+                players={players}
+                currency={currency}
+                language={language}
+                locale={locale}
+              />
             ),
           )}
         </ol>

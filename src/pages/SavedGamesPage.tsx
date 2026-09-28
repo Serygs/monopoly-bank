@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import type { GameSummary } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Dialog } from '../components/Dialog';
-import { OverflowMenu } from '../components/OverflowMenu';
+import { GameCard } from '../components/game/GameCard';
 import { PageHeader } from '../components/PageHeader';
 import {
   Button,
-  Card,
   DialogActions,
   DialogBody,
   EmptyState,
@@ -15,7 +14,6 @@ import {
   PageShell,
   SegmentedControl,
   StatPill,
-  Toolbar,
 } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
@@ -244,64 +242,15 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
           ) : (
             <section className="game-grid" aria-label={t('savedGames')}>
               {visibleGames.map((summary) => (
-                <Card as="article" variant="game" key={summary.game.id}>
-                  <div className="game-card-copy">
-                    <span className="game-card-seal" aria-hidden="true">
-                      MB
-                    </span>
-                    <div className="game-card-details">
-                      <span
-                        className={`game-card-status game-card-status--${summary.game.status.toLowerCase()}`}
-                      >
-                        {t(
-                          `gameStatus${summary.game.status[0]}${summary.game.status.slice(1).toLowerCase()}` as 'gameStatusLobby',
-                        )}
-                      </span>
-                      <h2 title={summary.game.name}>{summary.game.name}</h2>
-                      <div className="game-card-meta">
-                        <span>{t('playersCount', { count: summary.playerCount })}</span>
-                        <span>
-                          {t('updated', { date: formatDate(summary.game.updatedAt, locale) })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <Toolbar variant="game-card">
-                    {summary.isPublicLobby && summary.joinCode !== undefined ? (
-                      <Button
-                        variant="primary"
-                        className="game-card-primary-action"
-                        onClick={() => onJoinGame(summary.joinCode)}
-                      >
-                        {t('joinOpenLobby')}
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="primary"
-                        className="game-card-primary-action"
-                        onClick={() => onOpenGame(summary.game.id)}
-                      >
-                        {t('openGame')}
-                      </Button>
-                    )}
-                    <OverflowMenu
-                      label={t('gameActions', { name: summary.game.name })}
-                      items={[
-                        {
-                          label:
-                            duplicating === summary.game.id ? t('duplicating') : t('duplicate'),
-                          disabled: duplicating === summary.game.id,
-                          onSelect: () => requestDuplicate(summary),
-                        },
-                        {
-                          label: t('removeGame'),
-                          tone: 'danger',
-                          onSelect: () => requestRemoval(summary),
-                        },
-                      ]}
-                    />
-                  </Toolbar>
-                </Card>
+                <GameCard
+                  key={summary.game.id}
+                  summary={summary}
+                  duplicating={duplicating === summary.game.id}
+                  onJoinGame={onJoinGame}
+                  onOpenGame={onOpenGame}
+                  onDuplicate={() => requestDuplicate(summary)}
+                  onRemove={() => requestRemoval(summary)}
+                />
               ))}
             </section>
           )}
@@ -430,11 +379,4 @@ function DuplicateGameDialog({
       </DialogActions>
     </Dialog>
   );
-}
-
-function formatDate(value: string, locale: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf())
-    ? value
-    : new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
 }
