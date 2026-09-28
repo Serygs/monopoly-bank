@@ -1,7 +1,16 @@
-import { useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from 'react';
+import {
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
+import { AmountInput } from '../components/AmountInput';
+import { useAmountInput } from '../components/amount-input-state';
 import { PageHeader } from '../components/PageHeader';
 import type { Translate } from '../i18n/translations';
 import { formatMoney } from '../utils/money';
@@ -21,6 +30,8 @@ const colors = [
   { value: '#8b4cc5', token: '--color-player-purple', nameKey: 'playerColorPurple' },
   { value: '#087f78', token: '--color-player-teal', nameKey: 'playerColorTeal' },
 ] as const;
+const defaultStartingBalance = 15_000_000;
+const defaultPassGoReward = 2_000_000;
 interface PlayerForm {
   key: number;
   name: string;
@@ -36,8 +47,8 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
   const { t } = useLanguage();
   const nextKey = useRef(3);
   const [name, setName] = useState('');
-  const [startingBalance, setStartingBalance] = useState('1500');
-  const [passGoReward, setPassGoReward] = useState('200');
+  const [startingBalance, setStartingBalance] = useState(String(defaultStartingBalance));
+  const [passGoReward, setPassGoReward] = useState(String(defaultPassGoReward));
   const [currency, setCurrency] = useState<SelectableCurrency>('USD');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('FAST');
   const [gameAccessPassword, setGameAccessPassword] = useState('');
@@ -333,22 +344,22 @@ function MoneyField({
   error: string | undefined;
 }) {
   const { t } = useLanguage();
+  const inputId = useId();
+  const { state, changeDigits, changeUnit } = useAmountInput(value, onChange, () => 'MILLIONS');
   const amount = isPositive(value) ? formatMoney(Number(value), currency) : '—';
   return (
-    <label>
-      {label}
-      <input
-        type="number"
-        inputMode="numeric"
-        min="1"
-        step="1"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-invalid={error !== undefined}
+    <div className="dialog-field amount-field">
+      <label htmlFor={inputId}>{label}</label>
+      <AmountInput
+        id={inputId}
+        state={state}
+        onDigitsChange={changeDigits}
+        onUnitChange={changeUnit}
+        invalid={error !== undefined}
       />
       <span className="field-hint">{t('displayedAs', { amount })}</span>
       {fieldError(error)}
-    </label>
+    </div>
   );
 }
 function fieldError(error: string | undefined) {

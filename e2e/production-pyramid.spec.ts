@@ -86,6 +86,18 @@ test.describe('production browser pyramid', () => {
 
   test('amount unit toggle drives the recorded transaction amount', async ({ browser }) => {
     const owner = await register(browser, 'Unit owner');
+    await owner.page.getByRole('button', { name: /create.*game|створити.*гру/i }).click();
+    // Lobby defaults are whole-unit amounts entered in millions: 15 M start, 2 M for passing GO.
+    await expect(
+      owner.page.getByRole('textbox', { name: /starting balance|стартовий баланс/i }),
+    ).toHaveValue('15');
+    await expect(
+      owner.page.getByText(/^(displayed as|відображається як) \D*15 000 000\D*$/i),
+    ).toBeVisible();
+    await expect(
+      owner.page.getByText(/^(displayed as|відображається як) \D*2 000 000\D*$/i),
+    ).toBeVisible();
+    await owner.page.getByRole('button', { name: /cancel|скасувати/i }).click();
     const gameId = await createLobby(owner.page, 'FAST', 1);
     await startLobby(owner.page);
     const before = await readGameDetails(owner.page, gameId);
@@ -93,18 +105,19 @@ test.describe('production browser pyramid', () => {
     const balanceBefore = balanceOf(before, playerId);
 
     // Full unit names come from aria-label; the short K/M and Т./М. captions are ambiguous.
+    const ones = owner.page.getByRole('button', { name: /^whole units$|^цілі одиниці$/i });
     const thousands = owner.page.getByRole('button', { name: /^thousands$|^тисячі$/i });
     const millions = owner.page.getByRole('button', { name: /^millions$|^мільйони$/i });
     const amountField = owner.page.getByRole('textbox', { name: /amount|сума/i });
 
     await openPayBank(owner.page);
-    await expect(thousands).toHaveAttribute('aria-pressed', 'true');
+    await expect(ones).toHaveAttribute('aria-pressed', 'true');
     await expect(millions).toHaveAttribute('aria-pressed', 'false');
 
     await millions.click();
-    await pressKeypadDigit(owner.page, '1');
-    await expect(amountField).toHaveValue('1');
-    await expect(owner.page.getByText(/^(amount|сума): \D*1 000\D*$/i)).toBeVisible();
+    await pressKeypadDigit(owner.page, '6');
+    await expect(amountField).toHaveValue('6');
+    await expect(owner.page.getByText(/^(amount|сума): \D*6 000 000\D*$/i)).toBeVisible();
 
     await thousands.click();
     await expect(amountField).toHaveValue('');
@@ -113,7 +126,7 @@ test.describe('production browser pyramid', () => {
     ).toBeVisible();
 
     await millions.click();
-    await pressKeypadDigit(owner.page, '1');
+    await pressKeypadDigit(owner.page, '6');
     await owner.page
       .getByRole('button', { name: /review transaction|перевірити транзакцію/i })
       .click();
@@ -121,18 +134,18 @@ test.describe('production browser pyramid', () => {
       .getByRole('button', { name: /confirm transaction|підтвердити транзакцію/i })
       .click();
     await expect(owner.page.getByRole('dialog')).toBeHidden();
-    // The canonical amount is thousands: one million entered must be recorded as 1000, not 1.
+    // Amounts are whole units: six million entered must be recorded as 6 000 000, not 6000.
     await expect
       .poll(async () => balanceOf(await readGameDetails(owner.page, gameId), playerId))
-      .toBe(balanceBefore - 1000);
+      .toBe(balanceBefore - 6_000_000);
     const history = await readPlayerTransactions(owner.page, gameId, playerId);
-    expect(history.data[0]).toMatchObject({ type: 'PLAYER_TO_BANK', amount: 1000 });
+    expect(history.data[0]).toMatchObject({ type: 'PLAYER_TO_BANK', amount: 6_000_000 });
 
     await owner.page.reload();
     await expect(owner.page.getByRole('heading', { name: /load test/i })).toBeVisible();
     await openPayBank(owner.page);
     await expect(millions).toHaveAttribute('aria-pressed', 'true');
-    await expect(thousands).toHaveAttribute('aria-pressed', 'false');
+    await expect(ones).toHaveAttribute('aria-pressed', 'false');
     await owner.context.close();
   });
 });

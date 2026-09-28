@@ -58,18 +58,18 @@ export function writePreferences(preferences: DevicePreferences): void {
   }
 }
 
-export type AmountUnit = 'THOUSANDS' | 'MILLIONS';
+export type AmountUnit = 'ONES' | 'THOUSANDS' | 'MILLIONS';
 
 const amountUnitKey = 'monopoly-bank-amount-unit';
 
 export function readAmountUnit(): AmountUnit {
   try {
     const value = localStorage.getItem(amountUnitKey);
-    if (value === 'THOUSANDS' || value === 'MILLIONS') return value;
+    if (value === 'ONES' || value === 'THOUSANDS' || value === 'MILLIONS') return value;
   } catch {
     /* Storage can be unavailable in privacy modes. */
   }
-  return 'THOUSANDS';
+  return 'ONES';
 }
 
 export function writeAmountUnit(unit: AmountUnit): void {
