@@ -429,8 +429,8 @@
 }
 .amount-unit-toggle {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: calc(var(--control-height-md) + var(--control-height-md) + 6px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: calc(var(--control-height-md) * 3 + 6px);
   min-height: var(--control-height-lg);
   padding: 3px;
   border: 1px solid var(--color-border);

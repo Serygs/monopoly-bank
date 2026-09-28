@@ -7,7 +7,11 @@ export interface AmountInputState {
 
 const maxMoneyInput = 9_999_999_999;
 
-export const AMOUNT_UNIT_FACTOR: Record<AmountUnit, number> = { THOUSANDS: 1, MILLIONS: 1000 };
+export const AMOUNT_UNIT_FACTOR: Record<AmountUnit, number> = {
+  ONES: 1,
+  THOUSANDS: 1_000,
+  MILLIONS: 1_000_000,
+};
 
 export function maxDigitsFor(unit: AmountUnit): number {
   return Math.floor(maxMoneyInput / AMOUNT_UNIT_FACTOR[unit]);
@@ -38,6 +42,18 @@ export function changeAmountUnit(state: AmountInputState, unit: AmountUnit): Amo
   return state.unit === unit ? state : { digits: '', unit };
 }
 
+/** Expresses a canonical amount in the preferred unit when it divides evenly, otherwise in whole units. */
+export function fromCanonicalAmount(canonical: string, preferred: AmountUnit): AmountInputState {
+  if (canonical === '') return { digits: '', unit: preferred };
+  const factor = AMOUNT_UNIT_FACTOR[preferred];
+  const amount = Number(canonical);
+  return amount % factor === 0
+    ? { digits: String(amount / factor), unit: preferred }
+    : { digits: canonical, unit: 'ONES' };
+}
+
 export function syncCanonicalAmount(state: AmountInputState, canonical: string): AmountInputState {
-  return toCanonicalAmount(state) === canonical ? state : { digits: canonical, unit: 'THOUSANDS' };
+  return toCanonicalAmount(state) === canonical
+    ? state
+    : fromCanonicalAmount(canonical, state.unit);
 }

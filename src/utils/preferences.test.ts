@@ -128,12 +128,12 @@ describe('amount unit preference', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('defaults to thousands when nothing is stored', () => {
-    expect(readAmountUnit()).toBe('THOUSANDS');
+  it('defaults to whole units when nothing is stored', () => {
+    expect(readAmountUnit()).toBe('ONES');
   });
-  it('defaults to thousands for an invalid stored value', () => {
+  it('defaults to whole units for an invalid stored value', () => {
     store.set('monopoly-bank-amount-unit', 'BILLIONS');
-    expect(readAmountUnit()).toBe('THOUSANDS');
+    expect(readAmountUnit()).toBe('ONES');
   });
   it('round-trips an amount unit under its own key', () => {
     writeAmountUnit('MILLIONS');
@@ -151,6 +151,6 @@ describe('amount unit preference', () => {
       },
     });
     expect(() => writeAmountUnit('MILLIONS')).not.toThrow();
-    expect(readAmountUnit()).toBe('THOUSANDS');
+    expect(readAmountUnit()).toBe('ONES');
   });
 });
