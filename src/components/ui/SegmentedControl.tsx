@@ -1,6 +1,8 @@
+import { Radio, RadioGroup } from '@headlessui/react';
 import type { ReactNode } from 'react';
 import { Button } from './Button';
 import { cx } from './class-names';
+import { keepEnterInRadio } from './radio-keys';
 
 export interface SegmentedOption<Value extends string> {
   value: Value;
@@ -12,8 +14,8 @@ export interface SegmentedControlProps<Value extends string> {
   value: Value;
   onChange: (value: Value) => void;
   /**
-   * `settings` is the settings-panel segmented track (no group role: its fieldset names it);
-   * `filter` is a labelled `role="group"` row of filter buttons.
+   * `settings` is the settings-panel segmented track (its fieldset legend names the choice);
+   * `filter` is a labelled row of filter buttons.
    */
   variant?: 'settings' | 'filter';
   /** Settings track width; `3` uses the three-column track. */
@@ -24,7 +26,10 @@ export interface SegmentedControlProps<Value extends string> {
   className?: string;
 }
 
-/** Mutually exclusive choice rendered as `aria-pressed` buttons. */
+/**
+ * Mutually exclusive choice on Headless UI `RadioGroup`: one tab stop, arrow keys move and
+ * select, and each option exposes `role="radio"` with `aria-checked`.
+ */
 export function SegmentedControl<Value extends string>({
   options,
   value,
@@ -36,32 +41,39 @@ export function SegmentedControl<Value extends string>({
 }: SegmentedControlProps<Value>) {
   if (variant === 'filter')
     return (
-      <div className={className} role="group" aria-label={label}>
+      <RadioGroup value={value} onChange={onChange} className={className} aria-label={label}>
         {options.map((option) => (
-          <Button
-            className={cx('button-filter', option.value === value && 'active')}
+          <Radio
+            as={Button}
             key={option.value}
-            aria-pressed={option.value === value}
-            onClick={() => onChange(option.value)}
+            value={option.value}
+            className={cx('button-filter', option.value === value && 'active')}
+            onKeyDown={keepEnterInRadio}
           >
             {option.label}
-          </Button>
+          </Radio>
         ))}
-      </div>
+      </RadioGroup>
     );
   return (
-    <div className={cx('settings-segmented', columns === 3 && 'settings-segmented--three')}>
+    <RadioGroup
+      value={value}
+      onChange={onChange}
+      className={cx('settings-segmented', columns === 3 && 'settings-segmented--three')}
+      aria-label={label}
+    >
       {options.map((option) => (
-        <button
-          key={option.value}
+        <Radio
+          as="button"
           type="button"
+          key={option.value}
+          value={option.value}
           className={cx(option.value === value && 'active')}
-          aria-pressed={option.value === value}
-          onClick={() => onChange(option.value)}
+          onKeyDown={keepEnterInRadio}
         >
           {option.label}
-        </button>
+        </Radio>
       ))}
-    </div>
+    </RadioGroup>
   );
 }

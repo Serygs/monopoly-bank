@@ -357,7 +357,7 @@ test.describe('visual and accessibility matrix', () => {
       await mockVisualApi(page);
       await openGame(page, 'en');
       await openSettings(page, 'en');
-      await page.getByRole('button', { name: translate('en', 'ukrainian'), exact: true }).click();
+      await page.getByRole('radio', { name: translate('en', 'ukrainian'), exact: true }).click();
       const panel = page.getByRole('dialog');
       await expect(
         panel.getByRole('heading', { name: translate('uk', 'settings'), exact: true }),
@@ -572,9 +572,10 @@ async function openSettings(page: Page, language: Language, assertAnchor = true)
 
 async function assertSettingsAnchor(page: Page, language: Language): Promise<void> {
   const trigger = page.getByRole('button', { name: translate(language, 'settings'), exact: true });
+  // The dialog role sits on the full-viewport backdrop; the anchored surface is the panel.
   const [triggerBox, panelBox] = await Promise.all([
     trigger.boundingBox(),
-    page.getByRole('dialog').boundingBox(),
+    page.locator('.settings-panel').boundingBox(),
   ]);
   expect(triggerBox).not.toBeNull();
   expect(panelBox).not.toBeNull();
@@ -636,9 +637,9 @@ async function exerciseLiquidGlassSurfaces(
 }
 
 async function assertFunctionalDialog(page: Page): Promise<void> {
-  const dialog = page.getByRole('dialog');
+  const panel = page.locator('.dialog');
   await assertNoHorizontalOverflow(page, '.dialog');
-  const styles = await dialog.evaluate((element) => {
+  const styles = await panel.evaluate((element) => {
     const dialogStyle = getComputedStyle(element);
     const backdropStyle = getComputedStyle(element.parentElement!);
     return {

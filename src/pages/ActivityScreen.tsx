@@ -1,4 +1,5 @@
-import { useEffect, useId, useState, type KeyboardEvent } from 'react';
+import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
+import { Fragment, useEffect, useState } from 'react';
 import type {
   ActivityCursor,
   ActivityPage,
@@ -28,8 +29,6 @@ export function ActivityScreen({
   onClose: () => void;
 }) {
   const { language, locale, t } = useLanguage();
-  const tabIdPrefix = useId();
-  const panelId = useId();
   const [scope, setScope] = useState<ActivityScope>('ALL');
   const [page, setPage] = useState<ActivityPage>({
     transactions: [],
@@ -83,34 +82,64 @@ export function ActivityScreen({
       ? page.transactions
       : mergeTransactions(liveTransactions, page.transactions);
   const items = scope === 'PENDING' ? page.paymentRequests : transactions;
-  const tabId = (value: ActivityScope) => `${tabIdPrefix}-${value.toLowerCase()}`;
-  const selectScope = (nextScope: ActivityScope) => {
-    if (nextScope === scope) return;
+  const selectScope = (index: number) => {
+    const nextScope = activityScopes[index];
+    if (nextScope === undefined || nextScope === scope) return;
     setLoading(true);
     setError(false);
     setScope(nextScope);
   };
-  const moveTabFocus = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    event.preventDefault();
-    const currentIndex = activityScopes.indexOf(scope);
-    const nextIndex =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? activityScopes.length - 1
-          : event.key === 'ArrowRight'
-            ? (currentIndex + 1) % activityScopes.length
-            : (currentIndex - 1 + activityScopes.length) % activityScopes.length;
-    const nextScope = activityScopes[nextIndex];
-    if (nextScope === undefined) return;
-    const nextTab = event.currentTarget.querySelector<HTMLButtonElement>(
-      `[data-activity-scope="${nextScope}"]`,
-    );
-    nextTab?.focus();
-    selectScope(nextScope);
-  };
+  const panel = (
+    <>
+      {error && <Notice tone="error">{t('unableLoadHistory')}</Notice>}
+      <ol className="activity-ledger">
+        {items.map((item) =>
+          'state' in item ? (
+            <PendingRow
+              key={item.id}
+              request={item}
+              players={players}
+              currency={currency}
+              locale={locale}
+            />
+          ) : (
+            <TransactionRow
+              key={item.id}
+              transaction={item}
+              players={players}
+              currency={currency}
+              language={language}
+              locale={locale}
+            />
+          ),
+        )}
+      </ol>
+      {!loading && items.length === 0 && (
+        <p className="muted">{scope === 'PENDING' ? t('noPendingActivity') : t('noActivity')}</p>
+      )}
+      {loading && (
+        <StatPill variant="muted" live>
+          {t('loadingGame')}
+        </StatPill>
+      )}
+      {page.nextCursor !== null && (
+        <Button
+          variant="secondary"
+          className="activity-load-more"
+          disabled={loading}
+          onClick={() => {
+            const cursor = page.nextCursor;
+            if (cursor !== null) void loadMore(cursor);
+          }}
+        >
+          {t('loadMore')}
+        </Button>
+      )}
+    </>
+  );
 
+  // Headless UI renders only the selected panel; the other two stay registered as hidden stubs
+  // so every tab keeps its `aria-controls` target.
   return (
     <Dialog
       title={t('activity')}
@@ -118,91 +147,28 @@ export function ActivityScreen({
       onClose={onClose}
       className="activity-dialog"
     >
-      <div className="activity-sticky">
-        <div
-          className="activity-tabs"
-          role="tablist"
-          aria-label={t('activity')}
-          onKeyDown={moveTabFocus}
-        >
-          {activityScopes.map((value) => {
-            const selected = scope === value;
-            const label =
-              value === 'ALL'
-                ? t('activityAll')
-                : value === 'MINE'
-                  ? t('activityMine')
-                  : t('activityPending');
-            return (
-              <Button
-                id={tabId(value)}
-                data-activity-scope={value}
-                role="tab"
-                aria-selected={selected}
-                aria-controls={panelId}
-                tabIndex={selected ? 0 : -1}
-                variant="quiet"
-                key={value}
-                onClick={() => selectScope(value)}
-              >
-                {label}
-              </Button>
-            );
-          })}
+      <TabGroup as={Fragment} selectedIndex={activityScopes.indexOf(scope)} onChange={selectScope}>
+        <div className="activity-sticky">
+          <TabList className="activity-tabs" aria-label={t('activity')}>
+            {activityScopes.map((value) => (
+              <Tab as={Button} variant="quiet" key={value}>
+                {value === 'ALL'
+                  ? t('activityAll')
+                  : value === 'MINE'
+                    ? t('activityMine')
+                    : t('activityPending')}
+              </Tab>
+            ))}
+          </TabList>
         </div>
-      </div>
-      <div
-        id={panelId}
-        className="activity-scroll"
-        role="tabpanel"
-        aria-labelledby={tabId(scope)}
-        tabIndex={0}
-      >
-        {error && <Notice tone="error">{t('unableLoadHistory')}</Notice>}
-        <ol className="activity-ledger">
-          {items.map((item) =>
-            'state' in item ? (
-              <PendingRow
-                key={item.id}
-                request={item}
-                players={players}
-                currency={currency}
-                locale={locale}
-              />
-            ) : (
-              <TransactionRow
-                key={item.id}
-                transaction={item}
-                players={players}
-                currency={currency}
-                language={language}
-                locale={locale}
-              />
-            ),
-          )}
-        </ol>
-        {!loading && items.length === 0 && (
-          <p className="muted">{scope === 'PENDING' ? t('noPendingActivity') : t('noActivity')}</p>
-        )}
-        {loading && (
-          <StatPill variant="muted" live>
-            {t('loadingGame')}
-          </StatPill>
-        )}
-        {page.nextCursor !== null && (
-          <Button
-            variant="secondary"
-            className="activity-load-more"
-            disabled={loading}
-            onClick={() => {
-              const cursor = page.nextCursor;
-              if (cursor !== null) void loadMore(cursor);
-            }}
-          >
-            {t('loadMore')}
-          </Button>
-        )}
-      </div>
+        <TabPanels as={Fragment}>
+          {activityScopes.map((value) => (
+            <TabPanel key={value} className="activity-scroll">
+              {panel}
+            </TabPanel>
+          ))}
+        </TabPanels>
+      </TabGroup>
     </Dialog>
   );
 }

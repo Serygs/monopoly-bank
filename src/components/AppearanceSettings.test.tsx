@@ -29,8 +29,12 @@ describe('appearance settings', () => {
       expect(screen.getAllByRole('group')).toHaveLength(2);
       expect(
         screen.getAllByRole('button').filter((button) => button.hasAttribute('aria-pressed')),
-      ).toHaveLength(5);
-      expect(screen.getAllByRole('button', { pressed: true }).length).toBeGreaterThan(0);
+      ).toHaveLength(2);
+      expect(screen.getAllByRole('button', { pressed: true })).toHaveLength(1);
+      expect(screen.getAllByRole('radio')).toHaveLength(3);
+      expect(
+        screen.getByRole('radio', { name: translate(language, 'themeDark'), checked: true }),
+      ).toBeInTheDocument();
       expect(container).toHaveTextContent(translate(language, 'themeLight'));
       expect(container).toHaveTextContent(translate(language, 'themeDark'));
       expect(container).toHaveTextContent(translate(language, 'themeSystem'));

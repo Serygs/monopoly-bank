@@ -1,11 +1,5 @@
-import {
-  useId,
-  useRef,
-  useState,
-  type CSSProperties,
-  type FormEvent,
-  type KeyboardEvent,
-} from 'react';
+import { Radio, RadioGroup } from '@headlessui/react';
+import { Fragment, useId, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
@@ -13,6 +7,7 @@ import { AmountInput } from '../components/AmountInput';
 import { useAmountInput } from '../components/amount-input-state';
 import { PageHeader } from '../components/PageHeader';
 import { Button, Field, FieldError, FieldHint, Notice, PageShell, Toolbar } from '../components/ui';
+import { keepEnterInRadio } from '../components/ui/radio-keys';
 import type { Translate } from '../i18n/translations';
 import { formatMoney } from '../utils/money';
 import {
@@ -268,34 +263,14 @@ function ColorPicker({
   onChange: (color: string) => void;
 }) {
   const { t } = useLanguage();
-  const moveColorFocus = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'Home', 'End'].includes(event.key))
-      return;
-    const options = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)'),
-    );
-    if (options.length === 0) return;
-    event.preventDefault();
-    const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement);
-    const nextIndex =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? options.length - 1
-          : event.key === 'ArrowRight' || event.key === 'ArrowDown'
-            ? (currentIndex + 1) % options.length
-            : (currentIndex - 1 + options.length) % options.length;
-    options[nextIndex]?.focus();
-    options[nextIndex]?.click();
-  };
   return (
     <fieldset className="color-picker">
       <legend>{t('color')}</legend>
-      <div
+      <RadioGroup
         className="color-options"
-        role="radiogroup"
         aria-label={t('color')}
-        onKeyDown={moveColorFocus}
+        value={player.color}
+        onChange={onChange}
       >
         {colors.map((color) => {
           const taken = players.some(
@@ -303,23 +278,22 @@ function ColorPicker({
           );
           const selected = player.color === color.value;
           return (
-            <button
-              className={`color-option${selected ? ' selected' : ''}`}
-              type="button"
-              role="radio"
-              key={color.value}
-              style={{ '--player-color': `var(${color.token})` } as CSSProperties}
-              aria-label={t('selectColor', { color: t(color.nameKey) })}
-              aria-checked={selected}
-              tabIndex={selected ? 0 : -1}
-              disabled={taken}
-              onClick={() => onChange(color.value)}
-            >
-              <span aria-hidden="true">{selected ? '✓' : ''}</span>
-            </button>
+            // `as={Fragment}` keeps the native `disabled` the `.color-option:disabled` style needs.
+            <Radio as={Fragment} key={color.value} value={color.value} disabled={taken}>
+              <button
+                className={`color-option${selected ? ' selected' : ''}`}
+                type="button"
+                style={{ '--player-color': `var(${color.token})` } as CSSProperties}
+                aria-label={t('selectColor', { color: t(color.nameKey) })}
+                disabled={taken}
+                onKeyDown={keepEnterInRadio}
+              >
+                <span aria-hidden="true">{selected ? '✓' : ''}</span>
+              </button>
+            </Radio>
           );
         })}
-      </div>
+      </RadioGroup>
     </fieldset>
   );
 }

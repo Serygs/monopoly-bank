@@ -386,12 +386,8 @@
   -webkit-backdrop-filter: blur(8px) saturate(0.9);
 }
 
-:root[data-visual-style='liquid-glass'] .dialog-backdrop {
-  animation: liquid-backdrop-in var(--mb-duration-normal) var(--mb-ease-standard);
-}
 :root[data-visual-style='liquid-glass'] .dialog {
   transform-origin: center;
-  animation: liquid-dialog-in var(--mb-duration-normal) var(--mb-ease-emphasized);
 }
 :root[data-visual-style='liquid-glass'] .dialog:not(.settings-panel) {
   color: var(--mb-color-text-primary);
@@ -587,7 +583,8 @@
 :root[data-visual-style='liquid-glass'] .settings-toggle {
   min-width: 0;
 }
-:root[data-visual-style='liquid-glass'] .settings-toggle input {
+:root[data-visual-style='liquid-glass'] .settings-toggle input,
+:root[data-visual-style='liquid-glass'] .settings-toggle [role='switch'] {
   flex: 0 0 auto;
 }
 
@@ -655,17 +652,6 @@
       39% 97%,
       68% 78%,
       0 0;
-  }
-}
-@keyframes liquid-backdrop-in {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes liquid-dialog-in {
-  from {
-    opacity: 0;
-    transform: translateY(5px) scale(0.99);
   }
 }
 
