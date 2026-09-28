@@ -9,6 +9,14 @@ export default defineConfig(({ mode }) => ({
   // Cloudflare development session in non-interactive CI.
   plugins: mode === 'test' ? [react()] : [react(), cloudflare()],
   test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
     exclude: ['**/node_modules/**', '**/dist/**', '**/test-results/**', 'e2e/**'],
+    // Worker, shared and migration tests run in Node: jsdom replaces globals such as `URL`,
+    // which breaks `new URL('./file.sql', import.meta.url)` in the migration tests.
+    projects: [
+      { extends: true, test: { name: 'dom', include: ['src/**/*.test.{ts,tsx}'] } },
+      { extends: true, test: { name: 'node', environment: 'node', exclude: ['src/**'] } },
+    ],
   },
 }));
