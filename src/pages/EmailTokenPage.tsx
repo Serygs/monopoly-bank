@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { UserProfile } from '../../shared/contracts/api.js';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { Button, Field, Notice, PageShell, StatPill } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 
@@ -36,27 +37,21 @@ export function VerifyEmailPage({
     };
   }, [onVerified, token]);
   return (
-    <main className="page page-narrow auth-page">
-      <section className="banknote-panel auth-card">
-        <h1>{t('verifyEmail')}</h1>
-        {error !== null ? (
-          <p className="notice notice-error" role="alert">
-            {apiErrorMessage(error, t, 'unableAuthenticate')}
-          </p>
-        ) : verified ? (
-          <p className="notice notice-success" role="status">
-            {t('emailVerified')}
-          </p>
-        ) : (
-          <p className="status" role="status">
-            {t('verifyingEmail')}
-          </p>
-        )}
-        <button className="button button-secondary" type="button" onClick={onBack}>
-          {t('signIn')}
-        </button>
-      </section>
-    </main>
+    <PageShell variant="auth" card="banknote">
+      <h1>{t('verifyEmail')}</h1>
+      {error !== null ? (
+        <Notice tone="error">{apiErrorMessage(error, t, 'unableAuthenticate')}</Notice>
+      ) : verified ? (
+        <Notice tone="success">{t('emailVerified')}</Notice>
+      ) : (
+        <StatPill variant="status" live>
+          {t('verifyingEmail')}
+        </StatPill>
+      )}
+      <Button variant="secondary" onClick={onBack}>
+        {t('signIn')}
+      </Button>
+    </PageShell>
   );
 }
 
@@ -85,44 +80,39 @@ export function PasswordResetPage({ token, onBack }: { token: string; onBack: ()
     }
   };
   return (
-    <main className="page page-narrow auth-page">
-      <section className="banknote-panel auth-card">
-        <h1>{t('passwordReset')}</h1>
-        {changed ? (
-          <p className="notice notice-success" role="status">
-            {t('passwordChanged')}
-          </p>
-        ) : (
-          <form className="game-form auth-form" onSubmit={(event) => void submit(event)}>
-            <label>
-              {t('newPassword')}
-              <input
-                type="password"
-                minLength={6}
-                maxLength={256}
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-            </label>
-            {error !== null && (
-              <p className="notice notice-error" role="alert">
-                {error instanceof Error && error.message === t('accountPasswordMinLength')
-                  ? error.message
-                  : apiErrorMessage(error, t, 'unableAuthenticate')}
-              </p>
-            )}
-            <button className="button button-primary" disabled={busy || token === ''}>
-              {busy ? t('pleaseWait') : t('passwordReset')}
-            </button>
-          </form>
-        )}
-        <button className="button button-quiet" type="button" onClick={onBack}>
-          {t('signIn')}
-        </button>
-      </section>
-    </main>
+    <PageShell variant="auth" card="banknote">
+      <h1>{t('passwordReset')}</h1>
+      {changed ? (
+        <Notice tone="success">{t('passwordChanged')}</Notice>
+      ) : (
+        <form className="game-form auth-form" onSubmit={(event) => void submit(event)}>
+          <Field label={t('newPassword')}>
+            <input
+              type="password"
+              minLength={6}
+              maxLength={256}
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </Field>
+          {error !== null && (
+            <Notice tone="error">
+              {error instanceof Error && error.message === t('accountPasswordMinLength')
+                ? error.message
+                : apiErrorMessage(error, t, 'unableAuthenticate')}
+            </Notice>
+          )}
+          <Button variant="primary" type="submit" disabled={busy || token === ''}>
+            {busy ? t('pleaseWait') : t('passwordReset')}
+          </Button>
+        </form>
+      )}
+      <Button variant="quiet" onClick={onBack}>
+        {t('signIn')}
+      </Button>
+    </PageShell>
   );
 }
 
@@ -146,40 +136,33 @@ export function PasswordRecoveryPage({ onBack }: { onBack: () => void }) {
     }
   };
   return (
-    <main className="page page-narrow auth-page">
-      <section className="banknote-panel auth-card">
-        <h1>{t('passwordReset')}</h1>
-        <p className="lede">{t('passwordResetDescription')}</p>
-        {requested ? (
-          <p className="notice notice-success" role="status">
-            {t('passwordResetRequested')}
-          </p>
-        ) : (
-          <form className="game-form auth-form" onSubmit={(event) => void submit(event)}>
-            <label>
-              {t('email')}
-              <input
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-            </label>
-            {error !== null && (
-              <p className="notice notice-error" role="alert">
-                {apiErrorMessage(error, t, 'unableAuthenticate')}
-              </p>
-            )}
-            <button className="button button-primary" disabled={busy}>
-              {busy ? t('pleaseWait') : t('passwordReset')}
-            </button>
-          </form>
-        )}
-        <button className="button button-quiet" type="button" onClick={onBack}>
-          {t('signIn')}
-        </button>
-      </section>
-    </main>
+    <PageShell variant="auth" card="banknote">
+      <h1>{t('passwordReset')}</h1>
+      <p className="lede">{t('passwordResetDescription')}</p>
+      {requested ? (
+        <Notice tone="success">{t('passwordResetRequested')}</Notice>
+      ) : (
+        <form className="game-form auth-form" onSubmit={(event) => void submit(event)}>
+          <Field label={t('email')}>
+            <input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </Field>
+          {error !== null && (
+            <Notice tone="error">{apiErrorMessage(error, t, 'unableAuthenticate')}</Notice>
+          )}
+          <Button variant="primary" type="submit" disabled={busy}>
+            {busy ? t('pleaseWait') : t('passwordReset')}
+          </Button>
+        </form>
+      )}
+      <Button variant="quiet" onClick={onBack}>
+        {t('signIn')}
+      </Button>
+    </PageShell>
   );
 }

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { UserProfile } from '../../shared/contracts/api.js';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { AvatarPicker } from '../components/AvatarPicker';
+import { Button, Field, Notice, PageShell } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 
@@ -61,96 +62,86 @@ export function JoinGamePage({
   };
 
   return (
-    <main className="page page-narrow auth-page">
-      <section className="auth-card join-card">
-        <button className="button button-quiet auth-back" type="button" onClick={onBack}>
-          ← {t('savedGames')}
-        </button>
-        <div className="auth-card-heading">
-          <span className="auth-card-mark" aria-hidden="true">
-            MB
-          </span>
-          <div>
-            <p className="eyebrow">{t('lobby')}</p>
-            <h1>{guest ? t('joinAsGuest') : t('joinGame')}</h1>
-          </div>
+    <PageShell variant="auth" card="join">
+      <Button variant="quiet" className="auth-back" onClick={onBack}>
+        ← {t('savedGames')}
+      </Button>
+      <div className="auth-card-heading">
+        <span className="auth-card-mark" aria-hidden="true">
+          MB
+        </span>
+        <div>
+          <p className="eyebrow">{t('lobby')}</p>
+          <h1>{guest ? t('joinAsGuest') : t('joinGame')}</h1>
         </div>
-        <p className="lede">
-          {guest
-            ? t('guestJoinDescription')
-            : hasInvitation
-              ? t('secureInviteDescription')
-              : t('joinGameDescription')}
-        </p>
-        <form className="game-form auth-form" onSubmit={(event) => void join(event)}>
-          {guest && (
-            <>
-              <label>
-                {t('nickname')}
-                <input
-                  value={nickname}
-                  minLength={2}
-                  maxLength={40}
-                  autoComplete="nickname"
-                  placeholder={t('yourNickname')}
-                  onChange={(event) => setNickname(event.target.value)}
-                  required
-                />
-              </label>
-              <AvatarPicker
-                avatar={avatar}
-                onChange={setAvatar}
-                label={t('avatar')}
-                uploadLabel={t('avatarUpload')}
-                uploadHint={t('avatarUploadHint')}
-                invalidImageMessage={t('avatarUploadError')}
+      </div>
+      <p className="lede">
+        {guest
+          ? t('guestJoinDescription')
+          : hasInvitation
+            ? t('secureInviteDescription')
+            : t('joinGameDescription')}
+      </p>
+      <form className="game-form auth-form" onSubmit={(event) => void join(event)}>
+        {guest && (
+          <>
+            <Field label={t('nickname')}>
+              <input
+                value={nickname}
+                minLength={2}
+                maxLength={40}
+                autoComplete="nickname"
+                placeholder={t('yourNickname')}
+                onChange={(event) => setNickname(event.target.value)}
+                required
               />
-            </>
-          )}
-          {hasInvitation ? (
-            <p className="notice notice-success" role="status">
-              {t('secureInviteReady')}
-            </p>
-          ) : (
-            <>
-              <label>
-                {t('invitationCode')}
-                <input
-                  value={joinCode}
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  minLength={6}
-                  maxLength={12}
-                  placeholder={t('invitationCodeExample')}
-                  onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
-                  required
-                />
-              </label>
-              <label>
-                {t('optionalPassword')}
-                <input
-                  type="password"
-                  value={gameAccessPassword}
-                  minLength={4}
-                  maxLength={256}
-                  autoComplete="current-password"
-                  placeholder={t('tablePassword')}
-                  onChange={(event) => setGameAccessPassword(event.target.value)}
-                />
-                <span className="field-hint">{t('gamePasswordMinLength')}</span>
-              </label>
-            </>
-          )}
-          {error !== null && (
-            <p className="notice notice-error" role="alert">
-              {apiErrorMessage(error, t, 'unableJoinGame')}
-            </p>
-          )}
-          <button className="button button-primary" disabled={submitting}>
-            {submitting ? t('joining') : guest ? t('joinAsGuest') : t('joinGame')}
-          </button>
-        </form>
-      </section>
-    </main>
+            </Field>
+            <AvatarPicker
+              avatar={avatar}
+              onChange={setAvatar}
+              label={t('avatar')}
+              uploadLabel={t('avatarUpload')}
+              uploadHint={t('avatarUploadHint')}
+              invalidImageMessage={t('avatarUploadError')}
+            />
+          </>
+        )}
+        {hasInvitation ? (
+          <Notice tone="success">{t('secureInviteReady')}</Notice>
+        ) : (
+          <>
+            <Field label={t('invitationCode')}>
+              <input
+                value={joinCode}
+                autoCapitalize="characters"
+                autoComplete="off"
+                minLength={6}
+                maxLength={12}
+                placeholder={t('invitationCodeExample')}
+                onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+                required
+              />
+            </Field>
+            <Field label={t('optionalPassword')} hint={t('gamePasswordMinLength')}>
+              <input
+                type="password"
+                value={gameAccessPassword}
+                minLength={4}
+                maxLength={256}
+                autoComplete="current-password"
+                placeholder={t('tablePassword')}
+                onChange={(event) => setGameAccessPassword(event.target.value)}
+              />
+            </Field>
+          </>
+        )}
+        {error !== null && (
+          <Notice tone="error">{apiErrorMessage(error, t, 'unableJoinGame')}</Notice>
+        )}
+        <Button variant="primary" type="submit" disabled={submitting}>
+          {submitting ? t('joining') : guest ? t('joinAsGuest') : t('joinGame')}
+        </Button>
+      </form>
+    </PageShell>
   );
 }

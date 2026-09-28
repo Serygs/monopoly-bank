@@ -1,6 +1,7 @@
 import { visualStyles } from '../appearance/visual-styles';
 import { useLanguage } from '../i18n/language-context';
 import { isColorMode, type DevicePreferences } from '../utils/preferences';
+import { SegmentedControl } from './ui';
 
 type AppearancePreferences = Pick<DevicePreferences, 'visualStyle' | 'colorMode'>;
 
@@ -36,21 +37,19 @@ export function AppearanceSettings({
       </fieldset>
       <fieldset className="settings-options">
         <legend>{t('appearance')}</legend>
-        <div className="settings-segmented settings-segmented--three">
-          {(['light', 'dark', 'system'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={preferences.colorMode === mode ? 'active' : ''}
-              aria-pressed={preferences.colorMode === mode}
-              onClick={() => {
-                if (isColorMode(mode)) onChange({ colorMode: mode });
-              }}
-            >
-              {t(mode === 'light' ? 'themeLight' : mode === 'dark' ? 'themeDark' : 'themeSystem')}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          columns={3}
+          options={(['light', 'dark', 'system'] as const).map((mode) => ({
+            value: mode,
+            label: t(
+              mode === 'light' ? 'themeLight' : mode === 'dark' ? 'themeDark' : 'themeSystem',
+            ),
+          }))}
+          value={preferences.colorMode}
+          onChange={(mode) => {
+            if (isColorMode(mode)) onChange({ colorMode: mode });
+          }}
+        />
       </fieldset>
     </>
   );

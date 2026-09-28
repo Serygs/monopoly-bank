@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { rollDice, type DiceRoll } from '../utils/dice';
 import { useLanguage } from '../i18n/language-context';
+import { Button } from './ui';
 
 const initialRoll: DiceRoll = { first: 1, second: 1, total: 2, isDouble: true };
 
@@ -38,14 +39,9 @@ export function DiceRoller() {
         <strong>{t('totalDice', { total: roll.total })}</strong>
         {roll.isDouble && <span className="double">{t('double')}</span>}
       </div>
-      <button
-        className="button button-primary dice-button"
-        type="button"
-        disabled={rolling}
-        onClick={rollDiceNow}
-      >
+      <Button variant="primary" className="dice-button" disabled={rolling} onClick={rollDiceNow}>
         {rolling ? t('rolling') : t('rollDice')}
-      </button>
+      </Button>
     </section>
   );
 }

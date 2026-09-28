@@ -9,7 +9,7 @@ import type { Currency, Player, Transaction } from '../../shared/types/monopoly'
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Dialog } from '../components/Dialog';
 import { useLanguage } from '../i18n/language-context';
-import { formatMoney } from '../utils/money';
+import { Button, MoneyValue, Notice, Row, StatPill } from '../components/ui';
 import { transactionAmount, transactionDescription } from '../utils/transaction-history';
 
 const activityScopes: readonly ActivityScope[] = ['ALL', 'MINE', 'PENDING'];
@@ -134,20 +134,19 @@ export function ActivityScreen({
                   ? t('activityMine')
                   : t('activityPending');
             return (
-              <button
+              <Button
                 id={tabId(value)}
                 data-activity-scope={value}
-                type="button"
                 role="tab"
                 aria-selected={selected}
                 aria-controls={panelId}
                 tabIndex={selected ? 0 : -1}
-                className="button button-quiet"
+                variant="quiet"
                 key={value}
                 onClick={() => selectScope(value)}
               >
                 {label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -159,11 +158,7 @@ export function ActivityScreen({
         aria-labelledby={tabId(scope)}
         tabIndex={0}
       >
-        {error && (
-          <p className="notice notice-error" role="alert">
-            {t('unableLoadHistory')}
-          </p>
-        )}
+        {error && <Notice tone="error">{t('unableLoadHistory')}</Notice>}
         <ol className="activity-ledger">
           {items.map((item) =>
             'state' in item ? (
@@ -176,15 +171,13 @@ export function ActivityScreen({
               />
             ) : (
               <li key={item.id}>
-                <div className="activity-transaction">
-                  <strong>{transactionDescription(item, players, language)}</strong>
-                  <time>
-                    {new Intl.DateTimeFormat(locale, {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    }).format(new Date(item.createdAt))}
-                  </time>
-                </div>
+                <Row
+                  title={transactionDescription(item, players, language)}
+                  timestamp={new Intl.DateTimeFormat(locale, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  }).format(new Date(item.createdAt))}
+                />
                 <span>{transactionAmount(item, currency, language)}</span>
                 {item.comment !== null && <em>{item.comment}</em>}
               </li>
@@ -195,14 +188,14 @@ export function ActivityScreen({
           <p className="muted">{scope === 'PENDING' ? t('noPendingActivity') : t('noActivity')}</p>
         )}
         {loading && (
-          <p role="status" className="muted">
+          <StatPill variant="muted" live>
             {t('loadingGame')}
-          </p>
+          </StatPill>
         )}
         {page.nextCursor !== null && (
-          <button
-            className="button button-secondary activity-load-more"
-            type="button"
+          <Button
+            variant="secondary"
+            className="activity-load-more"
             disabled={loading}
             onClick={() => {
               const cursor = page.nextCursor;
@@ -210,7 +203,7 @@ export function ActivityScreen({
             }}
           >
             {t('loadMore')}
-          </button>
+          </Button>
         )}
       </div>
     </Dialog>
@@ -235,17 +228,20 @@ function PendingRow({
     players.find((player) => player.id === request.approverPlayerId)?.name ?? t('selectedPlayer');
   return (
     <li className="activity-pending">
-      <div className="activity-transaction">
-        <strong>
-          {creator} → {approver}
-        </strong>
-        <time>
-          {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-            new Date(request.createdAt),
-          )}
-        </time>
-      </div>
-      <span>{formatMoney(request.amount, currency)}</span>
+      <Row
+        title={
+          <>
+            {creator} → {approver}
+          </>
+        }
+        timestamp={new Intl.DateTimeFormat(locale, {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }).format(new Date(request.createdAt))}
+      />
+      <span>
+        <MoneyValue amount={request.amount} currency={currency} />
+      </span>
       <small className="activity-status">{t('pendingPayment')}</small>
       {request.comment !== null && <em>{request.comment}</em>}
     </li>

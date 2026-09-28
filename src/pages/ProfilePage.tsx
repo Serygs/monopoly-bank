@@ -3,6 +3,7 @@ import type { UserProfile } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Avatar, AvatarPicker } from '../components/AvatarPicker';
 import { PageHeader } from '../components/PageHeader';
+import { Button, Field, Notice, PageShell } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { EMAIL_FEATURES_ENABLED } from '../utils/email-features';
@@ -37,15 +38,15 @@ export function ProfilePage({
     }
   };
   return (
-    <main className="page profile-page">
+    <PageShell className="profile-page">
       <PageHeader
         eyebrow={t('playerProfile')}
         title={t('playerProfile')}
         description={t('profileDescription')}
         backAction={
-          <button className="button button-quiet" type="button" onClick={onBack}>
+          <Button variant="quiet" onClick={onBack}>
             {t('savedGames')}
-          </button>
+          </Button>
         }
       />
       <div className="profile-layout">
@@ -80,8 +81,7 @@ export function ProfilePage({
         </section>
         <section className="profile-editor">
           <form className="game-form profile-form" onSubmit={(event) => void save(event)}>
-            <label>
-              {t('nickname')}
+            <Field label={t('nickname')}>
               <input
                 value={nickname}
                 minLength={2}
@@ -89,7 +89,7 @@ export function ProfilePage({
                 onChange={(event) => setNickname(event.target.value)}
                 required
               />
-            </label>
+            </Field>
             <AvatarPicker
               avatar={avatar}
               onChange={setAvatar}
@@ -100,18 +100,12 @@ export function ProfilePage({
               allowUpload
             />
             {error !== null && (
-              <p className="notice notice-error" role="alert">
-                {apiErrorMessage(error, t, 'unableUpdateProfile')}
-              </p>
+              <Notice tone="error">{apiErrorMessage(error, t, 'unableUpdateProfile')}</Notice>
             )}
-            {saved && (
-              <p className="notice notice-success" role="status">
-                {t('profileUpdated')}
-              </p>
-            )}
-            <button className="button button-primary profile-save" disabled={saving}>
+            {saved && <Notice tone="success">{t('profileUpdated')}</Notice>}
+            <Button variant="primary" type="submit" className="profile-save" disabled={saving}>
               {saving ? t('savingProfile') : t('saveProfile')}
-            </button>
+            </Button>
           </form>
           {EMAIL_FEATURES_ENABLED &&
             (profile.accountType === 'GUEST' ? (
@@ -123,7 +117,7 @@ export function ProfilePage({
             ))}
         </section>
       </div>
-    </main>
+    </PageShell>
   );
 }
 
@@ -149,8 +143,7 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
     <form className="game-form profile-form" onSubmit={(event) => void upgrade(event)}>
       <h2>{t('secureGuestAccount')}</h2>
       <p className="muted">{t('secureGuestDescription')}</p>
-      <label>
-        {t('email')}
+      <Field label={t('email')}>
         <input
           type="email"
           autoComplete="email"
@@ -158,9 +151,8 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
           onChange={(event) => setEmail(event.target.value)}
           required
         />
-      </label>
-      <label>
-        {t('password')}
+      </Field>
+      <Field label={t('password')}>
         <input
           type="password"
           minLength={6}
@@ -170,15 +162,13 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
           onChange={(event) => setPassword(event.target.value)}
           required
         />
-      </label>
+      </Field>
       {error !== null && (
-        <p className="notice notice-error" role="alert">
-          {apiErrorMessage(error, t, 'unableAuthenticate')}
-        </p>
+        <Notice tone="error">{apiErrorMessage(error, t, 'unableAuthenticate')}</Notice>
       )}
-      <button className="button button-primary" disabled={busy}>
+      <Button variant="primary" type="submit" disabled={busy}>
         {busy ? t('pleaseWait') : t('secureGuestAccount')}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -203,21 +193,14 @@ function VerificationNotice() {
   };
   return (
     <section className="verification-notice">
-      <div className="notice notice-success" role="status">
+      <Notice tone="success" as="div">
         <p>{sent ? t('verificationSent') : t('verificationPending')}</p>
-        <button
-          className="button button-secondary"
-          type="button"
-          disabled={busy}
-          onClick={() => void resend()}
-        >
+        <Button variant="secondary" disabled={busy} onClick={() => void resend()}>
           {busy ? t('pleaseWait') : t('resendVerification')}
-        </button>
-      </div>
+        </Button>
+      </Notice>
       {error !== null && (
-        <p className="notice notice-error" role="alert">
-          {apiErrorMessage(error, t, 'errorEmailDelivery')}
-        </p>
+        <Notice tone="error">{apiErrorMessage(error, t, 'errorEmailDelivery')}</Notice>
       )}
     </section>
   );
@@ -244,8 +227,7 @@ function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void 
     <form className="game-form profile-form" onSubmit={(event) => void add(event)}>
       <h2>{t('addAccountEmail')}</h2>
       <p className="muted">{t('addAccountEmailDescription')}</p>
-      <label>
-        {t('email')}
+      <Field label={t('email')}>
         <input
           type="email"
           autoComplete="email"
@@ -253,15 +235,13 @@ function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void 
           onChange={(event) => setEmail(event.target.value)}
           required
         />
-      </label>
+      </Field>
       {error !== null && (
-        <p className="notice notice-error" role="alert">
-          {apiErrorMessage(error, t, 'unableAuthenticate')}
-        </p>
+        <Notice tone="error">{apiErrorMessage(error, t, 'unableAuthenticate')}</Notice>
       )}
-      <button className="button button-primary" disabled={busy}>
+      <Button variant="primary" type="submit" disabled={busy}>
         {busy ? t('pleaseWait') : t('addAccountEmail')}
-      </button>
+      </Button>
     </form>
   );
 }

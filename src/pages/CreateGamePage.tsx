@@ -12,6 +12,7 @@ import { useLanguage } from '../i18n/language-context';
 import { AmountInput } from '../components/AmountInput';
 import { useAmountInput } from '../components/amount-input-state';
 import { PageHeader } from '../components/PageHeader';
+import { Button, Field, FieldError, FieldHint, Notice, PageShell, Toolbar } from '../components/ui';
 import type { Translate } from '../i18n/translations';
 import { formatMoney } from '../utils/money';
 import {
@@ -95,15 +96,15 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
     }
   };
   return (
-    <main className="page create-game-page">
+    <PageShell className="create-game-page">
       <PageHeader
         eyebrow={t('newBank')}
         title={t('createLobby')}
         description={t('lobbyLede')}
         backAction={
-          <button className="button button-quiet" type="button" onClick={onCancel}>
+          <Button variant="quiet" onClick={onCancel}>
             {t('cancel')}
-          </button>
+          </Button>
         }
       />
       <form
@@ -114,17 +115,14 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
         <fieldset className="form-section create-section-basics">
           <legend>{t('gameBasics')}</legend>
           <div className="form-section-fields">
-            <label>
-              {t('gameName')}
+            <Field label={t('gameName')} error={errors.name}>
               <input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 aria-invalid={errors.name !== undefined}
               />
-              {fieldError(errors.name)}
-            </label>
-            <label>
-              {t('currency')}
+            </Field>
+            <Field label={t('currency')}>
               <select
                 value={currency}
                 onChange={(event) => setCurrency(event.target.value as SelectableCurrency)}
@@ -135,14 +133,13 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                   </option>
                 ))}
               </select>
-            </label>
+            </Field>
           </div>
         </fieldset>
         <fieldset className="form-section create-section-rules">
           <legend>{t('bankingRules')}</legend>
           <div className="form-section-fields">
-            <label>
-              {t('paymentMode')}
+            <Field label={t('paymentMode')} hint={t('paymentModeLocked')}>
               <select
                 value={paymentMode}
                 onChange={(event) => setPaymentMode(event.target.value as PaymentMode)}
@@ -150,10 +147,12 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                 <option value="FAST">{t('paymentModeFast')}</option>
                 <option value="CONFIRMATION">{t('paymentModeConfirmation')}</option>
               </select>
-              <span className="field-hint">{t('paymentModeLocked')}</span>
-            </label>
-            <label>
-              {t('optionalPassword')}
+            </Field>
+            <Field
+              label={t('optionalPassword')}
+              hint={t('optionalPasswordHint')}
+              error={errors.gameAccessPassword}
+            >
               <input
                 type="password"
                 autoComplete="new-password"
@@ -161,9 +160,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                 onChange={(event) => setGameAccessPassword(event.target.value)}
                 aria-invalid={errors.gameAccessPassword !== undefined}
               />
-              <span className="field-hint">{t('optionalPasswordHint')}</span>
-              {fieldError(errors.gameAccessPassword)}
-            </label>
+            </Field>
             <div className="field-grid">
               <MoneyField
                 label={t('startingBalance')}
@@ -187,15 +184,16 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
           <div className="player-list">
             {players.slice(0, 1).map((player) => (
               <section className="player-editor" key={player.key}>
-                <label>
-                  {t('playerName', { number: 1 })}
+                <Field
+                  label={t('playerName', { number: 1 })}
+                  error={errors[`player-${player.key}`]}
+                >
                   <input
                     value={player.name}
                     onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
                     aria-invalid={errors[`player-${player.key}`] !== undefined}
                   />
-                  {fieldError(errors[`player-${player.key}`])}
-                </label>
+                </Field>
                 <ColorPicker
                   player={player}
                   players={players}
@@ -208,59 +206,55 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
         <fieldset className="form-section create-section-players">
           <legend>{t('localPlayers')}</legend>
           <div className="section-title">
-            <p className="field-hint">{t('localPlayersHint')}</p>
-            <button
-              className="button button-secondary"
-              type="button"
-              onClick={addPlayer}
-              disabled={players.length >= 6}
-            >
+            <FieldHint as="p">{t('localPlayersHint')}</FieldHint>
+            <Button variant="secondary" onClick={addPlayer} disabled={players.length >= 6}>
               {t('addPlayer')}
-            </button>
+            </Button>
           </div>
-          {fieldError(errors.players)}
+          {errors.players !== undefined && <FieldError>{errors.players}</FieldError>}
           <div className="player-list">
             {players.slice(1).map((player, index) => (
               <section className="player-editor" key={player.key}>
-                <label>
-                  {t('playerName', { number: index + 2 })}
+                <Field
+                  label={t('playerName', { number: index + 2 })}
+                  error={errors[`player-${player.key}`]}
+                >
                   <input
                     value={player.name}
                     onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
                     aria-invalid={errors[`player-${player.key}`] !== undefined}
                   />
-                  {fieldError(errors[`player-${player.key}`])}
-                </label>
+                </Field>
                 <ColorPicker
                   player={player}
                   players={players}
                   onChange={(color) => updatePlayer(player.key, { color })}
                 />
-                <button
-                  className="button button-quiet remove-player"
-                  type="button"
+                <Button
+                  variant="quiet"
+                  className="remove-player"
                   onClick={() =>
                     setPlayers(players.filter((candidate) => candidate.key !== player.key))
                   }
                 >
                   {t('remove')}
-                </button>
+                </Button>
               </section>
             ))}
           </div>
         </fieldset>
         {submitError !== null && (
-          <p className="notice notice-error create-form-status" role="alert">
+          <Notice tone="error" className="create-form-status">
             {apiErrorMessage(submitError, t, 'unableCreateGame')}
-          </p>
+          </Notice>
         )}
-        <div className="form-actions create-form-actions">
-          <button className="button button-primary" type="submit" disabled={submitting}>
+        <Toolbar variant="form" className="create-form-actions">
+          <Button variant="primary" type="submit" disabled={submitting}>
             {submitting ? t('startingLobby') : t('createLobby')}
-          </button>
-        </div>
+          </Button>
+        </Toolbar>
       </form>
-    </main>
+    </PageShell>
   );
 }
 
@@ -357,13 +351,10 @@ function MoneyField({
         onUnitChange={changeUnit}
         invalid={error !== undefined}
       />
-      <span className="field-hint">{t('displayedAs', { amount })}</span>
-      {fieldError(error)}
+      <FieldHint>{t('displayedAs', { amount })}</FieldHint>
+      {error !== undefined && <FieldError>{error}</FieldError>}
     </div>
   );
-}
-function fieldError(error: string | undefined) {
-  return error === undefined ? null : <span className="field-error">{error}</span>;
 }
 function isPositive(value: string) {
   const number = Number(value);

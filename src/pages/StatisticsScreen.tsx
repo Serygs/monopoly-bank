@@ -1,6 +1,7 @@
 import type { LedgerStatistics } from '../../shared/contracts/api';
 import type { Currency, Player } from '../../shared/types/monopoly';
 import { Dialog } from '../components/Dialog';
+import { MoneyValue } from '../components/ui';
 import { useLanguage } from '../i18n/language-context';
 import { formatMoney } from '../utils/money';
 export function StatisticsScreen({
@@ -39,7 +40,7 @@ export function StatisticsScreen({
             <div className="cash-leader">
               <strong title={leader.name}>{leader.name}</strong>
               <span>
-                {t('cashLeader')} · {formatMoney(leader.balance, currency)}
+                {t('cashLeader')} · <MoneyValue amount={leader.balance} currency={currency} />
               </span>
             </div>
           )}
@@ -62,10 +63,13 @@ export function StatisticsScreen({
             {summary.cashLeaderboard.map((entry) => (
               <li key={entry.player.id} style={{ borderInlineStartColor: entry.player.color }}>
                 <strong title={entry.player.name}>{entry.player.name}</strong>
-                <span>{formatMoney(entry.player.balance, currency)}</span>
+                <span>
+                  <MoneyValue amount={entry.player.balance} currency={currency} />
+                </span>
                 <small>
-                  {t('sent')}: {formatMoney(entry.sent, currency)} · {t('received')}:{' '}
-                  {formatMoney(entry.received, currency)} · {t('passGoCount')}: {entry.passGoCount}
+                  {t('sent')}: <MoneyValue amount={entry.sent} currency={currency} /> ·{' '}
+                  {t('received')}: <MoneyValue amount={entry.received} currency={currency} /> ·{' '}
+                  {t('passGoCount')}: {entry.passGoCount}
                 </small>
               </li>
             ))}
