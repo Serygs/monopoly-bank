@@ -1,6 +1,7 @@
 import { useId, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { AVATAR_OPTIONS, isUploadedAvatar } from '../utils/avatar';
 import { cropAvatar } from '../utils/avatar-image';
+import { FieldError, FieldHint } from './ui';
 
 export function Avatar({
   avatar,
@@ -114,13 +115,13 @@ export function AvatarPicker({
           <label className="button button-secondary" htmlFor={fileInputId}>
             {uploadLabel}
           </label>
-          <span className="field-hint">{uploadHint}</span>
+          <FieldHint>{uploadHint}</FieldHint>
         </div>
       )}
       {uploadError !== null && (
-        <p className="field-error" role="alert">
+        <FieldError as="p" announce>
           {uploadError}
-        </p>
+        </FieldError>
       )}
     </fieldset>
   );

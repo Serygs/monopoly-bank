@@ -6,6 +6,7 @@ import { readAmountUnit, writeAmountUnit } from '../utils/preferences';
 import { AmountInput } from './AmountInput';
 import { AMOUNT_UNIT_LABELS, useAmountInput } from './amount-input-state';
 import { NumericKeypad } from './NumericKeypad';
+import { FieldNote, MoneyValue } from './ui';
 
 const standardAmounts = [100_000, 200_000, 500_000, 1_000_000, 2_000_000] as const;
 
@@ -49,7 +50,7 @@ export function AmountSelector({
             onQuickAmountSelect?.(amount);
           }}
         >
-          {formatMoney(amount, currency)}
+          <MoneyValue amount={amount} currency={currency} />
         </button>
         {onToggleFavorite !== undefined && (
           <button
@@ -75,7 +76,7 @@ export function AmountSelector({
           {unitNote !== undefined && (
             <>
               {' '}
-              <span className="field-note">{t(unitNote)}</span>
+              <FieldNote>{t(unitNote)}</FieldNote>
             </>
           )}
         </label>

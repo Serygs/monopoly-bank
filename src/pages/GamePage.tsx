@@ -30,6 +30,21 @@ import { Dialog } from '../components/Dialog';
 import { PageHeader } from '../components/PageHeader';
 import { AmountSelector } from '../components/AmountSelector';
 import { TableCalculator } from '../components/TableCalculator';
+import {
+  Button,
+  Card,
+  DialogActions,
+  DialogBody,
+  Field,
+  FieldError,
+  FieldHint,
+  MoneyValue,
+  Notice,
+  PageShell,
+  StatPill,
+  Toggle,
+  Toolbar,
+} from '../components/ui';
 import type { DevicePreferences } from '../utils/preferences';
 import { playPaymentFeedback, vibrate } from '../utils/feedback';
 import { apiErrorMessage } from '../i18n/api-errors';
@@ -239,23 +254,23 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
 
   if (error !== null) {
     return (
-      <main className="page">
-        <section className="notice notice-error" role="alert">
+      <PageShell>
+        <Notice tone="error" as="section">
           <p>{apiErrorMessage(error, t, 'unableLoadGame')}</p>
-          <button className="button button-secondary" type="button" onClick={onBack}>
+          <Button variant="secondary" onClick={onBack}>
             {t('savedGames')}
-          </button>
-        </section>
-      </main>
+          </Button>
+        </Notice>
+      </PageShell>
     );
   }
   if (details === null) {
     return (
-      <main className="page">
-        <p className="status" role="status">
+      <PageShell>
+        <StatPill variant="status" live>
           {t('loadingGame')}
-        </p>
-      </main>
+        </StatPill>
+      </PageShell>
     );
   }
   const controlledWallets = details.controlledWallets ?? [];
@@ -270,7 +285,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const canMutate = details.game.status === 'ACTIVE' && !offline;
 
   return (
-    <main className="page game-page">
+    <PageShell className="game-page">
       <PageHeader
         className="game-heading"
         eyebrow={t(gameStatusTranslationKey(details.game.status))}
@@ -278,28 +293,24 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         description={
           <span className="game-pass-go">
             <span>{t('passGoRewardLabel')}:</span>
-            <strong>{formatMoney(details.game.passGoReward, details.game.currency)}</strong>
+            <strong>
+              <MoneyValue amount={details.game.passGoReward} currency={details.game.currency} />
+            </strong>
           </span>
         }
         backAction={
-          <button className="button button-quiet game-back-link" type="button" onClick={onBack}>
+          <Button variant="quiet" className="game-back-link" onClick={onBack}>
             <span aria-hidden="true">←</span>
             {t('savedGames')}
-          </button>
+          </Button>
         }
         actions={
-          <div className="game-page-actions">
-            <button
-              className="button button-secondary"
-              type="button"
-              disabled={offline}
-              onClick={() => setActivityOpen(true)}
-            >
+          <Toolbar variant="game-page">
+            <Button variant="secondary" disabled={offline} onClick={() => setActivityOpen(true)}>
               {t('activity')}
-            </button>
-            <button
-              className="button button-secondary"
-              type="button"
+            </Button>
+            <Button
+              variant="secondary"
               disabled={offline}
               onClick={() =>
                 void monopolyBankApi.getGameSummary(gameId).then((result) => {
@@ -309,32 +320,22 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               }
             >
               {t('statistics')}
-            </button>
+            </Button>
             {details.canManage && details.game.status === 'LOBBY' && (
-              <button
-                className="button button-secondary"
-                type="button"
-                disabled={offline}
-                onClick={() => setInviteOpen(true)}
-              >
+              <Button variant="secondary" disabled={offline} onClick={() => setInviteOpen(true)}>
                 {t('invitePlayers')}
-              </button>
+              </Button>
             )}
             {details.canManage && details.game.status === 'ACTIVE' && (
-              <button
-                className="button button-danger"
-                type="button"
-                disabled={offline}
-                onClick={() => setFinishing(true)}
-              >
+              <Button variant="danger" disabled={offline} onClick={() => setFinishing(true)}>
                 {t('finishGame')}
-              </button>
+              </Button>
             )}
-          </div>
+          </Toolbar>
         }
       >
         {details.game.status === 'ACTIVE' && (
-          <span className={`live-status live-status-${liveStatus}`} role="status">
+          <StatPill live className={`live-status live-status-${liveStatus}`}>
             {liveStatus === 'live'
               ? t('connectionLive')
               : liveStatus === 'connecting'
@@ -342,45 +343,40 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                 : liveStatus === 'reconnecting'
                   ? t('connectionReconnecting')
                   : t('connectionOffline')}
-          </span>
+          </StatPill>
         )}
       </PageHeader>
       {details.game.status === 'LOBBY' && (
-        <section className="notice notice-success game-state-banner" role="status">
+        <Notice tone="success" as="section" className="game-state-banner">
           <p>
             {t('waitingForPlayers')} — {t('startGameHint')}
           </p>
           {details.canManage && (
-            <button
-              className="button button-primary"
-              type="button"
+            <Button
+              variant="primary"
               disabled={offline || details.players.length < 2}
               onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}
             >
               {t('startGame')}
-            </button>
+            </Button>
           )}
-        </section>
+        </Notice>
       )}
       {notice !== null && (
-        <section className="notice notice-success" role="status">
+        <Notice tone="success" as="section">
           <p>{t('recorded', { action: actionLabel(notice, t) })}</p>
-          <button className="button button-quiet" type="button" onClick={() => setNotice(null)}>
+          <Button variant="quiet" onClick={() => setNotice(null)}>
             {t('dismiss')}
-          </button>
-        </section>
+          </Button>
+        </Notice>
       )}
       {paymentRequestNotice && (
-        <section className="notice notice-success" role="status">
+        <Notice tone="success" as="section">
           <p>{t('paymentRequestCreated')}</p>
-          <button
-            className="button button-quiet"
-            type="button"
-            onClick={() => setPaymentRequestNotice(false)}
-          >
+          <Button variant="quiet" onClick={() => setPaymentRequestNotice(false)}>
             {t('dismiss')}
-          </button>
-        </section>
+          </Button>
+        </Notice>
       )}
       <section className="wallets-section" aria-labelledby="player-wallets-title">
         <header className="wallets-heading">
@@ -396,15 +392,14 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                 );
                 if (player === undefined) return null;
                 return (
-                  <button
-                    className="button button-secondary"
-                    type="button"
+                  <Button
+                    variant="secondary"
                     key={wallet.playerId}
                     aria-pressed={activeControlledWalletId === wallet.playerId}
                     onClick={() => setActiveWalletId(wallet.playerId)}
                   >
                     {controllerLabel(wallet.kind, t)}: {player.name}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -586,7 +581,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           onRetry={() => void loadHistory(historyPlayer)}
         />
       )}
-    </main>
+    </PageShell>
   );
 }
 
@@ -720,11 +715,7 @@ function BankingDialog({
       onClose={onClose}
       className="banking-sheet"
     >
-      {transactionError !== null && (
-        <p className="notice notice-error" role="alert">
-          {transactionError}
-        </p>
-      )}
+      {transactionError !== null && <Notice tone="error">{transactionError}</Notice>}
       {action === null ? (
         <>
           <section
@@ -735,54 +726,50 @@ function BankingDialog({
             })}
           >
             <span>{t('availableBalance')}</span>
-            <strong>{formatMoney(player.balance, currency)}</strong>
+            <strong>
+              <MoneyValue amount={player.balance} currency={currency} />
+            </strong>
           </section>
-          <p className="dialog-intro">{t('walletSheetIntro')}</p>
+          <DialogBody>{t('walletSheetIntro')}</DialogBody>
           <div className="action-grid wallet-action-grid">
             {primaryWalletActions.map((item) => (
-              <button
-                className={`button wallet-action-button wallet-action-${walletActionTone(item)} action-button`}
-                type="button"
+              <Button
+                className={`wallet-action-button wallet-action-${walletActionTone(item)} action-button`}
                 key={item}
                 onClick={() => selectAction(item)}
               >
                 {actionLabel(item, t)}
-              </button>
+              </Button>
             ))}
           </div>
           <details className="wallet-advanced-actions">
             <summary>{t('advancedActions')}</summary>
             <div className="action-grid">
               {advancedWalletActions.map((item) => (
-                <button
-                  className={`button wallet-action-button wallet-action-${walletActionTone(item)} action-button`}
-                  type="button"
+                <Button
+                  className={`wallet-action-button wallet-action-${walletActionTone(item)} action-button`}
                   key={item}
                   onClick={() => selectAction(item)}
                 >
                   {actionLabel(item, t)}
-                </button>
+                </Button>
               ))}
-              <button
-                className="button button-danger bankruptcy-action"
-                type="button"
-                onClick={onBankrupt}
-              >
+              <Button variant="danger" className="bankruptcy-action" onClick={onBankrupt}>
                 {t('declareBankrupt')}
-              </button>
+              </Button>
             </div>
-            <button
-              className="button button-quiet player-history-button"
-              type="button"
+            <Button
+              variant="quiet"
+              className="player-history-button"
               onClick={() => onViewHistory(player)}
             >
               {t('viewPlayerHistory', { name: player.name })}
-            </button>
+            </Button>
           </details>
         </>
       ) : confirming ? (
         <>
-          <p className="dialog-intro">{t('confirmationIntro')}</p>
+          <DialogBody>{t('confirmationIntro')}</DialogBody>
           <Confirmation
             action={action}
             player={player}
@@ -793,32 +780,22 @@ function BankingDialog({
             preview={preview}
             comment={comment}
           />
-          <div className="dialog-actions">
-            <button
-              className="button button-secondary"
-              type="button"
-              disabled={submitting}
-              onClick={() => setConfirming(false)}
-            >
+          <DialogActions>
+            <Button variant="secondary" disabled={submitting} onClick={() => setConfirming(false)}>
               {t('back')}
-            </button>
-            <button
-              className="button button-primary"
-              type="button"
-              disabled={submitting}
-              onClick={() => void submit()}
-            >
+            </Button>
+            <Button variant="primary" disabled={submitting} onClick={() => void submit()}>
               {submitting
                 ? t('recording')
                 : transactionError === null
                   ? t('confirmTransaction')
                   : t('tryAgain')}
-            </button>
-          </div>
+            </Button>
+          </DialogActions>
         </>
       ) : (
         <>
-          <p className="dialog-intro">{actionDescription(action, player.name, t)}</p>
+          <DialogBody>{actionDescription(action, player.name, t)}</DialogBody>
           {targetRequired && (
             <PlayerPicker
               label={t('chooseRecipient')}
@@ -840,48 +817,38 @@ function BankingDialog({
                 onToggleFavorite={onToggleFavorite}
                 onQuickAmountSelect={reviewQuickAmount}
               />
-              <span className="field-hint">
+              <FieldHint>
                 {isPositiveInteger(amount)
                   ? t('amountTotalHint', { amount: formatMoney(amountValue, currency) })
                   : t('enterPositiveInteger')}
-              </span>
+              </FieldHint>
             </>
           )}
           {fundsError !== null && (
-            <p className="field-error" role="alert">
+            <FieldError as="p" announce>
               {fundsError}
-            </p>
+            </FieldError>
           )}
           {action === 'PASS_GO' && (
             <p className="pass-go-value">
               {t('passGoReceives', { amount: formatMoney(passGoReward, currency) })}
             </p>
           )}
-          <label className="dialog-field">
-            {t('comment')} <span className="field-note">{t('optional')}</span>
+          <Field variant="dialog" label={t('comment')} note={t('optional')}>
             <input
               value={comment}
               maxLength={500}
               onChange={(event) => changeComment(event.target.value)}
             />
-          </label>
-          <div className="dialog-actions">
-            <button
-              className="button button-quiet"
-              type="button"
-              onClick={() => selectAction(null)}
-            >
+          </Field>
+          <DialogActions>
+            <Button variant="quiet" onClick={() => selectAction(null)}>
               {t('back')}
-            </button>
-            <button
-              className="button button-primary"
-              type="button"
-              disabled={!valid}
-              onClick={() => setConfirming(true)}
-            >
+            </Button>
+            <Button variant="primary" disabled={!valid} onClick={() => setConfirming(true)}>
               {t('reviewTransaction')}
-            </button>
-          </div>
+            </Button>
+          </DialogActions>
         </>
       )}
     </Dialog>
@@ -997,12 +964,10 @@ function PaymentInbox({
     <section className="payment-inbox" aria-labelledby="payment-inbox-title">
       <header>
         <h2 id="payment-inbox-title">{t('paymentInbox')}</h2>
-        <span className="status-pill">{requests.length}</span>
+        <StatPill variant="pill">{requests.length}</StatPill>
       </header>
       {error !== null && (
-        <p className="notice notice-error" role="alert">
-          {apiErrorMessage(error, t, 'unableRecordTransaction')}
-        </p>
+        <Notice tone="error">{apiErrorMessage(error, t, 'unableRecordTransaction')}</Notice>
       )}
       {requests.length === 0 ? (
         <p className="muted">{t('noPaymentRequests')}</p>
@@ -1027,24 +992,22 @@ function PaymentInbox({
                     })}
                   </small>
                 </div>
-                <div className="dialog-actions">
-                  <button
-                    className="button button-primary"
-                    type="button"
+                <DialogActions>
+                  <Button
+                    variant="primary"
                     disabled={busyId !== null}
                     onClick={() => void act(request, 'accept')}
                   >
                     {t('acceptPayment')}
-                  </button>
-                  <button
-                    className="button button-secondary"
-                    type="button"
+                  </Button>
+                  <Button
+                    variant="secondary"
                     disabled={busyId !== null}
                     onClick={() => void act(request, 'decline')}
                   >
                     {t('declinePayment')}
-                  </button>
-                </div>
+                  </Button>
+                </DialogActions>
               </li>
             );
           })}
@@ -1088,66 +1051,54 @@ function BankruptcyDialog({
     <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
       {confirming ? (
         <>
-          <p className="dialog-intro">
+          <DialogBody>
             {creditor === null
               ? t('bankruptcyToBank')
               : t('bankruptcyToPlayer', { name: player.name, creditor: creditor.name })}{' '}
             {t('bankruptcyIrreversible')}
-          </p>
-          {error !== null && (
-            <p className="notice notice-error" role="alert">
-              {error}
-            </p>
-          )}
-          <div className="dialog-actions">
-            <button
-              className="button button-secondary"
-              type="button"
-              onClick={() => setConfirming(false)}
-            >
+          </DialogBody>
+          {error !== null && <Notice tone="error">{error}</Notice>}
+          <DialogActions>
+            <Button variant="secondary" onClick={() => setConfirming(false)}>
               {t('back')}
-            </button>
-            <button className="button button-danger" type="button" onClick={() => void submit()}>
+            </Button>
+            <Button variant="danger" onClick={() => void submit()}>
               {t('confirmBankruptcy')}
-            </button>
-          </div>
+            </Button>
+          </DialogActions>
         </>
       ) : (
         <>
-          <p className="dialog-intro">{t('chooseBankruptcyDestination', { name: player.name })}</p>
+          <DialogBody>{t('chooseBankruptcyDestination', { name: player.name })}</DialogBody>
           <div className="action-grid">
-            <button
-              className={`button button-secondary${creditorId === null ? ' selected' : ''}`}
-              type="button"
+            <Button
+              variant="secondary"
+              className={creditorId === null ? 'selected' : undefined}
               onClick={() => setCreditorId(null)}
             >
               {t('toBank')}
-            </button>
+            </Button>
             {players
               .filter((candidate) => candidate.id !== player.id && candidate.status !== 'BANKRUPT')
               .map((candidate) => (
-                <button
-                  className={`button button-secondary${creditorId === candidate.id ? ' selected' : ''}`}
-                  type="button"
+                <Button
+                  variant="secondary"
+                  className={creditorId === candidate.id ? 'selected' : undefined}
                   key={candidate.id}
                   onClick={() => setCreditorId(candidate.id)}
                 >
                   {t('toPlayer', { name: candidate.name })}
-                </button>
+                </Button>
               ))}
           </div>
-          <div className="dialog-actions">
-            <button className="button button-secondary" type="button" onClick={onClose}>
+          <DialogActions>
+            <Button variant="secondary" onClick={onClose}>
               {t('cancel')}
-            </button>
-            <button
-              className="button button-danger"
-              type="button"
-              onClick={() => setConfirming(true)}
-            >
+            </Button>
+            <Button variant="danger" onClick={() => setConfirming(true)}>
               {t('reviewBankruptcy')}
-            </button>
-          </div>
+            </Button>
+          </DialogActions>
         </>
       )}
     </Dialog>
@@ -1181,17 +1132,15 @@ function HistoryDialog({
     <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
       {error !== null ? (
         <>
-          <p className="notice notice-error" role="alert">
-            {apiErrorMessage(error, t, 'unableLoadHistory')}
-          </p>
-          <button className="button button-secondary" type="button" onClick={onRetry}>
+          <Notice tone="error">{apiErrorMessage(error, t, 'unableLoadHistory')}</Notice>
+          <Button variant="secondary" onClick={onRetry}>
             {t('tryAgain')}
-          </button>
+          </Button>
         </>
       ) : history === null ? (
-        <p className="status" role="status">
+        <StatPill variant="status" live>
           {t('loadingHistory')}
-        </p>
+        </StatPill>
       ) : history.length === 0 ? (
         <p className="muted">{t('noTransactions')}</p>
       ) : (
@@ -1585,20 +1534,15 @@ function InviteDialog({ gameId, onClose }: { gameId: string; onClose: () => void
       closeLabel={t('closeDialog', { title: t('invitePlayers') })}
       onClose={onClose}
     >
-      <p className="dialog-intro">{t('inviteDescription')}</p>
+      <DialogBody>{t('inviteDescription')}</DialogBody>
       {invite === null ? (
-        <button
-          className="button button-primary"
-          type="button"
-          disabled={creating}
-          onClick={() => void create()}
-        >
+        <Button variant="primary" disabled={creating} onClick={() => void create()}>
           {creating ? t('pleaseWait') : revoked ? t('createNewInvite') : t('createInviteLink')}
-        </button>
+        </Button>
       ) : (
         <section className="invite-ticket">
           <div className="invite-ticket-copy">
-            <span className="status-pill">{t('inviteUnlisted')}</span>
+            <StatPill variant="pill">{t('inviteUnlisted')}</StatPill>
             <p className="invite-short-code">{invite.shortCode}</p>
             <p>
               {t('inviteExpiresAt', {
@@ -1610,54 +1554,32 @@ function InviteDialog({ gameId, onClose }: { gameId: string; onClose: () => void
             </p>
           </div>
           {qr !== null && <LocalQr matrix={qr} label={t('inviteQrLabel')} />}
-          <div className="dialog-actions">
-            <button className="button button-primary" type="button" onClick={() => void copy()}>
+          <DialogActions>
+            <Button variant="primary" onClick={() => void copy()}>
               {t('copyInviteLink')}
-            </button>
+            </Button>
             {typeof navigator.share === 'function' && (
-              <button
-                className="button button-secondary"
-                type="button"
-                onClick={() => void share()}
-              >
+              <Button variant="secondary" onClick={() => void share()}>
                 {t('shareInvite')}
-              </button>
+              </Button>
             )}
-            <button
-              className="button button-secondary"
-              type="button"
-              disabled={creating}
-              onClick={() => void create()}
-            >
+            <Button variant="secondary" disabled={creating} onClick={() => void create()}>
               {t('rotateInvite')}
-            </button>
-            <button
-              className="button button-danger"
-              type="button"
-              disabled={creating}
-              onClick={() => void revoke()}
-            >
+            </Button>
+            <Button variant="danger" disabled={creating} onClick={() => void revoke()}>
               {t('revokeInvite')}
-            </button>
-          </div>
-          {copied && (
-            <p className="notice notice-success" role="status">
-              {t('inviteLinkCopied')}
-            </p>
-          )}
+            </Button>
+          </DialogActions>
+          {copied && <Notice tone="success">{t('inviteLinkCopied')}</Notice>}
         </section>
       )}
-      {revoked && (
-        <p className="notice notice-success" role="status">
-          {t('inviteRevoked')}
-        </p>
-      )}
+      {revoked && <Notice tone="success">{t('inviteRevoked')}</Notice>}
       {error !== null && (
-        <p className="notice notice-error" role="alert">
+        <Notice tone="error">
           {error instanceof Error && error.message === 'HTTPS_REQUIRED'
             ? t('inviteRequiresHttps')
             : apiErrorMessage(error, t, 'unableJoinGame')}
-        </p>
+        </Notice>
       )}
     </Dialog>
   );
@@ -1702,44 +1624,38 @@ function FinishGameDialog({
       onClose={onClose}
       closeDisabled={saving}
     >
-      <p className="dialog-intro">{t('finishGameDescription')}</p>
+      <DialogBody>{t('finishGameDescription')}</DialogBody>
       <p className="muted">{t('finishWinnerHint')}</p>
       {leader !== undefined && (
         <p className="cash-leader-inline">
           <strong>{t('cashLeader')}:</strong> {leader.name} ·{' '}
-          {formatMoney(leader.balance, currency)}
+          <MoneyValue amount={leader.balance} currency={currency} />
         </p>
       )}
       <fieldset className="winner-picker">
         <legend>{t('chooseWinners')}</legend>
         {players.map((player) => (
-          <label key={player.id}>
-            <input
-              type="checkbox"
-              checked={winnerIds.includes(player.id)}
-              onChange={() => toggle(player.id)}
-            />{' '}
-            <i style={{ backgroundColor: player.color }} /> {player.name}
-          </label>
+          <Toggle
+            key={player.id}
+            variant="inline"
+            checked={winnerIds.includes(player.id)}
+            onChange={() => toggle(player.id)}
+            label={
+              <>
+                {' '}
+                <i style={{ backgroundColor: player.color }} /> {player.name}
+              </>
+            }
+          />
         ))}
       </fieldset>
-      {error && (
-        <p className="notice notice-error" role="alert">
-          {t('unableLoadGame')}
-        </p>
-      )}
-      <div className="dialog-actions">
-        <button
-          className="button button-secondary"
-          type="button"
-          disabled={saving}
-          onClick={onClose}
-        >
+      {error && <Notice tone="error">{t('unableLoadGame')}</Notice>}
+      <DialogActions>
+        <Button variant="secondary" disabled={saving} onClick={onClose}>
           {t('cancel')}
-        </button>
-        <button
-          className="button button-quiet"
-          type="button"
+        </Button>
+        <Button
+          variant="quiet"
           disabled={saving}
           onClick={() => {
             setWinnerIds([]);
@@ -1747,16 +1663,11 @@ function FinishGameDialog({
           }}
         >
           {t('finishNoWinner')}
-        </button>
-        <button
-          className="button button-danger"
-          type="button"
-          disabled={saving}
-          onClick={() => void finish()}
-        >
+        </Button>
+        <Button variant="danger" disabled={saving} onClick={() => void finish()}>
           {t('finishGame')}
-        </button>
-      </div>
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }
@@ -1798,7 +1709,7 @@ export function GameSummaryScreen({
     [t('largestTransaction'), summary.largestTransaction],
   ] as const;
   return (
-    <section className="banknote-panel summary-screen">
+    <Card variant="banknote" className="summary-screen">
       <header className="summary-heading">
         <div>
           <p className="eyebrow">{t('finalSummary')}</p>
@@ -1810,9 +1721,9 @@ export function GameSummaryScreen({
               : summary.winners.map((player) => player.name).join(', ')}
           </p>
         </div>
-        <button className="button button-quiet" type="button" onClick={onClose}>
+        <Button variant="quiet" onClick={onClose}>
           {t('close')}
-        </button>
+        </Button>
       </header>
       <dl className="summary-metrics">
         {cards.map(([label, value]) => (
@@ -1868,7 +1779,7 @@ export function GameSummaryScreen({
           })}
         </ol>
       </section>
-    </section>
+    </Card>
   );
 }
 
