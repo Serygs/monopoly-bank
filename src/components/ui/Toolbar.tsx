@@ -8,10 +8,15 @@ export interface ToolbarProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const toolbarClassNames: Record<ToolbarVariant, string> = {
-  'game-page': 'game-page-actions',
-  'game-card': 'game-card-actions',
-  'auth-footer': 'auth-card-footer',
-  form: 'form-actions',
+  // Two columns below `md` (an odd last action spans both), a wrapping row from `md`.
+  'game-page':
+    'grid grid-cols-2 gap-(--mb-space-2) [&_.button]:min-w-0 max-md:[&_.button]:w-full [&>:last-child:nth-child(odd)]:col-span-full md:flex md:flex-wrap md:justify-start md:[&>:last-child:nth-child(odd)]:col-auto lg:justify-end',
+  // The primary action fills the column beside the overflow-menu trigger.
+  'game-card':
+    'relative grid grid-cols-[minmax(0,1fr)_var(--mb-control-height-md)] gap-(--mb-space-2) [&>button]:w-full',
+  'auth-footer':
+    'mt-(--mb-space-6) flex items-center justify-between gap-(--mb-space-3) border-t border-border pt-(--mb-space-5) text-small text-secondary max-md:flex-col max-md:items-stretch',
+  form: 'flex justify-end max-md:[&_.button]:w-full',
 };
 
 /** A row of actions in one DOM order at every layout size. */

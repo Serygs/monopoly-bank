@@ -7,6 +7,34 @@ import { Button, Field, Notice, PageShell } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { EMAIL_FEATURES_ENABLED } from '../utils/email-features';
+import { cx, mutedClass } from '../components/ui/class-names';
+
+const layoutClass = cx(
+  'grid min-w-0 gap-(--mb-layout-gap-compact)',
+  'md:grid-cols-[minmax(18rem,0.82fr)_minmax(0,1.18fr)] md:gap-(--mb-layout-gap-medium) lg:gap-(--mb-layout-gap-wide)',
+);
+const panelClass =
+  'min-w-0 rounded-card-large border border-border p-[clamp(var(--mb-space-5),4vw,var(--mb-space-7))] shadow-sm';
+/* Every section after the profile form (upgrade, legacy email, verification) is ruled off. */
+const editorClass = cx(
+  panelClass,
+  'bg-surface-elevated [&>*+*]:mt-(--mb-space-7) [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-(--mb-space-7)',
+);
+/* The summary name overrides the page's low-specificity `h2` typography. */
+const summaryClass = cx(
+  'flex min-w-0 items-center gap-(--mb-space-4) border-b border-border pb-(--mb-space-5) [&>div]:min-w-0',
+  '[&_.avatar]:size-[72px] [&_.avatar]:flex-none [&_.avatar]:text-[2rem]',
+  '[&_h2]:text-[length:clamp(1.25rem,5vw,1.7rem)] [&_h2]:leading-[1.12] [&_h2]:wrap-anywhere',
+  '[&_p]:mx-0 [&_p]:mt-(--mb-space-1) [&_p]:mb-0',
+);
+const statisticsClass = cx(
+  'mx-0 mt-(--mb-space-5) mb-0 grid grid-cols-2 gap-(--mb-space-3)',
+  '*:min-w-0 *:rounded-card *:border *:border-border *:bg-surface-elevated *:p-(--mb-space-4)',
+  '[&_dt]:text-small [&_dt]:text-secondary',
+  '[&_dd]:mx-0 [&_dd]:mt-(--mb-space-1) [&_dd]:mb-0 [&_dd]:font-money [&_dd]:text-[length:clamp(1.25rem,5vw,1.65rem)] [&_dd]:leading-[1.1] [&_dd]:font-bold [&_dd]:text-primary [&_dd]:wrap-anywhere',
+);
+/* `!` outranks the unlayered `.game-form` gap in `primitives.css`. */
+const profileFormClass = 'game-form gap-(--mb-space-6)!';
 
 export function ProfilePage({
   profile,
@@ -38,7 +66,7 @@ export function ProfilePage({
     }
   };
   return (
-    <PageShell className="profile-page">
+    <PageShell>
       <PageHeader
         eyebrow={t('playerProfile')}
         title={t('playerProfile')}
@@ -49,18 +77,18 @@ export function ProfilePage({
           </Button>
         }
       />
-      <div className="profile-layout">
-        <section className="profile-overview">
-          <div className="profile-summary">
-            <Avatar avatar={avatar} label={nickname} className="profile-avatar" />
+      <div className={layoutClass}>
+        <section className={cx(panelClass, 'self-start bg-surface-subtle')}>
+          <div className={summaryClass}>
+            <Avatar avatar={avatar} label={nickname} />
             <div>
               <h2>{nickname}</h2>
-              <p className="muted">
+              <p className={mutedClass}>
                 {profile.accountType === 'GUEST' ? t('guestAccount') : t('playerProfile')}
               </p>
             </div>
           </div>
-          <dl className="profile-statistics">
+          <dl className={statisticsClass}>
             <div>
               <dt>{t('gamesPlayed')}</dt>
               <dd>{profile.gamesPlayed}</dd>
@@ -79,8 +107,8 @@ export function ProfilePage({
             </div>
           </dl>
         </section>
-        <section className="profile-editor">
-          <form className="game-form profile-form" onSubmit={(event) => void save(event)}>
+        <section className={editorClass}>
+          <form className={profileFormClass} onSubmit={(event) => void save(event)}>
             <Field label={t('nickname')}>
               <input
                 value={nickname}
@@ -103,7 +131,12 @@ export function ProfilePage({
               <Notice tone="error">{apiErrorMessage(error, t, 'unableUpdateProfile')}</Notice>
             )}
             {saved && <Notice tone="success">{t('profileUpdated')}</Notice>}
-            <Button variant="primary" type="submit" className="profile-save" disabled={saving}>
+            <Button
+              variant="primary"
+              type="submit"
+              className="min-w-48 justify-self-start max-md:w-full"
+              disabled={saving}
+            >
               {saving ? t('savingProfile') : t('saveProfile')}
             </Button>
           </form>
@@ -140,9 +173,9 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
     }
   };
   return (
-    <form className="game-form profile-form" onSubmit={(event) => void upgrade(event)}>
+    <form className={profileFormClass} onSubmit={(event) => void upgrade(event)}>
       <h2>{t('secureGuestAccount')}</h2>
-      <p className="muted">{t('secureGuestDescription')}</p>
+      <p className={mutedClass}>{t('secureGuestDescription')}</p>
       <Field label={t('email')}>
         <input
           type="email"
@@ -192,7 +225,7 @@ function VerificationNotice() {
     }
   };
   return (
-    <section className="verification-notice">
+    <section>
       <Notice tone="success" as="div">
         <p>{sent ? t('verificationSent') : t('verificationPending')}</p>
         <Button variant="secondary" disabled={busy} onClick={() => void resend()}>
@@ -224,9 +257,9 @@ function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void 
     }
   };
   return (
-    <form className="game-form profile-form" onSubmit={(event) => void add(event)}>
+    <form className={profileFormClass} onSubmit={(event) => void add(event)}>
       <h2>{t('addAccountEmail')}</h2>
-      <p className="muted">{t('addAccountEmailDescription')}</p>
+      <p className={mutedClass}>{t('addAccountEmailDescription')}</p>
       <Field label={t('email')}>
         <input
           type="email"

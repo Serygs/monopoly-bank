@@ -5,6 +5,7 @@ import { Button, Notice, StatPill } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import type { Language } from '../../i18n/translations';
+import { mutedClass } from '../../components/ui/class-names';
 
 export interface HistoryDialogProps {
   history: Transaction[] | null;
@@ -17,6 +18,10 @@ export interface HistoryDialogProps {
   onClose: () => void;
   onRetry: () => void;
 }
+
+/** Divided rows; amount, time and comment in quieter, smaller type. */
+const historyListClass =
+  'm-0 grid list-none gap-[8px] p-0 [&_li]:grid [&_li]:gap-[4px] [&_li]:border-b [&_li]:border-border [&_li]:pb-[12px] [&_:is(span,small,em)]:text-[0.86rem] [&_:is(span,small,em)]:text-secondary';
 
 export function HistoryDialog({
   history,
@@ -45,9 +50,9 @@ export function HistoryDialog({
           {t('loadingHistory')}
         </StatPill>
       ) : history.length === 0 ? (
-        <p className="muted">{t('noTransactions')}</p>
+        <p className={mutedClass}>{t('noTransactions')}</p>
       ) : (
-        <ol className="history-list">
+        <ol className={historyListClass}>
           {history.map((transaction) => (
             <TransactionRow
               key={transaction.id}

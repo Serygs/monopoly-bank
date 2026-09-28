@@ -1,9 +1,9 @@
 /*
- * Tailwind CSS v4 utility layer. Preflight (`@layer base`) is deliberately not
- * imported: the existing unlayered CSS relies on browser defaults it would reset.
- * Everything Tailwind emits lives in cascade layers, so the unlayered semantic
- * classes (`.button`, `.dialog`, `.notice`, …) keep winning until each component
- * is migrated and its legacy rule removed. Only `src/` is scanned for classes.
+ * Tailwind CSS v4 utility layer. Preflight is deliberately not imported: the
+ * migrated markup still relies on browser defaults it would reset (heading and
+ * paragraph margins, list and button styles). Everything Tailwind emits lives in
+ * cascade layers, so the few unlayered rules left in `src/styles/` (`.game-form`,
+ * the safe-area padding) still win over utilities. Only `src/` is scanned.
  */
 @layer theme, base, components, utilities;
 @import '@fontsource-variable/inter/wght.css';
@@ -22,8 +22,11 @@
 @custom-variant classic (&:where(:root[data-visual-style='classic-bank'] *));
 @custom-variant glass (&:where(:root[data-visual-style='liquid-glass'] *));
 @custom-variant dark (&:where(:root[data-color-mode='dark'] *));
+@custom-variant light (&:where(:root[data-color-mode='light'] *));
 @custom-variant fine-pointer (@media (hover: hover) and (pointer: fine));
 @custom-variant forced-colors (@media (forced-colors: active));
+/* Short landscape phones; registered after `md`/`lg`, so it overrides them as the old CSS did. */
+@custom-variant short-landscape (@media (max-height: 31.25rem) and (orientation: landscape));
 
 :root {
   --mb-app-safe-top: env(safe-area-inset-top, 0px);
@@ -64,17 +67,23 @@ body {
   line-height: var(--mb-leading-body);
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-button {
-  cursor: pointer;
-}
-button:disabled {
-  cursor: not-allowed;
+/*
+ * Element resets sit in the base layer so utilities on a control (`font-*`, `text-*`,
+ * `cursor-*`) can override them; unlayered feature rules still win as before.
+ */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
 }
 
 ::selection {

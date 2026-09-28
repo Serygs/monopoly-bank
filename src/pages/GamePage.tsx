@@ -28,6 +28,13 @@ import {
   type ActionType,
 } from './game/game-page-helpers';
 
+/** The lobby banner sits further from the wallets than a plain notice; `!` beats Notice's margin. */
+const stateBannerClass = 'mb-(--mb-space-6)!';
+
+/** Dice and calculator: stacked below `md`, side by side from `md`. */
+const gameToolsClass =
+  'mt-[24px] grid grid-cols-1 gap-(--mb-space-4) md:grid-cols-2 md:gap-(--mb-layout-gap-medium) lg:gap-(--mb-layout-gap-wide)';
+
 interface Props {
   gameId: string;
   onBack: () => void;
@@ -234,7 +241,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const canMutate = details.game.status === 'ACTIVE' && !offline;
 
   return (
-    <PageShell className="game-page">
+    <PageShell>
       <GameHeader
         game={details.game}
         canManage={details.canManage}
@@ -252,7 +259,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         onFinish={() => setFinishing(true)}
       />
       {details.game.status === 'LOBBY' && (
-        <Notice tone="success" as="section" className="game-state-banner">
+        <Notice tone="success" as="section" className={stateBannerClass}>
           <p>
             {t('waitingForPlayers')} — {t('startGameHint')}
           </p>
@@ -318,7 +325,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         />
       )}
       {details.game.status === 'ACTIVE' && (
-        <div className="game-tools">
+        <div className={gameToolsClass}>
           <DiceRoller />
           <TableCalculator />
         </div>

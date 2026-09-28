@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from 'react';
-import { cx } from './class-names';
+import { cx, mutedClass } from './class-names';
 
 export type StatPillVariant = 'pill' | 'status' | 'muted';
 
@@ -14,10 +14,11 @@ export interface StatPillProps extends Omit<HTMLAttributes<HTMLElement>, 'role'>
   as?: 'span' | 'p';
 }
 
+/* `status-pill` carries no styles of its own. */
 const statClassNames: Record<StatPillVariant, string> = {
   pill: 'status-pill',
-  status: 'status',
-  muted: 'muted',
+  status: 'rounded-card border border-border bg-surface-elevated p-(--mb-space-5) text-primary',
+  muted: mutedClass,
 };
 
 /** Compact status text: counts, badges and loading states. */

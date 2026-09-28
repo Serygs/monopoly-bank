@@ -3,7 +3,17 @@ import { useId, useState, type ChangeEvent } from 'react';
 import { AVATAR_OPTIONS, isUploadedAvatar } from '../utils/avatar';
 import { cropAvatar } from '../utils/avatar-image';
 import { FieldError, FieldHint } from './ui';
+import { buttonClass, cx } from './ui/class-names';
 import { keepEnterInRadio } from './ui/radio-keys';
+
+/* `avatar` / `avatar-icon` stay as hooks: callers size the avatar through their own class. */
+const avatarClass = 'grid size-10 place-items-center rounded-full object-cover';
+const avatarOptionClass = cx(
+  'inline-grid size-[52px] flex-none cursor-pointer place-items-center rounded-full border border-border-strong bg-surface-elevated',
+  'transition-[border-color,box-shadow,transform] duration-(--mb-duration-fast) ease-standard motion-reduce:transition-none',
+  'data-checked:border-accent data-checked:shadow-[0_0_0_3px_var(--mb-color-surface-elevated),0_0_0_5px_var(--mb-color-accent)]',
+  'focus-visible:outline-offset-4 fine-pointer:hover:border-accent',
+);
 
 export function Avatar({
   avatar,
@@ -15,9 +25,13 @@ export function Avatar({
   className?: string;
 }) {
   return isUploadedAvatar(avatar) ? (
-    <img className={`avatar ${className}`} src={avatar} alt={label} />
+    <img className={cx('avatar', avatarClass, className)} src={avatar} alt={label} />
   ) : (
-    <span className={`avatar avatar-icon ${className}`} role="img" aria-label={label}>
+    <span
+      className={cx('avatar avatar-icon', avatarClass, className)}
+      role="img"
+      aria-label={label}
+    >
       {avatar}
     </span>
   );
@@ -63,7 +77,7 @@ export function AvatarPicker({
     <fieldset className="avatar-picker">
       <legend>{label}</legend>
       <RadioGroup
-        className="avatar-options"
+        className="flex flex-wrap gap-(--mb-space-3)"
         aria-label={label}
         value={avatar}
         onChange={selectAvatar}
@@ -74,27 +88,28 @@ export function AvatarPicker({
             type="button"
             key={option}
             value={option}
-            className={`avatar-option${avatar === option ? ' selected' : ''}`}
+            className={avatarOptionClass}
             onKeyDown={keepEnterInRadio}
           >
             <Avatar avatar={option} label={option} />
           </Radio>
         ))}
         {uploadedAvatarSelected && (
-          <Radio value={avatar} className="avatar-option selected" onKeyDown={keepEnterInRadio}>
+          <Radio value={avatar} className={avatarOptionClass} onKeyDown={keepEnterInRadio}>
             <Avatar avatar={avatar} label={label} />
           </Radio>
         )}
       </RadioGroup>
       {allowUpload && (
-        <div className="avatar-upload">
+        // `avatar-upload` keeps the visually hidden file input above the shared `.game-form input` rule.
+        <div className="avatar-upload mt-(--mb-space-4) flex flex-wrap items-center gap-(--mb-space-3) max-md:[&_.field-hint]:w-full">
           <input
             id={fileInputId}
             type="file"
             accept="image/jpeg,image/png,image/webp"
             onChange={(event) => void selectFile(event)}
           />
-          <label className="button button-secondary" htmlFor={fileInputId}>
+          <label className={cx(buttonClass('secondary'), 'max-md:w-full')} htmlFor={fileInputId}>
             {uploadLabel}
           </label>
           <FieldHint>{uploadHint}</FieldHint>

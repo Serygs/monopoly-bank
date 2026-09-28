@@ -13,6 +13,14 @@ export interface InviteDialogProps {
   onClose: () => void;
 }
 
+/** Invitation ticket: code and expiry beside the QR code, stacked below `md`. */
+const ticketClass =
+  'mt-[18px] grid grid-cols-[minmax(0,1fr)_136px] items-center gap-[20px] rounded-lg border border-s-[3px] border-border border-s-highlight bg-(--mb-background-invitation) p-[18px] max-md:grid-cols-1';
+const ticketCopyClass =
+  'min-w-0 [&>p:last-child]:m-0 [&>p:last-child]:text-small [&>p:last-child]:text-secondary';
+const shortCodeClass =
+  'mx-0 mt-[12px] mb-[4px] font-money text-[length:clamp(1.5rem,6vw,2.35rem)] leading-none font-bold tracking-[0.1em] text-primary';
+
 export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
   const { locale, t } = useLanguage();
   const [invite, setInvite] = useState<CreateInvitationResponse | null>(null);
@@ -76,10 +84,10 @@ export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
           {creating ? t('pleaseWait') : revoked ? t('createNewInvite') : t('createInviteLink')}
         </Button>
       ) : (
-        <section className="invite-ticket">
-          <div className="invite-ticket-copy">
+        <section className={ticketClass}>
+          <div className={ticketCopyClass}>
             <StatPill variant="pill">{t('inviteUnlisted')}</StatPill>
-            <p className="invite-short-code">{invite.shortCode}</p>
+            <p className={shortCodeClass}>{invite.shortCode}</p>
             <p>
               {t('inviteExpiresAt', {
                 time: new Intl.DateTimeFormat(locale, {

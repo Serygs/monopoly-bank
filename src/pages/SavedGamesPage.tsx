@@ -17,6 +17,54 @@ import {
 } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
+import { cx } from '../components/ui/class-names';
+
+/*
+ * `page-header--hero` stays as the hook for `liquid-glass-effects.ts`; its pointer tilt and
+ * highlight stay in `liquid-glass.css`. Classic Bank hides the `::after` glow.
+ */
+const heroClass = cx(
+  'page-header--hero relative overflow-hidden rounded-xl border border-[color:color-mix(in_srgb,var(--mb-color-highlight)_45%,transparent)]',
+  'text-on-inverse shadow-md [background:var(--mb-background-hero)]',
+  'min-h-[clamp(230px,20vw,280px)] p-(--mb-space-6) pb-[clamp(var(--mb-space-6),5vw,var(--mb-space-9))]',
+  'lg:p-[clamp(var(--mb-space-7),4vw,var(--mb-space-9))] lg:pb-[clamp(var(--mb-space-6),5vw,var(--mb-space-9))]',
+  'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-0 *:relative *:z-1',
+  '[&_h1]:text-inherit [&_.lede]:text-inherit [&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-highlight)_82%,white)]',
+  'max-md:[&_h1]:text-[length:clamp(2.125rem,10vw,2.875rem)]',
+  'light:[&_button:focus-visible]:outline-text-on-inverse',
+  // `!` outranks PageHeader's own `lg:` columns.
+  'lg:grid-cols-[minmax(0,62%)_minmax(0,38%)]! lg:items-center',
+  'max-md:[&_.page-header-actions]:grid-cols-1 max-md:[&_.page-header-actions_.button]:w-full max-md:[&_.button-primary]:-order-1',
+  'lg:[&_.page-header-actions]:col-[1] lg:[&_.page-header-actions]:max-w-[28rem]',
+  'classic:after:hidden classic:max-md:bg-[position:62%_center] classic:max-md:bg-[size:auto_100%]',
+  'glass:isolate glass:border-[rgb(255_255_255/0.6)] glass:text-primary glass:shadow-lg',
+  'glass:[&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-accent-hover)_88%,var(--mb-color-text-primary))]',
+  'glass:after:w-[42%] glass:after:opacity-82',
+  'glass:after:[background:radial-gradient(circle_at_70%_34%,rgb(255_244_232/0.9),transparent_13%),radial-gradient(circle_at_45%_65%,rgb(201_220_244/0.92),transparent_22%),radial-gradient(circle_at_80%_72%,rgb(231_226_244/0.84),transparent_26%)]',
+);
+/* The search field and sort select share each style's control skin. */
+const controlsClass = cx(
+  'mb-(--mb-layout-section-gap-compact) grid gap-(--mb-space-3)',
+  'md:grid-cols-[minmax(0,1fr)_auto] md:items-center lg:grid-cols-[minmax(18rem,1fr)_auto_auto]',
+  'classic:[&_:is(input,select)]:border-border classic:[&_:is(input,select)]:bg-[#fffcf3] classic:[&_:is(input,select)]:shadow-[0_5px_16px_rgb(42_52_39/0.05)]',
+  'classic:dark:[&_:is(input,select)]:bg-surface-elevated',
+  'glass:[&_:is(input,select)]:border-[rgb(255_255_255/0.58)] glass:[&_:is(input,select)]:bg-[rgb(255_255_255/0.42)]',
+  'glass:[&_:is(input,select)]:shadow-[inset_0_1px_0_rgb(255_255_255/0.62),0_8px_24px_rgb(40_60_90/0.07)]',
+  'glass:[&_:is(input,select)]:backdrop-blur-[18px] glass:[&_:is(input,select)]:backdrop-saturate-[1.25]',
+);
+/* `saved-games-search` and its icon stay as e2e hooks. */
+const searchClass = cx(
+  'saved-games-search relative block md:col-span-full lg:col-auto',
+  '[&_input]:block [&_input]:w-full [&_input]:ps-12',
+);
+const searchIconClass =
+  'saved-games-search-icon pointer-events-none absolute top-1/2 left-4 z-1 block size-5 -translate-y-1/2 text-muted';
+const sortClass =
+  'flex items-center gap-(--mb-space-2) text-small font-semibold text-secondary md:justify-self-end [&_select]:min-h-(--mb-control-height-md)';
+const gridClass = cx(
+  'grid grid-cols-[1fr] gap-(--mb-layout-gap-compact)',
+  'md:grid-cols-2 md:gap-(--mb-layout-gap-medium) lg:gap-(--mb-layout-gap-wide)',
+);
 
 interface Props {
   onCreateGame: () => void;
@@ -137,9 +185,9 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   };
 
   return (
-    <PageShell className="saved-games-page">
+    <PageShell>
       <PageHeader
-        className="page-header--hero"
+        className={heroClass}
         eyebrow={t('appName')}
         title={t('savedGames')}
         description={t('savedGamesLede')}
@@ -189,11 +237,11 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
       )}
       {!loading && error === null && games.length > 0 && (
         <>
-          <section className="saved-games-controls" aria-label={t('savedGamesControls')}>
-            <label className="saved-games-search">
+          <section className={controlsClass} aria-label={t('savedGamesControls')}>
+            <label className={searchClass}>
               <span className="sr-only">{t('searchGames')}</span>
               <svg
-                className="saved-games-search-icon"
+                className={searchIconClass}
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -213,7 +261,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
             </label>
             <SegmentedControl
               variant="filter"
-              className="saved-games-filters"
+              className="flex flex-wrap gap-(--mb-space-2)"
               label={t('filterGames')}
               options={(['ALL', 'ACTIVE', 'LOBBY', 'FINISHED'] as const).map((status) => ({
                 value: status,
@@ -226,7 +274,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
               value={statusFilter}
               onChange={setStatusFilter}
             />
-            <label className="saved-games-sort">
+            <label className={sortClass}>
               <span>{t('sortGames')}</span>
               <select
                 value={sortOrder}
@@ -240,7 +288,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
           {visibleGames.length === 0 ? (
             <StatPill variant="status">{t('noMatchingGames')}</StatPill>
           ) : (
-            <section className="game-grid" aria-label={t('savedGames')}>
+            <section className={gridClass} aria-label={t('savedGames')}>
               {visibleGames.map((summary) => (
                 <GameCard
                   key={summary.game.id}
@@ -302,7 +350,6 @@ function RemoveGameDialog({
       closeLabel={t('closeDialog', { title })}
       closeDisabled={removing}
       onClose={onCancel}
-      className="remove-game-dialog"
     >
       <p>{t('removeGameWarning', { count: game.playerCount })}</p>
       {error !== null && (

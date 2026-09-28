@@ -23,23 +23,26 @@ describe('SegmentedControl', () => {
   it('renders the settings track as a radio group and marks the active option', () => {
     render(<ControlledSegmentedControl columns={3} />);
     const track = screen.getByRole('radiogroup');
-    expect(track.getAttribute('class')).toBe('settings-segmented settings-segmented--three');
+    expect(track).toHaveClass('settings-segmented', 'settings-segmented--three', 'grid-cols-3');
     expect(screen.queryByRole('group')).not.toBeInTheDocument();
     const light = screen.getByRole('radio', { name: 'Light' });
     expect(light.tagName).toBe('BUTTON');
     expect(light).toHaveAttribute('type', 'button');
     expect(light).toHaveAttribute('aria-checked', 'true');
     expect(light).toHaveAttribute('tabindex', '0');
-    expect(light).toHaveClass('active');
+    expect(light).toHaveClass('bg-accent', 'text-on-accent');
     const dark = screen.getByRole('radio', { name: 'Dark' });
     expect(dark).toHaveAttribute('aria-checked', 'false');
     expect(dark).toHaveAttribute('tabindex', '-1');
-    expect(dark).not.toHaveAttribute('class');
+    expect(dark).toHaveClass('bg-transparent');
+    expect(dark).not.toHaveClass('bg-accent');
   });
 
   it('uses the two-column track by default', () => {
     render(<ControlledSegmentedControl />);
-    expect(screen.getByRole('radiogroup').getAttribute('class')).toBe('settings-segmented');
+    const track = screen.getByRole('radiogroup');
+    expect(track).toHaveClass('settings-segmented', 'grid-cols-2');
+    expect(track).not.toHaveClass('settings-segmented--three');
   });
 
   it('renders the filter variant as a labelled radio group of filter buttons', () => {
@@ -52,12 +55,14 @@ describe('SegmentedControl', () => {
     );
     const group = screen.getByRole('radiogroup', { name: 'Filter games' });
     expect(group).toHaveClass('saved-games-filters');
-    expect(screen.getByRole('radio', { name: 'Light', checked: true }).getAttribute('class')).toBe(
-      'button button-filter active',
-    );
-    expect(screen.getByRole('radio', { name: 'Dark' }).getAttribute('class')).toBe(
-      'button button-filter',
-    );
+    const checked = screen.getByRole('radio', { name: 'Light', checked: true });
+    const unchecked = screen.getByRole('radio', { name: 'Dark', checked: false });
+    expect(checked.tagName).toBe('BUTTON');
+    expect(checked).toHaveClass('button', 'button-filter', 'active', 'rounded-pill');
+    expect(unchecked).toHaveClass('button', 'button-filter', 'rounded-pill');
+    expect(unchecked).not.toHaveClass('active');
+    // The chip is on the button core only, never a Button variant.
+    expect(checked.className).not.toMatch(/\bbutton-(primary|secondary|quiet|danger)\b/);
   });
 
   it.each(['settings', 'filter'] as const)(

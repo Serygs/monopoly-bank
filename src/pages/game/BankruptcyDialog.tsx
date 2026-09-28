@@ -3,6 +3,7 @@ import type { Player } from '../../../shared/types/monopoly';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
 import { Button, DialogActions, DialogBody, Notice } from '../../components/ui';
+import { actionGridClass } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 
@@ -61,12 +62,8 @@ export function BankruptcyDialog({
       ) : (
         <>
           <DialogBody>{t('chooseBankruptcyDestination', { name: player.name })}</DialogBody>
-          <div className="action-grid">
-            <Button
-              variant="secondary"
-              className={creditorId === null ? 'selected' : undefined}
-              onClick={() => setCreditorId(null)}
-            >
+          <div className={actionGridClass}>
+            <Button variant="secondary" onClick={() => setCreditorId(null)}>
               {t('toBank')}
             </Button>
             {players
@@ -74,7 +71,6 @@ export function BankruptcyDialog({
               .map((candidate) => (
                 <Button
                   variant="secondary"
-                  className={creditorId === candidate.id ? 'selected' : undefined}
                   key={candidate.id}
                   onClick={() => setCreditorId(candidate.id)}
                 >

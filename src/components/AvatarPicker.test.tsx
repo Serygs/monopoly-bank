@@ -134,7 +134,7 @@ describe('avatar picker accessibility', () => {
     const options = screen.getAllByRole('radio');
     await user.click(options[2]);
     expect(onChange).toHaveBeenLastCalledWith(AVATAR_OPTIONS[2]);
-    expect(options[2]).toHaveClass('selected');
+    expect(options[2]).toHaveAttribute('aria-checked', 'true');
     expect(options[2]).toHaveFocus();
   });
 });

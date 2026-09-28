@@ -40,17 +40,18 @@ describe('OverflowMenu', () => {
     await user.click(trigger);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
     const menu = screen.getByRole('menu', { name: 'Game actions' });
-    expect(menu).toHaveClass('overflow-menu-panel');
-    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
-      'Duplicate',
-      'Archive',
-      'Remove game',
-    ]);
+    // The panel stays in place beside its trigger (no portal), inside the menu container.
+    expect(menu.parentElement).toBe(trigger.parentElement);
+    expect(menu).not.toHaveAttribute('aria-modal');
+    const items = screen.getAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual(['Duplicate', 'Archive', 'Remove game']);
+    expect(items.every((item) => item.tagName === 'BUTTON')).toBe(true);
     expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeDisabled();
-    expect(screen.getByRole('menuitem', { name: 'Remove game' })).toHaveClass(
-      'overflow-menu-item',
-      'overflow-menu-item-danger',
+    expect(screen.getByRole('menuitem', { name: 'Remove game' })).toHaveAttribute(
+      'data-tone',
+      'danger',
     );
+    expect(screen.getByRole('menuitem', { name: 'Duplicate' })).not.toHaveAttribute('data-tone');
   });
 
   it('moves between enabled items with the arrow, Home and End keys', async () => {

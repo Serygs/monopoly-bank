@@ -7,6 +7,7 @@ import { AmountInput } from '../components/AmountInput';
 import { useAmountInput } from '../components/amount-input-state';
 import { PageHeader } from '../components/PageHeader';
 import { Button, Field, FieldError, FieldHint, Notice, PageShell, Toolbar } from '../components/ui';
+import { cx } from '../components/ui/class-names';
 import { keepEnterInRadio } from '../components/ui/radio-keys';
 import type { Translate } from '../i18n/translations';
 import { formatMoney } from '../utils/money';
@@ -26,6 +27,46 @@ const colors = [
   { value: '#8b4cc5', token: '--mb-color-player-purple', nameKey: 'playerColorPurple' },
   { value: '#087f78', token: '--mb-color-player-teal', nameKey: 'playerColorTeal' },
 ] as const;
+/* `!` outranks the unlayered `.game-form` gap in `primitives.css`. */
+const formClass = cx(
+  'game-form items-start',
+  'md:grid-cols-2 md:gap-(--mb-layout-gap-medium)! lg:gap-(--mb-layout-gap-wide)!',
+);
+/* Each child is one player editor; consecutive editors are ruled off. */
+const playerListClass = cx(
+  'grid gap-(--mb-space-4) *:grid *:gap-(--mb-space-4)',
+  '[&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-(--mb-space-5)',
+);
+const ownerListClass = cx(
+  playerListClass,
+  'md:*:grid-cols-[minmax(14rem,1fr)_minmax(18rem,1.2fr)] md:*:items-start lg:*:grid-cols-[1fr]',
+);
+const sectionTitleClass = cx(
+  'flex min-w-0 items-center justify-between gap-(--mb-space-3) [&_.field-hint]:m-0 [&_.field-hint]:min-w-0',
+  'max-md:flex-col max-md:items-stretch max-md:[&_.button]:w-full',
+);
+const actionsClass = 'pt-(--mb-space-2) md:col-span-full [&_.button]:min-w-[min(100%,15rem)]';
+/* `!` outranks the unlayered `.game-form fieldset` / `.game-form legend` rules in `primitives.css`. */
+const colorPickerClass = cx(
+  'border-0! bg-transparent! p-0! shadow-none!',
+  '[&_legend]:mb-(--mb-space-3) [&_legend]:p-0! [&_legend]:text-[1rem]! [&_legend]:font-semibold',
+);
+const colorOptionClass = cx(
+  'grid size-12 place-items-center rounded-full border-3 border-surface-elevated bg-(--player-color) p-0',
+  'font-ui text-[1.1rem] leading-none font-bold text-on-player',
+  'transition-[transform,box-shadow] duration-(--mb-duration-fast) ease-standard',
+  '*:grid *:size-6 *:place-items-center *:rounded-full focus-visible:outline-offset-5',
+  'disabled:opacity-30 disabled:grayscale-[0.72]',
+  'fine-pointer:enabled:hover:transform-[translateY(-2px)] fine-pointer:enabled:hover:[box-shadow:0_0_0_3px_var(--mb-color-highlight),var(--mb-shadow-player-inset)]',
+  'motion-reduce:transform-none!',
+);
+const colorOptionStateClass = {
+  selected: cx(
+    '[box-shadow:0_0_0_3px_var(--mb-color-surface-elevated),0_0_0_6px_var(--mb-color-accent),var(--mb-shadow-player-inset)]',
+    '*:bg-[color-mix(in_srgb,var(--mb-color-surface-inverse)_62%,transparent)]',
+  ),
+  idle: '[box-shadow:0_0_0_1px_var(--mb-color-border-strong),var(--mb-shadow-player-inset)]',
+};
 const defaultStartingBalance = 15_000_000;
 const defaultPassGoReward = 2_000_000;
 interface PlayerForm {
@@ -91,7 +132,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
     }
   };
   return (
-    <PageShell className="create-game-page">
+    <PageShell>
       <PageHeader
         eyebrow={t('newBank')}
         title={t('createLobby')}
@@ -102,14 +143,10 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
           </Button>
         }
       />
-      <form
-        className="game-form create-game-form"
-        onSubmit={(event) => void submit(event)}
-        noValidate
-      >
-        <fieldset className="form-section create-section-basics">
+      <form className={formClass} onSubmit={(event) => void submit(event)} noValidate>
+        <fieldset>
           <legend>{t('gameBasics')}</legend>
-          <div className="form-section-fields">
+          <div className="grid gap-(--mb-space-4)">
             <Field label={t('gameName')} error={errors.name}>
               <input
                 value={name}
@@ -131,9 +168,9 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
             </Field>
           </div>
         </fieldset>
-        <fieldset className="form-section create-section-rules">
+        <fieldset>
           <legend>{t('bankingRules')}</legend>
-          <div className="form-section-fields">
+          <div className="grid gap-(--mb-space-4)">
             <Field label={t('paymentMode')} hint={t('paymentModeLocked')}>
               <select
                 value={paymentMode}
@@ -174,11 +211,11 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
             </div>
           </div>
         </fieldset>
-        <fieldset className="form-section create-section-owner">
+        <fieldset className="md:col-span-full lg:col-[1]">
           <legend>{t('ownerPlayer')}</legend>
-          <div className="player-list">
+          <div className={ownerListClass}>
             {players.slice(0, 1).map((player) => (
-              <section className="player-editor" key={player.key}>
+              <section key={player.key}>
                 <Field
                   label={t('playerName', { number: 1 })}
                   error={errors[`player-${player.key}`]}
@@ -198,18 +235,18 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
             ))}
           </div>
         </fieldset>
-        <fieldset className="form-section create-section-players">
+        <fieldset className="md:col-span-full lg:col-[2]">
           <legend>{t('localPlayers')}</legend>
-          <div className="section-title">
+          <div className={sectionTitleClass}>
             <FieldHint as="p">{t('localPlayersHint')}</FieldHint>
             <Button variant="secondary" onClick={addPlayer} disabled={players.length >= 6}>
               {t('addPlayer')}
             </Button>
           </div>
           {errors.players !== undefined && <FieldError>{errors.players}</FieldError>}
-          <div className="player-list">
+          <div className={playerListClass}>
             {players.slice(1).map((player, index) => (
-              <section className="player-editor" key={player.key}>
+              <section key={player.key}>
                 <Field
                   label={t('playerName', { number: index + 2 })}
                   error={errors[`player-${player.key}`]}
@@ -227,7 +264,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                 />
                 <Button
                   variant="quiet"
-                  className="remove-player"
+                  className="justify-self-start"
                   onClick={() =>
                     setPlayers(players.filter((candidate) => candidate.key !== player.key))
                   }
@@ -239,11 +276,11 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
           </div>
         </fieldset>
         {submitError !== null && (
-          <Notice tone="error" className="create-form-status">
+          <Notice tone="error" className="md:col-span-full">
             {apiErrorMessage(submitError, t, 'unableCreateGame')}
           </Notice>
         )}
-        <Toolbar variant="form" className="create-form-actions">
+        <Toolbar variant="form" className={actionsClass}>
           <Button variant="primary" type="submit" disabled={submitting}>
             {submitting ? t('startingLobby') : t('createLobby')}
           </Button>
@@ -264,10 +301,10 @@ function ColorPicker({
 }) {
   const { t } = useLanguage();
   return (
-    <fieldset className="color-picker">
+    <fieldset className={colorPickerClass}>
       <legend>{t('color')}</legend>
       <RadioGroup
-        className="color-options"
+        className="flex flex-wrap gap-(--mb-space-3)"
         aria-label={t('color')}
         value={player.color}
         onChange={onChange}
@@ -278,10 +315,13 @@ function ColorPicker({
           );
           const selected = player.color === color.value;
           return (
-            // `as={Fragment}` keeps the native `disabled` the `.color-option:disabled` style needs.
+            // `as={Fragment}` keeps the native `disabled` the `disabled:` utilities need.
             <Radio as={Fragment} key={color.value} value={color.value} disabled={taken}>
               <button
-                className={`color-option${selected ? ' selected' : ''}`}
+                className={cx(
+                  colorOptionClass,
+                  colorOptionStateClass[selected ? 'selected' : 'idle'],
+                )}
                 type="button"
                 style={{ '--player-color': `var(${color.token})` } as CSSProperties}
                 aria-label={t('selectColor', { color: t(color.nameKey) })}

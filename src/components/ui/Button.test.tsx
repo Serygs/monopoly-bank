@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Button, type ButtonVariant } from './Button';
+import { buttonClass } from './class-names';
 
 describe('Button', () => {
   it.each<[ButtonVariant, string]>([
@@ -12,7 +13,9 @@ describe('Button', () => {
   ])('renders the %s variant with the shared button classes', (variant, variantClass) => {
     render(<Button variant={variant}>Pay</Button>);
     const button = screen.getByRole('button', { name: 'Pay' });
-    expect(button.getAttribute('class')).toBe(`button ${variantClass}`);
+    expect(button).toHaveClass('button', variantClass, 'rounded-control');
+    expect(button).not.toHaveClass('icon-button');
+    expect(button.getAttribute('class')).toBe(buttonClass(variant));
   });
 
   it('defaults to type="button" so it never submits a form by accident', () => {
@@ -43,16 +46,19 @@ describe('Button', () => {
         ×
       </Button>,
     );
-    expect(screen.getByRole('button', { name: 'Close' }).getAttribute('class')).toBe(
-      'button button-quiet icon-button dialog-close',
-    );
+    const button = screen.getByRole('button', { name: 'Close' });
+    expect(button).toHaveClass('button', 'button-quiet', 'icon-button', 'p-0', 'dialog-close');
+    expect(button).not.toHaveClass('rounded-control');
+    expect(button.getAttribute('class')).toBe(`${buttonClass('quiet', true)} dialog-close`);
   });
 
-  it('renders only the base class without a variant', () => {
+  it('renders only the core without a variant', () => {
     render(<Button className="wallet-action-button">Pay bank</Button>);
-    expect(screen.getByRole('button', { name: 'Pay bank' }).getAttribute('class')).toBe(
-      'button wallet-action-button',
-    );
+    const button = screen.getByRole('button', { name: 'Pay bank' });
+    expect(button).toHaveClass('button', 'wallet-action-button');
+    expect(button.className).not.toMatch(/\bbutton-(primary|secondary|quiet|danger)\b/);
+    expect(button).not.toHaveClass('rounded-control');
+    expect(button.className.endsWith(' wallet-action-button')).toBe(true);
   });
 
   it('forwards native props and responds to the keyboard', async () => {

@@ -39,7 +39,7 @@ describe('Field', () => {
     );
     const input = screen.getByRole('textbox', { name: /^Game name/ });
     const error = screen.getByText('Enter a game name.');
-    expect(error).toHaveClass('field-error');
+    expect(error).toHaveClass('text-danger');
     expect(input).toHaveAttribute('aria-errormessage', error.id);
     expect(input).toHaveAttribute('aria-invalid', 'true');
     expect(input).toBeInvalid();
