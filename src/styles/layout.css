@@ -132,7 +132,9 @@
   letter-spacing: var(--mb-tracking-display);
   overflow-wrap: anywhere;
 }
-.page h2 {
+/* Modal dialogs are portaled out of `.page` but were always rendered inside it. */
+.page h2,
+.dialog-backdrop--modal h2 {
   margin: 0;
   font-size: var(--mb-text-heading-lg);
   line-height: 1.2;

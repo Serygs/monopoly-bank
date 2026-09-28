@@ -309,12 +309,8 @@ textarea:focus {
   border-radius: var(--mb-radius-xl);
   box-shadow: var(--mb-shadow-lg);
 }
-:root[data-visual-style='classic-bank'] .dialog-backdrop {
-  animation: classic-overlay-backdrop-in var(--mb-duration-normal) var(--mb-ease-standard);
-}
 :root[data-visual-style='classic-bank'] .dialog {
   transform-origin: center;
-  animation: classic-dialog-in var(--mb-duration-normal) var(--mb-ease-emphasized);
 }
 .dialog > header {
   display: flex;
@@ -466,10 +462,12 @@ textarea:focus {
   border: 1px solid var(--mb-color-border);
   border-radius: var(--mb-radius-control);
 }
-.settings-toggle input {
+.settings-toggle input,
+.settings-toggle [role='switch'] {
   width: 40px;
   height: 24px;
   margin: 0;
+  padding: 0;
   appearance: none;
   border: 1px solid var(--mb-color-border-strong);
   border-radius: var(--mb-radius-pill);
@@ -478,7 +476,12 @@ textarea:focus {
     border-color var(--mb-duration-fast) var(--mb-ease-standard),
     background-color var(--mb-duration-fast) var(--mb-ease-standard);
 }
-.settings-toggle input::before {
+/* The switch is a button: lay the knob out from the start edge like the checkbox did. */
+.settings-toggle [role='switch'] {
+  display: flex;
+}
+.settings-toggle input::before,
+.settings-toggle [role='switch']::before {
   display: block;
   width: 18px;
   height: 18px;
@@ -489,11 +492,13 @@ textarea:focus {
   content: '';
   transition: transform var(--mb-duration-normal) var(--mb-ease-standard);
 }
-.settings-toggle input:checked {
+.settings-toggle input:checked,
+.settings-toggle [role='switch'][aria-checked='true'] {
   border-color: var(--mb-color-accent);
   background: var(--mb-color-accent);
 }
-.settings-toggle input:checked::before {
+.settings-toggle input:checked::before,
+.settings-toggle [role='switch'][aria-checked='true']::before {
   transform: translateX(16px);
 }
 
@@ -506,18 +511,6 @@ textarea:focus {
     border-color var(--mb-duration-fast) var(--mb-ease-standard),
     box-shadow var(--mb-duration-fast) var(--mb-ease-standard),
     transform var(--mb-duration-fast) var(--mb-ease-standard);
-}
-
-@keyframes classic-overlay-backdrop-in {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes classic-dialog-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px) scale(0.99);
-  }
 }
 
 .winner-picker input[type='checkbox'] {
@@ -599,7 +592,6 @@ textarea:focus {
   }
   :root[data-visual-style='classic-bank'] .dialog {
     transform-origin: bottom;
-    animation-name: classic-sheet-in;
   }
   .dialog-backdrop--popover {
     place-items: end center;
@@ -622,13 +614,6 @@ textarea:focus {
   }
   .dialog-actions .button {
     width: 100%;
-  }
-}
-
-@keyframes classic-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateY(var(--mb-space-4));
   }
 }
 

@@ -9,23 +9,33 @@ function ControlledToggle({ variant }: { variant?: 'setting' | 'inline' }) {
   return <Toggle label="Sound" checked={checked} onChange={setChecked} variant={variant} />;
 }
 
+const roleFor = { setting: 'switch', inline: 'checkbox' } as const;
+
 describe('Toggle', () => {
-  it('renders the settings row with the label before a native checkbox', () => {
+  it('renders the settings row with the label before a switch', () => {
     render(<Toggle label="Sound" checked onChange={() => {}} />);
-    const checkbox = screen.getByRole('checkbox', { name: 'Sound' });
-    expect(checkbox).toBeChecked();
-    const label = checkbox.closest('label');
+    const toggle = screen.getByRole('switch', { name: 'Sound' });
+    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle.tagName).not.toBe('INPUT');
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    const label = toggle.closest('label');
     expect(label).toHaveClass('settings-toggle');
     expect(label?.firstElementChild?.tagName).toBe('SPAN');
-    expect(label?.lastElementChild).toBe(checkbox);
+    expect(label?.lastElementChild).toBe(toggle);
   });
 
-  it('renders the inline variant with the checkbox first and no wrapper class', () => {
+  it('renders the inline variant as a native checkbox first, with no wrapper class', () => {
     render(<Toggle variant="inline" label="Alice" checked={false} onChange={() => {}} />);
-    const checkbox = screen.getByRole('checkbox', { name: 'Alice' });
-    const label = checkbox.closest('label');
+    const toggle = screen.getByRole('checkbox', { name: 'Alice' });
+    expect(toggle.tagName).toBe('INPUT');
+    expect(toggle).toHaveAttribute('type', 'checkbox');
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    const label = toggle.closest('label');
     expect(label).not.toHaveAttribute('class');
-    expect(label?.firstElementChild).toBe(checkbox);
+    expect(label?.firstElementChild).toBe(toggle);
+    expect(label?.outerHTML).toBe('<label><input type="checkbox">Alice</label>');
   });
 
   it.each(['setting', 'inline'] as const)(
@@ -33,29 +43,41 @@ describe('Toggle', () => {
     async (variant) => {
       const user = userEvent.setup();
       render(<ControlledToggle variant={variant} />);
-      const checkbox = screen.getByRole('checkbox', { name: 'Sound' });
+      const toggle = screen.getByRole(roleFor[variant], { name: 'Sound' });
       await user.tab();
-      expect(checkbox).toHaveFocus();
+      expect(toggle).toHaveFocus();
       await user.keyboard(' ');
-      expect(checkbox).toBeChecked();
+      expect(toggle).toBeChecked();
       await user.keyboard(' ');
-      expect(checkbox).not.toBeChecked();
+      expect(toggle).not.toBeChecked();
     },
   );
 
-  it('reports the next checked state and toggles from its label', async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(<Toggle label="Vibration" checked={false} onChange={onChange} />);
-    await user.click(screen.getByText('Vibration'));
-    expect(onChange).toHaveBeenCalledWith(true);
-  });
+  it.each(['setting', 'inline'] as const)(
+    'reports the next checked state and toggles from its label in the %s variant',
+    async (variant) => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(<Toggle variant={variant} label="Vibration" checked={false} onChange={onChange} />);
+      await user.click(screen.getByText('Vibration'));
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith(true);
+    },
+  );
 
-  it('does not toggle when disabled', async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(<Toggle label="Sound" checked={false} disabled onChange={onChange} />);
-    await user.click(screen.getByRole('checkbox', { name: 'Sound' }));
-    expect(onChange).not.toHaveBeenCalled();
-  });
+  it.each(['setting', 'inline'] as const)(
+    'does not toggle when disabled in the %s variant',
+    async (variant) => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Toggle variant={variant} label="Sound" checked={false} disabled onChange={onChange} />,
+      );
+      const toggle = screen.getByRole(roleFor[variant], { name: 'Sound' });
+      expect(toggle).toBeDisabled();
+      await user.click(toggle);
+      await user.click(screen.getByText('Sound'));
+      expect(onChange).not.toHaveBeenCalled();
+    },
+  );
 });

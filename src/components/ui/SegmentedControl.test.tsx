@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SegmentedControl, type SegmentedControlProps } from './SegmentedControl';
 
 type Mode = 'light' | 'dark' | 'system';
@@ -20,25 +20,29 @@ function ControlledSegmentedControl(
 }
 
 describe('SegmentedControl', () => {
-  it('renders the settings track without a group role and marks the active option', () => {
-    const { container } = render(<ControlledSegmentedControl columns={3} />);
+  it('renders the settings track as a radio group and marks the active option', () => {
+    render(<ControlledSegmentedControl columns={3} />);
+    const track = screen.getByRole('radiogroup');
+    expect(track.getAttribute('class')).toBe('settings-segmented settings-segmented--three');
     expect(screen.queryByRole('group')).not.toBeInTheDocument();
-    const track = container.firstElementChild;
-    expect(track?.getAttribute('class')).toBe('settings-segmented settings-segmented--three');
-    const light = screen.getByRole('button', { name: 'Light' });
-    expect(light).toHaveAttribute('aria-pressed', 'true');
+    const light = screen.getByRole('radio', { name: 'Light' });
+    expect(light.tagName).toBe('BUTTON');
+    expect(light).toHaveAttribute('type', 'button');
+    expect(light).toHaveAttribute('aria-checked', 'true');
+    expect(light).toHaveAttribute('tabindex', '0');
     expect(light).toHaveClass('active');
-    const dark = screen.getByRole('button', { name: 'Dark' });
-    expect(dark).toHaveAttribute('aria-pressed', 'false');
+    const dark = screen.getByRole('radio', { name: 'Dark' });
+    expect(dark).toHaveAttribute('aria-checked', 'false');
+    expect(dark).toHaveAttribute('tabindex', '-1');
     expect(dark).not.toHaveAttribute('class');
   });
 
   it('uses the two-column track by default', () => {
-    const { container } = render(<ControlledSegmentedControl />);
-    expect(container.firstElementChild?.getAttribute('class')).toBe('settings-segmented');
+    render(<ControlledSegmentedControl />);
+    expect(screen.getByRole('radiogroup').getAttribute('class')).toBe('settings-segmented');
   });
 
-  it('renders the filter variant as a labelled group of filter buttons', () => {
+  it('renders the filter variant as a labelled radio group of filter buttons', () => {
     render(
       <ControlledSegmentedControl
         variant="filter"
@@ -46,36 +50,80 @@ describe('SegmentedControl', () => {
         className="saved-games-filters"
       />,
     );
-    const group = screen.getByRole('group', { name: 'Filter games' });
+    const group = screen.getByRole('radiogroup', { name: 'Filter games' });
     expect(group).toHaveClass('saved-games-filters');
-    expect(screen.getByRole('button', { name: 'Light', pressed: true }).getAttribute('class')).toBe(
+    expect(screen.getByRole('radio', { name: 'Light', checked: true }).getAttribute('class')).toBe(
       'button button-filter active',
     );
-    expect(screen.getByRole('button', { name: 'Dark' }).getAttribute('class')).toBe(
+    expect(screen.getByRole('radio', { name: 'Dark' }).getAttribute('class')).toBe(
       'button button-filter',
     );
   });
 
   it.each(['settings', 'filter'] as const)(
-    'moves the selection from the keyboard in the %s variant',
+    'moves the selection with the arrow keys from one tab stop in the %s variant',
     async (variant) => {
       const user = userEvent.setup();
-      render(<ControlledSegmentedControl variant={variant} label="Mode" />);
-      await user.tab();
-      expect(screen.getByRole('button', { name: 'Light' })).toHaveFocus();
-      await user.tab();
-      const dark = screen.getByRole('button', { name: 'Dark' });
-      expect(dark).toHaveFocus();
-      await user.keyboard('{Enter}');
-      expect(dark).toHaveAttribute('aria-pressed', 'true');
-      expect(screen.getByRole('button', { name: 'Light' })).toHaveAttribute(
-        'aria-pressed',
-        'false',
+      render(
+        <>
+          <ControlledSegmentedControl variant={variant} label="Mode" />
+          <button type="button">After</button>
+        </>,
       );
+      const light = screen.getByRole('radio', { name: 'Light' });
+      const dark = screen.getByRole('radio', { name: 'Dark' });
+      const system = screen.getByRole('radio', { name: 'System' });
+
       await user.tab();
-      await user.keyboard(' ');
-      expect(screen.getByRole('button', { name: 'System', pressed: true })).toHaveFocus();
-      expect(screen.getAllByRole('button', { pressed: true })).toHaveLength(1);
+      expect(light).toHaveFocus();
+      await user.keyboard('{ArrowRight}');
+      expect(dark).toHaveFocus();
+      expect(dark).toHaveAttribute('aria-checked', 'true');
+      expect(light).toHaveAttribute('aria-checked', 'false');
+
+      await user.keyboard('{ArrowDown}');
+      expect(screen.getByRole('radio', { name: 'System', checked: true })).toHaveFocus();
+      await user.keyboard('{ArrowRight}');
+      expect(screen.getByRole('radio', { name: 'Light', checked: true })).toHaveFocus();
+      await user.keyboard('{ArrowLeft}');
+      expect(system).toHaveFocus();
+      expect(screen.getAllByRole('radio', { checked: true })).toEqual([system]);
+
+      // One tab stop: Tab leaves the group from the checked option.
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'After' })).toHaveFocus();
+      await user.tab({ shift: true });
+      expect(system).toHaveFocus();
     },
   );
+
+  it.each(['settings', 'filter'] as const)(
+    'does not submit the surrounding form on Enter in the %s variant',
+    async (variant) => {
+      const user = userEvent.setup();
+      const onSubmit = vi.fn((event: { preventDefault: () => void }) => event.preventDefault());
+      render(
+        <form onSubmit={onSubmit}>
+          <ControlledSegmentedControl variant={variant} label="Mode" />
+          <button type="submit">Save</button>
+        </form>,
+      );
+      await user.tab();
+      expect(screen.getByRole('radio', { name: 'Light' })).toHaveFocus();
+      await user.keyboard('{Enter}');
+      expect(onSubmit).not.toHaveBeenCalled();
+      screen.getByRole('radio', { name: 'Dark' }).focus();
+      await user.keyboard('{Enter}');
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true');
+    },
+  );
+
+  it('selects an option with the pointer', async () => {
+    const user = userEvent.setup();
+    render(<ControlledSegmentedControl variant="filter" label="Mode" />);
+    await user.click(screen.getByRole('radio', { name: 'Dark' }));
+    expect(screen.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getAllByRole('radio', { checked: true })).toHaveLength(1);
+  });
 });

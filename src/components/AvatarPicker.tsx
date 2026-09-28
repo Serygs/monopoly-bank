@@ -1,7 +1,9 @@
-import { useId, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import { Radio, RadioGroup } from '@headlessui/react';
+import { useId, useState, type ChangeEvent } from 'react';
 import { AVATAR_OPTIONS, isUploadedAvatar } from '../utils/avatar';
 import { cropAvatar } from '../utils/avatar-image';
 import { FieldError, FieldHint } from './ui';
+import { keepEnterInRadio } from './ui/radio-keys';
 
 export function Avatar({
   avatar,
@@ -41,25 +43,9 @@ export function AvatarPicker({
   const fileInputId = useId();
   const [uploadError, setUploadError] = useState<string | null>(null);
   const uploadedAvatarSelected = isUploadedAvatar(avatar);
-  const moveAvatarFocus = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'Home', 'End'].includes(event.key))
-      return;
-    const options = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="radio"]'),
-    );
-    if (options.length === 0) return;
-    event.preventDefault();
-    const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement);
-    const nextIndex =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? options.length - 1
-          : event.key === 'ArrowRight' || event.key === 'ArrowDown'
-            ? (currentIndex + 1) % options.length
-            : (currentIndex - 1 + options.length) % options.length;
-    options[nextIndex]?.focus();
-    options[nextIndex]?.click();
+  const selectAvatar = (next: string) => {
+    onChange(next);
+    setUploadError(null);
   };
   const selectFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const [file] = Array.from(event.target.files ?? []);
@@ -76,34 +62,30 @@ export function AvatarPicker({
   return (
     <fieldset className="avatar-picker">
       <legend>{label}</legend>
-      <div
+      <RadioGroup
         className="avatar-options"
-        role="radiogroup"
         aria-label={label}
-        onKeyDown={moveAvatarFocus}
+        value={avatar}
+        onChange={selectAvatar}
       >
-        {AVATAR_OPTIONS.map((option, index) => (
-          <button
-            key={option}
-            className={`avatar-option${avatar === option ? ' selected' : ''}`}
+        {AVATAR_OPTIONS.map((option) => (
+          <Radio
+            as="button"
             type="button"
-            role="radio"
-            aria-checked={avatar === option}
-            tabIndex={avatar === option || (uploadedAvatarSelected && index === 0) ? 0 : -1}
-            onClick={() => {
-              onChange(option);
-              setUploadError(null);
-            }}
+            key={option}
+            value={option}
+            className={`avatar-option${avatar === option ? ' selected' : ''}`}
+            onKeyDown={keepEnterInRadio}
           >
             <Avatar avatar={option} label={option} />
-          </button>
+          </Radio>
         ))}
         {uploadedAvatarSelected && (
-          <span className="avatar-option selected" role="radio" aria-checked="true">
+          <Radio value={avatar} className="avatar-option selected" onKeyDown={keepEnterInRadio}>
             <Avatar avatar={avatar} label={label} />
-          </span>
+          </Radio>
         )}
-      </div>
+      </RadioGroup>
       {allowUpload && (
         <div className="avatar-upload">
           <input

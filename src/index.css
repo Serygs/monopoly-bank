@@ -52,6 +52,11 @@ body {
   min-width: 320px;
   margin: 0;
   overflow-x: hidden;
+  /*
+   * `clip` never turns body into a scroll container, so the sticky header keeps following
+   * the viewport while Headless UI's dialog scroll lock sets `overflow: hidden` on <html>.
+   */
+  overflow-x: clip;
   color: var(--mb-color-text-primary);
   background: var(--mb-color-canvas);
   font-size: var(--mb-text-body);
