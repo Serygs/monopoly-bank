@@ -21,7 +21,7 @@ export interface WalletCardProps {
  * inline custom property; the Liquid Glass colours skip the inline-start side so it keeps it.
  */
 const cardClass = cx(
-  'wallet-card relative grid min-w-0 content-between gap-(--mb-space-4) overflow-hidden rounded-card border text-start',
+  'wallet-card @container relative grid min-w-0 content-between gap-(--mb-space-4) overflow-hidden rounded-card border text-start',
   'border-s-[6px] border-s-(color:--wallet-player-color) motion-reduce:transform-none!',
   'glass:text-primary glass:backdrop-blur-[22px] glass:backdrop-saturate-[1.35]',
 );
@@ -74,18 +74,17 @@ function WalletBadge({
   return <span className={cx(badgeClass, badgeToneClass[tone])}>{children}</span>;
 }
 
-/** Balance size steps down for long amounts so the figure never wraps. */
-function balanceSizeClass(length: number, prominent: boolean): string {
-  if (length > 18)
-    return prominent
-      ? 'tracking-[-0.055em] text-[length:clamp(1.15rem,5.5vw,1.8rem)]'
-      : 'tracking-[-0.055em] text-[length:clamp(0.95rem,4.5vw,1.35rem)]';
-  if (length > 12)
-    return prominent
-      ? 'tracking-[-0.04em] text-[length:clamp(1.6rem,7vw,2.7rem)]'
-      : 'tracking-[-0.04em] text-[length:clamp(1.25rem,5.5vw,1.75rem)]';
-  return prominent ? 'tracking-[-0.04em] text-money-xl' : 'tracking-[-0.04em] text-money-lg';
-}
+/*
+ * The balance never wraps, so it shrinks to fit the card rather than the viewport: the card is a
+ * size container and `--balance-em` is the figure's width in ems (Inter bold measures up to 0.54em a character).
+ */
+const balanceSizeClass = {
+  prominent:
+    'tracking-[-0.04em] text-[length:min(var(--mb-text-money-xl),calc(100cqi/var(--balance-em)))]',
+  standard:
+    'tracking-[-0.04em] text-[length:min(var(--mb-text-money-lg),calc(100cqi/var(--balance-em)))]',
+};
+const balanceEmPerCharacter = 0.56;
 
 export function WalletCard({
   player,
@@ -121,7 +120,10 @@ export function WalletCard({
           )}
         </span>
       </span>
-      <strong className={cx(balanceClass, balanceSizeClass(balance.length, prominent))}>
+      <strong
+        className={cx(balanceClass, balanceSizeClass[prominent ? 'prominent' : 'standard'])}
+        style={{ '--balance-em': balance.length * balanceEmPerCharacter } as CSSProperties}
+      >
         {balance}
       </strong>
       <span

@@ -27,9 +27,10 @@ const dialogClass = cx(
   wideDialogClass,
   'glass:max-w-full glass:min-w-0',
 );
+/* Nothing scrolls under the tab bar, so Liquid Glass lets the dialog's own glass show through. */
 const stickyClass = cx(
   'z-1 border-b border-border bg-surface-elevated pt-(--mb-space-2)',
-  'glass:max-w-full glass:min-w-0 glass:border-[rgb(85_98_116/0.16)] glass:bg-[rgb(255_255_255/0.88)] glass:dark:bg-[rgb(32_40_52/0.96)]',
+  'glass:max-w-full glass:min-w-0 glass:border-[rgb(85_98_116/0.16)] glass:bg-transparent glass:dark:border-[rgb(255_255_255/0.14)]',
 );
 /*
  * The selected tab sits above the quiet Button colours; the Button hover and pressed fills win.
