@@ -6,6 +6,22 @@ describe('MonopolyBankApi transaction commands', () => {
     vi.unstubAllGlobals();
   });
 
+  it('logs out through the server session endpoint exactly once', async () => {
+    const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      return new Response(JSON.stringify({ data: null }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    await monopolyBankApi.logout();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.input).toBe('/api/auth/logout');
+    expect(calls[0]?.init?.method).toBe('POST');
+  });
+
   it('reuses a caller-provided command ID so a retry stays idempotent', async () => {
     const calls: RequestInit[] = [];
     vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
