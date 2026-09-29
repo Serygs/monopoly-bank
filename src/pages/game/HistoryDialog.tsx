@@ -5,7 +5,7 @@ import { Button, Notice, StatPill } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import type { Language } from '../../i18n/translations';
-import { mutedClass } from '../../components/ui/class-names';
+import { MutedText } from '../../components/ui/Text';
 
 export interface HistoryDialogProps {
   history: Transaction[] | null;
@@ -50,7 +50,7 @@ export function HistoryDialog({
           {t('loadingHistory')}
         </StatPill>
       ) : history.length === 0 ? (
-        <p className={mutedClass}>{t('noTransactions')}</p>
+        <MutedText>{t('noTransactions')}</MutedText>
       ) : (
         <ol className={historyListClass}>
           {history.map((transaction) => (

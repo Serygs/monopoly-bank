@@ -5,7 +5,8 @@ import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
 import { Button, DialogActions, DialogBody, MoneyValue, Notice, Toggle } from '../../components/ui';
 import { useLanguage } from '../../i18n/language-context';
-import { cx, mutedClass } from '../../components/ui/class-names';
+import { cx } from '../../components/ui/class-names';
+import { MutedText } from '../../components/ui/Text';
 
 export interface FinishGameDialogProps {
   gameId: string;
@@ -58,7 +59,7 @@ export function FinishGameDialog({
       closeDisabled={saving}
     >
       <DialogBody>{t('finishGameDescription')}</DialogBody>
-      <p className={mutedClass}>{t('finishWinnerHint')}</p>
+      <MutedText>{t('finishWinnerHint')}</MutedText>
       {leader !== undefined && (
         <p className={cashLeaderClass}>
           <strong>{t('cashLeader')}:</strong> {leader.name} ·{' '}

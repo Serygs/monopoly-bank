@@ -3,7 +3,8 @@ import type { Currency, Game, Player } from '../../../shared/types/monopoly';
 import { Button, Card } from '../../components/ui';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
-import { cx, eyebrowClass } from '../../components/ui/class-names';
+import { cx } from '../../components/ui/class-names';
+import { Eyebrow } from '../../components/ui/Text';
 
 export interface GameSummaryScreenProps {
   summary: { game: Game; winners: Player[] } & FinalGameSummary;
@@ -50,7 +51,7 @@ export function GameSummaryScreen({ summary, players, currency, onClose }: GameS
     <Card variant="banknote" className={summaryClass}>
       <header>
         <div>
-          <p className={eyebrowClass}>{t('finalSummary')}</p>
+          <Eyebrow>{t('finalSummary')}</Eyebrow>
           <h2>{summary.game.name}</h2>
           <p>
             <strong>{t('winners')}:</strong>{' '}

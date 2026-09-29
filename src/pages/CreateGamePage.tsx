@@ -1,5 +1,13 @@
 import { Radio, RadioGroup } from '@headlessui/react';
-import { Fragment, useId, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import {
+  Fragment,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
@@ -146,7 +154,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
       <form className={formClass} onSubmit={(event) => void submit(event)} noValidate>
         <fieldset>
           <legend>{t('gameBasics')}</legend>
-          <div className="grid gap-(--mb-space-4)">
+          <FieldStack>
             <Field label={t('gameName')} error={errors.name}>
               <input
                 value={name}
@@ -166,11 +174,11 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                 ))}
               </select>
             </Field>
-          </div>
+          </FieldStack>
         </fieldset>
         <fieldset>
           <legend>{t('bankingRules')}</legend>
-          <div className="grid gap-(--mb-space-4)">
+          <FieldStack>
             <Field label={t('paymentMode')} hint={t('paymentModeLocked')}>
               <select
                 value={paymentMode}
@@ -209,72 +217,70 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                 error={errors.passGoReward}
               />
             </div>
-          </div>
+          </FieldStack>
         </fieldset>
-        <fieldset className="md:col-span-full lg:col-[1]">
-          <legend>{t('ownerPlayer')}</legend>
-          <div className={ownerListClass}>
-            {players.slice(0, 1).map((player) => (
-              <section key={player.key}>
-                <Field
-                  label={t('playerName', { number: 1 })}
-                  error={errors[`player-${player.key}`]}
-                >
-                  <input
-                    value={player.name}
-                    onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
-                    aria-invalid={errors[`player-${player.key}`] !== undefined}
-                  />
-                </Field>
-                <ColorPicker
-                  player={player}
-                  players={players}
-                  onChange={(color) => updatePlayer(player.key, { color })}
+        <PlayersFieldset column={1} legend={t('ownerPlayer')}>
+          {players.slice(0, 1).map((player) => (
+            <section key={player.key}>
+              <Field label={t('playerName', { number: 1 })} error={errors[`player-${player.key}`]}>
+                <input
+                  value={player.name}
+                  onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
+                  aria-invalid={errors[`player-${player.key}`] !== undefined}
                 />
-              </section>
-            ))}
-          </div>
-        </fieldset>
-        <fieldset className="md:col-span-full lg:col-[2]">
-          <legend>{t('localPlayers')}</legend>
-          <div className={sectionTitleClass}>
-            <FieldHint as="p">{t('localPlayersHint')}</FieldHint>
-            <Button variant="secondary" onClick={addPlayer} disabled={players.length >= 6}>
-              {t('addPlayer')}
-            </Button>
-          </div>
-          {errors.players !== undefined && <FieldError>{errors.players}</FieldError>}
-          <div className={playerListClass}>
-            {players.slice(1).map((player, index) => (
-              <section key={player.key}>
-                <Field
-                  label={t('playerName', { number: index + 2 })}
-                  error={errors[`player-${player.key}`]}
-                >
-                  <input
-                    value={player.name}
-                    onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
-                    aria-invalid={errors[`player-${player.key}`] !== undefined}
-                  />
-                </Field>
-                <ColorPicker
-                  player={player}
-                  players={players}
-                  onChange={(color) => updatePlayer(player.key, { color })}
-                />
-                <Button
-                  variant="quiet"
-                  className="justify-self-start"
-                  onClick={() =>
-                    setPlayers(players.filter((candidate) => candidate.key !== player.key))
-                  }
-                >
-                  {t('remove')}
+              </Field>
+              <ColorPicker
+                player={player}
+                players={players}
+                onChange={(color) => updatePlayer(player.key, { color })}
+              />
+            </section>
+          ))}
+        </PlayersFieldset>
+        <PlayersFieldset
+          column={2}
+          legend={t('localPlayers')}
+          intro={
+            <>
+              <div className={sectionTitleClass}>
+                <FieldHint as="p">{t('localPlayersHint')}</FieldHint>
+                <Button variant="secondary" onClick={addPlayer} disabled={players.length >= 6}>
+                  {t('addPlayer')}
                 </Button>
-              </section>
-            ))}
-          </div>
-        </fieldset>
+              </div>
+              {errors.players !== undefined && <FieldError>{errors.players}</FieldError>}
+            </>
+          }
+        >
+          {players.slice(1).map((player, index) => (
+            <section key={player.key}>
+              <Field
+                label={t('playerName', { number: index + 2 })}
+                error={errors[`player-${player.key}`]}
+              >
+                <input
+                  value={player.name}
+                  onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
+                  aria-invalid={errors[`player-${player.key}`] !== undefined}
+                />
+              </Field>
+              <ColorPicker
+                player={player}
+                players={players}
+                onChange={(color) => updatePlayer(player.key, { color })}
+              />
+              <Button
+                variant="quiet"
+                className="justify-self-start"
+                onClick={() =>
+                  setPlayers(players.filter((candidate) => candidate.key !== player.key))
+                }
+              >
+                {t('remove')}
+              </Button>
+            </section>
+          ))}
+        </PlayersFieldset>
         {submitError !== null && (
           <Notice tone="error" className="md:col-span-full">
             {apiErrorMessage(submitError, t, 'unableCreateGame')}
@@ -287,6 +293,42 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
         </Toolbar>
       </form>
     </PageShell>
+  );
+}
+
+/** The vertical field rhythm inside the game-basics and banking-rules fieldsets. */
+function FieldStack({ children }: { children: ReactNode }) {
+  return <div className="grid gap-(--mb-space-4)">{children}</div>;
+}
+
+/*
+ * Both player fieldsets span the form from `md`; from `lg` they sit in their own column. The owner
+ * editor lays its name and colour side by side from `md` until the `lg` column narrows it again.
+ */
+const playersFieldsetClass = {
+  1: { fieldset: 'md:col-span-full lg:col-[1]', list: ownerListClass },
+  2: { fieldset: 'md:col-span-full lg:col-[2]', list: playerListClass },
+};
+
+/** A players fieldset: legend, optional intro row, then the list of player editors. */
+function PlayersFieldset({
+  column,
+  legend,
+  intro,
+  children,
+}: {
+  column: 1 | 2;
+  legend: string;
+  intro?: ReactNode;
+  children: ReactNode;
+}) {
+  const classes = playersFieldsetClass[column];
+  return (
+    <fieldset className={classes.fieldset}>
+      <legend>{legend}</legend>
+      {intro}
+      <div className={classes.list}>{children}</div>
+    </fieldset>
   );
 }
 

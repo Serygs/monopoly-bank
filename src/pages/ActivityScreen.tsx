@@ -12,7 +12,8 @@ import { Dialog } from '../components/Dialog';
 import { TransactionRow } from '../components/game/TransactionRow';
 import { useLanguage } from '../i18n/language-context';
 import { Button, MoneyValue, Notice, Row, StatPill } from '../components/ui';
-import { cx, mutedClass, wideDialogClass } from '../components/ui/class-names';
+import { cx, wideDialogClass } from '../components/ui/class-names';
+import { MutedText } from '../components/ui/Text';
 
 const activityScopes: readonly ActivityScope[] = ['ALL', 'MINE', 'PENDING'];
 
@@ -22,7 +23,7 @@ const activityScopes: readonly ActivityScope[] = ['ALL', 'MINE', 'PENDING'];
  */
 const dialogClass = cx(
   'grid h-[min(720px,calc(100dvh_-_48px))] grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden!',
-  'max-md:h-[calc(100dvh_-_env(safe-area-inset-top)_-_8px)]',
+  'max-md:h-[calc(100dvh_-_var(--mb-app-safe-top)_-_8px)]',
   wideDialogClass,
   'glass:max-w-full glass:min-w-0',
 );
@@ -161,9 +162,7 @@ export function ActivityScreen({
         )}
       </ol>
       {!loading && items.length === 0 && (
-        <p className={mutedClass}>
-          {scope === 'PENDING' ? t('noPendingActivity') : t('noActivity')}
-        </p>
+        <MutedText>{scope === 'PENDING' ? t('noPendingActivity') : t('noActivity')}</MutedText>
       )}
       {loading && (
         <StatPill variant="muted" live>

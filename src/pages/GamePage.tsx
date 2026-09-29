@@ -6,7 +6,7 @@ import { StatisticsScreen } from './StatisticsScreen';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { DiceRoller } from '../components/DiceRoller';
 import { TableCalculator } from '../components/TableCalculator';
-import { Button, Notice, PageShell, StatPill } from '../components/ui';
+import { Button, Notice, PageShell, StatPill, useFeedback } from '../components/ui';
 import type { DevicePreferences } from '../utils/preferences';
 import { playPaymentFeedback, vibrate } from '../utils/feedback';
 import { apiErrorMessage } from '../i18n/api-errors';
@@ -21,12 +21,7 @@ import { HistoryDialog } from './game/HistoryDialog';
 import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
 import { WalletsSection } from './game/WalletsSection';
-import {
-  actionLabel,
-  applyLiveEvent,
-  withClientGameDetails,
-  type ActionType,
-} from './game/game-page-helpers';
+import { actionLabel, applyLiveEvent, withClientGameDetails } from './game/game-page-helpers';
 
 /** The lobby banner sits further from the wallets than a plain notice; `!` beats Notice's margin. */
 const stateBannerClass = 'mb-(--mb-space-6)!';
@@ -53,7 +48,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [historyPlayer, setHistoryPlayer] = useState<Player | null>(null);
   const [historyError, setHistoryError] = useState<unknown | null>(null);
   const historyCache = useRef(new Map<string, Transaction[]>());
-  const [notice, setNotice] = useState<ActionType | null>(null);
+  const notify = useFeedback();
   const [summary, setSummary] = useState<
     ({ game: Game; winners: Player[] } & LedgerStatistics) | null
   >(null);
@@ -65,7 +60,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
-  const [paymentRequestNotice, setPaymentRequestNotice] = useState(false);
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
   const lastAppliedVersion = useRef(0);
   useEffect(() => {
@@ -274,22 +268,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           )}
         </Notice>
       )}
-      {notice !== null && (
-        <Notice tone="success" as="section">
-          <p>{t('recorded', { action: actionLabel(notice, t) })}</p>
-          <Button variant="quiet" onClick={() => setNotice(null)}>
-            {t('dismiss')}
-          </Button>
-        </Notice>
-      )}
-      {paymentRequestNotice && (
-        <Notice tone="success" as="section">
-          <p>{t('paymentRequestCreated')}</p>
-          <Button variant="quiet" onClick={() => setPaymentRequestNotice(false)}>
-            {t('dismiss')}
-          </Button>
-        </Notice>
-      )}
       <WalletsSection
         players={details.players}
         currency={details.game.currency}
@@ -389,12 +367,12 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                     ].slice(0, 5),
             });
             setSelectedPlayer(null);
-            setNotice(action);
+            notify({ tone: 'success', message: t('recorded', { action: actionLabel(action, t) }) });
           }}
           onPaymentRequested={() => {
             loadPaymentRequests();
             setSelectedPlayer(null);
-            setPaymentRequestNotice(true);
+            notify({ tone: 'success', message: t('paymentRequestCreated') });
           }}
         />
       )}

@@ -18,6 +18,7 @@
     "test:e2e": "playwright test",
     "test:visual": "PLAYWRIGHT_VISUAL=1 playwright test --project=visual",
     "test:visual:update": "PLAYWRIGHT_VISUAL=1 playwright test --project=visual --update-snapshots",
+    "test:visual:reference": "PLAYWRIGHT_VISUAL=1 MB_REFERENCE_CAPTURE=1 playwright test --project=visual e2e/visual/reference.spec.ts",
     "test:load": "node scripts/load/realtime-load.mjs",
     "test:restore": "node scripts/rehearse-d1-restore.mjs",
     "check:bindings": "node scripts/validate-deployment-bindings.mjs",

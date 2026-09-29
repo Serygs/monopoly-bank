@@ -49,10 +49,6 @@ export interface BankingDialogProps {
   onPaymentRequested: () => void;
 }
 
-/** Below `md` the sheet shows a grab handle above its header. */
-const sheetClass =
-  "max-md:before:mx-auto max-md:before:mt-[-10px] max-md:before:mb-[14px] max-md:before:block max-md:before:h-[4px] max-md:before:w-[42px] max-md:before:rounded-pill max-md:before:bg-border-strong max-md:before:content-['']";
-
 /** Inverse balance plate: the label in the highlight colour over the balance figure. */
 const balanceClass = cx(
   'relative mx-0 mt-[18px] mb-[14px] grid gap-[4px] overflow-hidden rounded-[14px] border border-accent bg-surface-inverse px-[18px] py-[16px] shadow-balance-inset',
@@ -181,12 +177,7 @@ export function BankingDialog({
         apiErrorMessage(error, t, 'unableRecordTransaction'));
 
   return (
-    <Dialog
-      title={title}
-      closeLabel={t('closeDialog', { title })}
-      onClose={onClose}
-      className={sheetClass}
-    >
+    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
       {transactionError !== null && <Notice tone="error">{transactionError}</Notice>}
       {action === null ? (
         <>
