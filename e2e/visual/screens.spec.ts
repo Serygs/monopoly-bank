@@ -69,7 +69,19 @@ const screens: readonly VisualScreen[] = [
     name: 'game-wallet',
     languages: ['en', 'uk'],
     fullPage: true,
-    open: openGame,
+    open: async (page) => {
+      await openGame(page);
+      await page.evaluate(() => document.fonts.ready);
+      // A balance never wraps, so it must shrink to fit its card at every width.
+      const clipped = await page
+        .locator('.wallet-card strong')
+        .evaluateAll((balances) =>
+          balances
+            .filter((balance) => balance.scrollWidth > balance.clientWidth)
+            .map((balance) => balance.textContent),
+        );
+      expect(clipped).toEqual([]);
+    },
   },
   {
     name: 'game-banking-dialog',
