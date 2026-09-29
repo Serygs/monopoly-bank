@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    exclude: ['**/node_modules/**', '**/dist/**', '**/test-results/**', 'e2e/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/test-results/**', 'e2e/**', '.claude/**'],
     // Worker, shared and migration tests run in Node: jsdom replaces globals such as `URL`,
     // which breaks `new URL('./file.sql', import.meta.url)` in the migration tests.
     projects: [
