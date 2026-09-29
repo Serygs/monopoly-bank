@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useId,
   useRef,
   useState,
@@ -14,6 +15,7 @@ import { useAmountInput } from '../components/amount-input-state';
 import { PageHeader } from '../components/PageHeader';
 import type { Translate } from '../i18n/translations';
 import { formatMoney } from '../utils/money';
+import { getGameNameSuggestions, randomSuggestionStart } from '../utils/game-name-suggestions';
 import {
   selectableCurrencies,
   type Currency,
@@ -44,9 +46,15 @@ interface Props {
 }
 
 export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const nextKey = useRef(3);
+  const gameNameInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRootRef = useRef<HTMLDivElement>(null);
+  const gameNameInputId = useId();
+  const suggestionsId = useId();
   const [name, setName] = useState('');
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestionStart, setSuggestionStart] = useState(0);
   const [startingBalance, setStartingBalance] = useState(String(defaultStartingBalance));
   const [passGoReward, setPassGoReward] = useState(String(defaultPassGoReward));
   const [currency, setCurrency] = useState<SelectableCurrency>('USD');
@@ -58,6 +66,32 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<unknown | null>(null);
+  const suggestions = getGameNameSuggestions(language, suggestionStart);
+
+  useEffect(() => {
+    if (!suggestionsOpen) return;
+    const closeFromOutside = (event: PointerEvent) => {
+      if (!suggestionsRootRef.current?.contains(event.target as Node)) setSuggestionsOpen(false);
+    };
+    const closeFromEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setSuggestionsOpen(false);
+      gameNameInputRef.current?.focus();
+    };
+    document.addEventListener('pointerdown', closeFromOutside);
+    document.addEventListener('keydown', closeFromEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeFromOutside);
+      document.removeEventListener('keydown', closeFromEscape);
+    };
+  }, [suggestionsOpen]);
+
+  const toggleSuggestions = () => {
+    setSuggestionsOpen((open) => {
+      if (!open) setSuggestionStart(randomSuggestionStart());
+      return !open;
+    });
+  };
   const updatePlayer = (key: number, change: Partial<Omit<PlayerForm, 'key'>>) =>
     setPlayers(players.map((player) => (player.key === key ? { ...player, ...change } : player)));
   const addPlayer = () => {
@@ -114,15 +148,60 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
         <fieldset className="form-section create-section-basics">
           <legend>{t('gameBasics')}</legend>
           <div className="form-section-fields">
-            <label>
-              {t('gameName')}
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                aria-invalid={errors.name !== undefined}
-              />
+            <div className="game-name-field">
+              <label htmlFor={gameNameInputId}>{t('gameName')}</label>
+              <div className="game-name-control" ref={suggestionsRootRef}>
+                <input
+                  ref={gameNameInputRef}
+                  id={gameNameInputId}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  aria-invalid={errors.name !== undefined}
+                />
+                <button
+                  className="game-name-suggest-trigger"
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-expanded={suggestionsOpen}
+                  aria-controls={suggestionsId}
+                  onClick={toggleSuggestions}
+                >
+                  <SparklesIcon />
+                  <span>{t('suggestGameName')}</span>
+                </button>
+                {suggestionsOpen && (
+                  <div
+                    className="game-name-suggestions"
+                    id={suggestionsId}
+                    role="dialog"
+                    aria-label={t('suggestedGameNames')}
+                  >
+                    <div className="game-name-suggestions-heading">
+                      <SparklesIcon />
+                      <span>{t('suggestedGameNames')}</span>
+                    </div>
+                    <div className="game-name-suggestion-list" role="group">
+                      {suggestions.map((suggestion) => (
+                        <button
+                          className="game-name-suggestion"
+                          type="button"
+                          key={suggestion.name}
+                          onClick={() => {
+                            setName(suggestion.name);
+                            setSuggestionsOpen(false);
+                            gameNameInputRef.current?.focus();
+                          }}
+                        >
+                          <span aria-hidden="true">{suggestion.icon}</span>
+                          <span>{suggestion.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               {fieldError(errors.name)}
-            </label>
+            </div>
             <label>
               {t('currency')}
               <select
@@ -261,6 +340,15 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
         </div>
       </form>
     </main>
+  );
+}
+
+function SparklesIcon() {
+  return (
+    <svg className="sparkles-icon" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M10 1.75c.48 3.43 2.27 5.22 5.7 5.7-3.43.48-5.22 2.27-5.7 5.7-.48-3.43-2.27-5.22-5.7-5.7 3.43-.48 5.22-2.27 5.7-5.7Z" />
+      <path d="M15.75 12.25c.2 1.45.96 2.2 2.4 2.4-1.44.2-2.2.96-2.4 2.4-.2-1.44-.95-2.2-2.4-2.4 1.45-.2 2.2-.95 2.4-2.4ZM3.45 12.3c.14 1.03.68 1.57 1.71 1.71-1.03.15-1.57.68-1.71 1.72-.15-1.04-.68-1.57-1.72-1.72 1.04-.14 1.57-.68 1.72-1.71Z" />
+    </svg>
   );
 }
 
