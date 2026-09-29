@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
-import { cx, eyebrowClass, ledeClass } from './ui/class-names';
+import { cx } from './ui/class-names';
+import { Eyebrow, Lede } from './ui/Text';
 
+/* The title column (always the first child) may shrink below its content's width. */
 const headerClass = cx(
-  'grid gap-(--mb-layout-gap-compact) mb-(--mb-layout-section-gap-compact)',
+  'grid gap-(--mb-layout-gap-compact) mb-(--mb-layout-section-gap-compact) [&>div:first-child]:min-w-0',
   'md:gap-(--mb-layout-gap-medium) md:mb-(--mb-layout-section-gap-medium)',
   'lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-(--mb-layout-gap-wide) lg:mb-(--mb-layout-section-gap-wide)',
 );
@@ -41,13 +43,13 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <section className={cx(headerClass, className)}>
-      <div className="min-w-0">
+      <div>
         {backAction !== undefined && (
           <div className="page-header-back mb-(--mb-space-3)">{backAction}</div>
         )}
-        {eyebrow !== undefined && <p className={eyebrowClass}>{eyebrow}</p>}
+        {eyebrow !== undefined && <Eyebrow>{eyebrow}</Eyebrow>}
         <h1 className={titleClass}>{title}</h1>
-        {description !== undefined && <div className={ledeClass}>{description}</div>}
+        {description !== undefined && <Lede as="div">{description}</Lede>}
         {children}
       </div>
       {actions !== undefined && <div className={actionsClass}>{actions}</div>}

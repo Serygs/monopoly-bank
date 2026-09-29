@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { Currency, Player } from '../../../shared/types/monopoly';
 import { cx, playerSwatchClass } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
@@ -51,10 +51,28 @@ const nameClass = 'min-w-0 text-[1rem] leading-[1.25] font-semibold text-inherit
 const badgesClass = 'col-span-full flex flex-wrap gap-(--mb-space-2)';
 const badgeClass =
   'inline-flex min-h-[26px] w-fit items-center rounded-pill border border-[color:color-mix(in_srgb,currentColor_42%,transparent)] px-(--mb-space-2) py-[2px] text-meta font-semibold';
+const badgeToneClass = {
+  active: cx(
+    'bg-[color-mix(in_srgb,var(--mb-color-highlight)_12%,transparent)] text-highlight',
+    'glass:bg-[color-mix(in_srgb,var(--mb-color-accent-soft)_72%,transparent)] glass:text-accent-hover',
+  ),
+  bankrupt: 'bg-danger-soft text-danger',
+};
 const balanceClass =
   'min-w-0 font-money leading-none font-bold whitespace-nowrap text-inherit tabular-nums';
 const footerClass =
   'flex min-h-(--mb-control-height-md) items-center justify-between gap-(--mb-space-3) border-t pt-(--mb-space-3) text-small font-semibold';
+
+/** A status pill under the player name: the active wallet or a bankrupt player. */
+function WalletBadge({
+  tone,
+  children,
+}: {
+  tone: keyof typeof badgeToneClass;
+  children: ReactNode;
+}) {
+  return <span className={cx(badgeClass, badgeToneClass[tone])}>{children}</span>;
+}
 
 /** Balance size steps down for long amounts so the figure never wraps. */
 function balanceSizeClass(length: number, prominent: boolean): string {
@@ -97,19 +115,9 @@ export function WalletCard({
         />
         <span className={nameClass}>{playerName}</span>
         <span className={badgesClass}>
-          {active && (
-            <span
-              className={cx(
-                badgeClass,
-                'bg-[color-mix(in_srgb,var(--mb-color-highlight)_12%,transparent)] text-highlight',
-                'glass:bg-[color-mix(in_srgb,var(--mb-color-accent-soft)_72%,transparent)] glass:text-accent-hover',
-              )}
-            >
-              {t('activeWallet')}
-            </span>
-          )}
+          {active && <WalletBadge tone="active">{t('activeWallet')}</WalletBadge>}
           {player.status === 'BANKRUPT' && (
-            <span className={cx(badgeClass, 'bg-danger-soft text-danger')}>{t('bankrupt')}</span>
+            <WalletBadge tone="bankrupt">{t('bankrupt')}</WalletBadge>
           )}
         </span>
       </span>

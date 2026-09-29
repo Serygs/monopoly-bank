@@ -24,6 +24,8 @@ interface VisualScreen {
   authenticated?: boolean;
   /** Dialog screens capture the viewport; page screens capture the full scroll height. */
   fullPage: boolean;
+  /** Restricts the screen to some of `viewports` (by width); all of them when omitted. */
+  widths?: readonly number[];
   open: (page: Page, language: Language) => Promise<void>;
 }
 
@@ -93,6 +95,22 @@ const screens: readonly VisualScreen[] = [
     },
   },
   {
+    // The settings popover presented as the compact bottom sheet (the modal sheet is covered by
+    // `game-banking-dialog-*-390`).
+    name: 'settings-sheet',
+    languages: ['en'],
+    fullPage: false,
+    widths: [390],
+    open: async (page, language) => {
+      await page.goto('/');
+      await expect(page.locator('.game-card')).toHaveCount(fixtureSavedGames.length);
+      await page
+        .getByRole('button', { name: translate(language, 'settings'), exact: true })
+        .click();
+      await settleDialog(page);
+    },
+  },
+  {
     name: 'profile',
     languages: ['en'],
     fullPage: true,
@@ -129,6 +147,7 @@ for (const screen of screens) {
     for (const { id: visualStyle } of visualStyles) {
       for (const colorMode of colorModes) {
         for (const viewport of viewports) {
+          if (screen.widths !== undefined && !screen.widths.includes(viewport.width)) continue;
           const name = `${screen.name}-${language}-${visualStyle}-${colorMode}-${viewport.width}`;
           test(name, async ({ page }) => {
             await page.setViewportSize(viewport);

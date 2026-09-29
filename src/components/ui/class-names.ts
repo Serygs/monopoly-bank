@@ -18,24 +18,18 @@ export const ledeClass =
 /** Quiet supporting copy. */
 export const mutedClass = 'text-muted';
 
+export type NoticeTone = 'error' | 'success' | 'info';
+
+/** Feedback tone surface shared by `Notice` and `Toast`. */
+export const noticeToneClass: Record<NoticeTone, string> = {
+  info: 'border-border bg-surface-elevated text-primary',
+  success: 'border-status-border bg-status-surface text-status-text',
+  error: 'border-danger-border bg-danger-soft text-danger',
+};
+
 /** Recessed banknote surface shared by `Card variant="banknote"` and the banknote auth card. */
 export const banknotePanelClass =
   'rounded-card-large border border-border bg-surface-subtle text-primary';
-
-/** Heading row of the sign-in and join cards: the bank seal beside the eyebrow and title. */
-export const authHeadingClass = 'flex min-w-0 items-center gap-(--mb-space-4) [&>div]:min-w-0';
-
-/** The `MB` bank seal in the auth-card heading. */
-export const authSealClass = cx(
-  'grid size-[42px] flex-none place-items-center rounded-md',
-  'border border-[color:color-mix(in_srgb,var(--mb-color-highlight)_64%,transparent)]',
-  'bg-surface-inverse text-meta font-bold tracking-meta text-highlight',
-  'shadow-[inset_0_0_0_3px_var(--mb-color-surface-inverse-elevated)]',
-);
-
-/** Sign-in, join and email-token forms: the full-width primary submit. */
-export const authFormClass =
-  'game-form [&_.button-primary]:w-full [&_.button-primary]:min-h-(--mb-control-height-lg)';
 
 /*
  * Button. `button`, `button-<variant>` and `icon-button` stay as hooks for the `[&_.button]`

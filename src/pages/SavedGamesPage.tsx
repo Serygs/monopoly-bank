@@ -14,6 +14,7 @@ import {
   PageShell,
   SegmentedControl,
   StatPill,
+  useFeedback,
 } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
@@ -31,7 +32,8 @@ const heroClass = cx(
   'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-0 *:relative *:z-1',
   '[&_h1]:text-inherit [&_.lede]:text-inherit [&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-highlight)_82%,white)]',
   'max-md:[&_h1]:text-[length:clamp(2.125rem,10vw,2.875rem)]',
-  'light:[&_button:focus-visible]:outline-text-on-inverse',
+  // Only the dark Classic hero needs the inverse ring; Liquid Glass light keeps the default.
+  'classic:light:[&_button:focus-visible]:outline-text-on-inverse',
   // `!` outranks PageHeader's own `lg:` columns.
   'lg:grid-cols-[minmax(0,62%)_minmax(0,38%)]! lg:items-center',
   'max-md:[&_.page-header-actions]:grid-cols-1 max-md:[&_.page-header-actions_.button]:w-full max-md:[&_.button-primary]:-order-1',
@@ -80,7 +82,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   const [gameToRemove, setGameToRemove] = useState<GameSummary | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<unknown | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const notify = useFeedback();
   const [duplicating, setDuplicating] = useState<string | null>(null);
   const [gameToDuplicate, setGameToDuplicate] = useState<GameSummary | null>(null);
   const [duplicatePassword, setDuplicatePassword] = useState('');
@@ -147,7 +149,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
     try {
       const removed = await monopolyBankApi.deleteGame(gameToRemove.game.id);
       setGames((current) => current.filter(({ game }) => game.id !== removed.gameId));
-      setNotice(gameToRemove.game.name);
+      notify({ tone: 'success', message: t('gameRemoved', { name: gameToRemove.game.name }) });
       setGameToRemove(null);
     } catch (caught) {
       setRemoveError(caught);
@@ -203,14 +205,6 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
         }
       />
 
-      {notice !== null && (
-        <Notice tone="success" as="section">
-          <p>{t('gameRemoved', { name: notice })}</p>
-          <Button variant="quiet" onClick={() => setNotice(null)}>
-            {t('dismiss')}
-          </Button>
-        </Notice>
-      )}
       {loading && (
         <StatPill variant="status" live>
           {t('loadingSavedGames')}

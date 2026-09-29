@@ -1,13 +1,14 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type FormHTMLAttributes } from 'react';
 import type { UserProfile } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Avatar, AvatarPicker } from '../components/AvatarPicker';
 import { PageHeader } from '../components/PageHeader';
-import { Button, Field, Notice, PageShell } from '../components/ui';
+import { Button, Field, Notice, PageShell, useFeedback } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { EMAIL_FEATURES_ENABLED } from '../utils/email-features';
-import { cx, mutedClass } from '../components/ui/class-names';
+import { cx } from '../components/ui/class-names';
+import { MutedText } from '../components/ui/Text';
 
 const layoutClass = cx(
   'grid min-w-0 gap-(--mb-layout-gap-compact)',
@@ -36,6 +37,11 @@ const statisticsClass = cx(
 /* `!` outranks the unlayered `.game-form` gap in `primitives.css`. */
 const profileFormClass = 'game-form gap-(--mb-space-6)!';
 
+/** The profile, guest-upgrade and legacy-email forms share one spacing. */
+function ProfileForm(props: Omit<FormHTMLAttributes<HTMLFormElement>, 'className'>) {
+  return <form className={profileFormClass} {...props} />;
+}
+
 export function ProfilePage({
   profile,
   onUpdated,
@@ -49,16 +55,15 @@ export function ProfilePage({
   const [nickname, setNickname] = useState(profile.nickname);
   const [avatar, setAvatar] = useState(profile.avatar);
   const [error, setError] = useState<unknown>(null);
-  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const notify = useFeedback();
   const save = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setError(null);
-    setSaved(false);
     try {
       onUpdated(await monopolyBankApi.updateProfile({ nickname, avatar }));
-      setSaved(true);
+      notify({ tone: 'success', message: t('profileUpdated') });
     } catch (caught) {
       setError(caught);
     } finally {
@@ -83,9 +88,9 @@ export function ProfilePage({
             <Avatar avatar={avatar} label={nickname} />
             <div>
               <h2>{nickname}</h2>
-              <p className={mutedClass}>
+              <MutedText>
                 {profile.accountType === 'GUEST' ? t('guestAccount') : t('playerProfile')}
-              </p>
+              </MutedText>
             </div>
           </div>
           <dl className={statisticsClass}>
@@ -108,7 +113,7 @@ export function ProfilePage({
           </dl>
         </section>
         <section className={editorClass}>
-          <form className={profileFormClass} onSubmit={(event) => void save(event)}>
+          <ProfileForm onSubmit={(event) => void save(event)}>
             <Field label={t('nickname')}>
               <input
                 value={nickname}
@@ -130,7 +135,6 @@ export function ProfilePage({
             {error !== null && (
               <Notice tone="error">{apiErrorMessage(error, t, 'unableUpdateProfile')}</Notice>
             )}
-            {saved && <Notice tone="success">{t('profileUpdated')}</Notice>}
             <Button
               variant="primary"
               type="submit"
@@ -139,7 +143,7 @@ export function ProfilePage({
             >
               {saving ? t('savingProfile') : t('saveProfile')}
             </Button>
-          </form>
+          </ProfileForm>
           {EMAIL_FEATURES_ENABLED &&
             (profile.accountType === 'GUEST' ? (
               <GuestUpgradeForm onUpgraded={onUpdated} />
@@ -173,9 +177,9 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
     }
   };
   return (
-    <form className={profileFormClass} onSubmit={(event) => void upgrade(event)}>
+    <ProfileForm onSubmit={(event) => void upgrade(event)}>
       <h2>{t('secureGuestAccount')}</h2>
-      <p className={mutedClass}>{t('secureGuestDescription')}</p>
+      <MutedText>{t('secureGuestDescription')}</MutedText>
       <Field label={t('email')}>
         <input
           type="email"
@@ -202,7 +206,7 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
       <Button variant="primary" type="submit" disabled={busy}>
         {busy ? t('pleaseWait') : t('secureGuestAccount')}
       </Button>
-    </form>
+    </ProfileForm>
   );
 }
 
@@ -210,14 +214,13 @@ function VerificationNotice() {
   const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [sent, setSent] = useState(false);
+  const notify = useFeedback();
   const resend = async () => {
     setBusy(true);
     setError(null);
-    setSent(false);
     try {
       await monopolyBankApi.resendVerification();
-      setSent(true);
+      notify({ tone: 'success', message: t('verificationSent') });
     } catch (caught) {
       setError(caught);
     } finally {
@@ -227,7 +230,7 @@ function VerificationNotice() {
   return (
     <section>
       <Notice tone="success" as="div">
-        <p>{sent ? t('verificationSent') : t('verificationPending')}</p>
+        <p>{t('verificationPending')}</p>
         <Button variant="secondary" disabled={busy} onClick={() => void resend()}>
           {busy ? t('pleaseWait') : t('resendVerification')}
         </Button>
@@ -257,9 +260,9 @@ function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void 
     }
   };
   return (
-    <form className={profileFormClass} onSubmit={(event) => void add(event)}>
+    <ProfileForm onSubmit={(event) => void add(event)}>
       <h2>{t('addAccountEmail')}</h2>
-      <p className={mutedClass}>{t('addAccountEmailDescription')}</p>
+      <MutedText>{t('addAccountEmailDescription')}</MutedText>
       <Field label={t('email')}>
         <input
           type="email"
@@ -275,6 +278,6 @@ function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void 
       <Button variant="primary" type="submit" disabled={busy}>
         {busy ? t('pleaseWait') : t('addAccountEmail')}
       </Button>
-    </form>
+    </ProfileForm>
   );
 }

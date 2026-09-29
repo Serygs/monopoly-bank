@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLanguage } from '../i18n/language-context';
-import { cx, keyButtonClass, toolPanelClass, eyebrowClass, mutedClass } from './ui/class-names';
+import { ToolPanel } from './ui';
+import { cx, keyButtonClass } from './ui/class-names';
 
 const operations = ['+', '−', '×', '÷'] as const;
 const controlsClass =
@@ -38,12 +39,12 @@ export function TableCalculator() {
     />
   );
   return (
-    <section className={toolPanelClass} aria-label={t('calculator')}>
-      <div>
-        <p className={eyebrowClass}>{t('tableTool')}</p>
-        <h2 className="m-0 text-primary">{t('calculator')}</h2>
-        <p className={mutedClass}>{t('calculatorDescription')}</p>
-      </div>
+    <ToolPanel
+      label={t('calculator')}
+      eyebrow={t('tableTool')}
+      title={t('calculator')}
+      description={t('calculatorDescription')}
+    >
       {/* `calculator-controls` keeps the shared text-input rules in primitives.css. */}
       <div className={controlsClass}>
         {numberInput(first, setFirst, t('firstNumber'))}
@@ -69,6 +70,6 @@ export function TableCalculator() {
           = {result === null ? '—' : Number.isInteger(result) ? result : result.toFixed(2)}
         </output>
       </div>
-    </section>
+    </ToolPanel>
   );
 }

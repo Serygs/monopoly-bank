@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import type { Currency } from '../../shared/types/monopoly';
 import { useLanguage } from '../i18n/language-context';
 import { formatMoney } from '../utils/money';
@@ -25,9 +25,20 @@ const favoriteToggleClass = cx(
   quickButtonClass,
   'min-w-(--mb-control-height-md) rounded-[0_9px_9px_0] border-s-0 text-[1.05rem] text-accent',
 );
-const sectionClass = 'col-span-full';
-const sectionLabelClass = 'mb-2 block text-[0.85rem] font-semibold text-secondary';
-const sectionChoicesClass = 'flex flex-wrap gap-2';
+/* One quick-amount row: its label, then the wrapping chips (each chip plus its favourite toggle). */
+const sectionClass = cx(
+  'col-span-full [&>span]:mb-2 [&>span]:block [&>span]:text-[0.85rem] [&>span]:font-semibold [&>span]:text-secondary',
+  '[&>div]:flex [&>div]:flex-wrap [&>div]:gap-2 [&>div>span]:inline-flex',
+);
+
+function AmountSection({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className={sectionClass}>
+      <span>{label}</span>
+      <div>{children}</div>
+    </div>
+  );
+}
 
 export function AmountSelector({
   value,
@@ -59,7 +70,7 @@ export function AmountSelector({
     amounts.filter((amount, index) => amounts.indexOf(amount) === index && amount > 0);
   const renderAmounts = (amounts: readonly number[]) =>
     unique(amounts).map((amount) => (
-      <span className="inline-flex" key={amount}>
+      <span key={amount}>
         <button
           type="button"
           className={amountChipClass}
@@ -107,21 +118,12 @@ export function AmountSelector({
         />
       </div>
       <NumericKeypad digits={synced.digits} unit={synced.unit} onChange={changeDigits} />
-      <div className={sectionClass}>
-        <span className={sectionLabelClass}>{t('quickAmounts')}</span>
-        <div className={sectionChoicesClass}>{renderAmounts(standardAmounts)}</div>
-      </div>
+      <AmountSection label={t('quickAmounts')}>{renderAmounts(standardAmounts)}</AmountSection>
       {favorites.length > 0 && (
-        <div className={sectionClass}>
-          <span className={sectionLabelClass}>{t('favoriteAmounts')}</span>
-          <div className={sectionChoicesClass}>{renderAmounts(favorites)}</div>
-        </div>
+        <AmountSection label={t('favoriteAmounts')}>{renderAmounts(favorites)}</AmountSection>
       )}
       {recent.length > 0 && (
-        <div className={sectionClass}>
-          <span className={sectionLabelClass}>{t('recentAmounts')}</span>
-          <div className={sectionChoicesClass}>{renderAmounts(recent)}</div>
-        </div>
+        <AmountSection label={t('recentAmounts')}>{renderAmounts(recent)}</AmountSection>
       )}
     </div>
   );

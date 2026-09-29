@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { visualStyles } from '../appearance/visual-styles';
 import { useLanguage } from '../i18n/language-context';
 import { isColorMode, type DevicePreferences } from '../utils/preferences';
@@ -25,6 +26,16 @@ const glassArtClass =
 const previewCheckClass =
   'absolute top-(--mb-space-2) right-(--mb-space-2) size-[22px] place-items-center rounded-full bg-accent text-on-accent';
 
+/** One labelled group of the settings panel; `settings-options` keeps its rules in primitives.css. */
+export function SettingsGroup({ legend, children }: { legend: string; children: ReactNode }) {
+  return (
+    <fieldset className="settings-options">
+      <legend>{legend}</legend>
+      {children}
+    </fieldset>
+  );
+}
+
 export function AppearanceSettings({
   preferences,
   onChange,
@@ -35,8 +46,7 @@ export function AppearanceSettings({
   const { t } = useLanguage();
   return (
     <>
-      <fieldset className="settings-options">
-        <legend>{t('visualStyle')}</legend>
+      <SettingsGroup legend={t('visualStyle')}>
         <div className={previewGridClass}>
           {visualStyles.map((style) => {
             const active = preferences.visualStyle === style.id;
@@ -66,9 +76,8 @@ export function AppearanceSettings({
             );
           })}
         </div>
-      </fieldset>
-      <fieldset className="settings-options">
-        <legend>{t('appearance')}</legend>
+      </SettingsGroup>
+      <SettingsGroup legend={t('appearance')}>
         <SegmentedControl
           columns={3}
           options={(['light', 'dark', 'system'] as const).map((mode) => ({
@@ -82,7 +91,7 @@ export function AppearanceSettings({
             if (isColorMode(mode)) onChange({ colorMode: mode });
           }}
         />
-      </fieldset>
+      </SettingsGroup>
     </>
   );
 }

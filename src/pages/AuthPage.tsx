@@ -5,13 +5,8 @@ import { AvatarPicker } from '../components/AvatarPicker';
 import { Button, Field, Notice, PageShell, Toolbar } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
-import {
-  authFormClass,
-  authHeadingClass,
-  authSealClass,
-  eyebrowClass,
-  ledeClass,
-} from '../components/ui/class-names';
+import { AuthForm, AuthHeading } from '../components/ui/AuthCard';
+import { Lede } from '../components/ui/Text';
 
 export function AuthPage({ onAuthenticated }: { onAuthenticated: (profile: UserProfile) => void }) {
   const { t } = useLanguage();
@@ -45,19 +40,12 @@ export function AuthPage({ onAuthenticated }: { onAuthenticated: (profile: UserP
 
   return (
     <PageShell variant="auth">
-      <div className={authHeadingClass}>
-        <span className={authSealClass} aria-hidden="true">
-          MB
-        </span>
-        <div>
-          <p className={eyebrowClass}>{t('appName')}</p>
-          <h1>{registering ? t('createAccount') : t('welcomeBack')}</h1>
-        </div>
-      </div>
-      <p className={ledeClass}>
-        {registering ? t('createAccountDescription') : t('signInDescription')}
-      </p>
-      <form className={authFormClass} onSubmit={(event) => void submit(event)}>
+      <AuthHeading
+        eyebrow={t('appName')}
+        title={registering ? t('createAccount') : t('welcomeBack')}
+      />
+      <Lede>{registering ? t('createAccountDescription') : t('signInDescription')}</Lede>
+      <AuthForm onSubmit={(event) => void submit(event)}>
         <Field label={t('nickname')}>
           <input
             value={nickname}
@@ -101,7 +89,7 @@ export function AuthPage({ onAuthenticated }: { onAuthenticated: (profile: UserP
         <Button variant="primary" type="submit" disabled={busy}>
           {busy ? t('pleaseWait') : registering ? t('createAccount') : t('signIn')}
         </Button>
-      </form>
+      </AuthForm>
       <Toolbar variant="auth-footer">
         <span>{registering ? t('alreadyHaveAccount') : t('newToMonopolyBank')}</span>
         <Button variant="quiet" onClick={() => setRegistering(!registering)}>

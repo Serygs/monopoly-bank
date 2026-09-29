@@ -12,9 +12,17 @@ import { ProfilePage } from './pages/ProfilePage';
 import { SavedGamesPage } from './pages/SavedGamesPage';
 import { readPreferences, writePreferences, type DevicePreferences } from './utils/preferences';
 import { mountAppearance } from './appearance/appearance-controller';
-import { AppearanceSettings } from './components/AppearanceSettings';
+import { AppearanceSettings, SettingsGroup } from './components/AppearanceSettings';
 import { Dialog } from './components/Dialog';
-import { Button, PageShell, SegmentedControl, StatPill, Toggle } from './components/ui';
+import {
+  BankSeal,
+  Button,
+  FeedbackProvider,
+  PageShell,
+  SegmentedControl,
+  StatPill,
+  Toggle,
+} from './components/ui';
 import { currentRoute, routePath } from './utils/client-route';
 import { EMAIL_FEATURES_ENABLED } from './utils/email-features';
 import { applyPwaUpdate } from './pwa';
@@ -31,7 +39,8 @@ const appShellClass =
 const appHeaderClass = cx(
   'app-header sticky top-0 z-20 border-b border-b-[color:color-mix(in_srgb,var(--mb-color-highlight)_48%,transparent)]',
   '[background:var(--mb-background-header)] text-on-inverse shadow-header',
-  'light:[&_button:focus-visible]:outline-text-on-inverse',
+  // Only the dark Classic header needs the inverse ring; Liquid Glass light keeps the default.
+  'classic:light:[&_button:focus-visible]:outline-text-on-inverse',
   'glass:border-b-[rgb(255_255_255/0.36)] glass:text-primary',
   'glass:backdrop-blur-[20px] glass:backdrop-saturate-[1.3] glass:max-md:backdrop-blur-[16px] glass:max-md:backdrop-saturate-[1.22]',
 );
@@ -54,13 +63,6 @@ const headerButtonClass = cx(
   'active:transform-[translateY(1px)] motion-reduce:transform-none! fine-pointer:hover:bg-inverse-hover',
 );
 const brandClass = cx(headerButtonClass, 'border-none p-0 text-[1rem] tracking-[-0.015em]');
-const brandMarkClass = cx(
-  'grid flex-none place-items-center rounded-md border border-[color:color-mix(in_srgb,var(--mb-color-highlight)_64%,transparent)]',
-  'bg-surface-inverse-elevated text-meta font-bold tracking-meta text-on-inverse',
-  'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--mb-color-surface-inverse)_70%,transparent)]',
-  'glass:border-[rgb(255_255_255/0.44)] glass:text-white glass:[background:linear-gradient(145deg,#6f91ba,#354d71)]',
-  'glass:shadow-[inset_0_1px_0_rgb(255_255_255/0.36),0_6px_16px_rgb(50_70_100/0.14)]',
-);
 const profileButtonClass = cx(
   headerButtonClass,
   'rounded-pill border-none p-(--mb-space-1)',
@@ -85,7 +87,8 @@ const settingsPanelClass = cx(
   'md:right-[var(--settings-popover-right,max(var(--mb-layout-page-inline-medium),calc((100vw_-_var(--mb-layout-content-max))_/_2)))]',
   'md:max-h-[calc(100dvh_-_var(--settings-popover-top,calc(var(--mb-layout-header-height-medium)_+_var(--mb-app-safe-top)_+_12px))_-_24px)]',
   'short-landscape:max-h-[calc(100dvh_-_var(--mb-app-safe-top)_-_var(--mb-space-2))]',
-  'glass:min-w-0 glass:max-w-[min(22.5rem,calc(100vw_-_2_*_var(--mb-space-3)))] glass:overflow-x-hidden',
+  // The cap applies to the anchored popover only; below `md` both styles share the full-width sheet.
+  'glass:min-w-0 glass:md:max-w-[min(22.5rem,calc(100vw_-_2_*_var(--mb-space-3)))] glass:overflow-x-hidden',
   'glass:md:w-[min(22.5rem,calc(100vw_-_2_*_var(--mb-space-3)))]',
   'glass:border-[rgb(255_255_255/0.65)] glass:bg-[rgb(255_255_255/0.76)] glass:dark:border-[rgb(255_255_255/0.24)] glass:dark:bg-[rgb(40_49_62/0.88)]',
   'glass:shadow-[0_18px_45px_rgb(40_60_90/0.14),inset_0_1px_0_rgb(255_255_255/0.65)]',
@@ -106,7 +109,16 @@ const offlineShellClass = cx(
   '[&>p]:text-[color:color-mix(in_srgb,var(--mb-color-text-on-inverse)_76%,transparent)]',
 );
 
+/** Every route, including the signed-out and email-token pages, shares one notification region. */
 function App() {
+  return (
+    <FeedbackProvider>
+      <AppRoutes />
+    </FeedbackProvider>
+  );
+}
+
+function AppRoutes() {
   const { language, setLanguage, t } = useLanguage();
   const [path, setPath] = useState(window.location.pathname);
   const [preferences, setPreferences] = useState<DevicePreferences>(() => readPreferences());
@@ -235,9 +247,7 @@ function App() {
       <header className={appHeaderClass}>
         <div className={appHeaderInnerClass}>
           <button type="button" className={brandClass} onClick={() => navigate('/')}>
-            <span className={cx(brandMarkClass, 'size-[42px]')} aria-hidden="true">
-              MB
-            </span>
+            <BankSeal variant="header" />
             <span>{t('appName')}</span>
           </button>
           <div className="header-tools flex items-center justify-end gap-(--mb-space-2)">
@@ -284,8 +294,7 @@ function App() {
             preferences={preferences}
             onChange={(change) => setPreferences((current) => ({ ...current, ...change }))}
           />
-          <fieldset className="settings-options">
-            <legend>{t('language')}</legend>
+          <SettingsGroup legend={t('language')}>
             <SegmentedControl
               options={[
                 { value: 'en', label: t('english') },
@@ -294,7 +303,7 @@ function App() {
               value={language}
               onChange={setLanguage}
             />
-          </fieldset>
+          </SettingsGroup>
           <Toggle
             label={t('sound')}
             checked={preferences.sound}
@@ -370,9 +379,7 @@ function OfflineShell() {
   const { t } = useLanguage();
   return (
     <main className={offlineShellClass}>
-      <span className={cx(brandMarkClass, 'size-14')} aria-hidden="true">
-        MB
-      </span>
+      <BankSeal variant="offline" />
       <h1>{t('offlineShellTitle')}</h1>
       <p>{t('offlineShellDescription')}</p>
     </main>

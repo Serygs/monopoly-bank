@@ -136,16 +136,21 @@ describe('Dialog', () => {
     expect(panel?.style.getPropertyValue('--settings-popover-top')).toBe('64px');
   });
 
-  it('gives each visual style its own entrance and gates all motion on reduced motion', async () => {
+  it('gives each visual style its own centred entrance, one sheet slide below md, and gates all motion on reduced motion', async () => {
     const { dialog } = await openHarness();
     const panel = dialog.querySelector('section.dialog');
     const panelClasses = Array.from(panel?.classList ?? []);
     const backdropClasses = Array.from(dialog.classList);
-    expect(panelClasses).toContain('classic:motion-safe:data-closed:translate-y-[4px]');
-    expect(panelClasses).toContain(
-      'classic:max-md:motion-safe:data-closed:translate-y-(--mb-space-4)',
-    );
-    expect(panelClasses).toContain('glass:motion-safe:data-closed:translate-y-[5px]');
+    expect(panelClasses).toContain('classic:md:motion-safe:data-closed:translate-y-[4px]');
+    expect(panelClasses).toContain('glass:md:motion-safe:data-closed:translate-y-[5px]');
+    // Below `md` both styles share the bottom-sheet slide; no style-specific compact travel.
+    expect(panelClasses).toContain('max-md:motion-safe:data-closed:translate-y-full');
+    expect(
+      panelClasses.filter((name) => /^(classic|glass):max-md:.*data-closed/.test(name)),
+    ).toEqual([]);
+    // The sheet reads the shared safe-area tokens, never raw `env()`.
+    expect(panelClasses.some((name) => name.includes('env('))).toBe(false);
+    expect(backdropClasses.some((name) => name.includes('env('))).toBe(false);
     for (const classes of [panelClasses, backdropClasses]) {
       expect(classes).toContain('motion-reduce:transition-none');
       const motion = classes.filter((name) => /transition|duration|ease|data-closed/.test(name));

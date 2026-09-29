@@ -5,13 +5,8 @@ import { AvatarPicker } from '../components/AvatarPicker';
 import { Button, Field, Notice, PageShell } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
-import {
-  authFormClass,
-  authHeadingClass,
-  authSealClass,
-  eyebrowClass,
-  ledeClass,
-} from '../components/ui/class-names';
+import { AuthForm, AuthHeading } from '../components/ui/AuthCard';
+import { Lede } from '../components/ui/Text';
 
 interface Props {
   initialJoinCode: string;
@@ -74,23 +69,15 @@ export function JoinGamePage({
       <Button variant="quiet" className="mb-(--mb-space-4) justify-start! px-0!" onClick={onBack}>
         ← {t('savedGames')}
       </Button>
-      <div className={authHeadingClass}>
-        <span className={authSealClass} aria-hidden="true">
-          MB
-        </span>
-        <div>
-          <p className={eyebrowClass}>{t('lobby')}</p>
-          <h1>{guest ? t('joinAsGuest') : t('joinGame')}</h1>
-        </div>
-      </div>
-      <p className={ledeClass}>
+      <AuthHeading eyebrow={t('lobby')} title={guest ? t('joinAsGuest') : t('joinGame')} />
+      <Lede>
         {guest
           ? t('guestJoinDescription')
           : hasInvitation
             ? t('secureInviteDescription')
             : t('joinGameDescription')}
-      </p>
-      <form className={authFormClass} onSubmit={(event) => void join(event)}>
+      </Lede>
+      <AuthForm onSubmit={(event) => void join(event)}>
         {guest && (
           <>
             <Field label={t('nickname')}>
@@ -149,7 +136,7 @@ export function JoinGamePage({
         <Button variant="primary" type="submit" disabled={submitting}>
           {submitting ? t('joining') : guest ? t('joinAsGuest') : t('joinGame')}
         </Button>
-      </form>
+      </AuthForm>
     </PageShell>
   );
 }

@@ -5,7 +5,8 @@ import { Button, DialogActions, Notice, StatPill } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
-import { cx, mutedClass } from '../../components/ui/class-names';
+import { cx } from '../../components/ui/class-names';
+import { MutedText } from '../../components/ui/Text';
 
 export type PaymentRequestAction = 'accept' | 'decline';
 
@@ -57,7 +58,7 @@ export function PaymentInbox({ requests, players, currency, onAction }: PaymentI
         <Notice tone="error">{apiErrorMessage(error, t, 'unableRecordTransaction')}</Notice>
       )}
       {requests.length === 0 ? (
-        <p className={mutedClass}>{t('noPaymentRequests')}</p>
+        <MutedText>{t('noPaymentRequests')}</MutedText>
       ) : (
         <ol>
           {requests.map((request) => {

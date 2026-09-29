@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { rollDice, type DiceRoll } from '../utils/dice';
 import { useLanguage } from '../i18n/language-context';
-import { Button } from './ui';
-import { cx, toolPanelClass, eyebrowClass, mutedClass } from './ui/class-names';
+import { Button, ToolPanel } from './ui';
+import { cx } from './ui/class-names';
 
 const initialRoll: DiceRoll = { first: 1, second: 1, total: 2, isDouble: true };
 
@@ -51,12 +51,12 @@ export function DiceRoller() {
     }, 650);
   };
   return (
-    <section className={toolPanelClass} aria-label={t('diceRoller')}>
-      <div>
-        <p className={eyebrowClass}>{t('tableTool')}</p>
-        <h2 className="m-0 text-primary">{t('rollDice')}</h2>
-        <p className={mutedClass}>{t('diceStandalone')}</p>
-      </div>
+    <ToolPanel
+      label={t('diceRoller')}
+      eyebrow={t('tableTool')}
+      title={t('rollDice')}
+      description={t('diceStandalone')}
+    >
       <div className="flex flex-wrap items-center gap-[10px]" aria-live="polite">
         <Die value={roll.first} rolling={rolling} label={t('dieValue', { value: roll.first })} />
         <Die value={roll.second} rolling={rolling} label={t('dieValue', { value: roll.second })} />
@@ -71,7 +71,7 @@ export function DiceRoller() {
       >
         {rolling ? t('rolling') : t('rollDice')}
       </Button>
-    </section>
+    </ToolPanel>
   );
 }
 

@@ -2,7 +2,14 @@ import { useState } from 'react';
 import type { CreateInvitationResponse } from '../../../shared/contracts/api';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
-import { Button, DialogActions, DialogBody, Notice, StatPill } from '../../components/ui';
+import {
+  Button,
+  DialogActions,
+  DialogBody,
+  Notice,
+  StatPill,
+  useFeedback,
+} from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import { createLocalQr } from '../../utils/local-qr';
@@ -26,8 +33,8 @@ export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
   const [invite, setInvite] = useState<CreateInvitationResponse | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [creating, setCreating] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [revoked, setRevoked] = useState(false);
+  const notify = useFeedback();
   const create = async () => {
     if (window.location.protocol !== 'https:') {
       setError(new Error('HTTPS_REQUIRED'));
@@ -52,7 +59,7 @@ export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
     if (link === null) return;
     if (navigator.clipboard !== undefined) await navigator.clipboard.writeText(link);
     else window.prompt(t('copyInviteLink'), link);
-    setCopied(true);
+    notify({ tone: 'success', message: t('inviteLinkCopied') });
   };
   const share = async () => {
     if (link !== null && typeof navigator.share === 'function')
@@ -65,6 +72,7 @@ export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
       await monopolyBankApi.revokeInvitations(gameId);
       setInvite(null);
       setRevoked(true);
+      notify({ tone: 'success', message: t('inviteRevoked') });
     } catch (caught) {
       setError(caught);
     } finally {
@@ -114,10 +122,8 @@ export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
               {t('revokeInvite')}
             </Button>
           </DialogActions>
-          {copied && <Notice tone="success">{t('inviteLinkCopied')}</Notice>}
         </section>
       )}
-      {revoked && <Notice tone="success">{t('inviteRevoked')}</Notice>}
       {error !== null && (
         <Notice tone="error">
           {error instanceof Error && error.message === 'HTTPS_REQUIRED'

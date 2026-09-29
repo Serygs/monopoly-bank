@@ -1,12 +1,7 @@
 import { Dialog as HeadlessDialog, DialogPanel, DialogTitle, Transition } from '@headlessui/react';
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
-import {
-  buttonCoreClass,
-  buttonToneClass,
-  cx,
-  eyebrowClass,
-  iconButtonShapeClass,
-} from './ui/class-names';
+import { buttonCoreClass, buttonToneClass, cx, iconButtonShapeClass } from './ui/class-names';
+import { Eyebrow } from './ui/Text';
 
 interface DialogProps {
   title: string;
@@ -22,8 +17,9 @@ interface DialogProps {
 }
 
 /*
- * Entrance motion, driven by the Headless UI `data-closed` state. The panel keeps each visual
- * style's own travel (Classic 4px, Liquid Glass 5px; Classic compact dialogs rise as a sheet).
+ * Entrance motion, driven by the Headless UI `data-closed` state. From `md` up the centred panel
+ * keeps each visual style's own travel (Classic 4px, Liquid Glass 5px). Below `md` every dialog
+ * is a bottom sheet in both styles, so it slides up from the bottom edge instead.
  * Everything is gated on `motion-safe:`, so reduced motion has no closed state to animate from.
  */
 const backdropMotion = cx(
@@ -34,36 +30,48 @@ const backdropMotion = cx(
 const panelMotion = cx(
   'motion-safe:transition-[opacity,translate,scale] motion-safe:duration-(--mb-duration-normal) motion-safe:ease-emphasized',
   'motion-safe:data-closed:opacity-0',
-  'classic:motion-safe:data-closed:translate-y-[4px] classic:motion-safe:data-closed:scale-99',
-  'classic:max-md:motion-safe:data-closed:translate-y-(--mb-space-4) classic:max-md:motion-safe:data-closed:scale-100',
-  'glass:motion-safe:data-closed:translate-y-[5px] glass:motion-safe:data-closed:scale-99',
+  'classic:md:motion-safe:data-closed:translate-y-[4px] classic:md:motion-safe:data-closed:scale-99',
+  'glass:md:motion-safe:data-closed:translate-y-[5px] glass:md:motion-safe:data-closed:scale-99',
+  'max-md:motion-safe:data-closed:translate-y-full',
   'motion-reduce:transition-none',
 );
 
 /*
  * `dialog-backdrop(--modal|--popover)`, `dialog` and `dialog-close` stay as hooks for the e2e
  * suites, the unit tests and the settings-panel id lookup below.
+ *
+ * Below `md` the backdrop pins the panel to the bottom edge at full inline width and keeps only
+ * the top safe-area gap; the panel itself pads for the side and bottom insets.
  */
 const backdropClass = cx(
   'dialog-backdrop fixed inset-0 z-100 grid place-items-center bg-overlay p-(--mb-space-6)',
-  'max-md:[place-items:end_center] max-md:pt-[max(var(--mb-space-2),env(safe-area-inset-top))] max-md:pr-[max(var(--mb-space-2),env(safe-area-inset-right))] max-md:pb-0 max-md:pl-[max(var(--mb-space-2),env(safe-area-inset-left))]',
+  'max-md:[place-items:end_center] max-md:px-0 max-md:pt-[max(var(--mb-space-2),var(--mb-app-safe-top))] max-md:pb-0',
 );
 /* Liquid Glass blurs what sits behind the modal scrim; the settings scrim only below `md`. */
 const backdropPresentationClass = {
   modal: 'glass:backdrop-blur-[8px] glass:backdrop-saturate-[0.9]',
   popover: 'glass:max-md:backdrop-blur-[6px] glass:max-md:backdrop-saturate-[0.92]',
 };
+/*
+ * Below `md` the panel is the sheet: full width, rounded top only, no side or bottom border, a
+ * `dvh`-bounded height under the top inset, safe-area padding, and a decorative grab handle. The
+ * handle is absolutely placed, so it never becomes a grid item of the grid-laid panels.
+ */
+const sheetClass = cx(
+  'max-md:relative max-md:max-h-[calc(100dvh_-_var(--mb-app-safe-top)_-_8px)] max-md:w-full max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0',
+  'max-md:pt-[28px] max-md:pr-[max(18px,var(--mb-app-safe-right))] max-md:pb-[max(var(--mb-space-5),calc(var(--mb-app-safe-bottom)_+_14px))] max-md:pl-[max(18px,var(--mb-app-safe-left))]',
+  "max-md:before:absolute max-md:before:inset-x-0 max-md:before:top-[10px] max-md:before:mx-auto max-md:before:h-[4px] max-md:before:w-[42px] max-md:before:rounded-pill max-md:before:bg-border-strong max-md:before:content-['']",
+);
 const panelClass = cx(
   'dialog max-h-[calc(100dvh_-_48px)] overflow-auto rounded-xl border border-border bg-surface-elevated p-[clamp(var(--mb-space-5),4vw,var(--mb-space-7))] text-primary shadow-lg',
-  'max-md:max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_8px)] max-md:rounded-b-none',
-  'max-md:pt-(--mb-space-5) max-md:pr-[max(18px,env(safe-area-inset-right))] max-md:pb-[max(var(--mb-space-5),calc(env(safe-area-inset-bottom)_+_14px))] max-md:pl-[max(18px,env(safe-area-inset-left))]',
-  'origin-center classic:max-md:origin-bottom motion-reduce:transform-none!',
+  sheetClass,
+  'origin-center max-md:origin-bottom motion-reduce:transform-none!',
   '[&>header]:flex [&>header]:items-start [&>header]:justify-between [&>header]:border-b [&>header]:border-dialog-divider [&>header]:pb-(--mb-space-4)',
   '[&_h2]:font-display [&_h2]:text-primary [&>header_h2]:m-0 [&>header_h2]:text-heading-lg',
 );
 const presentationClass = {
   modal: cx(
-    'w-[min(100%,640px)] max-md:w-full [&>header]:gap-(--mb-space-5)',
+    'w-[min(100%,640px)] [&>header]:gap-(--mb-space-5)',
     '[&_h2]:m-0 [&_h2]:text-heading-lg [&_h2]:leading-[1.2] [&_h2]:tracking-[-0.025em]',
     'glass:border-[rgb(255_255_255/0.72)] glass:bg-[rgb(255_255_255/0.76)] glass:dark:border-[rgb(255_255_255/0.2)] glass:dark:bg-[rgb(32_40_52/0.9)]',
     'glass:shadow-[0_24px_64px_rgb(35_52_78/0.2),inset_0_1px_0_rgb(255_255_255/0.8)]',
@@ -72,7 +80,7 @@ const presentationClass = {
   ),
   // The settings panel; its Liquid Glass surface is in `App.tsx`.
   popover:
-    'grid w-[min(calc(100vw_-_2_*_var(--mb-space-4)),23rem)] gap-(--mb-space-4) max-md:w-full [&>header]:gap-(--mb-space-3)',
+    'grid w-[min(calc(100vw_-_2_*_var(--mb-space-4)),23rem)] gap-(--mb-space-4) [&>header]:gap-(--mb-space-3)',
 };
 /* Liquid Glass tints the close button; the quiet hover and pressed states still win. */
 const closeClass = cx(
@@ -132,7 +140,7 @@ export function Dialog({
         >
           <header>
             <div>
-              {eyebrow !== undefined && <p className={eyebrowClass}>{eyebrow}</p>}
+              {eyebrow !== undefined && <Eyebrow>{eyebrow}</Eyebrow>}
               <DialogTitle>{title}</DialogTitle>
             </div>
             <button

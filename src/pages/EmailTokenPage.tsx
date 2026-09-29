@@ -4,7 +4,8 @@ import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Button, Field, Notice, PageShell, StatPill } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
-import { authFormClass, ledeClass } from '../components/ui/class-names';
+import { AuthForm } from '../components/ui/AuthCard';
+import { Lede } from '../components/ui/Text';
 
 export function VerifyEmailPage({
   token,
@@ -86,7 +87,7 @@ export function PasswordResetPage({ token, onBack }: { token: string; onBack: ()
       {changed ? (
         <Notice tone="success">{t('passwordChanged')}</Notice>
       ) : (
-        <form className={authFormClass} onSubmit={(event) => void submit(event)}>
+        <AuthForm onSubmit={(event) => void submit(event)}>
           <Field label={t('newPassword')}>
             <input
               type="password"
@@ -108,7 +109,7 @@ export function PasswordResetPage({ token, onBack }: { token: string; onBack: ()
           <Button variant="primary" type="submit" disabled={busy || token === ''}>
             {busy ? t('pleaseWait') : t('passwordReset')}
           </Button>
-        </form>
+        </AuthForm>
       )}
       <Button variant="quiet" onClick={onBack}>
         {t('signIn')}
@@ -139,11 +140,11 @@ export function PasswordRecoveryPage({ onBack }: { onBack: () => void }) {
   return (
     <PageShell variant="auth" card="banknote">
       <h1>{t('passwordReset')}</h1>
-      <p className={ledeClass}>{t('passwordResetDescription')}</p>
+      <Lede>{t('passwordResetDescription')}</Lede>
       {requested ? (
         <Notice tone="success">{t('passwordResetRequested')}</Notice>
       ) : (
-        <form className={authFormClass} onSubmit={(event) => void submit(event)}>
+        <AuthForm onSubmit={(event) => void submit(event)}>
           <Field label={t('email')}>
             <input
               type="email"
@@ -159,7 +160,7 @@ export function PasswordRecoveryPage({ onBack }: { onBack: () => void }) {
           <Button variant="primary" type="submit" disabled={busy}>
             {busy ? t('pleaseWait') : t('passwordReset')}
           </Button>
-        </form>
+        </AuthForm>
       )}
       <Button variant="quiet" onClick={onBack}>
         {t('signIn')}
