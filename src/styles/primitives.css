@@ -364,6 +364,34 @@ textarea:focus {
   justify-content: space-between;
   gap: var(--space-3);
 }
+.settings-account-actions {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-dialog-divider);
+}
+.settings-account-actions .notice {
+  margin: 0;
+}
+.settings-sign-out {
+  width: 100%;
+  justify-content: flex-start;
+  color: var(--color-text-secondary);
+}
+.settings-sign-out-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.settings-sign-out:active:not(:disabled) {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
 .settings-options {
   display: grid;
   gap: var(--space-2);
@@ -535,6 +563,10 @@ textarea:focus {
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .settings-sign-out:hover:not(:disabled) {
+    color: var(--color-danger);
+    background: var(--color-danger-soft);
+  }
   .button-primary:hover:not(:disabled) {
     background: var(--color-accent-hover);
     box-shadow: var(--shadow-md);
