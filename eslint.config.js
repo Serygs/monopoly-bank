@@ -51,6 +51,7 @@ const workerdGlobals = {
 export default defineConfig([
   globalIgnores([
     'dist',
+    '.claude',
     '.wrangler',
     'architecture-out',
     'test-results',
