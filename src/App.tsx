@@ -3,6 +3,7 @@ import type { UserProfile } from '../shared/contracts/api';
 import { monopolyBankApi } from './api/monopoly-bank-api';
 import { Avatar } from './components/AvatarPicker';
 import { useLanguage } from './i18n/language-context';
+import { apiErrorMessage } from './i18n/api-errors';
 import { AuthPage } from './pages/AuthPage';
 import { PasswordRecoveryPage, PasswordResetPage, VerifyEmailPage } from './pages/EmailTokenPage';
 import { CreateGamePage } from './pages/CreateGamePage';
@@ -28,6 +29,8 @@ function App() {
   const [online, setOnline] = useState(() => navigator.onLine);
   const [updateReady, setUpdateReady] = useState(false);
   const [paymentFlowOpen, setPaymentFlowOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<unknown | null>(null);
   const [settingsPopoverPosition, setSettingsPopoverPosition] = useState<{
     top: number;
     right: number;
@@ -84,6 +87,23 @@ function App() {
     setSettingsOpen(false);
     window.history.pushState({}, '', target);
     setPath(routePath(target));
+  };
+  const signOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError(null);
+    try {
+      await monopolyBankApi.logout();
+      setSettingsOpen(false);
+      setPaymentFlowOpen(false);
+      window.history.replaceState({}, '', '/');
+      setPath('/');
+      setProfile(null);
+    } catch (caught) {
+      setSignOutError(caught);
+    } finally {
+      setSigningOut(false);
+    }
   };
   const emailToken = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
   if (EMAIL_FEATURES_ENABLED && path === '/verify-email')
@@ -182,6 +202,7 @@ function App() {
           title={t('settings')}
           closeLabel={t('closeDialog', { title: t('settings') })}
           onClose={() => setSettingsOpen(false)}
+          closeDisabled={signingOut}
           className="settings-panel"
           presentation="popover"
           popoverStyle={
@@ -236,6 +257,22 @@ function App() {
               }
             />
           </label>
+          <div className="settings-account-actions">
+            {signOutError !== null && (
+              <p className="notice notice-error" role="alert">
+                {apiErrorMessage(signOutError, t, 'unableSignOut')}
+              </p>
+            )}
+            <button
+              className="button button-quiet settings-sign-out"
+              type="button"
+              disabled={signingOut}
+              onClick={() => void signOut()}
+            >
+              <SignOutIcon />
+              <span>{signingOut ? t('signingOut') : t('signOut')}</span>
+            </button>
+          </div>
         </Dialog>
       )}
       {!online && (
@@ -291,6 +328,14 @@ function App() {
         />
       )}
     </div>
+  );
+}
+
+function SignOutIcon() {
+  return (
+    <svg className="settings-sign-out-icon" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M8.25 3.25H5.5A1.75 1.75 0 0 0 3.75 5v10c0 .97.78 1.75 1.75 1.75h2.75M12.25 6.25 16 10l-3.75 3.75M7.5 10H16" />
+    </svg>
   );
 }
 
