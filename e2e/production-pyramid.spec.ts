@@ -62,6 +62,46 @@ test.describe('production browser pyramid', () => {
     await owner.context.close();
   });
 
+  test('sign out handles pending, failure, and successful session cleanup', async ({ browser }) => {
+    const owner = await register(browser, 'Sign out owner');
+    const settings = owner.page.getByRole('button', { name: /settings|налаштування/i });
+    await settings.click();
+
+    const signOut = owner.page.getByRole('button', { name: /^sign out$|^вийти$/i });
+    await expect(signOut).toBeVisible();
+    let completeLogout: (() => void) | undefined;
+    let logoutRequests = 0;
+    await owner.page.route('**/api/auth/logout', async (route) => {
+      logoutRequests += 1;
+      await new Promise<void>((resolve) => {
+        completeLogout = resolve;
+      });
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'API_ERROR', message: 'Internal detail' } }),
+      });
+    });
+
+    await signOut.click();
+    await expect(owner.page.getByRole('button', { name: /signing out|вихід/i })).toBeDisabled();
+    expect(logoutRequests).toBe(1);
+    completeLogout?.();
+    await expect(owner.page.getByRole('alert')).toContainText(
+      /unable to sign out|не вдалося вийти/i,
+    );
+    await expect(signOut).toBeEnabled();
+
+    await owner.page.unroute('**/api/auth/logout');
+    await signOut.click();
+    await expect(
+      owner.page.getByRole('heading', { name: /welcome back|з поверненням/i }),
+    ).toBeVisible();
+    await expect(owner.page).toHaveURL(/\/$/);
+    await expect(owner.page.getByRole('button', { name: /^sign out$|^вийти$/i })).toHaveCount(0);
+    await owner.context.close();
+  });
+
   test('six independent devices join by QR invitation and converge after reconnect', async ({
     browser,
   }) => {

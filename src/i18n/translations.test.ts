@@ -8,6 +8,10 @@ describe('UI translations', () => {
     expect(translate('uk', 'suggestGameName')).toBe('Запропонувати');
     expect(translate('en', 'suggestedGameNames')).toBe('Suggested game names');
     expect(translate('uk', 'suggestedGameNames')).toBe('Запропоновані назви гри');
+    expect(translate('en', 'signOut')).toBe('Sign out');
+    expect(translate('uk', 'signOut')).toBe('Вийти');
+    expect(translate('en', 'signingOut')).toBe('Signing out…');
+    expect(translate('uk', 'signingOut')).toBe('Вихід…');
     expect(translate('uk', 'savedGames')).toBe('Збережені ігри');
   });
 
