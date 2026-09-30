@@ -25,6 +25,43 @@ const runE2E = baseURL !== undefined && process.env.E2E_RUN === 'true';
 test.describe('production browser pyramid', () => {
   test.skip(!runE2E, 'Set E2E_BASE_URL and E2E_RUN=true against an isolated staging environment.');
 
+  test('game name suggestions populate an editable field without submitting the form', async ({
+    browser,
+  }) => {
+    const owner = await register(browser, 'Suggestion owner');
+    await owner.page.getByRole('button', { name: /create.*game|створити.*гру/i }).click();
+
+    const gameName = owner.page.getByLabel(/game name|назва гри/i);
+    const suggest = owner.page.getByRole('button', { name: /^suggest$|^запропонувати$/i });
+    const suggestions = owner.page.getByRole('dialog', {
+      name: /suggested game names|запропоновані назви гри/i,
+    });
+
+    await expect(suggest).toBeVisible();
+    await expect(suggestions).toBeHidden();
+    await suggest.click();
+    await expect(owner.page).toHaveURL(/\/games\/new$/);
+    await expect(suggestions).toBeVisible();
+    await expect(suggestions.getByRole('button')).toHaveCount(6);
+
+    await owner.page.keyboard.press('Escape');
+    await expect(suggestions).toBeHidden();
+    await suggest.click();
+    await suggestions.getByRole('button').first().click();
+    await expect(suggestions).toBeHidden();
+    await expect(gameName).toBeFocused();
+    await expect(gameName).not.toHaveValue('');
+
+    const selectedName = await gameName.inputValue();
+    await gameName.fill(`${selectedName} 2`);
+    await expect(gameName).toHaveValue(`${selectedName} 2`);
+
+    await suggest.click();
+    await owner.page.getByLabel(/currency|валюта/i).click();
+    await expect(suggestions).toBeHidden();
+    await owner.context.close();
+  });
+
   test('sign out handles pending, failure, and successful session cleanup', async ({ browser }) => {
     const owner = await register(browser, 'Sign out owner');
     const settings = owner.page.getByRole('button', { name: /settings|налаштування/i });
