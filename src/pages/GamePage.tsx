@@ -126,10 +126,9 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     if (details?.game.status === 'ACTIVE' && !offline) loadPaymentRequests();
   }, [details?.game.status, loadPaymentRequests, offline]);
 
+  const shouldConnectLive = details !== null && details.game.status !== 'FINISHED' && !offline;
   useEffect(() => {
-    if (details?.game.status !== 'ACTIVE' || offline) {
-      return;
-    }
+    if (!shouldConnectLive) return;
     let closed = false;
     let retry: number | undefined;
     let heartbeat: number | undefined;
@@ -203,7 +202,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
       if (heartbeat !== undefined) window.clearInterval(heartbeat);
       socket?.close();
     };
-  }, [gameId, details?.game.status, loadPaymentRequests, offline]);
+  }, [gameId, loadPaymentRequests, shouldConnectLive]);
 
   const loadHistory = async (player: Player | null = null) => {
     const scope = player === null ? 'all' : `player:${player.id}`;
