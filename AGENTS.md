@@ -10,6 +10,7 @@
 ## UI and localization
 
 - Read `docs/ui-design-system.md` before UI work. It is the sole authority for visual styles, colour modes, tokens, responsive behaviour, overlays, motion, accessibility, and visual validation; current screenshots and CSS are implementation evidence, not additional design requirements.
+- Build new UI from the kit in `src/components/ui/`, plus the domain composites in `src/components/game/` and `src/components/Dialog.tsx` for overlays. Style it with Tailwind utilities and the `classic:`/`glass:`/`dark:`/`light:` variants over the `--mb-*` tokens. Write custom CSS in `src/styles/` only for effects utilities cannot express, such as keyframes, SVG presentation, or `@supports` platform fixes. Never add a per-component or per-style stylesheet, and never write a `var(--color-*)` reference.
 - The UI supports English and Ukrainian. Every visible label, action, placeholder, accessibility label, dialog text, and client-side error must be added to `src/i18n/translations.ts` and rendered with `useLanguage().t`.
 - Avatars are emoji or a centered, browser-cropped 256×256 JPEG data URL. Avatar images are always shown with `object-fit: cover` in a circular frame. Do not accept SVG avatar uploads or external image URLs.
 - Reuse `Avatar` and `AvatarPicker` from `src/components/AvatarPicker.tsx` and `AVATAR_OPTIONS` from `src/utils/avatar.ts`; do not duplicate avatar option lists.
@@ -23,3 +24,4 @@
 ## Validation
 
 - Run `npm test`, `npm run lint`, and `npm run build` for meaningful UI or Worker changes. Add focused tests for new validation or domain behaviour.
+- For visible UI changes also run `npm run test:visual`. Re-record only intentionally changed baselines, one at a time, with `npm run test:visual:update -- -g '<name>'`, and never run a blanket update.

@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { useLanguage } from '../i18n/language-context';
+import { ToolPanel } from './ui';
+import { cx, keyButtonClass } from './ui/class-names';
 
 const operations = ['+', '−', '×', '÷'] as const;
+const controlsClass =
+  'calculator-controls grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 max-md:grid-cols-1';
 type Operation = (typeof operations)[number];
 
 export function TableCalculator() {
@@ -35,20 +39,25 @@ export function TableCalculator() {
     />
   );
   return (
-    <section className="table-calculator" aria-label={t('calculator')}>
-      <div>
-        <p className="eyebrow">{t('tableTool')}</p>
-        <h2>{t('calculator')}</h2>
-        <p className="muted">{t('calculatorDescription')}</p>
-      </div>
-      <div className="calculator-controls">
+    <ToolPanel
+      label={t('calculator')}
+      eyebrow={t('tableTool')}
+      title={t('calculator')}
+      description={t('calculatorDescription')}
+    >
+      {/* `calculator-controls` keeps the shared text-input rules in primitives.css. */}
+      <div className={controlsClass}>
         {numberInput(first, setFirst, t('firstNumber'))}
-        <div className="calculator-operations" role="group" aria-label={t('calculatorOperation')}>
+        <div
+          className="grid grid-cols-[repeat(2,1fr)] gap-1 max-md:grid-cols-[repeat(4,1fr)]"
+          role="group"
+          aria-label={t('calculatorOperation')}
+        >
           {operations.map((item) => (
             <button
               type="button"
               key={item}
-              className={operation === item ? 'selected' : ''}
+              className={cx(keyButtonClass, 'aria-pressed:bg-accent aria-pressed:text-on-accent')}
               aria-pressed={operation === item}
               onClick={() => setOperation(item)}
             >
@@ -57,10 +66,10 @@ export function TableCalculator() {
           ))}
         </div>
         {numberInput(second, setSecond, t('secondNumber'))}
-        <output aria-live="polite">
+        <output className="font-bold text-primary" aria-live="polite">
           = {result === null ? '—' : Number.isInteger(result) ? result : result.toFixed(2)}
         </output>
       </div>
-    </section>
+    </ToolPanel>
   );
 }
