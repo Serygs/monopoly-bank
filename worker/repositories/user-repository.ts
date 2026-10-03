@@ -42,6 +42,7 @@ export type CreateUserInput = Omit<
 export interface UserRepository {
   create(input: CreateUserInput): Promise<UserRecord>;
   findByNickname(nickname: string): Promise<UserRecord | null>;
+  findByLoginNickname(nickname: string): Promise<UserRecord | null>;
   findByNormalizedEmail(normalizedEmail: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
   updateProfile(id: string, nickname: string, avatar: string): Promise<UserRecord | null>;
@@ -92,6 +93,22 @@ export class D1UserRepository implements UserRepository {
       return map(row);
     } catch (cause) {
       throw databaseUserError('createUser', cause);
+    }
+  }
+  async findByLoginNickname(nickname: string): Promise<UserRecord | null> {
+    const exact = await this.findByNickname(nickname);
+    if (exact !== null) return exact;
+    try {
+      // SQLite NOCASE folds ASCII only; never choose between ambiguous identities.
+      const rows = await this.database
+        .prepare(
+          "SELECT * FROM users WHERE nickname = ? COLLATE NOCASE AND account_type = 'REGISTERED' LIMIT 2",
+        )
+        .bind(nickname)
+        .all<UserRow>();
+      return rows.results.length === 1 ? map(rows.results[0]) : null;
+    } catch (cause) {
+      throw new DatabaseError({ operation: 'findUserByLoginNickname', cause });
     }
   }
   async findByNickname(nickname: string): Promise<UserRecord | null> {
