@@ -55,6 +55,11 @@ UI work is governed by the canonical [UI design system](docs/ui-design-system.md
 
 ## Documentation
 
+Active sessions renew after one day of HTTP activity and expire after approximately
+14 days without renewal. Logging in on another device preserves existing sessions.
+See [authentication operations](docs/operations-runbooks.md#authentication-or-email-outage)
+and the [3 October incident analysis](docs/incidents/2026-10-03-auth-session.md).
+
 | Document                                                      | Purpose                                                                                |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | [docs/README.md](docs/README.md)                              | Index of every document with its live/archived status.                                 |

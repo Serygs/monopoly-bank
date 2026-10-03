@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import type { UserProfile } from '../shared/contracts/api';
 import { monopolyBankApi } from './api/monopoly-bank-api';
+import { loadAccountSession } from './api/account-session';
 import { Avatar } from './components/AvatarPicker';
 import { useLanguage } from './i18n/language-context';
 import { apiErrorMessage } from './i18n/api-errors';
@@ -26,6 +27,8 @@ function App() {
   const [preferences, setPreferences] = useState<DevicePreferences>(() => readPreferences());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
+  const [accountError, setAccountError] = useState<unknown>(null);
+  const [accountRetry, setAccountRetry] = useState(0);
   const [online, setOnline] = useState(() => navigator.onLine);
   const [updateReady, setUpdateReady] = useState(false);
   const [paymentFlowOpen, setPaymentFlowOpen] = useState(false);
@@ -36,6 +39,7 @@ function App() {
     right: number;
   } | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const accountRequestVersion = useRef(0);
 
   const { visualStyle, colorMode } = preferences;
   useLayoutEffect(() => mountAppearance({ visualStyle, colorMode }), [visualStyle, colorMode]);
@@ -62,10 +66,29 @@ function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
   useEffect(() => {
-    void monopolyBankApi
-      .currentProfile()
-      .then(setProfile)
-      .catch(() => setProfile(null));
+    if (!online) return;
+    let cancelled = false;
+    const version = ++accountRequestVersion.current;
+    void loadAccountSession(monopolyBankApi)
+      .then((user) => {
+        if (!cancelled && version === accountRequestVersion.current) {
+          setAccountError(null);
+          setProfile(user);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled && version === accountRequestVersion.current) setAccountError(error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountRetry, online]);
+  useEffect(() => {
+    const resumed = () => {
+      if (document.visibilityState === 'visible') setAccountRetry((attempt) => attempt + 1);
+    };
+    document.addEventListener('visibilitychange', resumed);
+    return () => document.removeEventListener('visibilitychange', resumed);
   }, []);
   useEffect(() => {
     const connected = () => setOnline(true);
@@ -94,6 +117,8 @@ function App() {
     setSignOutError(null);
     try {
       await monopolyBankApi.logout();
+      accountRequestVersion.current += 1;
+      setAccountError(null);
       setSettingsOpen(false);
       setPaymentFlowOpen(false);
       window.history.replaceState({}, '', '/');
@@ -105,6 +130,11 @@ function App() {
       setSigningOut(false);
     }
   };
+  const authenticated = (user: UserProfile) => {
+    accountRequestVersion.current += 1;
+    setAccountError(null);
+    setProfile(user);
+  };
   const emailToken = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
   if (EMAIL_FEATURES_ENABLED && path === '/verify-email')
     return (
@@ -113,10 +143,29 @@ function App() {
   if (EMAIL_FEATURES_ENABLED && path === '/reset-password')
     return <PasswordResetPage token={emailToken} onBack={() => navigate('/')} />;
   const gameMatch = /^\/games\/([^/]+)$/.exec(path);
+  if (profile === undefined && !online) return <OfflineShell />;
   if (profile === undefined)
     return (
       <main className="page">
-        <p className="status">{t('loadingAccount')}</p>
+        {accountError === null ? (
+          <p className="status">{t('loadingAccount')}</p>
+        ) : (
+          <>
+            <p className="notice notice-error" role="alert">
+              {apiErrorMessage(accountError, t, 'unableLoadAccount')}
+            </p>
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={() => {
+                setAccountError(null);
+                setAccountRetry((attempt) => attempt + 1);
+              }}
+            >
+              {t('tryAgain')}
+            </button>
+          </>
+        )}
       </main>
     );
   if (profile === null && !online) return <OfflineShell />;
@@ -136,7 +185,7 @@ function App() {
           invitationToken={guestInvitationToken}
           onJoined={() => undefined}
           onGuestJoined={(guest, gameId) => {
-            setProfile(guest);
+            authenticated(guest);
             window.history.pushState({}, '', `/games/${encodeURIComponent(gameId)}`);
             setPath(`/games/${encodeURIComponent(gameId)}`);
           }}
@@ -147,13 +196,15 @@ function App() {
         />
       );
     }
-    const returnRoute = EMAIL_FEATURES_ENABLED
-      ? currentRoute(window.location.pathname, window.location.search, window.location.hash)
-      : '/';
+    const returnRoute = currentRoute(
+      window.location.pathname,
+      window.location.search,
+      window.location.hash,
+    );
     return (
       <AuthPage
         onAuthenticated={(user) => {
-          setProfile(user);
+          authenticated(user);
           navigate(returnRoute);
         }}
       />
