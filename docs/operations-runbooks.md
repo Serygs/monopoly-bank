@@ -25,7 +25,7 @@ Configure these alerts in the production Cloudflare account after the staging re
 
 | Data                                        | Retention / action                                                                                                                             |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sessions                                    | 14-day maximum; expired records are deleted daily.                                                                                             |
+| Sessions                                    | 14-day inactivity expiry; active HTTP sessions renew at most daily, and expired records are deleted daily.                                     |
 | Verification/reset tokens                   | Expired immediately; consumed tokens after 7 days.                                                                                             |
 | Rate-limit buckets                          | Expired buckets are deleted by scheduled cleanup.                                                                                              |
 | Unused guest accounts                       | Deleted after 30 days only when they have no game membership.                                                                                  |
@@ -55,6 +55,28 @@ Configure these alerts in the production Cloudflare account after the staging re
 4. Confirm command-ledger uniqueness and balance/transaction reconciliation before closing the incident.
 
 ### Authentication or email outage
+
+Sessions renew the D1 lease and cookie after at least one day of authenticated
+HTTP activity, giving approximately 14 days before inactivity expiry. WebSocket
+handshakes validate without renewal. Expired/revoked sessions are never revived.
+Login issues a fresh token without revoking other devices; logout revokes the
+presented session. Explicit revoke-all, password reset, guest upgrade and account
+deletion revoke all sessions.
+
+Login prefers exact nickname identity; a unique registered account may match
+ASCII case-insensitively. Ambiguous matches fail; SQLite `NOCASE` does not fold
+Ukrainian letters. Registration/profile names retain their existing rules.
+
+Profile validation emits `security.event` / `session_rejected` with `requestId`
+and a fixed reason: `missing_cookie`, `expired_or_revoked`, or `account_missing`.
+Login emits `login_rejected` with `account_missing`, `guest_account`, or
+`password_mismatch`; clients still receive only generic `INVALID_CREDENTIALS`.
+Correlate it with `request.failed` using `X-Request-ID`; never collect credentials
+or cookie values. Login rate limits use separate account/source buckets (10 per
+10 minutes) and a source cap (120 per 10 minutes); registration uses a separate
+10-attempt source bucket. Changing a password hash or deleting session rows does
+not clear rate-limit buckets. Temporary profile errors offer retry; only
+`UNAUTHORIZED` opens the sign-in screen.
 
 1. Keep existing session validation and guest lobby play available.
 2. Treat email verification/reset as deferred: failed delivery discards the unsent token so a later retry can issue a new one.

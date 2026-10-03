@@ -62,3 +62,48 @@ describe('create game colour picker', () => {
     expect(createGame).not.toHaveBeenCalled();
   });
 });
+
+describe('game name suggestions in the refactored form', () => {
+  for (const language of ['en', 'uk'] as const) {
+    it(`${language}: keeps suggestions editable and preserves the colour picker without submitting`, async () => {
+      const user = userEvent.setup();
+      const createGame = vi.spyOn(monopolyBankApi, 'createGame');
+      const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+      render(
+        <LanguageContext
+          value={{
+            language,
+            locale: languageLocale(language),
+            setLanguage: () => {},
+            t: (key, values) => translate(language, key, values),
+          }}
+        >
+          <CreateGamePage profile={profile} onCancel={() => {}} onCreated={() => {}} />
+        </LanguageContext>,
+      );
+      const name = screen.getByLabelText(t('gameName'));
+      const trigger = screen.getByRole('button', { name: t('suggestGameName') });
+      await user.click(trigger);
+      const suggestions = screen.getByRole('dialog', { name: t('suggestedGameNames') });
+      const choices = Array.from(suggestions.querySelectorAll('button'));
+      expect(choices).toHaveLength(6);
+      await user.click(choices[0]);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(name).toHaveFocus();
+      expect(name).not.toHaveValue('');
+      await user.clear(name);
+      await user.type(name, 'Edited name');
+      expect(name).toHaveValue('Edited name');
+
+      await user.click(trigger);
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(name).toHaveFocus();
+      await user.click(trigger);
+      await user.click(screen.getByLabelText(t('currency')));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getAllByRole('radio')).toHaveLength(6);
+      expect(createGame).not.toHaveBeenCalled();
+    });
+  }
+});

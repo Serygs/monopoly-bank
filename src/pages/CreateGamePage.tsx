@@ -1,6 +1,7 @@
 import { Radio, RadioGroup } from '@headlessui/react';
 import {
   Fragment,
+  useEffect,
   useId,
   useRef,
   useState,
@@ -19,6 +20,7 @@ import { cx } from '../components/ui/class-names';
 import { keepEnterInRadio } from '../components/ui/radio-keys';
 import type { Translate } from '../i18n/translations';
 import { formatMoney } from '../utils/money';
+import { getGameNameSuggestions, randomSuggestionStart } from '../utils/game-name-suggestions';
 import {
   selectableCurrencies,
   type Currency,
@@ -89,9 +91,15 @@ interface Props {
 }
 
 export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const nextKey = useRef(3);
+  const gameNameInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRootRef = useRef<HTMLDivElement>(null);
+  const gameNameInputId = useId();
+  const suggestionsId = useId();
   const [name, setName] = useState('');
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestionStart, setSuggestionStart] = useState(0);
   const [startingBalance, setStartingBalance] = useState(String(defaultStartingBalance));
   const [passGoReward, setPassGoReward] = useState(String(defaultPassGoReward));
   const [currency, setCurrency] = useState<SelectableCurrency>('USD');
@@ -103,6 +111,32 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<unknown | null>(null);
+  const suggestions = getGameNameSuggestions(language, suggestionStart);
+
+  useEffect(() => {
+    if (!suggestionsOpen) return;
+    const closeFromOutside = (event: PointerEvent) => {
+      if (!suggestionsRootRef.current?.contains(event.target as Node)) setSuggestionsOpen(false);
+    };
+    const closeFromEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setSuggestionsOpen(false);
+      gameNameInputRef.current?.focus();
+    };
+    document.addEventListener('pointerdown', closeFromOutside);
+    document.addEventListener('keydown', closeFromEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeFromOutside);
+      document.removeEventListener('keydown', closeFromEscape);
+    };
+  }, [suggestionsOpen]);
+
+  const toggleSuggestions = () => {
+    setSuggestionsOpen((open) => {
+      if (!open) setSuggestionStart(randomSuggestionStart());
+      return !open;
+    });
+  };
   const updatePlayer = (key: number, change: Partial<Omit<PlayerForm, 'key'>>) =>
     setPlayers(players.map((player) => (player.key === key ? { ...player, ...change } : player)));
   const addPlayer = () => {
@@ -155,13 +189,64 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
         <fieldset>
           <legend>{t('gameBasics')}</legend>
           <FieldStack>
-            <Field label={t('gameName')} error={errors.name}>
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                aria-invalid={errors.name !== undefined}
-              />
-            </Field>
+            <div className="game-name-field grid gap-[7px] font-medium text-primary">
+              <label htmlFor={gameNameInputId}>{t('gameName')}</label>
+              <div className="game-name-control relative" ref={suggestionsRootRef}>
+                <input
+                  ref={gameNameInputRef}
+                  id={gameNameInputId}
+                  className="pr-[8.75rem]! max-[24rem]:pr-[4rem]!"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  aria-invalid={errors.name !== undefined}
+                  aria-errormessage={
+                    errors.name === undefined ? undefined : `${gameNameInputId}-error`
+                  }
+                />
+                <Button
+                  className="game-name-suggest-trigger absolute min-h-11 justify-center inset-[2px_2px_auto_auto] gap-(--mb-space-2) rounded-[calc(var(--mb-radius-control)_-_2px)] border-0 bg-accent-soft px-(--mb-space-3) text-small text-accent enabled:active:text-accent-pressed fine-pointer:enabled:hover:text-accent-hover max-[24rem]:w-11 max-[24rem]:px-0"
+                  aria-haspopup="dialog"
+                  aria-expanded={suggestionsOpen}
+                  aria-controls={suggestionsId}
+                  onClick={toggleSuggestions}
+                >
+                  <SparklesIcon />
+                  <span className="max-[24rem]:sr-only">{t('suggestGameName')}</span>
+                </Button>
+                {suggestionsOpen && (
+                  <div
+                    className="game-name-suggestions absolute z-20 inset-[calc(100%_+_var(--mb-space-2))_0_auto_auto] w-[min(22rem,100%)] rounded-card border border-border bg-surface-elevated p-(--mb-space-2) text-primary shadow-lg"
+                    id={suggestionsId}
+                    role="dialog"
+                    aria-label={t('suggestedGameNames')}
+                  >
+                    <div className="flex min-h-10 items-center gap-(--mb-space-2) px-(--mb-space-3) text-small font-semibold text-secondary [&_svg]:text-highlight">
+                      <SparklesIcon />
+                      <span>{t('suggestedGameNames')}</span>
+                    </div>
+                    <div className="grid" role="group">
+                      {suggestions.map((suggestion) => (
+                        <Button
+                          className="game-name-suggestion grid! min-h-(--mb-control-height-md) grid-cols-[1.5rem_minmax(0,1fr)] justify-start gap-(--mb-space-2) rounded-[calc(var(--mb-radius-control)_-_3px)] border-0 bg-transparent px-(--mb-space-3) text-start text-small font-medium text-primary active:bg-accent-soft fine-pointer:hover:bg-surface-subtle"
+                          key={suggestion.name}
+                          onClick={() => {
+                            setName(suggestion.name);
+                            setSuggestionsOpen(false);
+                            gameNameInputRef.current?.focus();
+                          }}
+                        >
+                          <span aria-hidden="true">{suggestion.icon}</span>
+                          <span>{suggestion.name}</span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {errors.name !== undefined && (
+                <FieldError id={`${gameNameInputId}-error`}>{errors.name}</FieldError>
+              )}
+            </div>
             <Field label={t('currency')}>
               <select
                 value={currency}
@@ -329,6 +414,19 @@ function PlayersFieldset({
       {intro}
       <div className={classes.list}>{children}</div>
     </fieldset>
+  );
+}
+
+function SparklesIcon() {
+  return (
+    <svg
+      className="sparkles-icon size-[18px] shrink-0 fill-current"
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+    >
+      <path d="M10 1.75c.48 3.43 2.27 5.22 5.7 5.7-3.43.48-5.22 2.27-5.7 5.7-.48-3.43-2.27-5.22-5.7-5.7 3.43-.48 5.22-2.27 5.7-5.7Z" />
+      <path d="M15.75 12.25c.2 1.45.96 2.2 2.4 2.4-1.44.2-2.2.96-2.4 2.4-.2-1.44-.95-2.2-2.4-2.4 1.45-.2 2.2-.95 2.4-2.4ZM3.45 12.3c.14 1.03.68 1.57 1.71 1.71-1.03.15-1.57.68-1.71 1.72-.15-1.04-.68-1.57-1.72-1.72 1.04-.14 1.57-.68 1.72-1.71Z" />
+    </svg>
   );
 }
 

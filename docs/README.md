@@ -21,6 +21,10 @@ Every document under `docs/` is listed here. **Live contract** documents describ
 | [archive/release-readiness-report.md](archive/release-readiness-report.md)           | Release-controls evidence and the gates that were still open.                                                                                                 | archived (2026-09-06)  |
 | `ui/reference/*.png`                                                                 | Four reference screenshots (Classic and Liquid Glass, desktop and mobile) referenced by the UI design system. Implementation evidence, not a design contract. | live contract (images) |
 
+| Incident                                                           | Purpose                                                                                          | Status                       |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ---------------------------- |
+| [Authentication, 2026-10-03](incidents/2026-10-03-auth-session.md) | Evidence, diagnostic limits, fixes and verification for the session expiry and sign-in incident. | incident record (2026-10-03) |
+
 ## Adding a document
 
 Create the file in `docs/` (or `docs/adr/` for a decision record), add a row here in the same commit, and link it from the README's documentation table if newcomers need it. When a document stops describing the current system, move it to `docs/archive/`, open it with a dated "Archived" note, and change its status here rather than deleting it.

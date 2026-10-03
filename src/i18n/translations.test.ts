@@ -4,6 +4,14 @@ import { languageLocale, translate } from './translations';
 describe('UI translations', () => {
   it('provides English and Ukrainian copy', () => {
     expect(translate('en', 'savedGames')).toBe('Saved games');
+    expect(translate('en', 'suggestGameName')).toBe('Suggest');
+    expect(translate('uk', 'suggestGameName')).toBe('Запропонувати');
+    expect(translate('en', 'suggestedGameNames')).toBe('Suggested game names');
+    expect(translate('uk', 'suggestedGameNames')).toBe('Запропоновані назви гри');
+    expect(translate('en', 'signOut')).toBe('Sign out');
+    expect(translate('uk', 'signOut')).toBe('Вийти');
+    expect(translate('en', 'signingOut')).toBe('Signing out…');
+    expect(translate('uk', 'signingOut')).toBe('Вихід…');
     expect(translate('uk', 'savedGames')).toBe('Збережені ігри');
   });
 
