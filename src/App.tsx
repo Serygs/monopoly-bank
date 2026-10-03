@@ -14,14 +14,114 @@ import { ProfilePage } from './pages/ProfilePage';
 import { SavedGamesPage } from './pages/SavedGamesPage';
 import { readPreferences, writePreferences, type DevicePreferences } from './utils/preferences';
 import { mountAppearance } from './appearance/appearance-controller';
-import { AppearanceSettings } from './components/AppearanceSettings';
+import { AppearanceSettings, SettingsGroup } from './components/AppearanceSettings';
 import { Dialog } from './components/Dialog';
+import {
+  BankSeal,
+  Button,
+  FeedbackProvider,
+  Notice,
+  PageShell,
+  SegmentedControl,
+  StatPill,
+  Toggle,
+} from './components/ui';
 import { currentRoute, routePath } from './utils/client-route';
 import { EMAIL_FEATURES_ENABLED } from './utils/email-features';
 import { applyPwaUpdate } from './pwa';
+import { cx } from './components/ui/class-names';
 import './styles/app.css';
 
+/*
+ * The shell keeps its semantic class names as hooks: the safe-area padding and offsets
+ * (`env(safe-area-inset-*)`, `--mb-app-safe-*`) and the iOS `@supports` block stay in
+ * `layout.css`, and the Liquid Glass ambient background drift stays in `liquid-glass.css`.
+ */
+const appShellClass =
+  'app-shell min-h-dvh [background:var(--mb-background-shell)] text-primary glass:relative glass:isolate';
+const appHeaderClass = cx(
+  'app-header sticky top-0 z-20 border-b border-b-[color:color-mix(in_srgb,var(--mb-color-highlight)_48%,transparent)]',
+  '[background:var(--mb-background-header)] text-on-inverse shadow-header',
+  // Only the dark Classic header needs the inverse ring; Liquid Glass light keeps the default.
+  'classic:light:[&_button:focus-visible]:outline-text-on-inverse',
+  'glass:border-b-[rgb(255_255_255/0.36)] glass:text-primary',
+  'glass:backdrop-blur-[20px] glass:backdrop-saturate-[1.3] glass:max-md:backdrop-blur-[16px] glass:max-md:backdrop-saturate-[1.22]',
+);
+/* Liquid Glass frosts the profile and settings buttons and drops their hover fill. */
+const glassHeaderControlClass = cx(
+  'glass:border glass:border-solid glass:border-[rgb(255_255_255/0.4)]',
+  'glass:bg-[rgb(255_255_255/0.22)] glass:fine-pointer:hover:bg-[rgb(255_255_255/0.22)]',
+  'glass:shadow-[inset_0_1px_0_rgb(255_255_255/0.38),0_5px_16px_rgb(40_60_90/0.07)]',
+);
+const appHeaderInnerClass = cx(
+  'app-header-inner mx-auto flex w-[min(100%,var(--mb-layout-content-max))] items-center justify-between',
+  'min-h-(--mb-layout-header-height-compact) gap-(--mb-space-2)',
+  'md:min-h-(--mb-layout-header-height-medium) md:gap-(--mb-space-4)',
+  'lg:min-h-(--mb-layout-header-height-wide) short-landscape:min-h-[52px]',
+);
+const headerButtonClass = cx(
+  'inline-flex min-h-(--mb-control-height-md) min-w-(--mb-control-height-md) items-center justify-center',
+  'gap-(--mb-space-2) bg-transparent font-semibold text-inherit',
+  'transition-[color,background-color,border-color,transform] duration-(--mb-duration-fast) ease-standard',
+  'active:transform-[translateY(1px)] motion-reduce:transform-none! fine-pointer:hover:bg-inverse-hover',
+);
+const brandClass = cx(headerButtonClass, 'border-none p-0 text-[1rem] tracking-[-0.015em]');
+const profileButtonClass = cx(
+  headerButtonClass,
+  'rounded-pill border-none p-(--mb-space-1)',
+  'md:max-w-[16rem] md:py-(--mb-space-1) md:pr-(--mb-space-2) md:pl-(--mb-space-1)',
+  'max-md:[&>span:last-child]:hidden',
+  glassHeaderControlClass,
+);
+const settingsButtonClass = cx(
+  headerButtonClass,
+  'w-(--mb-control-height-md) rounded-md border border-[color:color-mix(in_srgb,var(--mb-color-text-on-inverse)_28%,transparent)] p-0',
+  'md:w-auto md:px-(--mb-space-3) max-md:[&>span]:hidden',
+  glassHeaderControlClass,
+);
+/*
+ * Popover position from md up. It reads the `--settings-popover-top/right` properties written
+ * below. The breakpoint variants sort after the Dialog panel's own `max-height`.
+ */
+const settingsPanelClass = cx(
+  'settings-panel md:fixed md:max-w-[calc(100vw_-_2_*_var(--mb-space-3))]',
+  'md:top-[var(--settings-popover-top,calc(var(--mb-layout-header-height-medium)_+_var(--mb-app-safe-top)_+_12px))]',
+  'lg:top-[var(--settings-popover-top,calc(var(--mb-layout-header-height-wide)_+_var(--mb-app-safe-top)_+_12px))]',
+  'md:right-[var(--settings-popover-right,max(var(--mb-layout-page-inline-medium),calc((100vw_-_var(--mb-layout-content-max))_/_2)))]',
+  'md:max-h-[calc(100dvh_-_var(--settings-popover-top,calc(var(--mb-layout-header-height-medium)_+_var(--mb-app-safe-top)_+_12px))_-_24px)]',
+  'short-landscape:max-h-[calc(100dvh_-_var(--mb-app-safe-top)_-_var(--mb-space-2))]',
+  // The cap applies to the anchored popover only; below `md` both styles share the full-width sheet.
+  'glass:min-w-0 glass:md:max-w-[min(22.5rem,calc(100vw_-_2_*_var(--mb-space-3)))] glass:overflow-x-hidden',
+  'glass:md:w-[min(22.5rem,calc(100vw_-_2_*_var(--mb-space-3)))]',
+  'glass:border-[rgb(255_255_255/0.65)] glass:bg-[rgb(255_255_255/0.76)] glass:dark:border-[rgb(255_255_255/0.24)] glass:dark:bg-[rgb(40_49_62/0.88)]',
+  'glass:shadow-[0_18px_45px_rgb(40_60_90/0.14),inset_0_1px_0_rgb(255_255_255/0.65)]',
+  'glass:backdrop-blur-[24px] glass:backdrop-saturate-[1.3] glass:max-md:backdrop-blur-[16px] glass:max-md:backdrop-saturate-[1.24]',
+  'glass:forced-colors:backdrop-filter-none',
+  'glass:[&>header>div]:min-w-0 glass:[&>header_h2]:max-w-full glass:[&>header_h2]:text-[1.75rem] glass:[&>header_h2]:whitespace-nowrap',
+  'glass:[&_.settings-options]:min-w-0',
+);
+const bannerClass = cx(
+  'fixed z-40 m-auto w-[min(var(--mb-layout-content-max),calc(100%_-_2_*_var(--mb-space-3)))]',
+  'rounded-md border border-[color:color-mix(in_srgb,var(--mb-color-highlight)_65%,transparent)]',
+  'bg-surface-inverse px-(--mb-space-4) py-(--mb-space-3) text-on-inverse shadow-md',
+);
+const offlineShellClass = cx(
+  'offline-shell grid min-h-dvh content-center justify-items-start gap-(--mb-space-4) bg-surface-inverse text-on-inverse',
+  '[&>:is(h1,p)]:m-0 [&>:is(h1,p)]:max-w-[34rem]',
+  '[&>h1]:font-display [&>h1]:text-display [&>h1]:leading-tight [&>h1]:font-bold [&>h1]:tracking-display',
+  '[&>p]:text-[color:color-mix(in_srgb,var(--mb-color-text-on-inverse)_76%,transparent)]',
+);
+
+/** Every route, including the signed-out and email-token pages, shares one notification region. */
 function App() {
+  return (
+    <FeedbackProvider>
+      <AppRoutes />
+    </FeedbackProvider>
+  );
+}
+
+function AppRoutes() {
   const { language, setLanguage, t } = useLanguage();
   const [path, setPath] = useState(window.location.pathname);
   const [preferences, setPreferences] = useState<DevicePreferences>(() => readPreferences());
@@ -146,27 +246,24 @@ function App() {
   if (profile === undefined && !online) return <OfflineShell />;
   if (profile === undefined)
     return (
-      <main className="page">
+      <PageShell>
         {accountError === null ? (
-          <p className="status">{t('loadingAccount')}</p>
+          <StatPill variant="status">{t('loadingAccount')}</StatPill>
         ) : (
           <>
-            <p className="notice notice-error" role="alert">
-              {apiErrorMessage(accountError, t, 'unableLoadAccount')}
-            </p>
-            <button
-              className="button button-primary"
-              type="button"
+            <Notice tone="error">{apiErrorMessage(accountError, t, 'unableLoadAccount')}</Notice>
+            <Button
+              variant="primary"
               onClick={() => {
                 setAccountError(null);
                 setAccountRetry((attempt) => attempt + 1);
               }}
             >
               {t('tryAgain')}
-            </button>
+            </Button>
           </>
         )}
-      </main>
+      </PageShell>
     );
   if (profile === null && !online) return <OfflineShell />;
   if (profile === null) {
@@ -215,27 +312,25 @@ function App() {
     path === '/games/join' ? (new URLSearchParams(window.location.search).get('code') ?? '') : '';
   const invitationToken = path === '/games/join' ? invitationFromLocation() : '';
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="app-header-inner">
-          <button type="button" className="brand" onClick={() => navigate('/')}>
-            <span className="brand-mark" aria-hidden="true">
-              MB
-            </span>
+    <div className={appShellClass}>
+      <header className={appHeaderClass}>
+        <div className={appHeaderInnerClass}>
+          <button type="button" className={brandClass} onClick={() => navigate('/')}>
+            <BankSeal variant="header" />
             <span>{t('appName')}</span>
           </button>
-          <div className="header-tools">
+          <div className="header-tools flex items-center justify-end gap-(--mb-space-2)">
             <button
-              className="profile-menu-button"
+              className={profileButtonClass}
               type="button"
               onClick={() => navigate('/profile')}
             >
-              <Avatar avatar={profile.avatar} label={profile.nickname} className="header-avatar" />
+              <Avatar avatar={profile.avatar} label={profile.nickname} />
               <span>{profile.nickname}</span>
             </button>
             <button
               ref={settingsButtonRef}
-              className="settings-button"
+              className={settingsButtonClass}
               type="button"
               aria-label={t('settings')}
               aria-expanded={settingsOpen}
@@ -254,7 +349,7 @@ function App() {
           closeLabel={t('closeDialog', { title: t('settings') })}
           onClose={() => setSettingsOpen(false)}
           closeDisabled={signingOut}
-          className="settings-panel"
+          className={settingsPanelClass}
           presentation="popover"
           popoverStyle={
             settingsPopoverPosition === null
@@ -269,81 +364,65 @@ function App() {
             preferences={preferences}
             onChange={(change) => setPreferences((current) => ({ ...current, ...change }))}
           />
-          <fieldset className="settings-options">
-            <legend>{t('language')}</legend>
-            <div className="settings-segmented">
-              <button
-                type="button"
-                className={language === 'en' ? 'active' : ''}
-                aria-pressed={language === 'en'}
-                onClick={() => setLanguage('en')}
-              >
-                {t('english')}
-              </button>
-              <button
-                type="button"
-                className={language === 'uk' ? 'active' : ''}
-                aria-pressed={language === 'uk'}
-                onClick={() => setLanguage('uk')}
-              >
-                {t('ukrainian')}
-              </button>
-            </div>
-          </fieldset>
-          <label className="settings-toggle">
-            <span>{t('sound')}</span>
-            <input
-              type="checkbox"
-              checked={preferences.sound}
-              onChange={(event) => setPreferences({ ...preferences, sound: event.target.checked })}
+          <SettingsGroup legend={t('language')}>
+            <SegmentedControl
+              options={[
+                { value: 'en', label: t('english') },
+                { value: 'uk', label: t('ukrainian') },
+              ]}
+              value={language}
+              onChange={setLanguage}
             />
-          </label>
-          <label className="settings-toggle">
-            <span>{t('vibration')}</span>
-            <input
-              type="checkbox"
-              checked={preferences.vibration}
-              onChange={(event) =>
-                setPreferences({ ...preferences, vibration: event.target.checked })
-              }
-            />
-          </label>
-          <div className="settings-account-actions">
+          </SettingsGroup>
+          <Toggle
+            label={t('sound')}
+            checked={preferences.sound}
+            onChange={(sound) => setPreferences({ ...preferences, sound })}
+          />
+          <Toggle
+            label={t('vibration')}
+            checked={preferences.vibration}
+            onChange={(vibration) => setPreferences({ ...preferences, vibration })}
+          />
+          <div className="settings-account-actions grid gap-(--mb-space-3) border-t border-dialog-divider mt-(--mb-space-1) pt-(--mb-space-4)">
             {signOutError !== null && (
-              <p className="notice notice-error" role="alert">
+              <Notice tone="error" className="m-0">
                 {apiErrorMessage(signOutError, t, 'unableSignOut')}
-              </p>
+              </Notice>
             )}
-            <button
-              className="button button-quiet settings-sign-out"
-              type="button"
+            <Button
+              variant="quiet"
+              className="settings-sign-out w-full justify-start text-secondary enabled:active:text-danger enabled:active:bg-danger-soft fine-pointer:enabled:hover:text-danger fine-pointer:enabled:hover:bg-danger-soft"
               disabled={signingOut}
               onClick={() => void signOut()}
             >
               <SignOutIcon />
               <span>{signingOut ? t('signingOut') : t('signOut')}</span>
-            </button>
+            </Button>
           </div>
         </Dialog>
       )}
       {!online && (
-        <p className="offline-banner" role="status">
+        <p className={cx('offline-banner', bannerClass)} role="status">
           {t('staleSnapshot')}
         </p>
       )}
       {updateReady && !paymentFlowOpen && (
-        <section className="update-banner" role="status">
+        <section
+          className={cx(
+            'update-banner',
+            bannerClass,
+            'flex items-center justify-end gap-(--mb-space-2) [&_span]:mr-auto',
+          )}
+          role="status"
+        >
           <span>{t('updateReady')}</span>
-          <button type="button" className="button button-primary" onClick={applyPwaUpdate}>
+          <Button variant="primary" onClick={applyPwaUpdate}>
             {t('updateApp')}
-          </button>
-          <button
-            type="button"
-            className="button button-quiet"
-            onClick={() => setUpdateReady(false)}
-          >
+          </Button>
+          <Button variant="quiet" onClick={() => setUpdateReady(false)}>
             {t('updateLater')}
-          </button>
+          </Button>
         </section>
       )}
       {path === '/profile' ? (
@@ -384,7 +463,11 @@ function App() {
 
 function SignOutIcon() {
   return (
-    <svg className="settings-sign-out-icon" viewBox="0 0 20 20" aria-hidden="true">
+    <svg
+      className="settings-sign-out-icon size-5 fill-none stroke-current stroke-[1.75] [stroke-linecap:round] [stroke-linejoin:round]"
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+    >
       <path d="M8.25 3.25H5.5A1.75 1.75 0 0 0 3.75 5v10c0 .97.78 1.75 1.75 1.75h2.75M12.25 6.25 16 10l-3.75 3.75M7.5 10H16" />
     </svg>
   );
@@ -393,10 +476,8 @@ function SignOutIcon() {
 function OfflineShell() {
   const { t } = useLanguage();
   return (
-    <main className="offline-shell">
-      <span className="brand-mark" aria-hidden="true">
-        MB
-      </span>
+    <main className={offlineShellClass}>
+      <BankSeal variant="offline" />
       <h1>{t('offlineShellTitle')}</h1>
       <p>{t('offlineShellDescription')}</p>
     </main>

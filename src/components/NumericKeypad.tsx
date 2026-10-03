@@ -1,6 +1,10 @@
+import type { ReactNode } from 'react';
 import { useLanguage } from '../i18n/language-context';
 import { appendMoneyDigit, removeMoneyDigit } from '../utils/money-input';
 import type { AmountUnit } from '../utils/preferences';
+import { keyButtonClass } from './ui/class-names';
+
+const keypadClass = 'grid grid-cols-[repeat(3,1fr)] content-start gap-[6px] max-md:row-start-2';
 
 export function NumericKeypad({
   digits,
@@ -13,31 +17,36 @@ export function NumericKeypad({
 }) {
   const { t } = useLanguage();
   return (
-    <div className="numeric-keypad" role="group" aria-label={t('numericKeypad')}>
+    <div className={keypadClass} role="group" aria-label={t('numericKeypad')}>
       <>
         {[...'123456789'].map((digit) => (
-          <button
-            key={digit}
-            type="button"
-            onClick={() => onChange(appendMoneyDigit(digits, digit, unit))}
-          >
+          <KeypadKey key={digit} onPress={() => onChange(appendMoneyDigit(digits, digit, unit))}>
             {digit}
-          </button>
+          </KeypadKey>
         ))}
       </>
-      <button
-        type="button"
-        aria-label={t('keypadBackspace')}
-        onClick={() => onChange(removeMoneyDigit(digits))}
-      >
+      <KeypadKey label={t('keypadBackspace')} onPress={() => onChange(removeMoneyDigit(digits))}>
         ⌫
-      </button>
-      <button type="button" onClick={() => onChange(appendMoneyDigit(digits, '0', unit))}>
-        0
-      </button>
-      <button type="button" onClick={() => onChange('')}>
-        {t('clear')}
-      </button>
+      </KeypadKey>
+      <KeypadKey onPress={() => onChange(appendMoneyDigit(digits, '0', unit))}>0</KeypadKey>
+      <KeypadKey onPress={() => onChange('')}>{t('clear')}</KeypadKey>
     </div>
+  );
+}
+
+/** One key of the keypad; `label` names a key whose face is a symbol. */
+function KeypadKey({
+  label,
+  onPress,
+  children,
+}: {
+  label?: string;
+  onPress: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button type="button" className={keyButtonClass} aria-label={label} onClick={onPress}>
+      {children}
+    </button>
   );
 }

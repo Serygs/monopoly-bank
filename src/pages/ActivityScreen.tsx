@@ -1,4 +1,5 @@
-import { useEffect, useId, useState, type KeyboardEvent } from 'react';
+import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
+import { Fragment, useEffect, useState } from 'react';
 import type {
   ActivityCursor,
   ActivityPage,
@@ -8,11 +9,59 @@ import type {
 import type { Currency, Player, Transaction } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Dialog } from '../components/Dialog';
+import { TransactionRow } from '../components/game/TransactionRow';
 import { useLanguage } from '../i18n/language-context';
-import { formatMoney } from '../utils/money';
-import { transactionAmount, transactionDescription } from '../utils/transaction-history';
+import { Button, MoneyValue, Notice, Row, StatPill } from '../components/ui';
+import { cx, wideDialogClass } from '../components/ui/class-names';
+import { MutedText } from '../components/ui/Text';
 
 const activityScopes: readonly ActivityScope[] = ['ALL', 'MINE', 'PENDING'];
+
+/*
+ * `activity-scroll` and `activity-ledger` stay as hooks for the e2e suites. `!` outranks the
+ * Dialog panel's own overflow and width.
+ */
+const dialogClass = cx(
+  'grid h-[min(720px,calc(100dvh_-_48px))] grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden!',
+  'max-md:h-[calc(100dvh_-_var(--mb-app-safe-top)_-_8px)]',
+  wideDialogClass,
+  'glass:max-w-full glass:min-w-0',
+);
+/* Nothing scrolls under the tab bar, so Liquid Glass lets the dialog's own glass show through. */
+const stickyClass = cx(
+  'z-1 border-b border-border bg-surface-elevated pt-(--mb-space-2)',
+  'glass:max-w-full glass:min-w-0 glass:border-[rgb(85_98_116/0.16)] glass:bg-transparent glass:dark:border-[rgb(255_255_255/0.14)]',
+);
+/*
+ * The selected tab sits above the quiet Button colours; the Button hover and pressed fills win.
+ * Liquid Glass lays the three tabs out as equal columns that may wrap.
+ */
+const tabsClass = cx(
+  'mx-0 mt-0 mb-(--mb-space-3) flex gap-[3px] overflow-x-auto rounded-md bg-surface-subtle p-[3px]',
+  '[&_[aria-selected=true]]:bg-accent [&_[aria-selected=true]]:text-on-accent [&_[aria-selected=true]]:shadow-sm',
+  'glass:grid glass:w-full glass:min-w-0 glass:grid-cols-3 glass:overflow-x-hidden',
+  'glass:*:w-full glass:*:min-w-0 glass:*:px-(--mb-space-2) glass:*:whitespace-normal',
+  'glass:border-[rgb(85_98_116/0.16)] glass:bg-[rgb(255_255_255/0.54)] glass:shadow-[inset_0_1px_0_rgb(255_255_255/0.68)]',
+  'glass:dark:border-[rgb(255_255_255/0.14)] glass:dark:bg-[rgb(50_61_76/0.68)] glass:dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.1)]',
+);
+/* The direct `.button` child is the load-more action. */
+const scrollClass =
+  'activity-scroll min-h-0 overflow-y-auto overscroll-contain [&>.button]:mx-0 [&>.button]:my-(--mb-space-4) glass:max-w-full glass:min-w-0';
+const ledgerClass = cx(
+  'activity-ledger m-0 grid list-none gap-0 p-0',
+  '[&>li]:grid [&>li]:grid-cols-[minmax(0,1fr)_auto] [&>li]:gap-x-[14px] [&>li]:gap-y-[4px] [&>li]:border-b [&>li]:border-b-border [&>li]:px-[4px] [&>li]:py-[14px]',
+  'glass:[&>li]:border-[rgb(85_98_116/0.16)]',
+  '[&>li>span]:shrink-0 [&>li>span]:self-start [&>li>span]:font-money [&>li>span]:font-bold [&>li>span]:whitespace-nowrap [&>li>span]:text-primary [&>li>span]:tabular-nums',
+  '[&_:is(time,li_em)]:col-span-full [&_:is(time,li_em)]:text-[0.84rem] [&_:is(time,li_em)]:text-secondary',
+);
+/*
+ * The inline-start padding was `!important` in the old ledger CSS, over the row padding. The
+ * `small` is the pending status line.
+ */
+const pendingRowClass = cx(
+  'border-s-4 border-s-accent bg-[color-mix(in_srgb,var(--mb-color-highlight)_14%,transparent)] ps-[12px]!',
+  '[&>small]:col-span-full [&>small]:text-[0.84rem] [&>small]:font-semibold [&>small]:text-status-text',
+);
 
 export function ActivityScreen({
   gameId,
@@ -28,8 +77,6 @@ export function ActivityScreen({
   onClose: () => void;
 }) {
   const { language, locale, t } = useLanguage();
-  const tabIdPrefix = useId();
-  const panelId = useId();
   const [scope, setScope] = useState<ActivityScope>('ALL');
   const [page, setPage] = useState<ActivityPage>({
     transactions: [],
@@ -83,136 +130,92 @@ export function ActivityScreen({
       ? page.transactions
       : mergeTransactions(liveTransactions, page.transactions);
   const items = scope === 'PENDING' ? page.paymentRequests : transactions;
-  const tabId = (value: ActivityScope) => `${tabIdPrefix}-${value.toLowerCase()}`;
-  const selectScope = (nextScope: ActivityScope) => {
-    if (nextScope === scope) return;
+  const selectScope = (index: number) => {
+    const nextScope = activityScopes[index];
+    if (nextScope === undefined || nextScope === scope) return;
     setLoading(true);
     setError(false);
     setScope(nextScope);
   };
-  const moveTabFocus = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    event.preventDefault();
-    const currentIndex = activityScopes.indexOf(scope);
-    const nextIndex =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? activityScopes.length - 1
-          : event.key === 'ArrowRight'
-            ? (currentIndex + 1) % activityScopes.length
-            : (currentIndex - 1 + activityScopes.length) % activityScopes.length;
-    const nextScope = activityScopes[nextIndex];
-    if (nextScope === undefined) return;
-    const nextTab = event.currentTarget.querySelector<HTMLButtonElement>(
-      `[data-activity-scope="${nextScope}"]`,
-    );
-    nextTab?.focus();
-    selectScope(nextScope);
-  };
+  const panel = (
+    <>
+      {error && <Notice tone="error">{t('unableLoadHistory')}</Notice>}
+      <ol className={ledgerClass}>
+        {items.map((item) =>
+          'state' in item ? (
+            <PendingRow
+              key={item.id}
+              request={item}
+              players={players}
+              currency={currency}
+              locale={locale}
+            />
+          ) : (
+            <TransactionRow
+              key={item.id}
+              transaction={item}
+              players={players}
+              currency={currency}
+              language={language}
+              locale={locale}
+            />
+          ),
+        )}
+      </ol>
+      {!loading && items.length === 0 && (
+        <MutedText>{scope === 'PENDING' ? t('noPendingActivity') : t('noActivity')}</MutedText>
+      )}
+      {loading && (
+        <StatPill variant="muted" live>
+          {t('loadingGame')}
+        </StatPill>
+      )}
+      {page.nextCursor !== null && (
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => {
+            const cursor = page.nextCursor;
+            if (cursor !== null) void loadMore(cursor);
+          }}
+        >
+          {t('loadMore')}
+        </Button>
+      )}
+    </>
+  );
 
+  // Headless UI renders only the selected panel; the other two stay registered as hidden stubs
+  // so every tab keeps its `aria-controls` target.
   return (
     <Dialog
       title={t('activity')}
       closeLabel={t('closeDialog', { title: t('activity') })}
       onClose={onClose}
-      className="activity-dialog"
+      className={dialogClass}
     >
-      <div className="activity-sticky">
-        <div
-          className="activity-tabs"
-          role="tablist"
-          aria-label={t('activity')}
-          onKeyDown={moveTabFocus}
-        >
-          {activityScopes.map((value) => {
-            const selected = scope === value;
-            const label =
-              value === 'ALL'
-                ? t('activityAll')
-                : value === 'MINE'
-                  ? t('activityMine')
-                  : t('activityPending');
-            return (
-              <button
-                id={tabId(value)}
-                data-activity-scope={value}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                aria-controls={panelId}
-                tabIndex={selected ? 0 : -1}
-                className="button button-quiet"
-                key={value}
-                onClick={() => selectScope(value)}
-              >
-                {label}
-              </button>
-            );
-          })}
+      <TabGroup as={Fragment} selectedIndex={activityScopes.indexOf(scope)} onChange={selectScope}>
+        <div className={stickyClass}>
+          <TabList className={tabsClass} aria-label={t('activity')}>
+            {activityScopes.map((value) => (
+              <Tab as={Button} variant="quiet" key={value}>
+                {value === 'ALL'
+                  ? t('activityAll')
+                  : value === 'MINE'
+                    ? t('activityMine')
+                    : t('activityPending')}
+              </Tab>
+            ))}
+          </TabList>
         </div>
-      </div>
-      <div
-        id={panelId}
-        className="activity-scroll"
-        role="tabpanel"
-        aria-labelledby={tabId(scope)}
-        tabIndex={0}
-      >
-        {error && (
-          <p className="notice notice-error" role="alert">
-            {t('unableLoadHistory')}
-          </p>
-        )}
-        <ol className="activity-ledger">
-          {items.map((item) =>
-            'state' in item ? (
-              <PendingRow
-                key={item.id}
-                request={item}
-                players={players}
-                currency={currency}
-                locale={locale}
-              />
-            ) : (
-              <li key={item.id}>
-                <div className="activity-transaction">
-                  <strong>{transactionDescription(item, players, language)}</strong>
-                  <time>
-                    {new Intl.DateTimeFormat(locale, {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    }).format(new Date(item.createdAt))}
-                  </time>
-                </div>
-                <span>{transactionAmount(item, currency, language)}</span>
-                {item.comment !== null && <em>{item.comment}</em>}
-              </li>
-            ),
-          )}
-        </ol>
-        {!loading && items.length === 0 && (
-          <p className="muted">{scope === 'PENDING' ? t('noPendingActivity') : t('noActivity')}</p>
-        )}
-        {loading && (
-          <p role="status" className="muted">
-            {t('loadingGame')}
-          </p>
-        )}
-        {page.nextCursor !== null && (
-          <button
-            className="button button-secondary activity-load-more"
-            type="button"
-            disabled={loading}
-            onClick={() => {
-              const cursor = page.nextCursor;
-              if (cursor !== null) void loadMore(cursor);
-            }}
-          >
-            {t('loadMore')}
-          </button>
-        )}
-      </div>
+        <TabPanels as={Fragment}>
+          {activityScopes.map((value) => (
+            <TabPanel key={value} className={scrollClass}>
+              {panel}
+            </TabPanel>
+          ))}
+        </TabPanels>
+      </TabGroup>
     </Dialog>
   );
 }
@@ -234,19 +237,22 @@ function PendingRow({
   const approver =
     players.find((player) => player.id === request.approverPlayerId)?.name ?? t('selectedPlayer');
   return (
-    <li className="activity-pending">
-      <div className="activity-transaction">
-        <strong>
-          {creator} → {approver}
-        </strong>
-        <time>
-          {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-            new Date(request.createdAt),
-          )}
-        </time>
-      </div>
-      <span>{formatMoney(request.amount, currency)}</span>
-      <small className="activity-status">{t('pendingPayment')}</small>
+    <li className={pendingRowClass}>
+      <Row
+        title={
+          <>
+            {creator} → {approver}
+          </>
+        }
+        timestamp={new Intl.DateTimeFormat(locale, {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }).format(new Date(request.createdAt))}
+      />
+      <span>
+        <MoneyValue amount={request.amount} currency={currency} />
+      </span>
+      <small>{t('pendingPayment')}</small>
       {request.comment !== null && <em>{request.comment}</em>}
     </li>
   );

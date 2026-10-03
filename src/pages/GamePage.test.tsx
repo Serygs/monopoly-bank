@@ -127,6 +127,10 @@ vi.mock('../i18n/language-context', () => ({
     t: (key: string) => key,
   }),
 }));
+// The hook stand-ins above do not cover `useContext`, so the toast hook is stubbed directly.
+vi.mock('../components/ui/useFeedback', () => ({
+  useFeedback: () => () => undefined,
+}));
 
 import { GamePage } from './GamePage';
 
@@ -357,18 +361,34 @@ function snapshot(stateVersion: number, details: GameDetails): LiveServerEvent {
   };
 }
 
+/** Names handed to player-rendering children: `player`, or `WalletsSection`'s wallet props. */
 function renderedPlayerNames(node: ReactNode): string[] {
   if (Array.isArray(node)) return node.flatMap(renderedPlayerNames);
   if (node === null || typeof node !== 'object' || !('props' in node)) return [];
-  const props = (node as { props: { children?: ReactNode; player?: unknown } }).props;
-  const currentName =
-    props.player !== null &&
-    typeof props.player === 'object' &&
-    'name' in props.player &&
-    typeof props.player.name === 'string'
-      ? [props.player.name]
-      : [];
-  return currentName.concat(renderedPlayerNames(props.children));
+  const props = (
+    node as {
+      props: {
+        children?: ReactNode;
+        player?: unknown;
+        activeWallet?: unknown;
+        otherPlayers?: unknown;
+      };
+    }
+  ).props;
+  const candidates = [
+    props.player,
+    props.activeWallet,
+    ...(Array.isArray(props.otherPlayers) ? props.otherPlayers : []),
+  ];
+  const currentNames = candidates.flatMap((candidate) =>
+    candidate !== null &&
+    typeof candidate === 'object' &&
+    'name' in candidate &&
+    typeof candidate.name === 'string'
+      ? [candidate.name]
+      : [],
+  );
+  return currentNames.concat(renderedPlayerNames(props.children));
 }
 
 async function flushPromises(): Promise<void> {
