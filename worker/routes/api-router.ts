@@ -59,6 +59,7 @@ export function createApiRouter(dependencies: ApiRouterDependencies) {
   return async (request: Request): Promise<Response> => {
     const requestId = readRequestId(request);
     const path = new URL(request.url).pathname;
+    let renewedCookie: string | undefined;
     try {
       try {
         requireSameOriginForMutation(request);
@@ -67,12 +68,16 @@ export function createApiRouter(dependencies: ApiRouterDependencies) {
         throw error;
       }
       await enforceRateLimit(request, dependencies.rateLimits, requestId);
-      const response = await route(request, dependencies, requestId);
+      const response = await route(request, dependencies, requestId, (cookie) => {
+        renewedCookie = cookie;
+      });
       // Re-wrapping an HTTP 101 response drops Cloudflare's `webSocket` field.
       // Return the Durable Object response intact so the browser upgrade completes.
       if (response.status === 101) return response;
       const headers = new Headers(response.headers);
       headers.set('x-request-id', requestId);
+      if (renewedCookie !== undefined && !headers.has('set-cookie'))
+        headers.set('set-cookie', renewedCookie);
       securityHeaders(request, headers);
       return new Response(response.body, {
         status: response.status,
@@ -88,6 +93,7 @@ export function createApiRouter(dependencies: ApiRouterDependencies) {
       });
       const headers = new Headers(response.headers);
       securityHeaders(request, headers);
+      if (renewedCookie !== undefined) headers.set('set-cookie', renewedCookie);
       return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
@@ -101,6 +107,7 @@ async function route(
   request: Request,
   dependencies: ApiRouterDependencies,
   requestId: string,
+  onSessionRenewed: (cookie: string) => void,
 ): Promise<Response> {
   const pathname = new URL(request.url).pathname;
   const gameMatch = /^\/api\/games\/([^/]+)$/.exec(pathname);
@@ -126,7 +133,7 @@ async function route(
     return success(result.profile, 201, result.cookie);
   }
   if (pathname === '/api/auth/login' && request.method === 'POST') {
-    const result = await dependencies.auth.login(await parseLoginRequest(request));
+    const result = await dependencies.auth.login(await parseLoginRequest(request), requestId);
     return success(result.profile, 200, result.cookie);
   }
   if (pathname === '/api/auth/verify-email' && request.method === 'POST')
@@ -186,7 +193,11 @@ async function route(
     );
   }
 
-  const actor = await dependencies.auth.current(request);
+  const actor = await dependencies.auth.current(
+    request,
+    requestId,
+    request.headers.get('upgrade')?.toLowerCase() === 'websocket' ? undefined : onSessionRenewed,
+  );
   if (pathname === '/api/auth/sessions/revoke-all' && request.method === 'POST')
     return success(null, 200, await dependencies.auth.revokeAll(actor.id));
   if (pathname === '/api/auth/upgrade' && request.method === 'POST') {
@@ -586,9 +597,37 @@ async function enforceRateLimit(
 ): Promise<void> {
   if (repository === undefined) return;
   const pathname = new URL(request.url).pathname;
+  const source =
+    request.headers.get('cf-connecting-ip') ??
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    'unknown';
+  if (pathname === '/api/auth/login' && request.method === 'POST') {
+    // Bound source-wide work without sharing one player's small login allowance.
+    const sourceHash = await tokenHash(source);
+    if (!(await repository.take(`login-source:${sourceHash}`, 120, 600))) {
+      securityEvent('rate_limited', { requestId });
+      throw new RateLimitError();
+    }
+    const input = await parseLoginRequest(request.clone());
+    const identifier =
+      'email' in input
+        ? `email:${input.email.toLowerCase()}`
+        : `nickname:${input.nickname.toLowerCase()}`;
+    if (
+      !(await repository.take(
+        `login-account:${await tokenHash(identifier)}:${sourceHash}`,
+        10,
+        600,
+      ))
+    ) {
+      securityEvent('rate_limited', { requestId });
+      throw new RateLimitError();
+    }
+    return;
+  }
   const rule =
-    pathname === '/api/auth/login' || pathname === '/api/auth/register'
-      ? { category: 'auth', limit: 10, seconds: 600 }
+    pathname === '/api/auth/register'
+      ? { category: 'register', limit: 10, seconds: 600 }
       : pathname === '/api/auth/password-reset' || pathname === '/api/auth/verification-email'
         ? { category: 'email', limit: 5, seconds: 3600 }
         : pathname === '/api/games/join/guest'
@@ -597,10 +636,6 @@ async function enforceRateLimit(
             ? { category: 'invite', limit: 12, seconds: 3600 }
             : undefined;
   if (rule === undefined) return;
-  const source =
-    request.headers.get('cf-connecting-ip') ??
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    'unknown';
   const bucket = `${rule.category}:${await tokenHash(source)}`;
   if (await repository.take(bucket, rule.limit, rule.seconds)) return;
   securityEvent('rate_limited', { requestId });

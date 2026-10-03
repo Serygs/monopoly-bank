@@ -5,6 +5,19 @@ import { apiErrorMessage } from './api-errors.js';
 import { translate } from './translations.js';
 
 describe('API error messages', () => {
+  it.each(['en', 'uk'] as const)(
+    'distinguishes invalid credentials from an expired session in %s',
+    (language) => {
+      const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+      const invalid = new MonopolyBankApiError({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid credentials',
+      });
+      expect(apiErrorMessage(invalid, t, 'unableAuthenticate')).toBe(t('errorInvalidCredentials'));
+      expect(apiErrorMessage(invalid, t, 'unableAuthenticate')).not.toBe(t('errorSessionExpired'));
+    },
+  );
+
   it.each([
     ['ACCOUNT_IDENTIFIER_UNAVAILABLE', 'Цей псевдонім вже зайнятий. Оберіть інший.'],
     [
