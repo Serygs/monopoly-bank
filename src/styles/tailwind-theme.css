@@ -1,0 +1,118 @@
+/*
+ * Tailwind CSS v4 theme bridge.
+ *
+ * Every value here is a reference to a `--mb-*` token owned by the active
+ * visual-style sheet (`visual-styles/*.css`), so utilities follow the root
+ * `data-visual-style` / `data-color-mode` attributes at runtime. `inline` makes
+ * utilities emit `var(--mb-…)` directly instead of an intermediate theme
+ * variable resolved once on `:root`. Do not put literal values in this block.
+ */
+
+@theme {
+  /* Only the two breakpoints the existing CSS uses. */
+  --breakpoint-*: initial;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+}
+
+@theme inline {
+  /* Colour roles: `bg-canvas`, `bg-surface-elevated`, `text-accent`, `border-border`, … */
+  --color-canvas: var(--mb-color-canvas);
+  --color-surface-elevated: var(--mb-color-surface-elevated);
+  --color-surface-subtle: var(--mb-color-surface-subtle);
+  --color-surface-inverse: var(--mb-color-surface-inverse);
+  --color-surface-inverse-elevated: var(--mb-color-surface-inverse-elevated);
+  --color-text-primary: var(--mb-color-text-primary);
+  --color-text-secondary: var(--mb-color-text-secondary);
+  --color-text-muted: var(--mb-color-text-muted);
+  --color-text-on-accent: var(--mb-color-text-on-accent);
+  --color-text-on-danger: var(--mb-color-text-on-danger);
+  --color-text-on-inverse: var(--mb-color-text-on-inverse);
+  --color-text-on-player: var(--mb-color-text-on-player);
+  --color-border: var(--mb-color-border);
+  --color-border-strong: var(--mb-color-border-strong);
+  --color-accent: var(--mb-color-accent);
+  --color-accent-hover: var(--mb-color-accent-hover);
+  --color-accent-pressed: var(--mb-color-accent-pressed);
+  --color-accent-soft: var(--mb-color-accent-soft);
+  --color-highlight: var(--mb-color-highlight);
+  --color-danger: var(--mb-color-danger);
+  --color-danger-hover: var(--mb-color-danger-hover);
+  --color-danger-soft: var(--mb-color-danger-soft);
+  --color-danger-border: var(--mb-color-danger-border);
+  --color-success: var(--mb-color-success);
+  --color-success-soft: var(--mb-color-success-soft);
+  --color-status-surface: var(--mb-color-status-surface);
+  --color-status-border: var(--mb-color-status-border);
+  --color-status-text: var(--mb-color-status-text);
+  --color-overlay: var(--mb-color-overlay);
+  --color-focus-ring: var(--mb-color-focus-ring);
+  --color-focus-halo: var(--mb-color-focus-halo);
+  --color-inverse-hover: var(--mb-color-inverse-hover);
+  --color-dialog-divider: var(--mb-color-dialog-divider);
+  --color-qr-background: var(--mb-color-qr-background);
+  --color-player-red: var(--mb-color-player-red);
+  --color-player-blue: var(--mb-color-player-blue);
+  --color-player-green: var(--mb-color-player-green);
+  --color-player-orange: var(--mb-color-player-orange);
+  --color-player-purple: var(--mb-color-player-purple);
+  --color-player-teal: var(--mb-color-player-teal);
+
+  /* Text-only colour aliases (`text-primary`, `text-muted`, `text-on-accent`, …). */
+  --text-color-primary: var(--mb-color-text-primary);
+  --text-color-secondary: var(--mb-color-text-secondary);
+  --text-color-muted: var(--mb-color-text-muted);
+  --text-color-on-accent: var(--mb-color-text-on-accent);
+  --text-color-on-danger: var(--mb-color-text-on-danger);
+  --text-color-on-inverse: var(--mb-color-text-on-inverse);
+  --text-color-on-player: var(--mb-color-text-on-player);
+
+  /* Border-only colour alias (`border-strong`). */
+  --border-color-strong: var(--mb-color-border-strong);
+
+  /* Typography */
+  --font-body: var(--mb-font-body);
+  --font-display: var(--mb-font-display);
+  --font-money: var(--mb-font-money);
+  --font-ui: var(--mb-font-ui);
+  --text-display: var(--mb-text-display);
+  --text-heading-lg: var(--mb-text-heading-lg);
+  --text-heading-md: var(--mb-text-heading-md);
+  --text-body: var(--mb-text-body);
+  --text-small: var(--mb-text-small);
+  --text-meta: var(--mb-text-meta);
+  --text-money-lg: var(--mb-text-money-lg);
+  --text-money-xl: var(--mb-text-money-xl);
+  --text-button: var(--mb-text-button);
+  --font-weight-regular: var(--mb-weight-regular);
+  --font-weight-medium: var(--mb-weight-medium);
+  --font-weight-semibold: var(--mb-weight-semibold);
+  --font-weight-bold: var(--mb-weight-bold);
+  --leading-tight: var(--mb-leading-tight);
+  --leading-body: var(--mb-leading-body);
+  --tracking-display: var(--mb-tracking-display);
+  --tracking-meta: var(--mb-tracking-meta);
+
+  /* Shape */
+  --radius-sm: var(--mb-radius-sm);
+  --radius-md: var(--mb-radius-md);
+  --radius-lg: var(--mb-radius-lg);
+  --radius-xl: var(--mb-radius-xl);
+  --radius-pill: var(--mb-radius-pill);
+  --radius-control: var(--mb-radius-control);
+  --radius-card: var(--mb-radius-card);
+  --radius-card-large: var(--mb-radius-card-large);
+
+  /* Elevation */
+  --shadow-sm: var(--mb-shadow-sm);
+  --shadow-md: var(--mb-shadow-md);
+  --shadow-lg: var(--mb-shadow-lg);
+  --shadow-hover: var(--mb-shadow-hover);
+  --shadow-header: var(--mb-shadow-header);
+  --shadow-balance-inset: var(--mb-shadow-balance-inset);
+  --shadow-player-inset: var(--mb-shadow-player-inset);
+
+  /* Motion easing (`ease-standard`, `ease-emphasized`) */
+  --ease-standard: var(--mb-ease-standard);
+  --ease-emphasized: var(--mb-ease-emphasized);
+}

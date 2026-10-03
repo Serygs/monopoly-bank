@@ -43,6 +43,13 @@ describe('UI translations', () => {
     expect(translate('uk', 'amountTotalHint', { amount: '$5 000' })).toBe('Сума: $5 000');
   });
 
+  it('localizes the notification region in both languages', () => {
+    expect(translate('en', 'notificationsRegion')).toBe('Notifications');
+    expect(translate('uk', 'notificationsRegion')).toBe('Сповіщення');
+    expect(translate('en', 'dismissNotification')).toBe('Dismiss notification');
+    expect(translate('uk', 'dismissNotification')).toBe('Закрити сповіщення');
+  });
+
   it('uses locale-specific format identifiers', () => {
     expect(languageLocale('en')).toBe('en-US');
     expect(languageLocale('uk')).toBe('uk-UA');

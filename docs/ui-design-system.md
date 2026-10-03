@@ -76,7 +76,8 @@ UI preference controller (application shell only)
 <html data-visual-style="classic-bank" data-color-mode="light">
              |
              v
-style registry -> style token sheet -> shared semantic components -> pages
+style registry -> style token sheet (--mb-*) -> Tailwind theme bridge
+               -> UI kit (src/components/ui/) + domain composites -> pages
 ```
 
 `src/appearance/visual-styles.ts` owns `VisualStyleId`, the typed
@@ -107,7 +108,8 @@ route changes do not restart it. The HTML has a static Classic Bank/light
 fallback. No `data-theme` attribute or page-specific theme checks remain.
 
 Stylesheets are imported statically from `src/index.css`. Each registered style
-has a token sheet scoped by style and resolved mode.
+has a token sheet scoped by style and resolved mode. The UI itself is styled
+with Tailwind CSS v4 utilities in the TSX; see [Styling implementation](#styling-implementation).
 
 To add a style in a future phase:
 
@@ -174,6 +176,106 @@ Layout primitives, focus behaviour, and overlay semantics are shared. A visual
 style may change their presentation, but not reading order, accessible names,
 focus management, dismissal behaviour, or the meaning and order of actions.
 
+### Styling implementation
+
+The UI is styled with Tailwind CSS v4 utilities written in the TSX, on top of
+Headless UI v2 for dialogs, menus, tabs, switches, and radio groups. There are no
+per-component stylesheets.
+
+- **Tokens.** Each style sheet in `src/styles/visual-styles/` defines the
+  `--mb-*` custom properties for its style and both resolved modes. These are the
+  only runtime design values. `src/styles/tailwind-theme.css` is a pure bridge:
+  its `@theme inline` block maps Tailwind theme names to `var(--mb-…)` (for
+  example `bg-surface-elevated` → `--mb-color-surface-elevated`,
+  `text-muted` → `--mb-color-text-muted`, `rounded-card` → `--mb-radius-card`,
+  `shadow-md` → `--mb-shadow-md`, `ease-emphasized` → `--mb-ease-emphasized`). It
+  never holds literal values, so every utility follows the root attributes at
+  runtime. Spacing, layout, control, and duration tokens that have no theme
+  name are used directly, for example `gap-(--mb-space-4)`,
+  `min-h-(--mb-control-height-md)`, or `duration-(--mb-duration-normal)`. The
+  theme defines only the two breakpoints the layout groups need: `md` (48rem)
+  and `lg` (64rem).
+- **Style and mode differences are variants.** `src/index.css` registers
+  `classic:` and `glass:`, which follow `data-visual-style`, and `dark:` and
+  `light:`, which follow the resolved `data-color-mode` and never
+  `prefers-color-scheme`. It also registers the media variants `fine-pointer:`,
+  `forced-colors:`, and `short-landscape:`. Tailwind's `motion-safe:` and
+  `motion-reduce:` cover reduced motion. Classic Bank and Liquid Glass differ
+  only through these variants on the same element, for example
+  `glass:backdrop-blur-[26px] glass:forced-colors:backdrop-filter-none`, and
+  through their token values. No selector overrides one component per style,
+  and no page contains a style branch.
+- **Cascade.** Everything Tailwind emits lives in cascade layers
+  (`theme, base, components, utilities`). Preflight is deliberately not imported.
+  The few remaining rules in `src/styles/` are unlayered, so they beat
+  utilities. That is why a utility that must override one of them carries `!`.
+- **Semantic hook classes.** Class names such as `dialog`, `dialog-backdrop`,
+  `wallet-card`, `game-card`, `settings-panel`, and `app-header` stay on their
+  elements. They are hooks for the e2e suites, unit tests, and the remaining CSS,
+  not styling APIs. Do not style new UI through them.
+
+### UI-kit contract
+
+`src/components/ui/` is the UI kit. Build new UI from it before writing new
+markup:
+
+- primitives: `Button`, `Field` (with `FieldHint` and `FieldError`), `Card`,
+  `Notice`, `StatPill`, `MoneyValue`, `SegmentedControl`, `Toggle`, `Row`,
+  `Toolbar`, `EmptyState`, `PageShell`, `ToolPanel`, `BankSeal` (the decorative
+  `MB` seal of the header, offline shell, auth cards, and saved-game cards), the
+  auth-card parts `AuthHeading` and `AuthForm`, and the text roles `Eyebrow`,
+  `Lede`, and `MutedText`;
+- dialog parts, used inside `src/components/Dialog.tsx`: `DialogBody` and
+  `DialogActions`;
+- feedback: `FeedbackProvider` (`ToastRegion.tsx`), `Toast`, and the
+  `useFeedback()` hook;
+- `class-names.ts`: shared class recipes (`cx`, button cores and tones, notice
+  tones, `wideDialogClass`, `actionGridClass`) for the rare case where a
+  component must style a foreign element.
+
+The kit's rules:
+
+- Kit components take semantic props (`variant`, `tone`, `size`), never colour
+  or raw-value props. A caller's `className` is for layout placement (grid
+  column, spacing, width), not for restyling the component.
+- Domain composites live in `src/components/game/`. Page-local subcomponents stay
+  in their page file.
+- Every visible string and accessible name comes from `useLanguage().t`.
+- Transient success and information messages go through `useFeedback()`. The
+  single region is mounted in `App.tsx`: success and information toasts sit in
+  a `polite` live stack and auto-dismiss after 6 s, pausing while the pointer or
+  focus is on the toast; errors sit in an `assertive` stack and stay until
+  dismissed. Form validation and submit errors stay inline beside their form and
+  are never also toasted.
+
+### Remaining CSS and why
+
+`src/styles/` holds only what utilities cannot express, or cannot express
+without losing a cascade guarantee:
+
+- `visual-styles/classic-bank.css` and `visual-styles/liquid-glass.css`: the
+  `--mb-*` token sets for each mode. Liquid Glass also has its ambient background
+  drift (`@keyframes liquid-ambient`, stopped under reduced motion) and the
+  pointer-highlight pseudo-element on game cards, which is driven by the
+  shell-level effect controller.
+- `layout.css`: the shell's safe-area padding (`env(safe-area-inset-*)`,
+  `--mb-app-safe-*`) and the iOS `@supports (-webkit-touch-callout: none)` block,
+  which raises `--mb-app-safe-top` in standalone portrait mode.
+- `primitives.css`: the base-layer focus ring and form-control skin, which
+  utilities on an element may override, plus the unlayered `.game-form`,
+  `.dialog-field`, calculator-input, and settings-options rules that the forms
+  share.
+- `features.css`: SVG-specific QR rendering and the amount-input suffix
+  clearance.
+- `non-game-pages.css`: avatar-picker rules that must outrank `.game-form`, and
+  the Classic overflow-menu keyframes.
+- `src/index.css`: the layer order, the Tailwind imports, the custom variants,
+  the `--mb-app-safe-*` inputs, document base styles, and native `color-scheme`.
+
+New CSS belongs here only for effects that utilities cannot express, such as
+keyframes, SVG presentation attributes, `@supports` platform fixes, or a
+pseudo-element driven by an effect controller.
+
 ## Classic Bank visual specification
 
 Classic Bank should feel premium, tactile, financially trustworthy, and lightly
@@ -186,19 +288,24 @@ grouping should prefer spacing and subtle surface contrast.
 ### Token contract
 
 `src/styles/visual-styles/classic-bank.css` is the implemented source for exact
-values. Shared and feature CSS must use the following roles rather than adding
-raw palette names.
+values. UI code must use the following roles rather than adding raw palette
+names. The custom properties on `:root` are the `--mb-*` names in the table.
+The `--color-*` names exist only as Tailwind theme keys in
+`src/styles/tailwind-theme.css`, which map each role to its `--mb-color-*`
+property and give it a utility name (`--color-surface-elevated` →
+`bg-surface-elevated`, `--text-color-muted` → `text-muted`, and so on). They are
+not custom properties at runtime, so never write `var(--color-…)`.
 
-| Group               | Tokens                                                                                                                                                                 | Contract                                                                                                                                        |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Canvas and surfaces | `--color-canvas`, `--color-surface-elevated`, `--color-surface-subtle`, `--color-surface-inverse`, `--color-surface-inverse-elevated`                                  | Ivory canvas and clean neutral surfaces in light mode; deep neutral-green canvas and progressively lighter green-neutral surfaces in dark mode. |
-| Text                | `--color-text-primary`, `--color-text-secondary`, `--color-text-muted`, `--color-text-on-accent`, `--color-text-on-danger`, `--color-text-on-inverse`                  | Primary content, supporting copy, de-emphasized metadata, and contrast-safe text on filled roles.                                               |
-| Structure           | `--color-border`, `--color-border-strong`, `--color-dialog-divider`                                                                                                    | Use the quiet border by default. Strong borders are for selected, interactive, or unusually dense boundaries.                                   |
-| Brand/action        | `--color-accent`, `--color-accent-hover`, `--color-accent-pressed`, `--color-accent-soft`                                                                              | Deep premium green in light mode and a brighter accessible green in dark mode. This is the primary action and selection family.                 |
-| Highlight           | `--color-highlight`                                                                                                                                                    | Muted brass for compact identity details and limited emphasis; never the default control fill.                                                  |
-| Feedback            | `--color-danger`, `--color-danger-hover`, `--color-danger-soft`, `--color-success`, `--color-success-soft`, plus status/border aliases                                 | Restrained red for destructive/error states and green for positive/live states. Always pair colour with text, iconography, or semantics.        |
-| Player identity     | `--color-player-red`, `--color-player-blue`, `--color-player-green`, `--color-player-orange`, `--color-player-purple`, `--color-player-teal`, `--color-text-on-player` | Stable values matching persisted player colours. Keep all six distinguishable in both modes.                                                    |
-| Focus and overlay   | `--color-focus-ring`, `--color-focus-halo`, `--color-overlay`, `--focus-ring`                                                                                          | Brass focus treatment remains visible on light, dark, and inverse surfaces. Classic Bank overlays are opaque and must not blur content.         |
+| Group               | Tokens (`:root` custom properties)                                                                                                                                                             | Utility names                                                                    | Contract                                                                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canvas and surfaces | `--mb-color-canvas`, `--mb-color-surface-elevated`, `--mb-color-surface-subtle`, `--mb-color-surface-inverse`, `--mb-color-surface-inverse-elevated`                                           | `bg-canvas`, `bg-surface-elevated`, `bg-surface-subtle`, `bg-surface-inverse`, … | Ivory canvas and clean neutral surfaces in light mode; deep neutral-green canvas and progressively lighter green-neutral surfaces in dark mode. |
+| Text                | `--mb-color-text-primary`, `--mb-color-text-secondary`, `--mb-color-text-muted`, `--mb-color-text-on-accent`, `--mb-color-text-on-danger`, `--mb-color-text-on-inverse`                        | `text-primary`, `text-secondary`, `text-muted`, `text-on-accent`, …              | Primary content, supporting copy, de-emphasized metadata, and contrast-safe text on filled roles.                                               |
+| Structure           | `--mb-color-border`, `--mb-color-border-strong`, `--mb-color-dialog-divider`                                                                                                                   | `border-border`, `border-strong`, `border-dialog-divider`                        | Use the quiet border by default. Strong borders are for selected, interactive, or unusually dense boundaries.                                   |
+| Brand/action        | `--mb-color-accent`, `--mb-color-accent-hover`, `--mb-color-accent-pressed`, `--mb-color-accent-soft`                                                                                          | `bg-accent`, `text-accent`, `bg-accent-soft`, …                                  | Deep premium green in light mode and a brighter accessible green in dark mode. This is the primary action and selection family.                 |
+| Highlight           | `--mb-color-highlight`                                                                                                                                                                         | `text-highlight`, `border-highlight`                                             | Muted brass for compact identity details and limited emphasis; never the default control fill.                                                  |
+| Feedback            | `--mb-color-danger`, `--mb-color-danger-hover`, `--mb-color-danger-soft`, `--mb-color-success`, `--mb-color-success-soft`, plus the `--mb-color-status-*` and `--mb-color-danger-border` roles | `text-danger`, `bg-danger-soft`, `bg-success-soft`, `text-status-text`, …        | Restrained red for destructive/error states and green for positive/live states. Always pair colour with text, iconography, or semantics.        |
+| Player identity     | `--mb-color-player-red`, `--mb-color-player-blue`, `--mb-color-player-green`, `--mb-color-player-orange`, `--mb-color-player-purple`, `--mb-color-player-teal`, `--mb-color-text-on-player`    | `bg-player-red`, …, `text-on-player`                                             | Stable values matching persisted player colours. Keep all six distinguishable in both modes.                                                    |
+| Focus and overlay   | `--mb-color-focus-ring`, `--mb-color-focus-halo`, `--mb-color-overlay`, `--mb-focus-ring`                                                                                                      | `outline-focus-ring`, `bg-overlay`                                               | Brass focus treatment remains visible on light, dark, and inverse surfaces. Classic Bank overlays are opaque and must not blur content.         |
 
 The resolved core palette is:
 
@@ -227,9 +334,11 @@ player values are red `#d83f55`, blue `#2878d0`, green `#238b57`, orange
 Classic Bank uses bundled Inter Variable with robust local fallbacks, so
 Ukrainian glyph coverage and PWA startup do not depend on a network font:
 
-- `--font-body` / `--font-ui`: body copy and controls;
-- `--font-display`: page and section headings;
-- `--font-money`: balances and transaction values with tabular numerals.
+- `--mb-font-body` / `--mb-font-ui` (`font-body`, `font-ui`): body copy and
+  controls;
+- `--mb-font-display` (`font-display`): page and section headings;
+- `--mb-font-money` (`font-money`): balances and transaction values with tabular
+  numerals.
 
 The responsive roles are display `clamp(2.625rem, 4vw, 4rem)` (mobile may
 resolve through `clamp(2.125rem, 10vw, 2.875rem)`), large heading
@@ -242,17 +351,22 @@ must remain secondary, never smaller than its documented role merely to fit.
 
 ### Spacing, shape, elevation, and motion
 
-- Spacing uses `--space-1` through `--space-10`: `4`, `8`, `12`, `16`, `20`,
-  `24`, `32`, `40`, `48`, and `64px`; responsive page spacing uses the
-  documented `--layout-page-*` roles.
-- Shape uses `--radius-sm`, `--radius-md`, `--radius-lg`, `--radius-xl`, and
-  `--radius-pill`: `8`, `12`, `16`, `20`, and `999px`.
-  Controls use `12px`; cards use `16px` or `20px`.
-- Controls use `--control-height-md` and `--control-height-lg`: `44` and `48px`;
-  normal interactive targets are at least `44px`.
-- Elevation uses `--shadow-sm`, `--shadow-md`, `--shadow-lg`, and
-  `--shadow-hover`. Apply the smallest shadow that communicates the layer.
-- Motion durations are `120`, `180`, and `260ms`; easing is
+- Spacing uses `--mb-space-1` through `--mb-space-10`: `4`, `8`, `12`, `16`,
+  `20`, `24`, `32`, `40`, `48`, and `64px`, written as `p-(--mb-space-4)`,
+  `gap-(--mb-space-3)`, and so on. Responsive page spacing uses the documented
+  `--mb-layout-page-*` roles.
+- Shape uses `--mb-radius-sm`, `--mb-radius-md`, `--mb-radius-lg`,
+  `--mb-radius-xl`, and `--mb-radius-pill` (`rounded-sm` … `rounded-pill`):
+  `8`, `12`, `16`, `20`, and `999px`. Controls use `12px`; cards use `16px` or
+  `20px`.
+- Controls use `--mb-control-height-md` and `--mb-control-height-lg`: `44` and
+  `48px`; normal interactive targets are at least `44px`.
+- Elevation uses `--mb-shadow-sm`, `--mb-shadow-md`, `--mb-shadow-lg`, and
+  `--mb-shadow-hover` (`shadow-sm` … `shadow-hover`). Apply the smallest shadow
+  that communicates the layer.
+- Motion durations are `--mb-duration-fast`, `--mb-duration-normal`, and
+  `--mb-duration-slow` (`120`, `180`, and `260ms`), written as
+  `duration-(--mb-duration-normal)`; easing is
   `cubic-bezier(.2, 0, 0, 1)` normally and `cubic-bezier(.2, .8, .2, 1)` for
   emphasized changes. Desktop hover may translate a clickable card/control by
   at most `2px`; touch interaction never relies on it.
@@ -275,15 +389,16 @@ disabled, and validation states remain visible without motion.
 - Badges use compact pill geometry and combine colour with readable status text.
 - The settings popover is an elevated solid-surface menu/dialog. It must keep
   its accessible name, outside-click dismissal, and keyboard behaviour.
-- Dialogs are centered solid surfaces on larger viewports and may reflow as a
-  bottom sheet when narrow. Both presentations share focus trapping, Escape,
-  restoration, overlay, and action semantics. Classic Bank uses no backdrop
-  blur or translucent glass.
+- Dialogs are centered solid surfaces from `md` up and bottom sheets below it
+  (see [Responsive and overlay rules](#responsive-and-overlay-rules)). Both
+  presentations share focus trapping, Escape, restoration, overlay, and action
+  semantics. Classic Bank uses no backdrop blur or translucent glass.
 - Tabs use a subtle grouped surface and a filled selected state. Horizontal
   overflow is local to the tab list when labels do not fit.
 
-These definitions are implemented in `src/styles/primitives.css`. Feature CSS
-may compose them but must not create a second visual language.
+These definitions are implemented by the UI kit in `src/components/ui/` and by
+`src/components/Dialog.tsx`, `OverflowMenu.tsx`, and `AppearanceSettings.tsx`.
+Pages may compose them but must not create a second visual language.
 
 ## Responsive and overlay rules
 
@@ -299,10 +414,13 @@ may compose them but must not create a second visual language.
   | Medium  | `48rem` / 768px through under `64rem` / 1024px | Moderate page padding; labelled header controls return; actions may wrap in their local header region; dialogs and settings are anchored/centered surfaces. |
   | Wide    | `64rem` / 1024px and above                     | Controlled `1280px` content maximum; intentional outer whitespace; page title and actions may share a row; feature grids use available table space.         |
 
-- Use `--layout-*` tokens for content measures, inline/block padding, header
-  height, section gaps, and grid gaps. `src/styles/layout.css` owns the three
-  layout-group media queries. Feature CSS may only use the same compact, medium,
-  and wide boundaries when a feature changes composition.
+- Use `--mb-layout-*` tokens for content measures, inline/block padding, header
+  height, section gaps, and grid gaps. The three layout groups are the Tailwind
+  breakpoints: compact is unprefixed or `max-md:`, medium is `md:`, and wide is
+  `lg:`. `src/styles/tailwind-theme.css` defines only `md` (48rem) and `lg`
+  (64rem). A feature may use only these boundaries (plus the registered
+  `short-landscape:` variant) when it changes composition; never add a
+  page-local breakpoint value.
 - Use CSS grid, flex, intrinsic sizing (`minmax(0, ...)`), and wrapping before
   adding a breakpoint. Never use fixed widths that make a 320px viewport or a
   Ukrainian label overflow.
@@ -328,6 +446,43 @@ may compose them but must not create a second visual language.
   persistence, and keyboard handling remain the same.
 - Account for safe-area insets in installed-PWA and mobile-browser contexts.
 
+### Overlay presentation on narrow screens
+
+`src/components/Dialog.tsx` implements both presentations with breakpoint
+classes only; nothing measures the viewport in JavaScript. Every modal dialog
+and the settings popover (`presentation="popover"`) share one sheet below `md`,
+in both visual styles:
+
+- The backdrop pins the panel to the bottom edge. It keeps only a top gap of
+  `max(--mb-space-2, --mb-app-safe-top)` and no side padding, so the sheet is the
+  full viewport width.
+- The panel has rounded top corners (`--mb-radius-xl`) and a flat bottom. It
+  drops its side and bottom borders. Its height is bounded to
+  `100dvh - --mb-app-safe-top - 8px`, and it scrolls internally.
+- The padding follows the insets: `max(18px, --mb-app-safe-left/right)` at the
+  sides and `max(--mb-space-5, --mb-app-safe-bottom + 14px)` at the bottom.
+  `DialogActions` stays sticky at the sheet's foot with
+  `max(--mb-space-4, --mb-app-safe-bottom)` below the actions. The
+  `--mb-app-safe-*` properties are defined in `src/index.css`; iOS standalone
+  portrait raises the top inset in `layout.css`.
+- A decorative 42×4px grab handle in `--mb-color-border-strong` sits 10px from
+  the top. It is an absolutely placed `::before`, so it never becomes a grid item
+  of a grid-laid panel. It is not a drag affordance, and the sheet is not
+  draggable.
+- Entrance: the scrim fades and the sheet slides up from `translate-y-full`,
+  using `--mb-duration-normal` with the emphasized easing. From `md` up, the
+  centred panel keeps each style's own short travel (Classic 4px, Liquid Glass
+  5px, both from `scale(0.99)`). All of this sits under `motion-safe:`, and
+  `motion-reduce:transition-none` removes it, so reduced motion shows the final
+  state immediately.
+- From `md` up, the modal is centred with `--mb-space-6` around it. The
+  settings popover is anchored to its trigger. The Liquid Glass settings width
+  cap applies only there.
+
+The API does not change between presentations: `closeDisabled`, focus entry
+(`autoFocus={false}` lands focus on the first enabled control), Escape, outside
+click, and focus restoration behave the same.
+
 The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
 `1440` are representative coverage samples, not breakpoint specifications.
 
@@ -350,9 +505,12 @@ The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
   rhythm, identity controls, and full-width primary action. Invitation state,
   join code, password, and guest identity remain distinct form states without
   duplicating join logic.
-- `src/styles/non-game-pages.css` owns these compositions. It may consume shared
-  tokens and primitives but must not redefine the palette or introduce
-  page-local breakpoint values outside the compact/medium/wide boundaries.
+- These compositions are utilities in the page TSX (`src/pages/SavedGamesPage.tsx`,
+  `ProfilePage.tsx`, `CreateGamePage.tsx`, `AuthPage.tsx`, `JoinGamePage.tsx`),
+  built from the UI kit and `src/components/game/GameCard.tsx`. They may consume
+  shared tokens and kit components but must not redefine the palette or
+  introduce page-local breakpoint values outside the compact/medium/wide
+  boundaries.
 
 ### Live and finished game composition
 
@@ -380,9 +538,10 @@ The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
   presentation must all preserve the same underlying permissions, API calls,
   realtime lifecycle, and transaction flow. Layout code never decides whether
   a wallet is authorized.
-- `src/styles/game-page.css` owns game header, wallet desk, wallet-card, and
-  pending-payment composition. Banking dialogs and auxiliary game tools remain
-  shared feature styles and consume the same semantic tokens.
+- The game header, wallet desk, wallet cards, and pending-payment composition are
+  utilities in `src/pages/game/` (`GameHeader.tsx`, `WalletsSection.tsx`,
+  `WalletCard.tsx`) and the domain composites in `src/components/game/`. Banking
+  dialogs and auxiliary game tools use the same UI kit and semantic tokens.
 
 ## Accessibility and motion
 
@@ -436,9 +595,9 @@ Liquid Glass uses `src/appearance/liquid-glass-effects.ts` for its optional
 shell-only pointer highlight. It updates a bounded CSS custom property, ignores
 touch input, observes live reduced-motion changes, and removes all listeners and
 temporary properties during cleanup. It does not request or collect sensor data.
-Both style sheets also define the shared `--ui-*` semantic aliases for canvas,
-surface, text, border, feedback, radius, elevation, and motion; legacy semantic
-`--color-*` roles remain compatibility aliases while feature CSS is migrated.
+Both style sheets also define the shared `--mb-ui-*` semantic aliases for
+canvas, surface, text, border, feedback, radius, elevation, and motion. No
+`--color-*` custom properties remain; see the token contract above.
 
 ## Current implementation map
 
@@ -450,16 +609,19 @@ requirements for future styles.
   `src/styles/visual-styles/liquid-glass.css` own the palette, typography,
   spacing, shape, controls, icons, motion, elevation, presentation roles, player
   colours, and deliberately designed dark overrides.
-- `src/index.css` imports the style sheet and owns base document styles,
-  safe-area inputs, and native `color-scheme` for each resolved mode.
-- `src/styles/layout.css` owns shell and page geometry.
-- `src/styles/primitives.css` owns shared controls, feedback, settings, and
-  overlays.
-- `src/styles/features.css` owns feature-level presentation.
-- `src/styles/game-page.css` owns the game header, wallet composition, wallet
-  cards, and pending-payment presentation.
-- `src/styles/non-game-pages.css` owns saved-game, profile, create/join, and
-  authentication page composition.
+- `src/index.css` imports the style sheets and Tailwind, declares the layer order
+  and the `classic:`/`glass:`/`dark:`/`light:` and media variants, and owns base
+  document styles, the `--mb-app-safe-*` inputs, and native `color-scheme` for
+  each resolved mode.
+- `src/styles/tailwind-theme.css` maps Tailwind theme names onto the `--mb-*`
+  tokens and defines the `md`/`lg` breakpoints.
+- `src/components/ui/` is the UI kit (see [UI-kit contract](#ui-kit-contract)),
+  `src/components/game/` holds the domain composites, and
+  `src/components/Dialog.tsx` owns both overlay presentations.
+- Shell, page, and feature geometry is written as utilities in the owning TSX.
+  The remaining files in `src/styles/` (`layout.css`, `primitives.css`,
+  `features.css`, `non-game-pages.css`) hold only the effects listed in
+  [Remaining CSS and why](#remaining-css-and-why).
 - `src/components/PageHeader.tsx` owns the shared title, back-action, and local
   page-action DOM structure used by saved games, game, create, and profile pages.
 - `src/components/OverflowMenu.tsx` owns the reusable keyboard-dismissible
@@ -469,10 +631,11 @@ requirements for future styles.
 - `public/manifest.webmanifest`, `index.html`, and `public/icons/` contain the
   current installed-PWA colours and icon assets.
 
-Feature styles consume semantic names such as `--color-surface-elevated`,
-`--color-text-primary`, `--color-text-secondary`, `--color-accent`,
-`--color-highlight`, `--color-danger`, `--shadow-md`, `--radius-card`, and
-responsive `--layout-page-*` roles. Player-picker swatches use player tokens for display while
+UI code consumes semantic roles through their utility names, such as
+`bg-surface-elevated`, `text-primary`, `text-secondary`, `bg-accent`,
+`text-highlight`, `text-danger`, `shadow-md`, and `rounded-card`, or directly
+through tokens without a theme name, such as `p-(--mb-layout-page-inline-compact)`.
+Player-picker swatches use player tokens for display while
 retaining the established hex values in persisted domain data. Superseded
 paper-grid, heavy control-shadow, oversized watermark, blur-overlay, and
 raw visual-name tokens have been removed rather than aliased.
@@ -540,26 +703,73 @@ automatically.
 
 For meaningful UI changes, validate:
 
-- `classic-bank` in English and Ukrainian;
+- `classic-bank` in English and Ukrainian, and every other registered style
+  (currently `liquid-glass`);
 - explicit light and dark modes, plus system preference resolution;
 - representative widths of 320, 390, 430, 768, 1024, 1280, and 1440 CSS pixels;
 - keyboard-only use, focus entry/restoration for overlays, and non-hover input;
 - reduced motion and no-preference;
 - PWA shell/install/update behaviour when shell assets or metadata change.
 
-Playwright screenshots are diagnostic report attachments unless a dedicated,
-reviewed baseline workflow is added. Do not treat a captured screenshot as a
-replacement for this document. When future styles are implemented, extend the
-matrix by registered style ID without copying style rules into the test.
+### Screenshot baselines: `npm run test:visual`
+
+The reviewed baseline workflow is the Playwright `visual` project in
+`e2e/visual/`:
+
+- **Gate.** The project exists only when `PLAYWRIGHT_VISUAL=1`, which the npm
+  scripts set. `npm test`, `npm run test:e2e`, and CI never run it. Its web
+  server is `npm run preview`, so every run builds the app first. The harness
+  (`visual.setup.ts`) stubs the API with `e2e/fixtures/api.ts`, replaces the
+  WebSocket with one that never opens, fixes style, mode, and language before
+  the first render, and runs with reduced motion.
+- **Suites.**
+  - `screens.spec.ts` holds the screenshot baselines. It covers the auth, saved
+    games, create, game, banking dialog, activity, and profile screens, each for
+    every registered style, both modes, and widths 390, 768, and 1280 (saved
+    games and the game also in Ukrainian). It also covers the compact settings
+    sheet at 390px.
+  - `appearance.spec.ts`, `motion.spec.ts`, and `keyboard.spec.ts` are
+    computed-style and behaviour checks. They cover style and mode switching,
+    the ambient drift, dialog entrance and reduced motion, forced colours,
+    safe-area insets on the header and the sheet, and focus trapping.
+  - `sweep.spec.ts` is a responsive sweep without screenshots. It covers every
+    style × mode × language at 320, 390, 430, 768, 1024, 1280, and 1440 over
+    auth, saved games, settings, create, game, banking dialog, and profile. It
+    asserts no horizontal overflow, no console errors, a full-width bottom sheet
+    below 768px, a centred modal from 768px, and the anchored settings popover
+    from 768px.
+- **Local-only baselines.** Baselines live in
+  `e2e/visual/__screenshots__/<platform>/` and are machine-specific, because font
+  rasterisation differs between machines. Compare only against baselines
+  recorded on the same platform and machine class. Never treat a mismatch on
+  another machine as a regression without re-recording there first.
+- **Updating.** Re-record only what changed on purpose, one name at a time:
+  `npm run test:visual:update -- -g '<name>'`. Never run a blanket update. Each
+  re-recorded baseline must be explained in the change's report, with the diff
+  shown to be exactly the intended change.
+- **Reference captures.** The four images in `docs/ui/reference/` are Saved
+  Games in Ukrainian, light mode, for each style at 1672×941 (desktop) and
+  852×1846 (a 426×923 phone at 2×). They are regenerated with
+  `npm run test:visual:reference` (`reference.spec.ts`, which is skipped in
+  `test:visual`). They are build evidence, not design authority.
+
+Do not treat a captured screenshot as a replacement for this document. When
+future styles are implemented, extend the matrix by registered style ID without
+copying style rules into the test. Automated checks do not replace a pass on a
+real iOS device (safe area and standalone PWA), a screen-reader pass, or the
+live PWA update banner.
 
 ## Change workflow
 
 1. Update this document when a UI decision changes the shared contract.
-2. Add or change semantic tokens and shared primitives before styling pages.
+2. Add or change semantic tokens and UI-kit components (`src/components/ui/`)
+   before styling pages; style with utilities and variants, not new CSS.
 3. Keep style selection in the registry/application shell and keep banking
    components style-agnostic.
 4. Add every visible string and accessible label to both EN and UK translations.
 5. Verify the relevant visual, accessibility, localization, PWA, lint, test, and
    build checks.
 6. Keep reference imagery out of the repository unless it is current, licensed,
-   intentionally maintained, and linked from this document.
+   intentionally maintained, and linked from this document. The
+   `docs/ui/reference/` captures meet this by being regenerated from the build
+   (see [Screenshot baselines](#screenshot-baselines-npm-run-testvisual)).

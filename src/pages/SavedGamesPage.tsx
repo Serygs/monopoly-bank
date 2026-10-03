@@ -2,10 +2,71 @@ import { useEffect, useMemo, useState } from 'react';
 import type { GameSummary } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Dialog } from '../components/Dialog';
-import { OverflowMenu } from '../components/OverflowMenu';
+import { GameCard } from '../components/game/GameCard';
 import { PageHeader } from '../components/PageHeader';
+import {
+  Button,
+  DialogActions,
+  DialogBody,
+  EmptyState,
+  Field,
+  Notice,
+  PageShell,
+  SegmentedControl,
+  StatPill,
+  useFeedback,
+} from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
+import { cx } from '../components/ui/class-names';
+
+/*
+ * `page-header--hero` stays as the hook for `liquid-glass-effects.ts`; its pointer tilt and
+ * highlight stay in `liquid-glass.css`. Classic Bank hides the `::after` glow.
+ */
+const heroClass = cx(
+  'page-header--hero relative overflow-hidden rounded-xl border border-[color:color-mix(in_srgb,var(--mb-color-highlight)_45%,transparent)]',
+  'text-on-inverse shadow-md [background:var(--mb-background-hero)]',
+  'min-h-[clamp(230px,20vw,280px)] p-(--mb-space-6) pb-[clamp(var(--mb-space-6),5vw,var(--mb-space-9))]',
+  'lg:p-[clamp(var(--mb-space-7),4vw,var(--mb-space-9))] lg:pb-[clamp(var(--mb-space-6),5vw,var(--mb-space-9))]',
+  'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-0 *:relative *:z-1',
+  '[&_h1]:text-inherit [&_.lede]:text-inherit [&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-highlight)_82%,white)]',
+  'max-md:[&_h1]:text-[length:clamp(2.125rem,10vw,2.875rem)]',
+  // Only the dark Classic hero needs the inverse ring; Liquid Glass light keeps the default.
+  'classic:light:[&_button:focus-visible]:outline-text-on-inverse',
+  // `!` outranks PageHeader's own `lg:` columns.
+  'lg:grid-cols-[minmax(0,62%)_minmax(0,38%)]! lg:items-center',
+  'max-md:[&_.page-header-actions]:grid-cols-1 max-md:[&_.page-header-actions_.button]:w-full max-md:[&_.button-primary]:-order-1',
+  'lg:[&_.page-header-actions]:col-[1] lg:[&_.page-header-actions]:max-w-[28rem]',
+  'classic:after:hidden classic:max-md:bg-[position:62%_center] classic:max-md:bg-[size:auto_100%]',
+  'glass:isolate glass:border-[rgb(255_255_255/0.6)] glass:text-primary glass:shadow-lg',
+  'glass:[&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-accent-hover)_88%,var(--mb-color-text-primary))]',
+  'glass:after:w-[42%] glass:after:opacity-82',
+  'glass:after:[background:radial-gradient(circle_at_70%_34%,rgb(255_244_232/0.9),transparent_13%),radial-gradient(circle_at_45%_65%,rgb(201_220_244/0.92),transparent_22%),radial-gradient(circle_at_80%_72%,rgb(231_226_244/0.84),transparent_26%)]',
+);
+/* The search field and sort select share each style's control skin. */
+const controlsClass = cx(
+  'mb-(--mb-layout-section-gap-compact) grid gap-(--mb-space-3)',
+  'md:grid-cols-[minmax(0,1fr)_auto] md:items-center lg:grid-cols-[minmax(18rem,1fr)_auto_auto]',
+  'classic:[&_:is(input,select)]:border-border classic:[&_:is(input,select)]:bg-[#fffcf3] classic:[&_:is(input,select)]:shadow-[0_5px_16px_rgb(42_52_39/0.05)]',
+  'classic:dark:[&_:is(input,select)]:bg-surface-elevated',
+  'glass:[&_:is(input,select)]:border-[rgb(255_255_255/0.58)] glass:[&_:is(input,select)]:bg-[rgb(255_255_255/0.42)]',
+  'glass:[&_:is(input,select)]:shadow-[inset_0_1px_0_rgb(255_255_255/0.62),0_8px_24px_rgb(40_60_90/0.07)]',
+  'glass:[&_:is(input,select)]:backdrop-blur-[18px] glass:[&_:is(input,select)]:backdrop-saturate-[1.25]',
+);
+/* `saved-games-search` and its icon stay as e2e hooks. */
+const searchClass = cx(
+  'saved-games-search relative block md:col-span-full lg:col-auto',
+  '[&_input]:block [&_input]:w-full [&_input]:ps-12',
+);
+const searchIconClass =
+  'saved-games-search-icon pointer-events-none absolute top-1/2 left-4 z-1 block size-5 -translate-y-1/2 text-muted';
+const sortClass =
+  'flex items-center gap-(--mb-space-2) text-small font-semibold text-secondary md:justify-self-end [&_select]:min-h-(--mb-control-height-md)';
+const gridClass = cx(
+  'grid grid-cols-[1fr] gap-(--mb-layout-gap-compact)',
+  'md:grid-cols-2 md:gap-(--mb-layout-gap-medium) lg:gap-(--mb-layout-gap-wide)',
+);
 
 interface Props {
   onCreateGame: () => void;
@@ -21,7 +82,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   const [gameToRemove, setGameToRemove] = useState<GameSummary | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<unknown | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const notify = useFeedback();
   const [duplicating, setDuplicating] = useState<string | null>(null);
   const [gameToDuplicate, setGameToDuplicate] = useState<GameSummary | null>(null);
   const [duplicatePassword, setDuplicatePassword] = useState('');
@@ -88,7 +149,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
     try {
       const removed = await monopolyBankApi.deleteGame(gameToRemove.game.id);
       setGames((current) => current.filter(({ game }) => game.id !== removed.gameId));
-      setNotice(gameToRemove.game.name);
+      notify({ tone: 'success', message: t('gameRemoved', { name: gameToRemove.game.name }) });
       setGameToRemove(null);
     } catch (caught) {
       setRemoveError(caught);
@@ -126,64 +187,55 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   };
 
   return (
-    <main className="page saved-games-page">
+    <PageShell>
       <PageHeader
-        className="page-header--hero"
+        className={heroClass}
         eyebrow={t('appName')}
         title={t('savedGames')}
         description={t('savedGamesLede')}
         actions={
           <>
-            <button className="button button-primary" type="button" onClick={onCreateGame}>
+            <Button variant="primary" onClick={onCreateGame}>
               {t('createNewGame')}
-            </button>
-            <button className="button button-secondary" type="button" onClick={() => onJoinGame()}>
+            </Button>
+            <Button variant="secondary" onClick={() => onJoinGame()}>
               {t('joinGame')}
-            </button>
+            </Button>
           </>
         }
       />
 
-      {notice !== null && (
-        <section className="notice notice-success" role="status">
-          <p>{t('gameRemoved', { name: notice })}</p>
-          <button className="button button-quiet" type="button" onClick={() => setNotice(null)}>
-            {t('dismiss')}
-          </button>
-        </section>
-      )}
       {loading && (
-        <p className="status" role="status">
+        <StatPill variant="status" live>
           {t('loadingSavedGames')}
-        </p>
+        </StatPill>
       )}
       {error !== null && (
-        <section className="notice notice-error" role="alert">
+        <Notice tone="error" as="section">
           <p>{apiErrorMessage(error, t, 'unableLoadSavedGames')}</p>
-          <button className="button button-secondary" type="button" onClick={loadGames}>
+          <Button variant="secondary" onClick={loadGames}>
             {t('tryAgain')}
-          </button>
-        </section>
+          </Button>
+        </Notice>
       )}
       {!loading && error === null && games.length === 0 && (
-        <section className="empty-state">
-          <span className="empty-state-token" aria-hidden="true">
-            MB
-          </span>
-          <h2>{t('noSavedGames')}</h2>
-          <p>{t('noSavedGamesDescription')}</p>
-          <button className="button button-primary" type="button" onClick={onCreateGame}>
-            {t('createNewGame')}
-          </button>
-        </section>
+        <EmptyState
+          title={t('noSavedGames')}
+          description={t('noSavedGamesDescription')}
+          action={
+            <Button variant="primary" onClick={onCreateGame}>
+              {t('createNewGame')}
+            </Button>
+          }
+        />
       )}
       {!loading && error === null && games.length > 0 && (
         <>
-          <section className="saved-games-controls" aria-label={t('savedGamesControls')}>
-            <label className="saved-games-search">
+          <section className={controlsClass} aria-label={t('savedGamesControls')}>
+            <label className={searchClass}>
               <span className="sr-only">{t('searchGames')}</span>
               <svg
-                className="saved-games-search-icon"
+                className={searchIconClass}
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -201,24 +253,22 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
                 placeholder={t('searchGames')}
               />
             </label>
-            <div className="saved-games-filters" role="group" aria-label={t('filterGames')}>
-              {(['ALL', 'ACTIVE', 'LOBBY', 'FINISHED'] as const).map((status) => (
-                <button
-                  className={`button button-filter${statusFilter === status ? ' active' : ''}`}
-                  type="button"
-                  key={status}
-                  aria-pressed={statusFilter === status}
-                  onClick={() => setStatusFilter(status)}
-                >
-                  {t(
-                    status === 'ALL'
-                      ? 'allGames'
-                      : (`gameStatus${status[0]}${status.slice(1).toLowerCase()}` as 'gameStatusLobby'),
-                  )}
-                </button>
-              ))}
-            </div>
-            <label className="saved-games-sort">
+            <SegmentedControl
+              variant="filter"
+              className="flex flex-wrap gap-(--mb-space-2)"
+              label={t('filterGames')}
+              options={(['ALL', 'ACTIVE', 'LOBBY', 'FINISHED'] as const).map((status) => ({
+                value: status,
+                label: t(
+                  status === 'ALL'
+                    ? 'allGames'
+                    : (`gameStatus${status[0]}${status.slice(1).toLowerCase()}` as 'gameStatusLobby'),
+                ),
+              }))}
+              value={statusFilter}
+              onChange={setStatusFilter}
+            />
+            <label className={sortClass}>
               <span>{t('sortGames')}</span>
               <select
                 value={sortOrder}
@@ -230,68 +280,19 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
             </label>
           </section>
           {visibleGames.length === 0 ? (
-            <p className="status">{t('noMatchingGames')}</p>
+            <StatPill variant="status">{t('noMatchingGames')}</StatPill>
           ) : (
-            <section className="game-grid" aria-label={t('savedGames')}>
+            <section className={gridClass} aria-label={t('savedGames')}>
               {visibleGames.map((summary) => (
-                <article className="game-card" key={summary.game.id}>
-                  <div className="game-card-copy">
-                    <span className="game-card-seal" aria-hidden="true">
-                      MB
-                    </span>
-                    <div className="game-card-details">
-                      <span
-                        className={`game-card-status game-card-status--${summary.game.status.toLowerCase()}`}
-                      >
-                        {t(
-                          `gameStatus${summary.game.status[0]}${summary.game.status.slice(1).toLowerCase()}` as 'gameStatusLobby',
-                        )}
-                      </span>
-                      <h2 title={summary.game.name}>{summary.game.name}</h2>
-                      <div className="game-card-meta">
-                        <span>{t('playersCount', { count: summary.playerCount })}</span>
-                        <span>
-                          {t('updated', { date: formatDate(summary.game.updatedAt, locale) })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="game-card-actions">
-                    {summary.isPublicLobby && summary.joinCode !== undefined ? (
-                      <button
-                        className="button button-primary game-card-primary-action"
-                        type="button"
-                        onClick={() => onJoinGame(summary.joinCode)}
-                      >
-                        {t('joinOpenLobby')}
-                      </button>
-                    ) : (
-                      <button
-                        className="button button-primary game-card-primary-action"
-                        type="button"
-                        onClick={() => onOpenGame(summary.game.id)}
-                      >
-                        {t('openGame')}
-                      </button>
-                    )}
-                    <OverflowMenu
-                      label={t('gameActions', { name: summary.game.name })}
-                      items={[
-                        {
-                          label:
-                            duplicating === summary.game.id ? t('duplicating') : t('duplicate'),
-                          disabled: duplicating === summary.game.id,
-                          onSelect: () => requestDuplicate(summary),
-                        },
-                        {
-                          label: t('removeGame'),
-                          tone: 'danger',
-                          onSelect: () => requestRemoval(summary),
-                        },
-                      ]}
-                    />
-                  </div>
-                </article>
+                <GameCard
+                  key={summary.game.id}
+                  summary={summary}
+                  duplicating={duplicating === summary.game.id}
+                  onJoinGame={onJoinGame}
+                  onOpenGame={onOpenGame}
+                  onDuplicate={() => requestDuplicate(summary)}
+                  onRemove={() => requestRemoval(summary)}
+                />
               ))}
             </section>
           )}
@@ -317,7 +318,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
           onConfirm={() => void duplicateGame()}
         />
       )}
-    </main>
+    </PageShell>
   );
 }
 
@@ -343,32 +344,19 @@ function RemoveGameDialog({
       closeLabel={t('closeDialog', { title })}
       closeDisabled={removing}
       onClose={onCancel}
-      className="remove-game-dialog"
     >
       <p>{t('removeGameWarning', { count: game.playerCount })}</p>
       {error !== null && (
-        <p className="notice notice-error" role="alert">
-          {apiErrorMessage(error, t, 'unableRemoveGame')}
-        </p>
+        <Notice tone="error">{apiErrorMessage(error, t, 'unableRemoveGame')}</Notice>
       )}
-      <div className="dialog-actions">
-        <button
-          className="button button-secondary"
-          type="button"
-          disabled={removing}
-          onClick={onCancel}
-        >
+      <DialogActions>
+        <Button variant="secondary" disabled={removing} onClick={onCancel}>
           {t('cancel')}
-        </button>
-        <button
-          className="button button-danger"
-          type="button"
-          disabled={removing}
-          onClick={onConfirm}
-        >
+        </Button>
+        <Button variant="danger" disabled={removing} onClick={onConfirm}>
           {removing ? t('removing') : t('removeGame')}
-        </button>
-      </div>
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }
@@ -398,9 +386,14 @@ function DuplicateGameDialog({
       closeDisabled={duplicating}
       onClose={onCancel}
     >
-      <p className="dialog-intro">{t('duplicateGameDescription')}</p>
-      <label className="dialog-field" htmlFor={passwordId}>
-        <span>{t('copyGamePassword')}</span>
+      <DialogBody>{t('duplicateGameDescription')}</DialogBody>
+      <Field
+        variant="dialog"
+        wrapLabel
+        label={t('copyGamePassword')}
+        hint={t('copyGamePasswordHint')}
+        hintElement="small"
+      >
         <input
           id={passwordId}
           type="password"
@@ -409,40 +402,22 @@ function DuplicateGameDialog({
           value={password}
           onChange={(event) => onPasswordChange(event.target.value)}
         />
-        <small>{t('copyGamePasswordHint')}</small>
-      </label>
+      </Field>
       {error !== null && (
-        <p className="notice notice-error" role="alert">
+        <Notice tone="error">
           {error instanceof Error && error.message === t('gamePasswordMinLength')
             ? error.message
             : apiErrorMessage(error, t, 'unableDuplicateGame')}
-        </p>
+        </Notice>
       )}
-      <div className="dialog-actions">
-        <button
-          className="button button-secondary"
-          type="button"
-          disabled={duplicating}
-          onClick={onCancel}
-        >
+      <DialogActions>
+        <Button variant="secondary" disabled={duplicating} onClick={onCancel}>
           {t('cancel')}
-        </button>
-        <button
-          className="button button-primary"
-          type="button"
-          disabled={duplicating}
-          onClick={onConfirm}
-        >
+        </Button>
+        <Button variant="primary" disabled={duplicating} onClick={onConfirm}>
           {duplicating ? t('duplicating') : t('duplicateGame')}
-        </button>
-      </div>
+        </Button>
+      </DialogActions>
     </Dialog>
   );
-}
-
-function formatDate(value: string, locale: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf())
-    ? value
-    : new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
 }

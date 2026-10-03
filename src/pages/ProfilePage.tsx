@@ -1,11 +1,46 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type FormHTMLAttributes } from 'react';
 import type { UserProfile } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Avatar, AvatarPicker } from '../components/AvatarPicker';
 import { PageHeader } from '../components/PageHeader';
+import { Button, Field, Notice, PageShell, useFeedback } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { EMAIL_FEATURES_ENABLED } from '../utils/email-features';
+import { cx } from '../components/ui/class-names';
+import { MutedText } from '../components/ui/Text';
+
+const layoutClass = cx(
+  'grid min-w-0 gap-(--mb-layout-gap-compact)',
+  'md:grid-cols-[minmax(18rem,0.82fr)_minmax(0,1.18fr)] md:gap-(--mb-layout-gap-medium) lg:gap-(--mb-layout-gap-wide)',
+);
+const panelClass =
+  'min-w-0 rounded-card-large border border-border p-[clamp(var(--mb-space-5),4vw,var(--mb-space-7))] shadow-sm';
+/* Every section after the profile form (upgrade, legacy email, verification) is ruled off. */
+const editorClass = cx(
+  panelClass,
+  'bg-surface-elevated [&>*+*]:mt-(--mb-space-7) [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-(--mb-space-7)',
+);
+/* The summary name overrides the page's low-specificity `h2` typography. */
+const summaryClass = cx(
+  'flex min-w-0 items-center gap-(--mb-space-4) border-b border-border pb-(--mb-space-5) [&>div]:min-w-0',
+  '[&_.avatar]:size-[72px] [&_.avatar]:flex-none [&_.avatar]:text-[2rem]',
+  '[&_h2]:text-[length:clamp(1.25rem,5vw,1.7rem)] [&_h2]:leading-[1.12] [&_h2]:wrap-anywhere',
+  '[&_p]:mx-0 [&_p]:mt-(--mb-space-1) [&_p]:mb-0',
+);
+const statisticsClass = cx(
+  'mx-0 mt-(--mb-space-5) mb-0 grid grid-cols-2 gap-(--mb-space-3)',
+  '*:min-w-0 *:rounded-card *:border *:border-border *:bg-surface-elevated *:p-(--mb-space-4)',
+  '[&_dt]:text-small [&_dt]:text-secondary',
+  '[&_dd]:mx-0 [&_dd]:mt-(--mb-space-1) [&_dd]:mb-0 [&_dd]:font-money [&_dd]:text-[length:clamp(1.25rem,5vw,1.65rem)] [&_dd]:leading-[1.1] [&_dd]:font-bold [&_dd]:text-primary [&_dd]:wrap-anywhere',
+);
+/* `!` outranks the unlayered `.game-form` gap in `primitives.css`. */
+const profileFormClass = 'game-form gap-(--mb-space-6)!';
+
+/** The profile, guest-upgrade and legacy-email forms share one spacing. */
+function ProfileForm(props: Omit<FormHTMLAttributes<HTMLFormElement>, 'className'>) {
+  return <form className={profileFormClass} {...props} />;
+}
 
 export function ProfilePage({
   profile,
@@ -20,16 +55,15 @@ export function ProfilePage({
   const [nickname, setNickname] = useState(profile.nickname);
   const [avatar, setAvatar] = useState(profile.avatar);
   const [error, setError] = useState<unknown>(null);
-  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const notify = useFeedback();
   const save = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setError(null);
-    setSaved(false);
     try {
       onUpdated(await monopolyBankApi.updateProfile({ nickname, avatar }));
-      setSaved(true);
+      notify({ tone: 'success', message: t('profileUpdated') });
     } catch (caught) {
       setError(caught);
     } finally {
@@ -37,29 +71,29 @@ export function ProfilePage({
     }
   };
   return (
-    <main className="page profile-page">
+    <PageShell>
       <PageHeader
         eyebrow={t('playerProfile')}
         title={t('playerProfile')}
         description={t('profileDescription')}
         backAction={
-          <button className="button button-quiet" type="button" onClick={onBack}>
+          <Button variant="quiet" onClick={onBack}>
             {t('savedGames')}
-          </button>
+          </Button>
         }
       />
-      <div className="profile-layout">
-        <section className="profile-overview">
-          <div className="profile-summary">
-            <Avatar avatar={avatar} label={nickname} className="profile-avatar" />
+      <div className={layoutClass}>
+        <section className={cx(panelClass, 'self-start bg-surface-subtle')}>
+          <div className={summaryClass}>
+            <Avatar avatar={avatar} label={nickname} />
             <div>
               <h2>{nickname}</h2>
-              <p className="muted">
+              <MutedText>
                 {profile.accountType === 'GUEST' ? t('guestAccount') : t('playerProfile')}
-              </p>
+              </MutedText>
             </div>
           </div>
-          <dl className="profile-statistics">
+          <dl className={statisticsClass}>
             <div>
               <dt>{t('gamesPlayed')}</dt>
               <dd>{profile.gamesPlayed}</dd>
@@ -78,10 +112,9 @@ export function ProfilePage({
             </div>
           </dl>
         </section>
-        <section className="profile-editor">
-          <form className="game-form profile-form" onSubmit={(event) => void save(event)}>
-            <label>
-              {t('nickname')}
+        <section className={editorClass}>
+          <ProfileForm onSubmit={(event) => void save(event)}>
+            <Field label={t('nickname')}>
               <input
                 value={nickname}
                 minLength={2}
@@ -89,7 +122,7 @@ export function ProfilePage({
                 onChange={(event) => setNickname(event.target.value)}
                 required
               />
-            </label>
+            </Field>
             <AvatarPicker
               avatar={avatar}
               onChange={setAvatar}
@@ -100,19 +133,17 @@ export function ProfilePage({
               allowUpload
             />
             {error !== null && (
-              <p className="notice notice-error" role="alert">
-                {apiErrorMessage(error, t, 'unableUpdateProfile')}
-              </p>
+              <Notice tone="error">{apiErrorMessage(error, t, 'unableUpdateProfile')}</Notice>
             )}
-            {saved && (
-              <p className="notice notice-success" role="status">
-                {t('profileUpdated')}
-              </p>
-            )}
-            <button className="button button-primary profile-save" disabled={saving}>
+            <Button
+              variant="primary"
+              type="submit"
+              className="min-w-48 justify-self-start max-md:w-full"
+              disabled={saving}
+            >
               {saving ? t('savingProfile') : t('saveProfile')}
-            </button>
-          </form>
+            </Button>
+          </ProfileForm>
           {EMAIL_FEATURES_ENABLED &&
             (profile.accountType === 'GUEST' ? (
               <GuestUpgradeForm onUpgraded={onUpdated} />
@@ -123,7 +154,7 @@ export function ProfilePage({
             ))}
         </section>
       </div>
-    </main>
+    </PageShell>
   );
 }
 
@@ -146,11 +177,10 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
     }
   };
   return (
-    <form className="game-form profile-form" onSubmit={(event) => void upgrade(event)}>
+    <ProfileForm onSubmit={(event) => void upgrade(event)}>
       <h2>{t('secureGuestAccount')}</h2>
-      <p className="muted">{t('secureGuestDescription')}</p>
-      <label>
-        {t('email')}
+      <MutedText>{t('secureGuestDescription')}</MutedText>
+      <Field label={t('email')}>
         <input
           type="email"
           autoComplete="email"
@@ -158,9 +188,8 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
           onChange={(event) => setEmail(event.target.value)}
           required
         />
-      </label>
-      <label>
-        {t('password')}
+      </Field>
+      <Field label={t('password')}>
         <input
           type="password"
           minLength={6}
@@ -170,16 +199,14 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
           onChange={(event) => setPassword(event.target.value)}
           required
         />
-      </label>
+      </Field>
       {error !== null && (
-        <p className="notice notice-error" role="alert">
-          {apiErrorMessage(error, t, 'unableAuthenticate')}
-        </p>
+        <Notice tone="error">{apiErrorMessage(error, t, 'unableAuthenticate')}</Notice>
       )}
-      <button className="button button-primary" disabled={busy}>
+      <Button variant="primary" type="submit" disabled={busy}>
         {busy ? t('pleaseWait') : t('secureGuestAccount')}
-      </button>
-    </form>
+      </Button>
+    </ProfileForm>
   );
 }
 
@@ -187,14 +214,13 @@ function VerificationNotice() {
   const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [sent, setSent] = useState(false);
+  const notify = useFeedback();
   const resend = async () => {
     setBusy(true);
     setError(null);
-    setSent(false);
     try {
       await monopolyBankApi.resendVerification();
-      setSent(true);
+      notify({ tone: 'success', message: t('verificationSent') });
     } catch (caught) {
       setError(caught);
     } finally {
@@ -202,22 +228,15 @@ function VerificationNotice() {
     }
   };
   return (
-    <section className="verification-notice">
-      <div className="notice notice-success" role="status">
-        <p>{sent ? t('verificationSent') : t('verificationPending')}</p>
-        <button
-          className="button button-secondary"
-          type="button"
-          disabled={busy}
-          onClick={() => void resend()}
-        >
+    <section>
+      <Notice tone="success" as="div">
+        <p>{t('verificationPending')}</p>
+        <Button variant="secondary" disabled={busy} onClick={() => void resend()}>
           {busy ? t('pleaseWait') : t('resendVerification')}
-        </button>
-      </div>
+        </Button>
+      </Notice>
       {error !== null && (
-        <p className="notice notice-error" role="alert">
-          {apiErrorMessage(error, t, 'errorEmailDelivery')}
-        </p>
+        <Notice tone="error">{apiErrorMessage(error, t, 'errorEmailDelivery')}</Notice>
       )}
     </section>
   );
@@ -241,11 +260,10 @@ function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void 
     }
   };
   return (
-    <form className="game-form profile-form" onSubmit={(event) => void add(event)}>
+    <ProfileForm onSubmit={(event) => void add(event)}>
       <h2>{t('addAccountEmail')}</h2>
-      <p className="muted">{t('addAccountEmailDescription')}</p>
-      <label>
-        {t('email')}
+      <MutedText>{t('addAccountEmailDescription')}</MutedText>
+      <Field label={t('email')}>
         <input
           type="email"
           autoComplete="email"
@@ -253,15 +271,13 @@ function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void 
           onChange={(event) => setEmail(event.target.value)}
           required
         />
-      </label>
+      </Field>
       {error !== null && (
-        <p className="notice notice-error" role="alert">
-          {apiErrorMessage(error, t, 'unableAuthenticate')}
-        </p>
+        <Notice tone="error">{apiErrorMessage(error, t, 'unableAuthenticate')}</Notice>
       )}
-      <button className="button button-primary" disabled={busy}>
+      <Button variant="primary" type="submit" disabled={busy}>
         {busy ? t('pleaseWait') : t('addAccountEmail')}
-      </button>
-    </form>
+      </Button>
+    </ProfileForm>
   );
 }
