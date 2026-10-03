@@ -1,11 +1,13 @@
+import { Radio, RadioGroup } from '@headlessui/react';
 import {
+  Fragment,
   useEffect,
   useId,
   useRef,
   useState,
   type CSSProperties,
   type FormEvent,
-  type KeyboardEvent,
+  type ReactNode,
 } from 'react';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { apiErrorMessage } from '../i18n/api-errors';
@@ -13,6 +15,9 @@ import { useLanguage } from '../i18n/language-context';
 import { AmountInput } from '../components/AmountInput';
 import { useAmountInput } from '../components/amount-input-state';
 import { PageHeader } from '../components/PageHeader';
+import { Button, Field, FieldError, FieldHint, Notice, PageShell, Toolbar } from '../components/ui';
+import { cx } from '../components/ui/class-names';
+import { keepEnterInRadio } from '../components/ui/radio-keys';
 import type { Translate } from '../i18n/translations';
 import { formatMoney } from '../utils/money';
 import { getGameNameSuggestions, randomSuggestionStart } from '../utils/game-name-suggestions';
@@ -25,13 +30,53 @@ import {
 import type { UserProfile } from '../../shared/contracts/api';
 
 const colors = [
-  { value: '#d83f55', token: '--color-player-red', nameKey: 'playerColorRed' },
-  { value: '#2878d0', token: '--color-player-blue', nameKey: 'playerColorBlue' },
-  { value: '#238b57', token: '--color-player-green', nameKey: 'playerColorGreen' },
-  { value: '#d97721', token: '--color-player-orange', nameKey: 'playerColorOrange' },
-  { value: '#8b4cc5', token: '--color-player-purple', nameKey: 'playerColorPurple' },
-  { value: '#087f78', token: '--color-player-teal', nameKey: 'playerColorTeal' },
+  { value: '#d83f55', token: '--mb-color-player-red', nameKey: 'playerColorRed' },
+  { value: '#2878d0', token: '--mb-color-player-blue', nameKey: 'playerColorBlue' },
+  { value: '#238b57', token: '--mb-color-player-green', nameKey: 'playerColorGreen' },
+  { value: '#d97721', token: '--mb-color-player-orange', nameKey: 'playerColorOrange' },
+  { value: '#8b4cc5', token: '--mb-color-player-purple', nameKey: 'playerColorPurple' },
+  { value: '#087f78', token: '--mb-color-player-teal', nameKey: 'playerColorTeal' },
 ] as const;
+/* `!` outranks the unlayered `.game-form` gap in `primitives.css`. */
+const formClass = cx(
+  'game-form items-start',
+  'md:grid-cols-2 md:gap-(--mb-layout-gap-medium)! lg:gap-(--mb-layout-gap-wide)!',
+);
+/* Each child is one player editor; consecutive editors are ruled off. */
+const playerListClass = cx(
+  'grid gap-(--mb-space-4) *:grid *:gap-(--mb-space-4)',
+  '[&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-(--mb-space-5)',
+);
+const ownerListClass = cx(
+  playerListClass,
+  'md:*:grid-cols-[minmax(14rem,1fr)_minmax(18rem,1.2fr)] md:*:items-start lg:*:grid-cols-[1fr]',
+);
+const sectionTitleClass = cx(
+  'flex min-w-0 items-center justify-between gap-(--mb-space-3) [&_.field-hint]:m-0 [&_.field-hint]:min-w-0',
+  'max-md:flex-col max-md:items-stretch max-md:[&_.button]:w-full',
+);
+const actionsClass = 'pt-(--mb-space-2) md:col-span-full [&_.button]:min-w-[min(100%,15rem)]';
+/* `!` outranks the unlayered `.game-form fieldset` / `.game-form legend` rules in `primitives.css`. */
+const colorPickerClass = cx(
+  'border-0! bg-transparent! p-0! shadow-none!',
+  '[&_legend]:mb-(--mb-space-3) [&_legend]:p-0! [&_legend]:text-[1rem]! [&_legend]:font-semibold',
+);
+const colorOptionClass = cx(
+  'grid size-12 place-items-center rounded-full border-3 border-surface-elevated bg-(--player-color) p-0',
+  'font-ui text-[1.1rem] leading-none font-bold text-on-player',
+  'transition-[transform,box-shadow] duration-(--mb-duration-fast) ease-standard',
+  '*:grid *:size-6 *:place-items-center *:rounded-full focus-visible:outline-offset-5',
+  'disabled:opacity-30 disabled:grayscale-[0.72]',
+  'fine-pointer:enabled:hover:transform-[translateY(-2px)] fine-pointer:enabled:hover:[box-shadow:0_0_0_3px_var(--mb-color-highlight),var(--mb-shadow-player-inset)]',
+  'motion-reduce:transform-none!',
+);
+const colorOptionStateClass = {
+  selected: cx(
+    '[box-shadow:0_0_0_3px_var(--mb-color-surface-elevated),0_0_0_6px_var(--mb-color-accent),var(--mb-shadow-player-inset)]',
+    '*:bg-[color-mix(in_srgb,var(--mb-color-surface-inverse)_62%,transparent)]',
+  ),
+  idle: '[box-shadow:0_0_0_1px_var(--mb-color-border-strong),var(--mb-shadow-player-inset)]',
+};
 const defaultStartingBalance = 15_000_000;
 const defaultPassGoReward = 2_000_000;
 interface PlayerForm {
@@ -129,62 +174,60 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
     }
   };
   return (
-    <main className="page create-game-page">
+    <PageShell>
       <PageHeader
         eyebrow={t('newBank')}
         title={t('createLobby')}
         description={t('lobbyLede')}
         backAction={
-          <button className="button button-quiet" type="button" onClick={onCancel}>
+          <Button variant="quiet" onClick={onCancel}>
             {t('cancel')}
-          </button>
+          </Button>
         }
       />
-      <form
-        className="game-form create-game-form"
-        onSubmit={(event) => void submit(event)}
-        noValidate
-      >
-        <fieldset className="form-section create-section-basics">
+      <form className={formClass} onSubmit={(event) => void submit(event)} noValidate>
+        <fieldset>
           <legend>{t('gameBasics')}</legend>
-          <div className="form-section-fields">
-            <div className="game-name-field">
+          <FieldStack>
+            <div className="game-name-field grid gap-[7px] font-medium text-primary">
               <label htmlFor={gameNameInputId}>{t('gameName')}</label>
-              <div className="game-name-control" ref={suggestionsRootRef}>
+              <div className="game-name-control relative" ref={suggestionsRootRef}>
                 <input
                   ref={gameNameInputRef}
                   id={gameNameInputId}
+                  className="pr-[8.75rem]! max-[24rem]:pr-[4rem]!"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   aria-invalid={errors.name !== undefined}
+                  aria-errormessage={
+                    errors.name === undefined ? undefined : `${gameNameInputId}-error`
+                  }
                 />
-                <button
-                  className="game-name-suggest-trigger"
-                  type="button"
+                <Button
+                  className="game-name-suggest-trigger absolute min-h-11 justify-center inset-[2px_2px_auto_auto] gap-(--mb-space-2) rounded-[calc(var(--mb-radius-control)_-_2px)] border-0 bg-accent-soft px-(--mb-space-3) text-small text-accent enabled:active:text-accent-pressed fine-pointer:enabled:hover:text-accent-hover max-[24rem]:w-11 max-[24rem]:px-0"
                   aria-haspopup="dialog"
                   aria-expanded={suggestionsOpen}
                   aria-controls={suggestionsId}
                   onClick={toggleSuggestions}
                 >
                   <SparklesIcon />
-                  <span>{t('suggestGameName')}</span>
-                </button>
+                  <span className="max-[24rem]:sr-only">{t('suggestGameName')}</span>
+                </Button>
                 {suggestionsOpen && (
                   <div
-                    className="game-name-suggestions"
+                    className="game-name-suggestions absolute z-20 inset-[calc(100%_+_var(--mb-space-2))_0_auto_auto] w-[min(22rem,100%)] rounded-card border border-border bg-surface-elevated p-(--mb-space-2) text-primary shadow-lg"
                     id={suggestionsId}
                     role="dialog"
                     aria-label={t('suggestedGameNames')}
                   >
-                    <div className="game-name-suggestions-heading">
+                    <div className="flex min-h-10 items-center gap-(--mb-space-2) px-(--mb-space-3) text-small font-semibold text-secondary [&_svg]:text-highlight">
                       <SparklesIcon />
                       <span>{t('suggestedGameNames')}</span>
                     </div>
-                    <div className="game-name-suggestion-list" role="group">
+                    <div className="grid" role="group">
                       {suggestions.map((suggestion) => (
-                        <button
-                          className="game-name-suggestion"
-                          type="button"
+                        <Button
+                          className="game-name-suggestion grid! min-h-(--mb-control-height-md) grid-cols-[1.5rem_minmax(0,1fr)] justify-start gap-(--mb-space-2) rounded-[calc(var(--mb-radius-control)_-_3px)] border-0 bg-transparent px-(--mb-space-3) text-start text-small font-medium text-primary active:bg-accent-soft fine-pointer:hover:bg-surface-subtle"
                           key={suggestion.name}
                           onClick={() => {
                             setName(suggestion.name);
@@ -194,16 +237,17 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                         >
                           <span aria-hidden="true">{suggestion.icon}</span>
                           <span>{suggestion.name}</span>
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
                 )}
               </div>
-              {fieldError(errors.name)}
+              {errors.name !== undefined && (
+                <FieldError id={`${gameNameInputId}-error`}>{errors.name}</FieldError>
+              )}
             </div>
-            <label>
-              {t('currency')}
+            <Field label={t('currency')}>
               <select
                 value={currency}
                 onChange={(event) => setCurrency(event.target.value as SelectableCurrency)}
@@ -214,14 +258,13 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                   </option>
                 ))}
               </select>
-            </label>
-          </div>
+            </Field>
+          </FieldStack>
         </fieldset>
-        <fieldset className="form-section create-section-rules">
+        <fieldset>
           <legend>{t('bankingRules')}</legend>
-          <div className="form-section-fields">
-            <label>
-              {t('paymentMode')}
+          <FieldStack>
+            <Field label={t('paymentMode')} hint={t('paymentModeLocked')}>
               <select
                 value={paymentMode}
                 onChange={(event) => setPaymentMode(event.target.value as PaymentMode)}
@@ -229,10 +272,12 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                 <option value="FAST">{t('paymentModeFast')}</option>
                 <option value="CONFIRMATION">{t('paymentModeConfirmation')}</option>
               </select>
-              <span className="field-hint">{t('paymentModeLocked')}</span>
-            </label>
-            <label>
-              {t('optionalPassword')}
+            </Field>
+            <Field
+              label={t('optionalPassword')}
+              hint={t('optionalPasswordHint')}
+              error={errors.gameAccessPassword}
+            >
               <input
                 type="password"
                 autoComplete="new-password"
@@ -240,9 +285,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                 onChange={(event) => setGameAccessPassword(event.target.value)}
                 aria-invalid={errors.gameAccessPassword !== undefined}
               />
-              <span className="field-hint">{t('optionalPasswordHint')}</span>
-              {fieldError(errors.gameAccessPassword)}
-            </label>
+            </Field>
             <div className="field-grid">
               <MoneyField
                 label={t('startingBalance')}
@@ -259,93 +302,128 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                 error={errors.passGoReward}
               />
             </div>
-          </div>
+          </FieldStack>
         </fieldset>
-        <fieldset className="form-section create-section-owner">
-          <legend>{t('ownerPlayer')}</legend>
-          <div className="player-list">
-            {players.slice(0, 1).map((player) => (
-              <section className="player-editor" key={player.key}>
-                <label>
-                  {t('playerName', { number: 1 })}
-                  <input
-                    value={player.name}
-                    onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
-                    aria-invalid={errors[`player-${player.key}`] !== undefined}
-                  />
-                  {fieldError(errors[`player-${player.key}`])}
-                </label>
-                <ColorPicker
-                  player={player}
-                  players={players}
-                  onChange={(color) => updatePlayer(player.key, { color })}
+        <PlayersFieldset column={1} legend={t('ownerPlayer')}>
+          {players.slice(0, 1).map((player) => (
+            <section key={player.key}>
+              <Field label={t('playerName', { number: 1 })} error={errors[`player-${player.key}`]}>
+                <input
+                  value={player.name}
+                  onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
+                  aria-invalid={errors[`player-${player.key}`] !== undefined}
                 />
-              </section>
-            ))}
-          </div>
-        </fieldset>
-        <fieldset className="form-section create-section-players">
-          <legend>{t('localPlayers')}</legend>
-          <div className="section-title">
-            <p className="field-hint">{t('localPlayersHint')}</p>
-            <button
-              className="button button-secondary"
-              type="button"
-              onClick={addPlayer}
-              disabled={players.length >= 6}
-            >
-              {t('addPlayer')}
-            </button>
-          </div>
-          {fieldError(errors.players)}
-          <div className="player-list">
-            {players.slice(1).map((player, index) => (
-              <section className="player-editor" key={player.key}>
-                <label>
-                  {t('playerName', { number: index + 2 })}
-                  <input
-                    value={player.name}
-                    onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
-                    aria-invalid={errors[`player-${player.key}`] !== undefined}
-                  />
-                  {fieldError(errors[`player-${player.key}`])}
-                </label>
-                <ColorPicker
-                  player={player}
-                  players={players}
-                  onChange={(color) => updatePlayer(player.key, { color })}
+              </Field>
+              <ColorPicker
+                player={player}
+                players={players}
+                onChange={(color) => updatePlayer(player.key, { color })}
+              />
+            </section>
+          ))}
+        </PlayersFieldset>
+        <PlayersFieldset
+          column={2}
+          legend={t('localPlayers')}
+          intro={
+            <>
+              <div className={sectionTitleClass}>
+                <FieldHint as="p">{t('localPlayersHint')}</FieldHint>
+                <Button variant="secondary" onClick={addPlayer} disabled={players.length >= 6}>
+                  {t('addPlayer')}
+                </Button>
+              </div>
+              {errors.players !== undefined && <FieldError>{errors.players}</FieldError>}
+            </>
+          }
+        >
+          {players.slice(1).map((player, index) => (
+            <section key={player.key}>
+              <Field
+                label={t('playerName', { number: index + 2 })}
+                error={errors[`player-${player.key}`]}
+              >
+                <input
+                  value={player.name}
+                  onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
+                  aria-invalid={errors[`player-${player.key}`] !== undefined}
                 />
-                <button
-                  className="button button-quiet remove-player"
-                  type="button"
-                  onClick={() =>
-                    setPlayers(players.filter((candidate) => candidate.key !== player.key))
-                  }
-                >
-                  {t('remove')}
-                </button>
-              </section>
-            ))}
-          </div>
-        </fieldset>
+              </Field>
+              <ColorPicker
+                player={player}
+                players={players}
+                onChange={(color) => updatePlayer(player.key, { color })}
+              />
+              <Button
+                variant="quiet"
+                className="justify-self-start"
+                onClick={() =>
+                  setPlayers(players.filter((candidate) => candidate.key !== player.key))
+                }
+              >
+                {t('remove')}
+              </Button>
+            </section>
+          ))}
+        </PlayersFieldset>
         {submitError !== null && (
-          <p className="notice notice-error create-form-status" role="alert">
+          <Notice tone="error" className="md:col-span-full">
             {apiErrorMessage(submitError, t, 'unableCreateGame')}
-          </p>
+          </Notice>
         )}
-        <div className="form-actions create-form-actions">
-          <button className="button button-primary" type="submit" disabled={submitting}>
+        <Toolbar variant="form" className={actionsClass}>
+          <Button variant="primary" type="submit" disabled={submitting}>
             {submitting ? t('startingLobby') : t('createLobby')}
-          </button>
-        </div>
+          </Button>
+        </Toolbar>
       </form>
-    </main>
+    </PageShell>
+  );
+}
+
+/** The vertical field rhythm inside the game-basics and banking-rules fieldsets. */
+function FieldStack({ children }: { children: ReactNode }) {
+  return <div className="grid gap-(--mb-space-4)">{children}</div>;
+}
+
+/*
+ * Both player fieldsets span the form from `md`; from `lg` they sit in their own column. The owner
+ * editor lays its name and colour side by side from `md` until the `lg` column narrows it again.
+ */
+const playersFieldsetClass = {
+  1: { fieldset: 'md:col-span-full lg:col-[1]', list: ownerListClass },
+  2: { fieldset: 'md:col-span-full lg:col-[2]', list: playerListClass },
+};
+
+/** A players fieldset: legend, optional intro row, then the list of player editors. */
+function PlayersFieldset({
+  column,
+  legend,
+  intro,
+  children,
+}: {
+  column: 1 | 2;
+  legend: string;
+  intro?: ReactNode;
+  children: ReactNode;
+}) {
+  const classes = playersFieldsetClass[column];
+  return (
+    <fieldset className={classes.fieldset}>
+      <legend>{legend}</legend>
+      {intro}
+      <div className={classes.list}>{children}</div>
+    </fieldset>
   );
 }
 
 function SparklesIcon() {
   return (
-    <svg className="sparkles-icon" viewBox="0 0 20 20" aria-hidden="true">
+    <svg
+      className="sparkles-icon size-[18px] shrink-0 fill-current"
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+    >
       <path d="M10 1.75c.48 3.43 2.27 5.22 5.7 5.7-3.43.48-5.22 2.27-5.7 5.7-.48-3.43-2.27-5.22-5.7-5.7 3.43-.48 5.22-2.27 5.7-5.7Z" />
       <path d="M15.75 12.25c.2 1.45.96 2.2 2.4 2.4-1.44.2-2.2.96-2.4 2.4-.2-1.44-.95-2.2-2.4-2.4 1.45-.2 2.2-.95 2.4-2.4ZM3.45 12.3c.14 1.03.68 1.57 1.71 1.71-1.03.15-1.57.68-1.71 1.72-.15-1.04-.68-1.57-1.72-1.72 1.04-.14 1.57-.68 1.72-1.71Z" />
     </svg>
@@ -362,34 +440,14 @@ function ColorPicker({
   onChange: (color: string) => void;
 }) {
   const { t } = useLanguage();
-  const moveColorFocus = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'Home', 'End'].includes(event.key))
-      return;
-    const options = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)'),
-    );
-    if (options.length === 0) return;
-    event.preventDefault();
-    const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement);
-    const nextIndex =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? options.length - 1
-          : event.key === 'ArrowRight' || event.key === 'ArrowDown'
-            ? (currentIndex + 1) % options.length
-            : (currentIndex - 1 + options.length) % options.length;
-    options[nextIndex]?.focus();
-    options[nextIndex]?.click();
-  };
   return (
-    <fieldset className="color-picker">
+    <fieldset className={colorPickerClass}>
       <legend>{t('color')}</legend>
-      <div
-        className="color-options"
-        role="radiogroup"
+      <RadioGroup
+        className="flex flex-wrap gap-(--mb-space-3)"
         aria-label={t('color')}
-        onKeyDown={moveColorFocus}
+        value={player.color}
+        onChange={onChange}
       >
         {colors.map((color) => {
           const taken = players.some(
@@ -397,23 +455,25 @@ function ColorPicker({
           );
           const selected = player.color === color.value;
           return (
-            <button
-              className={`color-option${selected ? ' selected' : ''}`}
-              type="button"
-              role="radio"
-              key={color.value}
-              style={{ '--player-color': `var(${color.token})` } as CSSProperties}
-              aria-label={t('selectColor', { color: t(color.nameKey) })}
-              aria-checked={selected}
-              tabIndex={selected ? 0 : -1}
-              disabled={taken}
-              onClick={() => onChange(color.value)}
-            >
-              <span aria-hidden="true">{selected ? '✓' : ''}</span>
-            </button>
+            // `as={Fragment}` keeps the native `disabled` the `disabled:` utilities need.
+            <Radio as={Fragment} key={color.value} value={color.value} disabled={taken}>
+              <button
+                className={cx(
+                  colorOptionClass,
+                  colorOptionStateClass[selected ? 'selected' : 'idle'],
+                )}
+                type="button"
+                style={{ '--player-color': `var(${color.token})` } as CSSProperties}
+                aria-label={t('selectColor', { color: t(color.nameKey) })}
+                disabled={taken}
+                onKeyDown={keepEnterInRadio}
+              >
+                <span aria-hidden="true">{selected ? '✓' : ''}</span>
+              </button>
+            </Radio>
           );
         })}
-      </div>
+      </RadioGroup>
     </fieldset>
   );
 }
@@ -445,13 +505,10 @@ function MoneyField({
         onUnitChange={changeUnit}
         invalid={error !== undefined}
       />
-      <span className="field-hint">{t('displayedAs', { amount })}</span>
-      {fieldError(error)}
+      <FieldHint>{t('displayedAs', { amount })}</FieldHint>
+      {error !== undefined && <FieldError>{error}</FieldError>}
     </div>
   );
-}
-function fieldError(error: string | undefined) {
-  return error === undefined ? null : <span className="field-error">{error}</span>;
 }
 function isPositive(value: string) {
   const number = Number(value);

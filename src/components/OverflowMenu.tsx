@@ -1,10 +1,5 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-} from 'react';
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
+import { buttonClass, cx } from './ui/class-names';
 
 export interface OverflowMenuItem {
   label: string;
@@ -13,109 +8,53 @@ export interface OverflowMenuItem {
   tone?: 'default' | 'danger';
 }
 
+/* `overflow-menu-trigger` stays as the hook for the game card's open-menu `:has()` rules. */
+const triggerClass = cx(
+  buttonClass('secondary', true),
+  'overflow-menu-trigger w-(--mb-control-height-md) tracking-[0.08em]',
+);
+const panelClass = cx(
+  'absolute top-[calc(100%_+_var(--mb-space-2))] right-0 z-20 grid min-w-44 origin-top-right',
+  'rounded-control border border-border bg-surface-elevated p-(--mb-space-2) shadow-lg',
+  'classic:animate-[classic-menu-in_var(--mb-duration-fast)_var(--mb-ease-emphasized)] motion-reduce:transform-none!',
+);
+/* Headless UI keeps focus on the menu and marks the keyboard/pointer-active item `data-focus`. */
+const itemClass = cx(
+  'min-h-(--mb-control-height-md) cursor-pointer rounded-[calc(var(--mb-radius-control)_-_3px)] border-0 bg-transparent px-(--mb-space-3) py-0',
+  'text-start font-ui text-small leading-[1.2] font-semibold text-primary',
+  'transition-[color,background-color] duration-(--mb-duration-fast) ease-standard',
+  'disabled:cursor-not-allowed disabled:opacity-50',
+  'data-focus:bg-surface-subtle fine-pointer:not-disabled:hover:bg-surface-subtle',
+  'data-[tone=danger]:text-danger data-[tone=danger]:data-focus:bg-danger-soft fine-pointer:data-[tone=danger]:not-disabled:hover:bg-danger-soft',
+);
+
+/**
+ * Contextual actions on Headless UI `Menu`: it owns opening from the keyboard, arrow/Home/End
+ * navigation, type-ahead, outside-click and Escape dismissal, and focus return to the trigger.
+ * The panel stays in place (no anchor/portal) so it keeps its position under the trigger, and
+ * is non-modal so the page neither locks scrolling nor goes inert while it is open.
+ */
 export function OverflowMenu({ label, items }: { label: string; items: OverflowMenuItem[] }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    const closeFromOutside = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const closeFromKeyboard = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setOpen(false);
-      triggerRef.current?.focus();
-    };
-    document.addEventListener('pointerdown', closeFromOutside);
-    document.addEventListener('keydown', closeFromKeyboard);
-    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
-    return () => {
-      document.removeEventListener('pointerdown', closeFromOutside);
-      document.removeEventListener('keydown', closeFromKeyboard);
-    };
-  }, [open]);
-
-  const moveFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Tab') {
-      setOpen(false);
-      return;
-    }
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const enabledItems = Array.from(
-      menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ??
-        [],
-    );
-    if (enabledItems.length === 0) return;
-    event.preventDefault();
-    const currentIndex = enabledItems.indexOf(document.activeElement as HTMLButtonElement);
-    const nextIndex =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? enabledItems.length - 1
-          : event.key === 'ArrowDown'
-            ? (currentIndex + 1) % enabledItems.length
-            : (currentIndex - 1 + enabledItems.length) % enabledItems.length;
-    enabledItems[nextIndex]?.focus();
-  };
-
-  const openFromKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    event.preventDefault();
-    setOpen(true);
-    window.setTimeout(() => {
-      const enabledItems = Array.from(
-        menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ??
-          [],
-      );
-      (event.key === 'ArrowUp' ? enabledItems.at(-1) : enabledItems[0])?.focus();
-    }, 0);
-  };
-
   return (
-    <div className="overflow-menu" ref={rootRef}>
-      <button
-        ref={triggerRef}
-        className="button button-secondary icon-button overflow-menu-trigger"
-        type="button"
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
-        onKeyDown={openFromKeyboard}
-        onClick={() => setOpen((current) => !current)}
-      >
+    <Menu as="div" className="relative">
+      <MenuButton className={triggerClass} aria-label={label}>
         <span aria-hidden="true">•••</span>
-      </button>
-      {open && (
-        <div
-          ref={menuRef}
-          className="overflow-menu-panel"
-          id={menuId}
-          role="menu"
-          onKeyDown={moveFocus}
-        >
-          {items.map((item) => (
+      </MenuButton>
+      <MenuItems className={panelClass} modal={false}>
+        {items.map((item) => (
+          <MenuItem key={item.label} disabled={item.disabled}>
             <button
-              key={item.label}
-              className={`overflow-menu-item${item.tone === 'danger' ? ' overflow-menu-item-danger' : ''}`}
+              className={itemClass}
               type="button"
-              role="menuitem"
+              data-tone={item.tone === 'danger' ? 'danger' : undefined}
               disabled={item.disabled}
-              onClick={() => {
-                setOpen(false);
-                item.onSelect();
-              }}
+              onClick={item.onSelect}
             >
               {item.label}
             </button>
-          ))}
-        </div>
-      )}
-    </div>
+          </MenuItem>
+        ))}
+      </MenuItems>
+    </Menu>
   );
 }
