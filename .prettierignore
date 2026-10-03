@@ -1,0 +1,9 @@
+dist/
+.wrangler/
+playwright-report/
+test-results/
+node_modules/
+architecture-out/
+package-lock.json
+worker-configuration.d.ts
+e2e/**/*-snapshots/

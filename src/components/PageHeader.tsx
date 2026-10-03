@@ -11,15 +11,25 @@ interface PageHeaderProps {
 }
 
 /** Shared page-level hierarchy; actions remain in one DOM order at every layout size. */
-export function PageHeader({ title, eyebrow, description, backAction, actions, className = '', children }: PageHeaderProps) {
-  return <section className={`page-header ${className}`.trim()}>
-    <div className="page-header-content">
-      {backAction !== undefined && <div className="page-header-back">{backAction}</div>}
-      {eyebrow !== undefined && <p className="eyebrow">{eyebrow}</p>}
-      <h1>{title}</h1>
-      {description !== undefined && <div className="lede">{description}</div>}
-      {children}
-    </div>
-    {actions !== undefined && <div className="page-header-actions">{actions}</div>}
-  </section>;
+export function PageHeader({
+  title,
+  eyebrow,
+  description,
+  backAction,
+  actions,
+  className = '',
+  children,
+}: PageHeaderProps) {
+  return (
+    <section className={`page-header ${className}`.trim()}>
+      <div className="page-header-content">
+        {backAction !== undefined && <div className="page-header-back">{backAction}</div>}
+        {eyebrow !== undefined && <p className="eyebrow">{eyebrow}</p>}
+        <h1>{title}</h1>
+        {description !== undefined && <div className="lede">{description}</div>}
+        {children}
+      </div>
+      {actions !== undefined && <div className="page-header-actions">{actions}</div>}
+    </section>
+  );
 }
