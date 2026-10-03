@@ -49,6 +49,61 @@ const gameDetails: GameDetails = {
 };
 
 describe('API router', () => {
+  it.each([false, true])(
+    'returns a renewed cookie even when the authenticated route fails: %s',
+    async (fail) => {
+      const router = createApiRouter({
+        games: {
+          listGamesForUser: async () => {
+            if (fail) throw new Error('D1 unavailable');
+            return [];
+          },
+        } as never,
+        banking: {} as never,
+        auth: {
+          current: async (
+            _request: Request,
+            _requestId: string,
+            onRenewed: (cookie: string) => void,
+          ) => {
+            onRenewed('monopoly_bank_session=renewed; HttpOnly; Secure; Path=/');
+            return { id: 'user' };
+          },
+        } as never,
+        access: {} as never,
+        profileStatistics: {} as never,
+      });
+      const response = await router(new Request('https://bank.example.test/api/games'));
+      expect(response.status).toBe(fail ? 500 : 200);
+      expect(response.headers.get('set-cookie')).toContain('monopoly_bank_session=renewed');
+      expect(response.headers.get('cache-control')).toBe('no-store');
+    },
+  );
+
+  it('keeps an explicit revoked cookie when the current session was renewed', async () => {
+    const router = createApiRouter({
+      games: {} as never,
+      banking: {} as never,
+      auth: {
+        current: async (
+          _request: Request,
+          _requestId: string,
+          onRenewed: (cookie: string) => void,
+        ) => {
+          onRenewed('monopoly_bank_session=renewed');
+          return { id: 'user' };
+        },
+        revokeAll: async () => 'monopoly_bank_session=; Max-Age=0',
+      } as never,
+      access: {} as never,
+      profileStatistics: {} as never,
+    });
+    const response = await router(
+      new Request('https://bank.example.test/api/auth/sessions/revoke-all', { method: 'POST' }),
+    );
+    expect(response.headers.get('set-cookie')).toBe('monopoly_bank_session=; Max-Age=0');
+  });
+
   it('rejects cross-origin mutations before a service can write and attaches security headers', async () => {
     let writes = 0;
     const router = createTestRouter({
