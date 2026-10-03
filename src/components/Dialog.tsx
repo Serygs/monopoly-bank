@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 
-const focusableSelector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+const focusableSelector =
+  'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
 interface DialogProps {
   title: string;
@@ -15,12 +16,24 @@ interface DialogProps {
   popoverStyle?: CSSProperties;
 }
 
-export function Dialog({ title, children, onClose, closeLabel, eyebrow, className = '', closeDisabled = false, presentation = 'modal', id, popoverStyle }: DialogProps) {
+export function Dialog({
+  title,
+  children,
+  onClose,
+  closeLabel,
+  eyebrow,
+  className = '',
+  closeDisabled = false,
+  presentation = 'modal',
+  id,
+  popoverStyle,
+}: DialogProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const timer = window.setTimeout(() => firstFocusable(dialogRef.current)?.focus(), 0);
@@ -58,22 +71,51 @@ export function Dialog({ title, children, onClose, closeLabel, eyebrow, classNam
     }
   };
 
-  return <div className={`dialog-backdrop dialog-backdrop--${presentation}`} role="presentation" onMouseDown={() => { if (!closeDisabled) onClose(); }}>
-    <section id={id ?? (className.includes('settings-panel') ? 'settings-panel' : undefined)} ref={dialogRef} className={`dialog ${className}`.trim()} style={presentation === 'popover' ? popoverStyle : undefined} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown} onMouseDown={(event) => event.stopPropagation()}>
-      <header>
-        <div>
-          {eyebrow !== undefined && <p className="eyebrow">{eyebrow}</p>}
-          <h2 id={titleId}>{title}</h2>
-        </div>
-        <button className="button button-quiet icon-button dialog-close" type="button" onClick={onClose} disabled={closeDisabled} aria-label={closeLabel}>×</button>
-      </header>
-      {children}
-    </section>
-  </div>;
+  return (
+    <div
+      className={`dialog-backdrop dialog-backdrop--${presentation}`}
+      role="presentation"
+      onMouseDown={() => {
+        if (!closeDisabled) onClose();
+      }}
+    >
+      <section
+        id={id ?? (className.includes('settings-panel') ? 'settings-panel' : undefined)}
+        ref={dialogRef}
+        className={`dialog ${className}`.trim()}
+        style={presentation === 'popover' ? popoverStyle : undefined}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            {eyebrow !== undefined && <p className="eyebrow">{eyebrow}</p>}
+            <h2 id={titleId}>{title}</h2>
+          </div>
+          <button
+            className="button button-quiet icon-button dialog-close"
+            type="button"
+            onClick={onClose}
+            disabled={closeDisabled}
+            aria-label={closeLabel}
+          >
+            ×
+          </button>
+        </header>
+        {children}
+      </section>
+    </div>
+  );
 }
 
 function focusableElements(element: HTMLElement | null): HTMLElement[] {
-  return element === null ? [] : Array.from(element.querySelectorAll<HTMLElement>(focusableSelector));
+  return element === null
+    ? []
+    : Array.from(element.querySelectorAll<HTMLElement>(focusableSelector));
 }
 
 function firstFocusable(element: HTMLElement | null): HTMLElement | null {

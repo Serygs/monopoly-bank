@@ -10,30 +10,30 @@ Enable Workers Logs and traces in Cloudflare for request-level diagnosis, but re
 
 Configure these alerts in the production Cloudflare account after the staging rehearsal. Alert destinations and account IDs are intentionally not stored in this repository.
 
-| Signal | Threshold | First response |
-| --- | --- | --- |
-| Worker 5xx rate | >2% for 5 minutes | Stop release, inspect version and D1 errors. |
-| API `unavailable` events | >10 in 5 minutes | Check Worker/D1/DO status and rollback only Worker code if needed. |
-| D1 latency or errors | p95 >500 ms or any sustained D1 error for 5 minutes | Pause nonessential traffic; do not retry mutations blindly. |
-| WebSocket unavailable/close rate | >5% for 5 minutes | Serve read-only/reconnect UX; verify no direct banking fallback is enabled. |
-| Auth failure surge | >5× baseline for 10 minutes | Review rate-limit and origin-rejection aggregates; do not inspect credentials. |
-| Email provider unavailable/failure | >3 in 10 minutes | Disable nonessential email campaigns; sessions and guest play remain available. |
-| PWA update failures | update-ready events rise without update-applied events for 24 hours | Inspect service-worker cache/version and keep the current shell available. |
-| Scheduled cleanup failure | any failure | Re-run only the idempotent cleanup after D1 health is restored. |
+| Signal                             | Threshold                                                           | First response                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Worker 5xx rate                    | >2% for 5 minutes                                                   | Stop release, inspect version and D1 errors.                                    |
+| API `unavailable` events           | >10 in 5 minutes                                                    | Check Worker/D1/DO status and rollback only Worker code if needed.              |
+| D1 latency or errors               | p95 >500 ms or any sustained D1 error for 5 minutes                 | Pause nonessential traffic; do not retry mutations blindly.                     |
+| WebSocket unavailable/close rate   | >5% for 5 minutes                                                   | Serve read-only/reconnect UX; verify no direct banking fallback is enabled.     |
+| Auth failure surge                 | >5× baseline for 10 minutes                                         | Review rate-limit and origin-rejection aggregates; do not inspect credentials.  |
+| Email provider unavailable/failure | >3 in 10 minutes                                                    | Disable nonessential email campaigns; sessions and guest play remain available. |
+| PWA update failures                | update-ready events rise without update-applied events for 24 hours | Inspect service-worker cache/version and keep the current shell available.      |
+| Scheduled cleanup failure          | any failure                                                         | Re-run only the idempotent cleanup after D1 health is restored.                 |
 
 ## Retention and privacy policy
 
-| Data | Retention / action |
-| --- | --- |
-| Sessions | 14-day maximum; expired records are deleted daily. |
-| Verification/reset tokens | Expired immediately; consumed tokens after 7 days. |
-| Rate-limit buckets | Expired buckets are deleted by scheduled cleanup. |
-| Unused guest accounts | Deleted after 30 days only when they have no game membership. |
-| Expired/revoked invitations | Deleted after 30 days. |
-| Resolved payment requests | Deleted after 90 days; expired reservations are released first. |
-| Durable command replay records | Deleted after 90 days only for finished games. |
-| Transactions, participants, final snapshots | Retained; they are the financial and game audit record. |
-| Deleted accounts | Sessions/tokens are revoked and direct identifiers are anonymized after active games are finished or left. Game/ledger history remains intact. |
+| Data                                        | Retention / action                                                                                                                             |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sessions                                    | 14-day maximum; expired records are deleted daily.                                                                                             |
+| Verification/reset tokens                   | Expired immediately; consumed tokens after 7 days.                                                                                             |
+| Rate-limit buckets                          | Expired buckets are deleted by scheduled cleanup.                                                                                              |
+| Unused guest accounts                       | Deleted after 30 days only when they have no game membership.                                                                                  |
+| Expired/revoked invitations                 | Deleted after 30 days.                                                                                                                         |
+| Resolved payment requests                   | Deleted after 90 days; expired reservations are released first.                                                                                |
+| Durable command replay records              | Deleted after 90 days only for finished games.                                                                                                 |
+| Transactions, participants, final snapshots | Retained; they are the financial and game audit record.                                                                                        |
+| Deleted accounts                            | Sessions/tokens are revoked and direct identifiers are anonymized after active games are finished or left. Game/ledger history remains intact. |
 
 `GET /api/account/export` returns the authenticated account profile and its membership metadata only. It excludes sessions, token hashes, invitation material, transaction comments, other players' profile data, and credentials. `DELETE /api/account` is deliberately refused while the account participates in an active or lobby game.
 
@@ -71,9 +71,9 @@ Configure these alerts in the production Cloudflare account after the staging re
 
 The automated staging release performs an export-to-disposable-local-D1 restore rehearsal and integrity/foreign-key/fixture checks. A real staging drill remains a release gate because this workspace has no staging credentials or safe export fixture.
 
-| Measure | Current value | Status |
-| --- | --- | --- |
-| RPO target | ≤ 24 hours, subject to verified D1 point-in-time retention | Target; confirm in staging/prod account. |
-| RTO target | ≤ 60 minutes from approved incident to validated read-only recovery | Target; needs timed staging drill. |
-| Local migration recovery evidence | Empty DB and upgraded fixture pass `npm run test:d1` | Verified. |
-| Remote restore evidence | Staging export → isolated restore workflow | Pending authorized staging run. |
+| Measure                           | Current value                                                       | Status                                   |
+| --------------------------------- | ------------------------------------------------------------------- | ---------------------------------------- |
+| RPO target                        | ≤ 24 hours, subject to verified D1 point-in-time retention          | Target; confirm in staging/prod account. |
+| RTO target                        | ≤ 60 minutes from approved incident to validated read-only recovery | Target; needs timed staging drill.       |
+| Local migration recovery evidence | Empty DB and upgraded fixture pass `npm run test:d1`                | Verified.                                |
+| Remote restore evidence           | Staging export → isolated restore workflow                          | Pending authorized staging run.          |

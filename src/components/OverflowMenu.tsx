@@ -1,4 +1,10 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 
 export interface OverflowMenuItem {
   label: string;
@@ -39,11 +45,21 @@ export function OverflowMenu({ label, items }: { label: string; items: OverflowM
       return;
     }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const enabledItems = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []);
+    const enabledItems = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ??
+        [],
+    );
     if (enabledItems.length === 0) return;
     event.preventDefault();
     const currentIndex = enabledItems.indexOf(document.activeElement as HTMLButtonElement);
-    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? enabledItems.length - 1 : event.key === 'ArrowDown' ? (currentIndex + 1) % enabledItems.length : (currentIndex - 1 + enabledItems.length) % enabledItems.length;
+    const nextIndex =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? enabledItems.length - 1
+          : event.key === 'ArrowDown'
+            ? (currentIndex + 1) % enabledItems.length
+            : (currentIndex - 1 + enabledItems.length) % enabledItems.length;
     enabledItems[nextIndex]?.focus();
   };
 
@@ -52,17 +68,54 @@ export function OverflowMenu({ label, items }: { label: string; items: OverflowM
     event.preventDefault();
     setOpen(true);
     window.setTimeout(() => {
-      const enabledItems = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []);
+      const enabledItems = Array.from(
+        menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ??
+          [],
+      );
       (event.key === 'ArrowUp' ? enabledItems.at(-1) : enabledItems[0])?.focus();
     }, 0);
   };
 
-  return <div className="overflow-menu" ref={rootRef}>
-    <button ref={triggerRef} className="button button-secondary icon-button overflow-menu-trigger" type="button" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} onKeyDown={openFromKeyboard} onClick={() => setOpen((current) => !current)}>
-      <span aria-hidden="true">•••</span>
-    </button>
-    {open && <div ref={menuRef} className="overflow-menu-panel" id={menuId} role="menu" onKeyDown={moveFocus}>
-      {items.map((item) => <button key={item.label} className={`overflow-menu-item${item.tone === 'danger' ? ' overflow-menu-item-danger' : ''}`} type="button" role="menuitem" disabled={item.disabled} onClick={() => { setOpen(false); item.onSelect(); }}>{item.label}</button>)}
-    </div>}
-  </div>;
+  return (
+    <div className="overflow-menu" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        className="button button-secondary icon-button overflow-menu-trigger"
+        type="button"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onKeyDown={openFromKeyboard}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span aria-hidden="true">•••</span>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          className="overflow-menu-panel"
+          id={menuId}
+          role="menu"
+          onKeyDown={moveFocus}
+        >
+          {items.map((item) => (
+            <button
+              key={item.label}
+              className={`overflow-menu-item${item.tone === 'danger' ? ' overflow-menu-item-danger' : ''}`}
+              type="button"
+              role="menuitem"
+              disabled={item.disabled}
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

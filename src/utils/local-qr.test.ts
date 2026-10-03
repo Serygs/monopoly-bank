@@ -9,5 +9,6 @@ describe('local invitation QR', () => {
     expect(matrix.every((row) => row.length === 49)).toBe(true);
     expect(matrix).toEqual(createLocalQr(value));
   });
-  it('rejects payloads outside the embedded QR capacity', () => expect(() => createLocalQr(`https://bank.example/#${'a'.repeat(250)}`)).toThrow());
+  it('rejects payloads outside the embedded QR capacity', () =>
+    expect(() => createLocalQr(`https://bank.example/#${'a'.repeat(250)}`)).toThrow());
 });

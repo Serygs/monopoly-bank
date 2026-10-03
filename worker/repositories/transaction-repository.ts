@@ -161,7 +161,8 @@ function mapTransactions(rows: TransactionRow[]): Transaction[] {
       transactions.set(row.id, transaction);
     }
 
-    if (row.player_id !== null && row.balance_delta !== null) transaction.participants.push({ playerId: row.player_id, balanceDelta: row.balance_delta });
+    if (row.player_id !== null && row.balance_delta !== null)
+      transaction.participants.push({ playerId: row.player_id, balanceDelta: row.balance_delta });
   }
 
   return [...transactions.values()];

@@ -2,13 +2,33 @@ import { useId, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { AVATAR_OPTIONS, isUploadedAvatar } from '../utils/avatar';
 import { cropAvatar } from '../utils/avatar-image';
 
-export function Avatar({ avatar, label, className = '' }: { avatar: string; label: string; className?: string }) {
-  return isUploadedAvatar(avatar)
-    ? <img className={`avatar ${className}`} src={avatar} alt={label} />
-    : <span className={`avatar avatar-icon ${className}`} role="img" aria-label={label}>{avatar}</span>;
+export function Avatar({
+  avatar,
+  label,
+  className = '',
+}: {
+  avatar: string;
+  label: string;
+  className?: string;
+}) {
+  return isUploadedAvatar(avatar) ? (
+    <img className={`avatar ${className}`} src={avatar} alt={label} />
+  ) : (
+    <span className={`avatar avatar-icon ${className}`} role="img" aria-label={label}>
+      {avatar}
+    </span>
+  );
 }
 
-export function AvatarPicker({ avatar, onChange, label, uploadLabel, uploadHint, invalidImageMessage, allowUpload = false }: {
+export function AvatarPicker({
+  avatar,
+  onChange,
+  label,
+  uploadLabel,
+  uploadHint,
+  invalidImageMessage,
+  allowUpload = false,
+}: {
   avatar: string;
   onChange: (avatar: string) => void;
   label: string;
@@ -21,12 +41,22 @@ export function AvatarPicker({ avatar, onChange, label, uploadLabel, uploadHint,
   const [uploadError, setUploadError] = useState<string | null>(null);
   const uploadedAvatarSelected = isUploadedAvatar(avatar);
   const moveAvatarFocus = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="radio"]'));
+    if (!['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'Home', 'End'].includes(event.key))
+      return;
+    const options = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="radio"]'),
+    );
     if (options.length === 0) return;
     event.preventDefault();
     const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement);
-    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? (currentIndex + 1) % options.length : (currentIndex - 1 + options.length) % options.length;
+    const nextIndex =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? options.length - 1
+          : event.key === 'ArrowRight' || event.key === 'ArrowDown'
+            ? (currentIndex + 1) % options.length
+            : (currentIndex - 1 + options.length) % options.length;
     options[nextIndex]?.focus();
     options[nextIndex]?.click();
   };
@@ -42,13 +72,56 @@ export function AvatarPicker({ avatar, onChange, label, uploadLabel, uploadHint,
     }
   };
 
-  return <fieldset className="avatar-picker">
-    <legend>{label}</legend>
-    <div className="avatar-options" role="radiogroup" aria-label={label} onKeyDown={moveAvatarFocus}>
-      {AVATAR_OPTIONS.map((option, index) => <button key={option} className={`avatar-option${avatar === option ? ' selected' : ''}`} type="button" role="radio" aria-checked={avatar === option} tabIndex={avatar === option || (uploadedAvatarSelected && index === 0) ? 0 : -1} onClick={() => { onChange(option); setUploadError(null); }}><Avatar avatar={option} label={option} /></button>)}
-      {uploadedAvatarSelected && <span className="avatar-option selected" role="radio" aria-checked="true"><Avatar avatar={avatar} label={label} /></span>}
-    </div>
-    {allowUpload && <div className="avatar-upload"><input id={fileInputId} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void selectFile(event)} /><label className="button button-secondary" htmlFor={fileInputId}>{uploadLabel}</label><span className="field-hint">{uploadHint}</span></div>}
-    {uploadError !== null && <p className="field-error" role="alert">{uploadError}</p>}
-  </fieldset>;
+  return (
+    <fieldset className="avatar-picker">
+      <legend>{label}</legend>
+      <div
+        className="avatar-options"
+        role="radiogroup"
+        aria-label={label}
+        onKeyDown={moveAvatarFocus}
+      >
+        {AVATAR_OPTIONS.map((option, index) => (
+          <button
+            key={option}
+            className={`avatar-option${avatar === option ? ' selected' : ''}`}
+            type="button"
+            role="radio"
+            aria-checked={avatar === option}
+            tabIndex={avatar === option || (uploadedAvatarSelected && index === 0) ? 0 : -1}
+            onClick={() => {
+              onChange(option);
+              setUploadError(null);
+            }}
+          >
+            <Avatar avatar={option} label={option} />
+          </button>
+        ))}
+        {uploadedAvatarSelected && (
+          <span className="avatar-option selected" role="radio" aria-checked="true">
+            <Avatar avatar={avatar} label={label} />
+          </span>
+        )}
+      </div>
+      {allowUpload && (
+        <div className="avatar-upload">
+          <input
+            id={fileInputId}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(event) => void selectFile(event)}
+          />
+          <label className="button button-secondary" htmlFor={fileInputId}>
+            {uploadLabel}
+          </label>
+          <span className="field-hint">{uploadHint}</span>
+        </div>
+      )}
+      {uploadError !== null && (
+        <p className="field-error" role="alert">
+          {uploadError}
+        </p>
+      )}
+    </fieldset>
+  );
 }

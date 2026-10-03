@@ -1,4 +1,4 @@
 interface:
-  display_name: "Monopoly Bank Development"
-  short_description: "Develop the Monopoly Bank application"
-  default_prompt: "Use $monopoly-bank-dev to implement a focused Monopoly Bank change."
+  display_name: 'Monopoly Bank Development'
+  short_description: 'Develop the Monopoly Bank application'
+  default_prompt: 'Use $monopoly-bank-dev to implement a focused Monopoly Bank change.'

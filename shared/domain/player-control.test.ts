@@ -4,7 +4,15 @@ import { controlledPlayerIdForBankingCommand } from './player-control.js';
 
 describe('controlledPlayerIdForBankingCommand', () => {
   it.each([
-    [{ type: 'PLAYER_TO_PLAYER', sourcePlayerId: 'source', destinationPlayerId: 'destination', amount: 10 }, 'source'],
+    [
+      {
+        type: 'PLAYER_TO_PLAYER',
+        sourcePlayerId: 'source',
+        destinationPlayerId: 'destination',
+        amount: 10,
+      },
+      'source',
+    ],
     [{ type: 'PLAYER_TO_BANK', playerId: 'player', amount: 10 }, 'player'],
     [{ type: 'BANK_TO_PLAYER', playerId: 'player', amount: 10 }, 'player'],
     [{ type: 'PLAYER_TO_ALL', payerPlayerId: 'payer', amountPerPlayer: 10 }, 'payer'],

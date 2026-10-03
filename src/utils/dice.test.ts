@@ -24,10 +24,18 @@ describe('consecutive doubles', () => {
     const double = { first: 4, second: 4, total: 8, isDouble: true };
     expect(applyDiceResult(0, double)).toMatchObject({ consecutiveDoubles: 1, thirdDouble: false });
     expect(applyDiceResult(1, double)).toMatchObject({ consecutiveDoubles: 2, thirdDouble: false });
-    expect(applyDiceResult(2, double)).toEqual({ consecutiveDoubles: 0, isInJail: true, thirdDouble: true });
+    expect(applyDiceResult(2, double)).toEqual({
+      consecutiveDoubles: 0,
+      isInJail: true,
+      thirdDouble: true,
+    });
   });
 
   it('resets a player counter on a non-double', () => {
-    expect(applyDiceResult(2, { first: 1, second: 2, total: 3, isDouble: false })).toEqual({ consecutiveDoubles: 0, isInJail: false, thirdDouble: false });
+    expect(applyDiceResult(2, { first: 1, second: 2, total: 3, isDouble: false })).toEqual({
+      consecutiveDoubles: 0,
+      isInJail: false,
+      thirdDouble: false,
+    });
   });
 });

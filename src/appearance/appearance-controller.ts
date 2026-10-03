@@ -6,15 +6,17 @@ const systemDarkQuery = '(prefers-color-scheme: dark)';
 const reducedMotionQuery = '(prefers-reduced-motion: reduce)';
 
 export function resolveColorMode(mode: ColorMode, systemDark: boolean): ResolvedColorMode {
-  return mode === 'system' ? systemDark ? 'dark' : 'light' : mode;
+  return mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
 }
 
 /** Used before React renders and when root preferences change. */
 export function applyAppearance(preferences: AppearancePreferences): void {
   const root = document.documentElement;
   root.dataset.visualStyle = getVisualStyle(preferences.visualStyle).id;
-  root.dataset.colorMode = resolveColorMode(preferences.colorMode,
-    preferences.colorMode === 'system' && window.matchMedia(systemDarkQuery).matches);
+  root.dataset.colorMode = resolveColorMode(
+    preferences.colorMode,
+    preferences.colorMode === 'system' && window.matchMedia(systemDarkQuery).matches,
+  );
 }
 
 /** One shell-owned subscription; no effects or listeners live in business pages. */

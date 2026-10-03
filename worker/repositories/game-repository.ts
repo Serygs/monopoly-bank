@@ -64,7 +64,19 @@ export class D1GameRepository implements GameRepository {
         `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, payment_mode, status, owner_user_id, join_code, game_access_password_hash, game_access_password_salt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(input.id, input.name, input.startingBalance, input.passGoReward, input.currency, input.paymentMode ?? 'FAST', input.status ?? 'LOBBY', input.ownerUserId, input.joinCode, input.gameAccessPasswordHash, input.gameAccessPasswordSalt);
+      .bind(
+        input.id,
+        input.name,
+        input.startingBalance,
+        input.passGoReward,
+        input.currency,
+        input.paymentMode ?? 'FAST',
+        input.status ?? 'LOBBY',
+        input.ownerUserId,
+        input.joinCode,
+        input.gameAccessPasswordHash,
+        input.gameAccessPasswordSalt,
+      );
     const playerStatements = players.map((player) =>
       this.database
         .prepare(
@@ -75,9 +87,27 @@ export class D1GameRepository implements GameRepository {
     );
 
     const ownerPlayerId = players[0]?.id;
-    const memberStatement = this.database.prepare("INSERT INTO game_members (game_id, user_id, role, player_id) VALUES (?, ?, 'OWNER', ?)").bind(input.id, input.ownerUserId, ownerPlayerId ?? null);
-    const controllerStatement = ownerPlayerId === undefined ? [] : [this.database.prepare("INSERT INTO player_controllers (game_id, player_id, user_id, controller_kind) VALUES (?, ?, ?, 'PRIMARY')").bind(input.id, ownerPlayerId, input.ownerUserId)];
-    await this.database.batch([gameStatement, ...playerStatements, memberStatement, ...controllerStatement]);
+    const memberStatement = this.database
+      .prepare(
+        "INSERT INTO game_members (game_id, user_id, role, player_id) VALUES (?, ?, 'OWNER', ?)",
+      )
+      .bind(input.id, input.ownerUserId, ownerPlayerId ?? null);
+    const controllerStatement =
+      ownerPlayerId === undefined
+        ? []
+        : [
+            this.database
+              .prepare(
+                "INSERT INTO player_controllers (game_id, player_id, user_id, controller_kind) VALUES (?, ?, ?, 'PRIMARY')",
+              )
+              .bind(input.id, ownerPlayerId, input.ownerUserId),
+          ];
+    await this.database.batch([
+      gameStatement,
+      ...playerStatements,
+      memberStatement,
+      ...controllerStatement,
+    ]);
   }
 
   async getById(id: string): Promise<Game | null> {
@@ -125,15 +155,24 @@ export class D1GameRepository implements GameRepository {
   }
 
   async listSummariesForUser(userId: string): Promise<GameSummary[]> {
-    const result = await this.database.prepare(
-      `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode, games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, COUNT(players.id) AS player_count,
+    const result = await this.database
+      .prepare(
+        `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode, games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, COUNT(players.id) AS player_count,
               CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN 1 ELSE 0 END AS is_public_lobby,
               CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN games.join_code ELSE NULL END AS public_join_code
        FROM games LEFT JOIN game_members ON game_members.game_id = games.id AND game_members.user_id = ? LEFT JOIN players ON players.game_id = games.id
        WHERE games.owner_user_id IS NOT NULL AND (game_members.user_id IS NOT NULL OR (games.status = 'LOBBY' AND games.game_access_password_hash IS NULL))
        GROUP BY games.id ORDER BY games.updated_at DESC, games.id DESC`,
-    ).bind(userId).all<GameSummaryRow>();
-    return result.results.map((row) => ({ game: mapGame(row), playerCount: row.player_count, ...(row.is_public_lobby === 1 ? { isPublicLobby: true, joinCode: row.public_join_code ?? undefined } : {}) }));
+      )
+      .bind(userId)
+      .all<GameSummaryRow>();
+    return result.results.map((row) => ({
+      game: mapGame(row),
+      playerCount: row.player_count,
+      ...(row.is_public_lobby === 1
+        ? { isPublicLobby: true, joinCode: row.public_join_code ?? undefined }
+        : {}),
+    }));
   }
 
   async updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null> {
@@ -146,7 +185,10 @@ export class D1GameRepository implements GameRepository {
     }
 
     if (input.status !== undefined) {
-      assignments.push('status = ?', "finished_at = CASE WHEN ? = 'FINISHED' THEN CURRENT_TIMESTAMP ELSE finished_at END");
+      assignments.push(
+        'status = ?',
+        "finished_at = CASE WHEN ? = 'FINISHED' THEN CURRENT_TIMESTAMP ELSE finished_at END",
+      );
       values.push(input.status === 'FINISHED' ? 'ARCHIVED' : input.status);
       values.push(input.status);
     }
@@ -174,14 +216,17 @@ export class D1GameRepository implements GameRepository {
   async transitionStatus(id: string, from: GameStatus, to: GameStatus): Promise<Game | null> {
     const storedFrom = from === 'FINISHED' ? 'ARCHIVED' : from;
     const storedTo = to === 'FINISHED' ? 'ARCHIVED' : to;
-    const row = await this.database.prepare(
-      `UPDATE games
+    const row = await this.database
+      .prepare(
+        `UPDATE games
        SET status = ?, updated_at = CURRENT_TIMESTAMP,
            started_at = CASE WHEN ? = 'ACTIVE' THEN CURRENT_TIMESTAMP ELSE started_at END,
            finished_at = CASE WHEN ? = 'ARCHIVED' THEN CURRENT_TIMESTAMP ELSE finished_at END
        WHERE id = ? AND status = ?
        RETURNING id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at`,
-    ).bind(storedTo, storedTo, storedTo, id, storedFrom).first<GameRow>();
+      )
+      .bind(storedTo, storedTo, storedTo, id, storedFrom)
+      .first<GameRow>();
     return row === null ? null : mapGame(row);
   }
 
@@ -191,30 +236,59 @@ export class D1GameRepository implements GameRepository {
   }
 
   async listFavoriteAmounts(gameId: string): Promise<number[]> {
-    const result = await this.database.prepare('SELECT amount FROM game_favorite_amounts WHERE game_id = ? ORDER BY created_at DESC, amount DESC').bind(gameId).all<{ amount: number }>();
+    const result = await this.database
+      .prepare(
+        'SELECT amount FROM game_favorite_amounts WHERE game_id = ? ORDER BY created_at DESC, amount DESC',
+      )
+      .bind(gameId)
+      .all<{ amount: number }>();
     return result.results.map((row) => row.amount);
   }
 
   async toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]> {
-    const exists = await this.database.prepare('SELECT 1 AS value FROM game_favorite_amounts WHERE game_id = ? AND amount = ?').bind(gameId, amount).first<{ value: number }>();
+    const exists = await this.database
+      .prepare('SELECT 1 AS value FROM game_favorite_amounts WHERE game_id = ? AND amount = ?')
+      .bind(gameId, amount)
+      .first<{ value: number }>();
     if (exists === null) {
-      await this.database.prepare('INSERT INTO game_favorite_amounts (game_id, amount) VALUES (?, ?)').bind(gameId, amount).run();
+      await this.database
+        .prepare('INSERT INTO game_favorite_amounts (game_id, amount) VALUES (?, ?)')
+        .bind(gameId, amount)
+        .run();
     } else {
-      await this.database.prepare('DELETE FROM game_favorite_amounts WHERE game_id = ? AND amount = ?').bind(gameId, amount).run();
+      await this.database
+        .prepare('DELETE FROM game_favorite_amounts WHERE game_id = ? AND amount = ?')
+        .bind(gameId, amount)
+        .run();
     }
     return this.listFavoriteAmounts(gameId);
   }
 
   async listRecentAmounts(gameId: string): Promise<number[]> {
-    const result = await this.database.prepare('SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5').bind(gameId).all<{ amount: number }>();
+    const result = await this.database
+      .prepare(
+        'SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5',
+      )
+      .bind(gameId)
+      .all<{ amount: number }>();
     return result.results.map((row) => row.amount);
   }
 
   async recordRecentAmount(gameId: string, amount: number): Promise<void> {
     await this.database.batch([
-      this.database.prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?').bind(gameId, amount),
-      this.database.prepare('INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES (?, ?, CURRENT_TIMESTAMP)').bind(gameId, amount),
-      this.database.prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount NOT IN (SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5)').bind(gameId, gameId),
+      this.database
+        .prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?')
+        .bind(gameId, amount),
+      this.database
+        .prepare(
+          'INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+        )
+        .bind(gameId, amount),
+      this.database
+        .prepare(
+          'DELETE FROM game_recent_amounts WHERE game_id = ? AND amount NOT IN (SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5)',
+        )
+        .bind(gameId, gameId),
     ]);
   }
 }

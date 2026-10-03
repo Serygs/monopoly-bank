@@ -14,10 +14,16 @@
   -webkit-font-smoothing: antialiased;
 }
 
-:root[data-color-mode='light'] { color-scheme: light; }
-:root[data-color-mode='dark'] { color-scheme: dark; }
+:root[data-color-mode='light'] {
+  color-scheme: light;
+}
+:root[data-color-mode='dark'] {
+  color-scheme: dark;
+}
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   min-width: 320px;
@@ -30,9 +36,18 @@ body {
   line-height: var(--leading-body);
 }
 
-button, input, select, textarea { font: inherit; }
-button { cursor: pointer; }
-button:disabled { cursor: not-allowed; }
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
 
 ::selection {
   color: var(--color-text-on-inverse);

@@ -13,7 +13,9 @@ const commonProps = {
 
 describe('avatar picker accessibility', () => {
   it('uses a roving radio group for emoji choices', () => {
-    const markup = renderToStaticMarkup(<AvatarPicker {...commonProps} avatar={AVATAR_OPTIONS[0]} />);
+    const markup = renderToStaticMarkup(
+      <AvatarPicker {...commonProps} avatar={AVATAR_OPTIONS[0]} />,
+    );
     expect(markup).toContain('role="radiogroup"');
     expect(markup.match(/role="radio"/g)).toHaveLength(AVATAR_OPTIONS.length);
     expect(markup.match(/aria-checked="true"/g)).toHaveLength(1);
@@ -22,7 +24,9 @@ describe('avatar picker accessibility', () => {
   });
 
   it('keeps the uploaded avatar represented without removing emoji keyboard entry', () => {
-    const markup = renderToStaticMarkup(<AvatarPicker {...commonProps} avatar="data:image/jpeg;base64,AA==" />);
+    const markup = renderToStaticMarkup(
+      <AvatarPicker {...commonProps} avatar="data:image/jpeg;base64,AA==" />,
+    );
     expect(markup.match(/aria-checked="true"/g)).toHaveLength(1);
     expect(markup.match(/tabindex="0"/g)).toHaveLength(1);
   });
