@@ -14,6 +14,7 @@ const errorKeys: Record<string, TranslationKey> = {
   LOBBY_CLOSED: 'errorLobbyClosed',
   RATE_LIMITED: 'errorRateLimited',
   UNAUTHORIZED: 'errorSessionExpired',
+  INVALID_CREDENTIALS: 'errorInvalidCredentials',
   FORBIDDEN: 'errorForbidden',
   GAME_NOT_MEMBER: 'errorGameAccessDenied',
   INSUFFICIENT_PLAYERS: 'errorInsufficientPlayers',

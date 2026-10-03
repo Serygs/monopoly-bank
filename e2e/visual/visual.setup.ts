@@ -117,7 +117,7 @@ async function mockApi(page: Page, authenticated: boolean): Promise<void> {
       return;
     }
     if (url.pathname === '/api/profile' && !authenticated) {
-      await fulfillError(route, 401, 'UNAUTHENTICATED', 'Sign in to continue.');
+      await fulfillError(route, 401, 'UNAUTHORIZED', 'Sign in to continue.');
       return;
     }
     const data = fixtureFor(url);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type {
   AuthTokenPurpose,
@@ -10,11 +10,119 @@ import type {
   UserRecord,
   UserRepository,
 } from '../repositories/user-repository.js';
-import { EmailDeliveryError, InvalidCredentialsError } from './errors.js';
+import {
+  AuthenticationRequiredError,
+  EmailDeliveryError,
+  InvalidCredentialsError,
+} from './errors.js';
 import { AuthService } from './auth-service.js';
 import type { TransactionalEmail, TransactionalEmailProvider } from './transactional-email.js';
 
 describe('AuthService email accounts and guests', () => {
+  it('keeps both concurrent logins usable and logs out only the presented device', async () => {
+    const fixture = createFixture();
+    await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', password: 'secure-password' });
+    const [first, second] = await Promise.all([
+      fixture.auth.login({ nickname: 'Ada', password: 'secure-password' }),
+      fixture.auth.login({ nickname: 'Ada', password: 'secure-password' }),
+    ]);
+    for (const result of [first, second])
+      await expect(fixture.auth.current(sessionRequest(result.cookie))).resolves.toMatchObject({
+        id: first.profile.id,
+      });
+    await fixture.auth.logout(sessionRequest(second.cookie));
+    await expect(fixture.auth.current(sessionRequest(second.cookie))).rejects.toBeInstanceOf(
+      AuthenticationRequiredError,
+    );
+    await expect(fixture.auth.current(sessionRequest(first.cookie))).resolves.toMatchObject({
+      id: first.profile.id,
+    });
+    await fixture.auth.revokeAll(first.profile.id);
+    await expect(fixture.auth.current(sessionRequest(first.cookie))).rejects.toBeInstanceOf(
+      AuthenticationRequiredError,
+    );
+  });
+
+  it('preserves the existing session when issuing a new login session fails', async () => {
+    const fixture = createFixture();
+    const first = await fixture.auth.register({
+      nickname: 'Ada',
+      avatar: '🎩',
+      password: 'secure-password',
+    });
+    const failure = new Error('D1 unavailable');
+    vi.spyOn(fixture.sessions, 'create').mockRejectedValueOnce(failure);
+    await expect(fixture.auth.login({ nickname: 'Ada', password: 'secure-password' })).rejects.toBe(
+      failure,
+    );
+    await expect(fixture.auth.current(sessionRequest(first.cookie))).resolves.toMatchObject({
+      id: first.profile.id,
+    });
+  });
+
+  it('extends an active lease with the same cookie token and avoids repeated daily writes', async () => {
+    const fixture = createFixture();
+    const first = await fixture.auth.register({
+      nickname: 'Ada',
+      avatar: '🎩',
+      password: 'secure-password',
+    });
+    expect(first.cookie).toContain('Max-Age=1209600');
+    const session = [...fixture.sessions.rows.values()][0];
+    session.expiresAt = new Date(Date.now() + 60 * 1000).toISOString();
+    const renewed = vi.fn();
+    const renew = vi.spyOn(fixture.sessions, 'renew');
+    await fixture.auth.current(sessionRequest(first.cookie), 'request-id', renewed);
+    expect(renewed).toHaveBeenCalledWith(first.cookie);
+    expect(Date.parse(session.expiresAt) - Date.now()).toBeCloseTo(14 * 24 * 60 * 60 * 1000, -3);
+    await fixture.auth.current(sessionRequest(first.cookie), 'request-id', renewed);
+    expect(renew).toHaveBeenCalledTimes(1);
+    expect(renewed).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not renew expired sessions or revive a session revoked during renewal', async () => {
+    const fixture = createFixture();
+    const first = await fixture.auth.register({
+      nickname: 'Ada',
+      avatar: '🎩',
+      password: 'secure-password',
+    });
+    const session = [...fixture.sessions.rows.values()][0];
+    session.expiresAt = '2000-01-01T00:00:00.000Z';
+    const renewed = vi.fn();
+    const renew = vi.spyOn(fixture.sessions, 'renew').mockResolvedValue(false);
+    await expect(
+      fixture.auth.current(sessionRequest(first.cookie), undefined, renewed),
+    ).rejects.toBeInstanceOf(AuthenticationRequiredError);
+    expect(renew).not.toHaveBeenCalled();
+    session.expiresAt = new Date(Date.now() + 60 * 1000).toISOString();
+    await expect(
+      fixture.auth.current(sessionRequest(first.cookie), undefined, renewed),
+    ).rejects.toBeInstanceOf(AuthenticationRequiredError);
+    expect(renewed).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes missing accounts, guests and wrong passwords only in internal logs', async () => {
+    const fixture = createFixture();
+    await fixture.auth.createGuest('Guest', '🎩');
+    await fixture.auth.register({ nickname: 'Ada', avatar: '🎩', password: 'secure-password' });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const nickname of ['Missing', 'Guest', 'Ada'])
+        await expect(
+          fixture.auth.login({ nickname, password: 'wrong-password' }, 'incident-request'),
+        ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS', message: 'Invalid credentials.' });
+      expect(warning.mock.calls.map(([message]) => JSON.parse(String(message)).reason)).toEqual([
+        'account_missing',
+        'guest_account',
+        'password_mismatch',
+      ]);
+      expect(warning.mock.calls.join(' ')).not.toMatch(/wrong-password|Guest|Ada|Missing/);
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it('registers an account from just a nickname and password, without an email', async () => {
     const fixture = createFixture();
     const result = await fixture.auth.register({
@@ -186,6 +294,12 @@ describe('AuthService email accounts and guests', () => {
   });
 });
 
+function sessionRequest(cookie: string): Request {
+  return new Request('https://bank.example.test/api/profile', {
+    headers: { cookie: cookie.split(';')[0] },
+  });
+}
+
 function createFixture() {
   const users = new MemoryUsers();
   const sessions = new MemorySessions();
@@ -226,6 +340,9 @@ class MemoryUsers implements UserRepository {
   }
   async findByNickname(nickname: string): Promise<UserRecord | null> {
     return this.byNickname.get(nickname) ?? null;
+  }
+  async findByLoginNickname(nickname: string): Promise<UserRecord | null> {
+    return this.findByNickname(nickname);
   }
   async findByNormalizedEmail(email: string): Promise<UserRecord | null> {
     return this.byEmail.get(email) ?? null;
@@ -294,13 +411,26 @@ class MemoryUsers implements UserRepository {
 
 class MemorySessions implements SessionRepository {
   readonly revokedUserIds: string[] = [];
-  async create(): Promise<void> {}
-  async findUserId(): Promise<string | null> {
-    return null;
+  readonly rows = new Map<string, { userId: string; expiresAt: string }>();
+  async create(_id: string, userId: string, tokenHash: string, expiresAt: string): Promise<void> {
+    this.rows.set(tokenHash, { userId, expiresAt });
   }
-  async delete(): Promise<void> {}
+  async findActive(tokenHash: string): Promise<{ userId: string; expiresAt: string } | null> {
+    const row = this.rows.get(tokenHash);
+    return row !== undefined && Date.parse(row.expiresAt) > Date.now() ? { ...row } : null;
+  }
+  async renew(tokenHash: string, expiresAt: string): Promise<boolean> {
+    const row = this.rows.get(tokenHash);
+    if (row === undefined || Date.parse(row.expiresAt) <= Date.now()) return false;
+    row.expiresAt = row.expiresAt > expiresAt ? row.expiresAt : expiresAt;
+    return true;
+  }
+  async delete(tokenHash: string): Promise<void> {
+    this.rows.delete(tokenHash);
+  }
   async deleteAllForUser(userId: string): Promise<void> {
     this.revokedUserIds.push(userId);
+    for (const [hash, row] of this.rows) if (row.userId === userId) this.rows.delete(hash);
   }
   async deleteExpired(): Promise<void> {}
 }

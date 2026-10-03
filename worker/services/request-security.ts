@@ -18,6 +18,7 @@ export function requireSameOriginWebSocket(request: Request): void {
 }
 
 export function securityHeaders(request: Request, headers: Headers): void {
+  headers.set('cache-control', 'no-store');
   // Player colours are currently DOM style attributes; retain this narrow CSP exception
   // until they are represented as predefined CSS custom-property classes.
   headers.set(

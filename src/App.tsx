@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import type { UserProfile } from '../shared/contracts/api';
 import { monopolyBankApi } from './api/monopoly-bank-api';
+import { loadAccountSession } from './api/account-session';
 import { Avatar } from './components/AvatarPicker';
 import { useLanguage } from './i18n/language-context';
+import { apiErrorMessage } from './i18n/api-errors';
 import { AuthPage } from './pages/AuthPage';
 import { PasswordRecoveryPage, PasswordResetPage, VerifyEmailPage } from './pages/EmailTokenPage';
 import { CreateGamePage } from './pages/CreateGamePage';
@@ -18,6 +20,7 @@ import {
   BankSeal,
   Button,
   FeedbackProvider,
+  Notice,
   PageShell,
   SegmentedControl,
   StatPill,
@@ -124,14 +127,19 @@ function AppRoutes() {
   const [preferences, setPreferences] = useState<DevicePreferences>(() => readPreferences());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
+  const [accountError, setAccountError] = useState<unknown>(null);
+  const [accountRetry, setAccountRetry] = useState(0);
   const [online, setOnline] = useState(() => navigator.onLine);
   const [updateReady, setUpdateReady] = useState(false);
   const [paymentFlowOpen, setPaymentFlowOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<unknown | null>(null);
   const [settingsPopoverPosition, setSettingsPopoverPosition] = useState<{
     top: number;
     right: number;
   } | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const accountRequestVersion = useRef(0);
 
   const { visualStyle, colorMode } = preferences;
   useLayoutEffect(() => mountAppearance({ visualStyle, colorMode }), [visualStyle, colorMode]);
@@ -158,10 +166,29 @@ function AppRoutes() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
   useEffect(() => {
-    void monopolyBankApi
-      .currentProfile()
-      .then(setProfile)
-      .catch(() => setProfile(null));
+    if (!online) return;
+    let cancelled = false;
+    const version = ++accountRequestVersion.current;
+    void loadAccountSession(monopolyBankApi)
+      .then((user) => {
+        if (!cancelled && version === accountRequestVersion.current) {
+          setAccountError(null);
+          setProfile(user);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled && version === accountRequestVersion.current) setAccountError(error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountRetry, online]);
+  useEffect(() => {
+    const resumed = () => {
+      if (document.visibilityState === 'visible') setAccountRetry((attempt) => attempt + 1);
+    };
+    document.addEventListener('visibilitychange', resumed);
+    return () => document.removeEventListener('visibilitychange', resumed);
   }, []);
   useEffect(() => {
     const connected = () => setOnline(true);
@@ -184,6 +211,30 @@ function AppRoutes() {
     window.history.pushState({}, '', target);
     setPath(routePath(target));
   };
+  const signOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError(null);
+    try {
+      await monopolyBankApi.logout();
+      accountRequestVersion.current += 1;
+      setAccountError(null);
+      setSettingsOpen(false);
+      setPaymentFlowOpen(false);
+      window.history.replaceState({}, '', '/');
+      setPath('/');
+      setProfile(null);
+    } catch (caught) {
+      setSignOutError(caught);
+    } finally {
+      setSigningOut(false);
+    }
+  };
+  const authenticated = (user: UserProfile) => {
+    accountRequestVersion.current += 1;
+    setAccountError(null);
+    setProfile(user);
+  };
   const emailToken = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
   if (EMAIL_FEATURES_ENABLED && path === '/verify-email')
     return (
@@ -192,10 +243,26 @@ function AppRoutes() {
   if (EMAIL_FEATURES_ENABLED && path === '/reset-password')
     return <PasswordResetPage token={emailToken} onBack={() => navigate('/')} />;
   const gameMatch = /^\/games\/([^/]+)$/.exec(path);
+  if (profile === undefined && !online) return <OfflineShell />;
   if (profile === undefined)
     return (
       <PageShell>
-        <StatPill variant="status">{t('loadingAccount')}</StatPill>
+        {accountError === null ? (
+          <StatPill variant="status">{t('loadingAccount')}</StatPill>
+        ) : (
+          <>
+            <Notice tone="error">{apiErrorMessage(accountError, t, 'unableLoadAccount')}</Notice>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setAccountError(null);
+                setAccountRetry((attempt) => attempt + 1);
+              }}
+            >
+              {t('tryAgain')}
+            </Button>
+          </>
+        )}
       </PageShell>
     );
   if (profile === null && !online) return <OfflineShell />;
@@ -215,7 +282,7 @@ function AppRoutes() {
           invitationToken={guestInvitationToken}
           onJoined={() => undefined}
           onGuestJoined={(guest, gameId) => {
-            setProfile(guest);
+            authenticated(guest);
             window.history.pushState({}, '', `/games/${encodeURIComponent(gameId)}`);
             setPath(`/games/${encodeURIComponent(gameId)}`);
           }}
@@ -226,13 +293,15 @@ function AppRoutes() {
         />
       );
     }
-    const returnRoute = EMAIL_FEATURES_ENABLED
-      ? currentRoute(window.location.pathname, window.location.search, window.location.hash)
-      : '/';
+    const returnRoute = currentRoute(
+      window.location.pathname,
+      window.location.search,
+      window.location.hash,
+    );
     return (
       <AuthPage
         onAuthenticated={(user) => {
-          setProfile(user);
+          authenticated(user);
           navigate(returnRoute);
         }}
       />
@@ -279,6 +348,7 @@ function AppRoutes() {
           title={t('settings')}
           closeLabel={t('closeDialog', { title: t('settings') })}
           onClose={() => setSettingsOpen(false)}
+          closeDisabled={signingOut}
           className={settingsPanelClass}
           presentation="popover"
           popoverStyle={
@@ -314,6 +384,22 @@ function AppRoutes() {
             checked={preferences.vibration}
             onChange={(vibration) => setPreferences({ ...preferences, vibration })}
           />
+          <div className="settings-account-actions grid gap-(--mb-space-3) border-t border-dialog-divider mt-(--mb-space-1) pt-(--mb-space-4)">
+            {signOutError !== null && (
+              <Notice tone="error" className="m-0">
+                {apiErrorMessage(signOutError, t, 'unableSignOut')}
+              </Notice>
+            )}
+            <Button
+              variant="quiet"
+              className="settings-sign-out w-full justify-start text-secondary enabled:active:text-danger enabled:active:bg-danger-soft fine-pointer:enabled:hover:text-danger fine-pointer:enabled:hover:bg-danger-soft"
+              disabled={signingOut}
+              onClick={() => void signOut()}
+            >
+              <SignOutIcon />
+              <span>{signingOut ? t('signingOut') : t('signOut')}</span>
+            </Button>
+          </div>
         </Dialog>
       )}
       {!online && (
@@ -372,6 +458,18 @@ function AppRoutes() {
         />
       )}
     </div>
+  );
+}
+
+function SignOutIcon() {
+  return (
+    <svg
+      className="settings-sign-out-icon size-5 fill-none stroke-current stroke-[1.75] [stroke-linecap:round] [stroke-linejoin:round]"
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+    >
+      <path d="M8.25 3.25H5.5A1.75 1.75 0 0 0 3.75 5v10c0 .97.78 1.75 1.75 1.75h2.75M12.25 6.25 16 10l-3.75 3.75M7.5 10H16" />
+    </svg>
   );
 }
 

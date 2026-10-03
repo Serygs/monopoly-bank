@@ -11,6 +11,11 @@ import type {
 } from '../repositories/auth-token-repository.js';
 import type { SessionRepository } from '../repositories/session-repository.js';
 import type { UserRecord, UserRepository } from '../repositories/user-repository.js';
+import {
+  securityEvent,
+  type LoginRejectionReason,
+  type SessionRejectionReason,
+} from './security-events.js';
 import { hashPassword, randomToken, tokenHash, verifyPassword } from './password-security.js';
 import type { TransactionalEmailProvider } from './transactional-email.js';
 import {
@@ -24,6 +29,8 @@ import {
 
 export type PublicProfile = UserProfile;
 export class AuthenticationError extends AuthenticationRequiredError {}
+const sessionMaxAgeSeconds = 14 * 24 * 60 * 60;
+const sessionRenewalIntervalMs = 24 * 60 * 60 * 1000;
 
 export class AuthService {
   private readonly users: UserRepository;
@@ -91,28 +98,44 @@ export class AuthService {
     return { profile: profile(user), cookie: await this.createSession(user.id) };
   }
 
-  async login(input: LoginRequest): Promise<{ profile: PublicProfile; cookie: string }> {
+  async login(
+    input: LoginRequest,
+    requestId?: string,
+  ): Promise<{ profile: PublicProfile; cookie: string }> {
     const user =
       'email' in input
         ? await this.users.findByNormalizedEmail(normalizeEmail(input.email))
-        : await this.users.findByNickname(input.nickname);
+        : await this.users.findByLoginNickname(input.nickname);
+    if (user === null) throw rejectedLogin('account_missing', requestId);
+    if (user.accountType !== 'REGISTERED') throw rejectedLogin('guest_account', requestId);
     if (
-      user === null ||
-      user.accountType !== 'REGISTERED' ||
       !(await verifyPassword(input.password, { hash: user.passwordHash, salt: user.passwordSalt }))
     )
-      throw new InvalidCredentialsError();
-    await this.sessions.deleteAllForUser(user.id);
+      throw rejectedLogin('password_mismatch', requestId);
     return { profile: profile(user), cookie: await this.createSession(user.id) };
   }
 
-  async current(request: Request): Promise<PublicProfile> {
+  async current(
+    request: Request,
+    requestId?: string,
+    onRenewed?: (cookie: string) => void,
+  ): Promise<PublicProfile> {
     const token = cookieValue(request.headers.get('cookie'), 'monopoly_bank_session');
-    if (token === null) throw new AuthenticationRequiredError();
-    const userId = await this.sessions.findUserId(await tokenHash(token));
-    if (userId === null) throw new AuthenticationRequiredError();
-    const user = await this.users.findById(userId);
-    if (user === null) throw new AuthenticationRequiredError();
+    if (token === null || token === '') throw rejectedSession('missing_cookie', requestId);
+    const hash = await tokenHash(token);
+    const session = await this.sessions.findActive(hash);
+    if (session === null) throw rejectedSession('expired_or_revoked', requestId);
+    const user = await this.users.findById(session.userId);
+    if (user === null) throw rejectedSession('account_missing', requestId);
+    const expiresAt = Date.now() + sessionMaxAgeSeconds * 1000;
+    if (
+      onRenewed !== undefined &&
+      Date.parse(session.expiresAt) <= expiresAt - sessionRenewalIntervalMs
+    ) {
+      if (!(await this.sessions.renew(hash, new Date(expiresAt).toISOString())))
+        throw rejectedSession('expired_or_revoked', requestId);
+      onRenewed(sessionCookie(token));
+    }
     return profile(user);
   }
 
@@ -273,7 +296,7 @@ export class AuthService {
       this.createId(),
       userId,
       await tokenHash(token),
-      new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
+      new Date(Date.now() + sessionMaxAgeSeconds * 1000).toISOString(),
     );
     return sessionCookie(token);
   }
@@ -307,8 +330,19 @@ function cookieValue(value: string | null, name: string): string | null {
       ?.slice(name.length + 1) ?? null
   );
 }
+function rejectedSession(
+  reason: SessionRejectionReason,
+  requestId?: string,
+): AuthenticationRequiredError {
+  if (requestId !== undefined) securityEvent('session_rejected', { requestId, reason });
+  return new AuthenticationRequiredError();
+}
+function rejectedLogin(reason: LoginRejectionReason, requestId?: string): InvalidCredentialsError {
+  if (requestId !== undefined) securityEvent('login_rejected', { requestId, reason });
+  return new InvalidCredentialsError();
+}
 function sessionCookie(token: string): string {
-  return `monopoly_bank_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=1209600`;
+  return `monopoly_bank_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${sessionMaxAgeSeconds}`;
 }
 function expiredCookie(): string {
   return 'monopoly_bank_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0';
