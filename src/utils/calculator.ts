@@ -1,0 +1,195 @@
+export const calculatorOperators = ['+', '−', '×', '÷'] as const;
+export type CalculatorOperator = (typeof calculatorOperators)[number];
+
+export interface CalculationEntry {
+  expression: string;
+  result: string;
+}
+
+export interface CalculatorState {
+  /** What the display shows: the number being typed, or the latest result. */
+  display: string;
+  accumulator: number | null;
+  operator: CalculatorOperator | null;
+  /** True right after an operator or `=`: the next digit starts a new number. */
+  fresh: boolean;
+  /** Repeats the last operation when `=` is pressed again. */
+  repeat: { operator: CalculatorOperator; operand: number } | null;
+  expression: string;
+  error: boolean;
+  history: CalculationEntry[];
+}
+
+export type CalculatorAction =
+  | { type: 'digit'; digit: string }
+  | { type: 'decimal' }
+  | { type: 'operator'; operator: CalculatorOperator }
+  | { type: 'equals' }
+  | { type: 'percent' }
+  | { type: 'negate' }
+  | { type: 'backspace' }
+  | { type: 'clear' }
+  | { type: 'recall'; value: string };
+
+const maxEntryLength = 15;
+const historyLimit = 5;
+
+export const initialCalculator: CalculatorState = {
+  display: '0',
+  accumulator: null,
+  operator: null,
+  fresh: true,
+  repeat: null,
+  expression: '',
+  error: false,
+  history: [],
+};
+
+/** Rounds away binary noise (0.1 + 0.2) and writes the number without an exponent when it can. */
+export function formatCalculatorNumber(value: number): string {
+  const rounded = Number(value.toPrecision(12));
+  if (Object.is(rounded, -0)) return '0';
+  const text = String(rounded);
+  return text.includes('e') ? rounded.toExponential() : text;
+}
+
+function apply(left: number, operator: CalculatorOperator, right: number): number | null {
+  switch (operator) {
+    case '+':
+      return left + right;
+    case '−':
+      return left - right;
+    case '×':
+      return left * right;
+    case '÷':
+      return right === 0 ? null : left / right;
+  }
+}
+
+function failed(state: CalculatorState): CalculatorState {
+  return { ...initialCalculator, history: state.history, error: true, display: '0' };
+}
+
+function record(history: CalculationEntry[], entry: CalculationEntry): CalculationEntry[] {
+  return [entry, ...history].slice(0, historyLimit);
+}
+
+export function calculatorReducer(
+  current: CalculatorState,
+  action: CalculatorAction,
+): CalculatorState {
+  // Any key after an error starts over, keeping the history.
+  const state = current.error ? { ...initialCalculator, history: current.history } : current;
+  switch (action.type) {
+    case 'digit': {
+      if (!/^\d$/.test(action.digit)) return state;
+      if (state.fresh || state.display === '0')
+        return { ...state, display: action.digit, fresh: false };
+      if (state.display.replace(/[-.]/g, '').length >= maxEntryLength) return state;
+      return { ...state, display: `${state.display}${action.digit}` };
+    }
+    case 'decimal': {
+      if (state.fresh) return { ...state, display: '0.', fresh: false };
+      return state.display.includes('.') ? state : { ...state, display: `${state.display}.` };
+    }
+    case 'operator': {
+      const { operator } = action;
+      if (state.operator !== null && state.accumulator !== null && state.fresh)
+        return {
+          ...state,
+          operator,
+          expression: `${formatCalculatorNumber(state.accumulator)} ${operator}`,
+        };
+      const entered = Number(state.display);
+      const left =
+        state.operator !== null && state.accumulator !== null
+          ? apply(state.accumulator, state.operator, entered)
+          : entered;
+      if (left === null) return failed(state);
+      const text = formatCalculatorNumber(left);
+      return {
+        ...state,
+        accumulator: left,
+        operator,
+        display: text,
+        fresh: true,
+        repeat: null,
+        expression: `${text} ${operator}`,
+      };
+    }
+    case 'equals': {
+      if (state.operator !== null && state.accumulator !== null) {
+        // "5 × =" squares the number, like a pocket calculator.
+        const right = state.fresh ? state.accumulator : Number(state.display);
+        const result = apply(state.accumulator, state.operator, right);
+        if (result === null) return failed(state);
+        const text = formatCalculatorNumber(result);
+        const expression = `${formatCalculatorNumber(state.accumulator)} ${state.operator} ${formatCalculatorNumber(right)} =`;
+        return {
+          ...state,
+          display: text,
+          accumulator: null,
+          operator: null,
+          fresh: true,
+          repeat: { operator: state.operator, operand: right },
+          expression,
+          history: record(state.history, { expression, result: text }),
+        };
+      }
+      if (state.repeat !== null) {
+        const left = Number(state.display);
+        const result = apply(left, state.repeat.operator, state.repeat.operand);
+        if (result === null) return failed(state);
+        const text = formatCalculatorNumber(result);
+        const expression = `${formatCalculatorNumber(left)} ${state.repeat.operator} ${formatCalculatorNumber(state.repeat.operand)} =`;
+        return {
+          ...state,
+          display: text,
+          fresh: true,
+          expression,
+          history: record(state.history, { expression, result: text }),
+        };
+      }
+      return state;
+    }
+    case 'percent': {
+      const entered = Number(state.display);
+      const value =
+        state.operator !== null && state.accumulator !== null
+          ? state.operator === '+' || state.operator === '−'
+            ? (state.accumulator * entered) / 100
+            : entered / 100
+          : entered / 100;
+      return { ...state, display: formatCalculatorNumber(value), fresh: false };
+    }
+    case 'negate': {
+      if (state.display === '0') return state;
+      return {
+        ...state,
+        display: state.display.startsWith('-') ? state.display.slice(1) : `-${state.display}`,
+      };
+    }
+    case 'backspace': {
+      if (state.fresh) return state;
+      const next = state.display.slice(0, -1);
+      return { ...state, display: next === '' || next === '-' ? '0' : next };
+    }
+    case 'clear':
+      return { ...initialCalculator, history: current.history };
+    case 'recall':
+      return Number.isFinite(Number(action.value))
+        ? { ...state, display: action.value, fresh: false }
+        : state;
+  }
+}
+
+/** The display for people: grouped whole part, the locale's separator, a typed trailing comma. */
+export function formatCalculatorDisplay(display: string, decimalSeparator: string): string {
+  const negative = display.startsWith('-');
+  const body = negative ? display.slice(1) : display;
+  if (body.includes('e')) return display;
+  const dot = body.indexOf('.');
+  const whole = (dot === -1 ? body : body.slice(0, dot)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const text = dot === -1 ? whole : `${whole}${decimalSeparator}${body.slice(dot + 1)}`;
+  return negative ? `-${text}` : text;
+}

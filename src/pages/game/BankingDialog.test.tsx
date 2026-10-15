@@ -44,10 +44,7 @@ function press(user: ReturnType<typeof userEvent.setup>, ...keys: string[]) {
     (chain, key) =>
       chain.then(() =>
         user.click(
-          within(keypad).getByRole('button', {
-            name: key === ',' ? 'Decimal separator' : key,
-            exact: true,
-          }),
+          within(keypad).getByRole('button', { name: key === ',' ? 'Decimal separator' : key }),
         ),
       ),
     Promise.resolve(),
