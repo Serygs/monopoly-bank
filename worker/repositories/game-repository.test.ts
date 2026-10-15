@@ -38,7 +38,7 @@ describe('D1GameRepository wallet control bootstrap', () => {
     const query = database.statements.at(-1)?.query ?? '';
     expect(query).toContain("CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY'");
     expect(query).toContain(
-      'WHERE games.owner_user_id IS NOT NULL AND (game_members.user_id IS NOT NULL OR',
+      'WHERE games.owner_user_id IS NOT NULL AND games.deleted_at IS NULL AND (game_members.user_id IS NOT NULL OR',
     );
   });
 });

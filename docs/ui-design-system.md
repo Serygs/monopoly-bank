@@ -492,6 +492,10 @@ The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
   wide layouts use two columns so each card keeps a comfortable measure. A game
   card has one filled primary action; duplicate and destructive removal live in
   an accessible contextual menu, with removal confirmed in a dialog.
+  Removal is reversible: the dialog says so, the game moves to a **Deleted**
+  filter (offered only when something is deleted) where it is shown as finished
+  with the date until which it can be restored, and **Restore** returns it to the
+  list as a finished game. Deleted games are removed for good after 30 days.
 - Profile keeps a 2-by-2 statistics grid at all supported widths. Compact stacks
   identity, statistics, and a full-width editor action. Medium and wide use a
   balanced identity/statistics column beside the editor rather than constraining

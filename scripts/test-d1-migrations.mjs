@@ -89,6 +89,13 @@ try {
     if (!schema.includes(table)) throw new Error(`Migration did not create ${table}.`);
   }
 
+  if (
+    !(await sql("SELECT name FROM pragma_table_info('games') WHERE name = 'deleted_at'")).includes(
+      'deleted_at',
+    )
+  )
+    throw new Error('Migration did not add games.deleted_at.');
+
   await sql(
     "INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status, payment_mode) VALUES ('game-1', 'D1 constraints', 1500, 200, 'K', 'LOBBY', 'FAST'); INSERT INTO players (id, game_id, name, color, balance) VALUES ('player-1', 'game-1', 'Ada', '#123456', 1500);",
   );

@@ -23,17 +23,18 @@ Configure these alerts in the production Cloudflare account after the staging re
 
 ## Retention and privacy policy
 
-| Data                                        | Retention / action                                                                                                                             |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sessions                                    | 14-day inactivity expiry; active HTTP sessions renew at most daily, and expired records are deleted daily.                                     |
-| Verification/reset tokens                   | Expired immediately; consumed tokens after 7 days.                                                                                             |
-| Rate-limit buckets                          | Expired buckets are deleted by scheduled cleanup.                                                                                              |
-| Unused guest accounts                       | Deleted after 30 days only when they have no game membership.                                                                                  |
-| Expired/revoked invitations                 | Deleted after 30 days.                                                                                                                         |
-| Resolved payment requests                   | Deleted after 90 days; expired reservations are released first.                                                                                |
-| Durable command replay records              | Deleted after 90 days only for finished games.                                                                                                 |
-| Transactions, participants, final snapshots | Retained; they are the financial and game audit record.                                                                                        |
-| Deleted accounts                            | Sessions/tokens are revoked and direct identifiers are anonymized after active games are finished or left. Game/ledger history remains intact. |
+| Data                                        | Retention / action                                                                                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Sessions                                    | 14-day inactivity expiry; active HTTP sessions renew at most daily, and expired records are deleted daily.                                             |
+| Verification/reset tokens                   | Expired immediately; consumed tokens after 7 days.                                                                                                     |
+| Rate-limit buckets                          | Expired buckets are deleted by scheduled cleanup.                                                                                                      |
+| Deleted games                               | Hidden and shown as finished in the owner's Deleted list; restorable for 30 days, then removed by scheduled cleanup (cascades to players and history). |
+| Unused guest accounts                       | Deleted after 30 days only when they have no game membership.                                                                                          |
+| Expired/revoked invitations                 | Deleted after 30 days.                                                                                                                                 |
+| Resolved payment requests                   | Deleted after 90 days; expired reservations are released first.                                                                                        |
+| Durable command replay records              | Deleted after 90 days only for finished games.                                                                                                         |
+| Transactions, participants, final snapshots | Retained; they are the financial and game audit record.                                                                                                |
+| Deleted accounts                            | Sessions/tokens are revoked and direct identifiers are anonymized after active games are finished or left. Game/ledger history remains intact.         |
 
 `GET /api/account/export` returns the authenticated account profile and its membership metadata only. It excludes sessions, token hashes, invitation material, transaction comments, other players' profile data, and credentials. `DELETE /api/account` is deliberately refused while the account participates in an active or lobby game.
 

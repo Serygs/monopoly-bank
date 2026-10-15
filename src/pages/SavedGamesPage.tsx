@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { GameSummary } from '../../shared/contracts/api';
+import {
+  DELETED_GAME_RETENTION_DAYS,
+  type DeletedGameSummary,
+  type GameSummary,
+} from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Dialog } from '../components/Dialog';
-import { GameCard } from '../components/game/GameCard';
+import { DeletedGameCard, GameCard } from '../components/game/GameCard';
 import { PageHeader } from '../components/PageHeader';
 import {
   Button,
@@ -88,7 +92,12 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   const [duplicatePassword, setDuplicatePassword] = useState('');
   const [duplicateError, setDuplicateError] = useState<unknown | null>(null);
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'LOBBY' | 'ACTIVE' | 'FINISHED'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<
+    'ALL' | 'LOBBY' | 'ACTIVE' | 'FINISHED' | 'DELETED'
+  >('ALL');
+  const [deletedGames, setDeletedGames] = useState<DeletedGameSummary[]>([]);
+  const [deletedError, setDeletedError] = useState<unknown | null>(null);
+  const [restoring, setRestoring] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'updated' | 'name'>('updated');
 
   const visibleGames = useMemo(
@@ -107,6 +116,23 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
         ),
     [games, locale, query, sortOrder, statusFilter],
   );
+
+  const visibleDeleted = useMemo(
+    () =>
+      deletedGames
+        .filter((summary) =>
+          summary.game.name
+            .toLocaleLowerCase(locale)
+            .includes(query.trim().toLocaleLowerCase(locale)),
+        )
+        .sort((first, second) => second.deletedAt.localeCompare(first.deletedAt)),
+    [deletedGames, locale, query],
+  );
+
+  const loadDeletedGames = () => {
+    setDeletedError(null);
+    void monopolyBankApi.listDeletedGames().then(setDeletedGames, setDeletedError);
+  };
 
   const loadGames = () => {
     setLoading(true);
@@ -132,6 +158,14 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
       .finally(() => {
         if (active) setLoading(false);
       });
+    void monopolyBankApi.listDeletedGames().then(
+      (result) => {
+        if (active) setDeletedGames(result);
+      },
+      (caught: unknown) => {
+        if (active) setDeletedError(caught);
+      },
+    );
     return () => {
       active = false;
     };
@@ -149,12 +183,27 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
     try {
       const removed = await monopolyBankApi.deleteGame(gameToRemove.game.id);
       setGames((current) => current.filter(({ game }) => game.id !== removed.gameId));
+      loadDeletedGames();
       notify({ tone: 'success', message: t('gameRemoved', { name: gameToRemove.game.name }) });
       setGameToRemove(null);
     } catch (caught) {
       setRemoveError(caught);
     } finally {
       setRemoving(false);
+    }
+  };
+
+  const restoreGame = async (summary: DeletedGameSummary) => {
+    setRestoring(summary.game.id);
+    try {
+      const restored = await monopolyBankApi.restoreGame(summary.game.id);
+      setDeletedGames((current) => current.filter(({ game }) => game.id !== restored.gameId));
+      loadGames();
+      notify({ tone: 'success', message: t('gameRestored', { name: summary.game.name }) });
+    } catch (caught) {
+      notify({ tone: 'error', message: apiErrorMessage(caught, t, 'unableRestoreGame') });
+    } finally {
+      setRestoring(null);
     }
   };
 
@@ -218,7 +267,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
           </Button>
         </Notice>
       )}
-      {!loading && error === null && games.length === 0 && (
+      {!loading && error === null && games.length === 0 && deletedGames.length === 0 && (
         <EmptyState
           title={t('noSavedGames')}
           description={t('noSavedGamesDescription')}
@@ -229,7 +278,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
           }
         />
       )}
-      {!loading && error === null && games.length > 0 && (
+      {!loading && error === null && (games.length > 0 || deletedGames.length > 0) && (
         <>
           <section className={controlsClass} aria-label={t('savedGamesControls')}>
             <label className={searchClass}>
@@ -257,12 +306,24 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
               variant="filter"
               className="flex flex-wrap gap-(--mb-space-2)"
               label={t('filterGames')}
-              options={(['ALL', 'ACTIVE', 'LOBBY', 'FINISHED'] as const).map((status) => ({
+              options={(
+                [
+                  'ALL',
+                  'ACTIVE',
+                  'LOBBY',
+                  'FINISHED',
+                  ...(deletedGames.length > 0 || statusFilter === 'DELETED'
+                    ? (['DELETED'] as const)
+                    : []),
+                ] as const
+              ).map((status) => ({
                 value: status,
                 label: t(
                   status === 'ALL'
                     ? 'allGames'
-                    : (`gameStatus${status[0]}${status.slice(1).toLowerCase()}` as 'gameStatusLobby'),
+                    : status === 'DELETED'
+                      ? 'deletedGames'
+                      : (`gameStatus${status[0]}${status.slice(1).toLowerCase()}` as 'gameStatusLobby'),
                 ),
               }))}
               value={statusFilter}
@@ -279,7 +340,32 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
               </select>
             </label>
           </section>
-          {visibleGames.length === 0 ? (
+          {statusFilter === 'DELETED' ? (
+            <>
+              {deletedError !== null && (
+                <Notice tone="error" as="section">
+                  <p>{apiErrorMessage(deletedError, t, 'unableLoadDeletedGames')}</p>
+                  <Button variant="secondary" onClick={loadDeletedGames}>
+                    {t('tryAgain')}
+                  </Button>
+                </Notice>
+              )}
+              {visibleDeleted.length === 0 ? (
+                <StatPill variant="status">{t('noDeletedGames')}</StatPill>
+              ) : (
+                <section className={gridClass} aria-label={t('deletedGames')}>
+                  {visibleDeleted.map((summary) => (
+                    <DeletedGameCard
+                      key={summary.game.id}
+                      summary={summary}
+                      restoring={restoring === summary.game.id}
+                      onRestore={() => void restoreGame(summary)}
+                    />
+                  ))}
+                </section>
+              )}
+            </>
+          ) : visibleGames.length === 0 ? (
             <StatPill variant="status">{t('noMatchingGames')}</StatPill>
           ) : (
             <section className={gridClass} aria-label={t('savedGames')}>
@@ -335,7 +421,8 @@ function RemoveGameDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const { t } = useLanguage();
+  const { locale, t } = useLanguage();
+  const [restorableUntil] = useState(() => Date.now() + DELETED_GAME_RETENTION_DAYS * 86_400_000);
   const title = t('removeGameTitle', { name: game.game.name });
   return (
     <Dialog
@@ -345,7 +432,12 @@ function RemoveGameDialog({
       closeDisabled={removing}
       onClose={onCancel}
     >
-      <p>{t('removeGameWarning', { count: game.playerCount })}</p>
+      <p>
+        {t('removeGameWarning', {
+          count: game.playerCount,
+          date: new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(restorableUntil),
+        })}
+      </p>
       {error !== null && (
         <Notice tone="error">{apiErrorMessage(error, t, 'unableRemoveGame')}</Notice>
       )}
