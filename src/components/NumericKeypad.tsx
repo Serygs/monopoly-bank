@@ -4,7 +4,8 @@ import { appendMoneyDigit, removeMoneyDigit } from '../utils/money-input';
 import type { AmountUnit } from '../utils/preferences';
 import { keyButtonClass } from './ui/class-names';
 
-const keypadClass = 'grid grid-cols-[repeat(3,1fr)] content-start gap-[6px] max-md:row-start-2';
+const keypadClass =
+  'grid grid-cols-[repeat(3,1fr)] content-start gap-[6px] [&>button]:min-h-12 md:mx-auto md:w-[min(100%,360px)]';
 
 export function NumericKeypad({
   digits,
