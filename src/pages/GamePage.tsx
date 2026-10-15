@@ -6,7 +6,8 @@ import { StatisticsScreen } from './StatisticsScreen';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { DiceRoller } from '../components/DiceRoller';
 import { TableCalculator } from '../components/TableCalculator';
-import { GameBottomNav, type GameView } from '../components/game/GameBottomNav';
+import { Dialog } from '../components/Dialog';
+import { GameBottomNav } from '../components/game/GameBottomNav';
 import { cx } from '../components/ui/class-names';
 import { Button, Notice, PageShell, StatPill, useFeedback } from '../components/ui';
 import type { DevicePreferences } from '../utils/preferences';
@@ -69,7 +70,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [finishing, setFinishing] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
-  const [view, setView] = useState<GameView>('wallets');
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
@@ -252,7 +253,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     .sort((a, b) => Number(a.status === 'BANKRUPT') - Number(b.status === 'BANKRUPT'));
   const canMutate = details.game.status === 'ACTIVE' && !offline;
   const showNav = details.game.status !== 'LOBBY';
-  const hideWhenTools = view === 'tools' && 'max-md:hidden';
+  const confirmationMode = details.game.paymentMode === 'CONFIRMATION';
 
   return (
     <PageShell className={showNav ? navPaddingClass : undefined}>
@@ -283,58 +284,66 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           )}
         </Notice>
       )}
-      <div className={cx(hideWhenTools)}>
-        <WalletsSection
+      <WalletsSection
+        players={details.players}
+        currency={details.game.currency}
+        controlledWallets={controlledWallets}
+        activeControlledWalletId={activeControlledWalletId}
+        activeWallet={activeWallet}
+        otherPlayers={otherPlayers}
+        canMutate={canMutate}
+        onSelectWallet={setActiveWalletId}
+        onOpenWallet={setSelectedPlayer}
+      />
+      {canMutate && confirmationMode && (
+        <PaymentInbox
+          requests={paymentRequests}
           players={details.players}
           currency={details.game.currency}
-          controlledWallets={controlledWallets}
-          activeControlledWalletId={activeControlledWalletId}
-          activeWallet={activeWallet}
-          otherPlayers={otherPlayers}
-          canMutate={canMutate}
-          onSelectWallet={setActiveWalletId}
-          onOpenWallet={setSelectedPlayer}
+          onAction={async (request, action) => {
+            const commandId = crypto.randomUUID();
+            const result =
+              action === 'accept'
+                ? await monopolyBankApi.acceptPaymentRequest(gameId, request.id, commandId)
+                : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId);
+            setPaymentRequests((current) => current.filter((item) => item.id !== request.id));
+            if (result.transaction !== undefined) {
+              historyCache.current.clear();
+              playPaymentFeedback(preferences.sound);
+              vibrate(35, preferences.vibration);
+              setDetails((current) =>
+                current === null ? current : { ...current, players: result.players },
+              );
+            }
+          }}
         />
-      </div>
-      {canMutate && (
-        <div className={cx(hideWhenTools)}>
-          <PaymentInbox
-            requests={paymentRequests}
-            players={details.players}
-            currency={details.game.currency}
-            onAction={async (request, action) => {
-              const commandId = crypto.randomUUID();
-              const result =
-                action === 'accept'
-                  ? await monopolyBankApi.acceptPaymentRequest(gameId, request.id, commandId)
-                  : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId);
-              setPaymentRequests((current) => current.filter((item) => item.id !== request.id));
-              if (result.transaction !== undefined) {
-                historyCache.current.clear();
-                playPaymentFeedback(preferences.sound);
-                vibrate(35, preferences.vibration);
-                setDetails((current) =>
-                  current === null ? current : { ...current, players: result.players },
-                );
-              }
-            }}
-          />
-        </div>
       )}
       {details.game.status === 'ACTIVE' && (
-        <div className={cx(gameToolsClass, view !== 'tools' && 'max-md:hidden')}>
+        <div className={cx(gameToolsClass, 'max-md:hidden')}>
           <DiceRoller />
           <TableCalculator />
         </div>
       )}
+      {toolsOpen && details.game.status === 'ACTIVE' && (
+        <Dialog
+          title={t('navTools')}
+          closeLabel={t('closeDialog', { title: t('navTools') })}
+          onClose={() => setToolsOpen(false)}
+        >
+          <div className="mt-(--mb-space-4) grid gap-(--mb-space-4)">
+            <DiceRoller />
+            <TableCalculator />
+          </div>
+        </Dialog>
+      )}
       {showNav && (
         <GameBottomNav
-          view={view}
-          pendingRequests={canMutate ? paymentRequests.length : 0}
+          pendingRequests={canMutate && confirmationMode ? paymentRequests.length : 0}
           payDisabled={!canMutate || activeWallet === null || activeWallet.status === 'BANKRUPT'}
           activityDisabled={offline}
           toolsDisabled={details.game.status !== 'ACTIVE'}
-          onSelectView={setView}
+          onSelectWallets={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          onOpenTools={() => setToolsOpen(true)}
           onPay={() => {
             if (activeWallet !== null) setSelectedPlayer(activeWallet);
           }}
@@ -348,6 +357,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           players={details.players}
           currency={details.game.currency}
           liveTransactions={liveTransactions}
+          showPending={confirmationMode}
           onClose={() => setActivityOpen(false)}
         />
       )}

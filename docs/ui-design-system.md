@@ -553,17 +553,20 @@ reachable at every size.
 
 - **Bottom navigation.** Five items in a fixed order: Wallets, Pay (raised centre
   action), Activity, Statistics, Tools. The bar sits above the home indicator
-  (`--mb-app-safe-bottom`), each target is at least 44px, the active view carries
+  (`--mb-app-safe-bottom`), each target is at least 44px, Wallets carries
   `aria-current="page"`, and the raised Pay button overlaps the bar by at most
   12px. Page content reserves space under the bar so nothing is covered.
-- **Roles.** Wallets and Tools switch the in-page view (both stay mounted; only
-  the inactive one is hidden, so state such as dice and calculator survives).
-  Activity and Statistics open the existing full-screen views. Pay opens the
-  existing banking sheet for the selected controlled wallet; it is disabled when
-  the game is not active, the app is offline, no wallet is controlled, or the
-  wallet is bankrupt. Activity and Statistics are disabled offline; Tools is
-  disabled outside an active game. A pending payment request shows as a count
-  badge on Wallets, where the payment inbox lives.
+- **Roles.** Wallets is the page itself (the current item). Tools, Activity and
+  Statistics open sheets; Pay opens the existing banking sheet for the selected
+  controlled wallet. Every sheet slides up on entry and slides back down on exit
+  (the dialog stays mounted for its leave transition and reports `onClose` only
+  afterwards). Pay is disabled when the game is not active, the app is offline,
+  no wallet is controlled, or the wallet is bankrupt. Activity and Statistics are
+  disabled offline; Tools is disabled outside an active game. Dice and calculator
+  appear inline from `md`; below `md` they live only in the Tools sheet.
+- **Confirmation mode only.** The payment inbox, the pending-request badge on
+  Wallets and the Pending tab in Activity exist only in games created with
+  confirmation payments. Fast (immediate) games never show them.
 - **Header.** The compact header drops the Activity and Statistics buttons (the
   bar owns them) and uses a smaller title; Saved games, status, name, Pass GO
   reward, connection state and the manager actions (invite, finish) remain.

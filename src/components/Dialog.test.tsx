@@ -61,7 +61,7 @@ describe('Dialog', () => {
     const onClose = vi.fn();
     const { user, trigger } = await openHarness({ onClose });
     await user.keyboard('{Escape}');
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(trigger).toHaveFocus());
   });
@@ -70,14 +70,23 @@ describe('Dialog', () => {
     const onClose = vi.fn();
     const { user, trigger, close } = await openHarness({ onClose });
     await user.click(close);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(trigger).toHaveFocus());
 
     await user.click(trigger);
     const dialog = await screen.findByRole('dialog');
     await user.click(dialog);
-    expect(onClose).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('stays mounted through its leave transition and reports the close afterwards', async () => {
+    const onClose = vi.fn();
+    const { user, close } = await openHarness({ onClose });
+    await user.click(close);
+    // The panel is removed only after the transition; the parent is told once, after that.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('keeps Tab and Shift+Tab inside the dialog', async () => {

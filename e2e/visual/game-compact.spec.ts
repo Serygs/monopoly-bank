@@ -55,13 +55,19 @@ for (const { id: visualStyle } of visualStyles) {
           );
         expect(clipped).toEqual([]);
 
+        // Tools is a sheet: it opens over the wallets and its close button dismisses it.
         await nav.getByRole('button', { name: translate(language, 'navTools') }).click();
+        const tools = page.getByRole('dialog', { name: translate(language, 'navTools') });
+        await expect(tools).toBeVisible();
         await expect(
-          page.getByRole('heading', { name: translate(language, 'rollDice') }).first(),
+          tools.getByRole('heading', { name: translate(language, 'rollDice') }),
         ).toBeVisible();
-        await expect(page.locator('.wallet-card').first()).toBeHidden();
-        await nav.getByRole('button', { name: translate(language, 'navWallets') }).click();
-        await expect(page.locator('.wallet-card').first()).toBeVisible();
+        await tools
+          .getByRole('button', {
+            name: translate(language, 'closeDialog', { title: translate(language, 'navTools') }),
+          })
+          .click();
+        await expect(tools).toBeHidden();
 
         await nav.getByRole('button', { name: translate(language, 'navPay') }).click();
         await expect(page.getByRole('dialog')).toBeVisible();
