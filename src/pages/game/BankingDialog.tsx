@@ -9,6 +9,7 @@ import { cx } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
+import { presetAmounts } from '../../utils/quick-amounts';
 import { Confirmation } from './Confirmation';
 import {
   actionDescription,
@@ -30,6 +31,8 @@ export interface BankingDialogProps {
   players: Player[];
   passGoReward: number;
   currency: Currency;
+  /** Scales the quick amounts; without it they fall back to fixed round amounts. */
+  startingBalance?: number;
   favoriteAmounts: number[];
   recentAmounts: number[];
   onToggleFavorite: (amount: number) => void;
@@ -77,6 +80,7 @@ export function BankingDialog({
   players,
   passGoReward,
   currency,
+  startingBalance,
   favoriteAmounts,
   recentAmounts,
   onToggleFavorite,
@@ -97,6 +101,8 @@ export function BankingDialog({
   const [error, setError] = useState<unknown | null>(null);
   const submittingRef = useRef(false);
   const commandIdRef = useRef<string | null>(null);
+  const balancePresets = startingBalance === undefined ? [] : presetAmounts(startingBalance);
+  const presets = balancePresets.length > 0 ? balancePresets : undefined;
   const targetRequired = action === 'PLAYER_TO_PLAYER';
   const recipients = players.filter((candidate) => candidate.id !== player.id);
   // With one possible recipient there is nothing to choose, so it is selected for the player.
@@ -296,6 +302,7 @@ export function BankingDialog({
                 currency={currency}
                 favorites={favoriteAmounts}
                 recent={recentAmounts}
+                presets={presets}
                 onToggleFavorite={onToggleFavorite}
                 onQuickAmountSelect={reviewQuickAmount}
               />

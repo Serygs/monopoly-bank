@@ -375,6 +375,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           players={details.players}
           passGoReward={details.game.passGoReward}
           currency={details.game.currency}
+          startingBalance={details.game.startingBalance}
           favoriteAmounts={details.favoriteAmounts ?? []}
           recentAmounts={details.recentAmounts ?? []}
           onToggleFavorite={(amount) =>
