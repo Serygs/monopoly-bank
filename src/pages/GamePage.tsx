@@ -21,7 +21,12 @@ import { HistoryDialog } from './game/HistoryDialog';
 import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
 import { WalletsSection } from './game/WalletsSection';
-import { actionLabel, applyLiveEvent, withClientGameDetails } from './game/game-page-helpers';
+import {
+  actionLabel,
+  applyLiveEvent,
+  filterTransactionsForPlayer,
+  withClientGameDetails,
+} from './game/game-page-helpers';
 
 /** The lobby banner sits further from the wallets than a plain notice; `!` beats Notice's margin. */
 const stateBannerClass = 'mb-(--mb-space-6)!';
@@ -48,6 +53,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [historyPlayer, setHistoryPlayer] = useState<Player | null>(null);
   const [historyError, setHistoryError] = useState<unknown | null>(null);
   const historyCache = useRef(new Map<string, Transaction[]>());
+  const historyPlayerId = useRef<string | null>(null);
   const notify = useFeedback();
   const [summary, setSummary] = useState<
     ({ game: Game; winners: Player[] } & LedgerStatistics) | null
@@ -123,7 +129,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           if (!isLiveServerEvent(event)) return;
           if (event.type === 'GAME_SNAPSHOT') {
             lastAppliedVersion.current = event.state.stateVersion;
-            applyLiveEvent(event, setDetails, setHistory, historyCache);
+            applyLiveEvent(event, setDetails, setHistory, historyCache, historyPlayerId.current);
             return;
           }
           if (!acceptsLiveVersion(lastAppliedVersion.current, event.stateVersion)) {
@@ -132,7 +138,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           }
           if (event.stateVersion > lastAppliedVersion.current)
             lastAppliedVersion.current = event.stateVersion;
-          applyLiveEvent(event, setDetails, setHistory, historyCache);
+          applyLiveEvent(event, setDetails, setHistory, historyCache, historyPlayerId.current);
           if (event.type === 'GAME_COMMITTED')
             setLiveTransactions((current) =>
               [
@@ -171,6 +177,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
 
   const loadHistory = async (player: Player | null = null) => {
     const scope = player === null ? 'all' : `player:${player.id}`;
+    historyPlayerId.current = player?.id ?? null;
     setHistoryOpen(true);
     setHistoryPlayer(player);
     setHistoryError(null);
@@ -181,9 +188,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     }
     const allTransactions = historyCache.current.get('all');
     if (player !== null && allTransactions !== undefined) {
-      const playerTransactions = allTransactions.filter((transaction) =>
-        transaction.participants.some((participant) => participant.playerId === player.id),
-      );
+      const playerTransactions = filterTransactionsForPlayer(allTransactions, player.id);
       historyCache.current.set(scope, playerTransactions);
       setHistory(playerTransactions);
       return;
@@ -411,6 +416,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           language={language}
           locale={locale}
           onClose={() => {
+            historyPlayerId.current = null;
             setHistoryOpen(false);
             setHistory(null);
             setHistoryError(null);
