@@ -62,6 +62,20 @@ for (const { id: visualStyle } of visualStyles) {
         await expect(
           tools.getByRole('heading', { name: translate(language, 'rollDice') }),
         ).toBeVisible();
+        // The roll history comes from the server and is scoped to the wallet's player.
+        await expect(
+          tools.getByRole('img', {
+            name: translate(language, 'diceRollEntry', { first: 6, second: 6, total: 12 }),
+          }),
+        ).toBeVisible();
+        await expect(
+          tools.getByRole('group', { name: translate(language, 'calculatorKeys') }),
+        ).toBeVisible();
+        await tools
+          .getByRole('group', { name: translate(language, 'calculatorKeys') })
+          .getByRole('button', { name: '7', exact: true })
+          .click();
+        await expect(tools.getByLabel(translate(language, 'calculatorDisplay'))).toContainText('7');
         await tools
           .getByRole('button', {
             name: translate(language, 'closeDialog', { title: translate(language, 'navTools') }),
@@ -109,6 +123,41 @@ for (const { id: visualStyle } of visualStyles) {
           expect(layout.bodyOverflow, `${action}: the form needs scrolling`).toBeLessThanOrEqual(0);
           expect(layout.panelTop).toBeGreaterThanOrEqual(0);
           expect(layout.pageOverflowX).toBeLessThanOrEqual(0);
+
+          if (action === 'payBank') {
+            // Changing the unit re-expresses the amount instead of clearing it, and the total
+            // stays right under the field, inside the visible sheet.
+            const keypad = panel.getByRole('group', { name: translate(language, 'numericKeypad') });
+            for (const digit of ['8', '5', '0', '0', '0'])
+              await keypad.getByRole('button', { name: digit, exact: true }).click();
+            const amount = panel.getByRole('textbox', {
+              name: translate(language, 'amount'),
+              exact: true,
+            });
+            const total = panel.getByText(/\$85 000$/).first();
+            await expect(amount).toHaveValue('85 000');
+            await expect(total).toBeVisible();
+            await panel
+              .getByRole('button', {
+                name: translate(language, 'amountUnitThousands'),
+                exact: true,
+              })
+              .click();
+            await expect(amount).toHaveValue('85');
+            await expect(total).toBeVisible();
+            await panel
+              .getByRole('button', { name: translate(language, 'amountUnitMillions'), exact: true })
+              .click();
+            await expect(amount).toHaveValue(/^0[.,]085$/);
+            await expect(total).toBeVisible();
+            const box = await total.boundingBox();
+            expect(box).not.toBeNull();
+            expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(phone.height);
+            await panel
+              .getByRole('button', { name: translate(language, 'amountUnitOnes'), exact: true })
+              .click();
+            await expect(amount).toHaveValue('85 000');
+          }
 
           // The amount field keeps the system keyboard closed; the keypad types instead.
           await expect(
