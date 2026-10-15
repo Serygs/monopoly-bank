@@ -517,7 +517,8 @@ The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
 - The game header reads in one stable order: Saved Games navigation, game
   status, game name, Pass GO reward, connection state when active, then local
   actions. The reward label may wrap, but its formatted monetary value remains
-  intact. Activity and Statistics remain secondary actions; lobby invitation
+  intact. From `md` up, Activity and Statistics remain secondary header actions
+  (below `md` they move to the bottom navigation, see below); lobby invitation
   and game completion retain their existing permissions and state rules.
 - Wallets form one banking desk rather than separate unrelated card grids. The
   selected controlled wallet and the other-player wallets share one responsive
@@ -542,6 +543,37 @@ The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
   utilities in `src/pages/game/` (`GameHeader.tsx`, `WalletsSection.tsx`,
   `WalletCard.tsx`) and the domain composites in `src/components/game/`. Banking
   dialogs and auxiliary game tools use the same UI kit and semantic tokens.
+
+#### Compact game composition (below `md`)
+
+Below `48rem` the active and finished game is a single phone screen driven by a
+bottom navigation bar (`src/components/game/GameBottomNav.tsx`). From `md` up the
+bar is hidden and the layout above applies unchanged, so every action stays
+reachable at every size.
+
+- **Bottom navigation.** Five items in a fixed order: Wallets, Pay (raised centre
+  action), Activity, Statistics, Tools. The bar sits above the home indicator
+  (`--mb-app-safe-bottom`), each target is at least 44px, the active view carries
+  `aria-current="page"`, and the raised Pay button overlaps the bar by at most
+  12px. Page content reserves space under the bar so nothing is covered.
+- **Roles.** Wallets and Tools switch the in-page view (both stay mounted; only
+  the inactive one is hidden, so state such as dice and calculator survives).
+  Activity and Statistics open the existing full-screen views. Pay opens the
+  existing banking sheet for the selected controlled wallet; it is disabled when
+  the game is not active, the app is offline, no wallet is controlled, or the
+  wallet is bankrupt. Activity and Statistics are disabled offline; Tools is
+  disabled outside an active game. A pending payment request shows as a count
+  badge on Wallets, where the payment inbox lives.
+- **Header.** The compact header drops the Activity and Statistics buttons (the
+  bar owns them) and uses a smaller title; Saved games, status, name, Pass GO
+  reward, connection state and the manager actions (invite, finish) remain.
+- **Wallets view.** The controlled wallet is a compact hero card without the
+  action row. Other players are one-line rows (colour swatch, name, balance,
+  textual Bankrupt badge), one column at every compact width, with bankrupt rows
+  muted but still at readable contrast. Rows are display-only.
+- **Fit target.** On 393×852 and 430×932 the Wallets view for up to six players
+  fits without vertical scrolling; the nav labels must not truncate in English or
+  Ukrainian.
 
 ## Accessibility and motion
 
