@@ -137,6 +137,8 @@ function fixtureFor(url: URL): unknown {
       return fixtureProfile;
     case '/api/games':
       return fixtureSavedGames;
+    case '/api/games/deleted':
+      return [];
     case game:
       return fixtureGameDetails;
     case `${game}/payment-requests`:

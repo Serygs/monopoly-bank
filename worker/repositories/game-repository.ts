@@ -1,4 +1,8 @@
-import type { GameSummary } from '../../shared/contracts/api.js';
+import {
+  DELETED_GAME_RETENTION_DAYS,
+  type DeletedGameSummary,
+  type GameSummary,
+} from '../../shared/contracts/api.js';
 import type { Currency, Game, GameStatus, PaymentMode } from '../../shared/types/monopoly.js';
 import type { CreatePlayerInput } from './player-repository.js';
 
@@ -42,9 +46,13 @@ export interface GameRepository {
   list(): Promise<Game[]>;
   listSummaries(): Promise<GameSummary[]>;
   listSummariesForUser(userId: string): Promise<GameSummary[]>;
+  listDeletedSummariesForUser(userId: string): Promise<DeletedGameSummary[]>;
   updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null>;
   transitionStatus(id: string, from: GameStatus, to: GameStatus): Promise<Game | null>;
   delete(id: string): Promise<boolean>;
+  softDelete(id: string): Promise<boolean>;
+  restore(id: string, userId: string): Promise<boolean>;
+  purgeExpiredDeleted(): Promise<void>;
   listFavoriteAmounts(gameId: string): Promise<number[]>;
   toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
   listRecentAmounts(gameId: string): Promise<number[]>;
@@ -115,7 +123,7 @@ export class D1GameRepository implements GameRepository {
       .prepare(
         `SELECT id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at
          FROM games
-         WHERE id = ?`,
+         WHERE id = ? AND deleted_at IS NULL`,
       )
       .bind(id)
       .first<GameRow>();
@@ -128,6 +136,7 @@ export class D1GameRepository implements GameRepository {
       .prepare(
         `SELECT id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at
          FROM games
+         WHERE deleted_at IS NULL
          ORDER BY updated_at DESC, id DESC`,
       )
       .all<GameRow>();
@@ -143,6 +152,7 @@ export class D1GameRepository implements GameRepository {
                 COUNT(players.id) AS player_count
          FROM games
          LEFT JOIN players ON players.game_id = games.id
+         WHERE games.deleted_at IS NULL
          GROUP BY games.id
          ORDER BY games.updated_at DESC, games.id DESC`,
       )
@@ -161,7 +171,7 @@ export class D1GameRepository implements GameRepository {
               CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN 1 ELSE 0 END AS is_public_lobby,
               CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN games.join_code ELSE NULL END AS public_join_code
        FROM games LEFT JOIN game_members ON game_members.game_id = games.id AND game_members.user_id = ? LEFT JOIN players ON players.game_id = games.id
-       WHERE games.owner_user_id IS NOT NULL AND (game_members.user_id IS NOT NULL OR (games.status = 'LOBBY' AND games.game_access_password_hash IS NULL))
+       WHERE games.owner_user_id IS NOT NULL AND games.deleted_at IS NULL AND (game_members.user_id IS NOT NULL OR (games.status = 'LOBBY' AND games.game_access_password_hash IS NULL))
        GROUP BY games.id ORDER BY games.updated_at DESC, games.id DESC`,
       )
       .bind(userId)
@@ -172,6 +182,32 @@ export class D1GameRepository implements GameRepository {
       ...(row.is_public_lobby === 1
         ? { isPublicLobby: true, joinCode: row.public_join_code ?? undefined }
         : {}),
+    }));
+  }
+
+  async listDeletedSummariesForUser(userId: string): Promise<DeletedGameSummary[]> {
+    const result = await this.database
+      .prepare(
+        `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode,
+                games.status, games.created_at, games.updated_at, games.started_at, games.finished_at,
+                COUNT(players.id) AS player_count,
+                games.deleted_at AS deleted_at,
+                strftime('%Y-%m-%dT%H:%M:%fZ', games.deleted_at, '+${DELETED_GAME_RETENTION_DAYS} days') AS purge_at
+         FROM games
+         INNER JOIN game_members ON game_members.game_id = games.id AND game_members.user_id = ? AND game_members.role = 'OWNER'
+         LEFT JOIN players ON players.game_id = games.id
+         WHERE games.deleted_at IS NOT NULL
+           AND games.deleted_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${DELETED_GAME_RETENTION_DAYS} days')
+         GROUP BY games.id
+         ORDER BY games.deleted_at DESC, games.id DESC`,
+      )
+      .bind(userId)
+      .all<GameSummaryRow>();
+    return result.results.map((row) => ({
+      game: mapGame(row),
+      playerCount: row.player_count,
+      deletedAt: row.deleted_at ?? '',
+      purgeAt: row.purge_at ?? '',
     }));
   }
 
@@ -233,6 +269,45 @@ export class D1GameRepository implements GameRepository {
   async delete(id: string): Promise<boolean> {
     const result = await this.database.prepare('DELETE FROM games WHERE id = ?').bind(id).run();
     return result.meta.changes > 0;
+  }
+
+  /**
+   * Hides the game for {@link DELETED_GAME_RETENTION_DAYS} days. It is stored as finished so
+   * nothing can be played in it, whatever it was before; restoring keeps it finished.
+   */
+  async softDelete(id: string): Promise<boolean> {
+    const result = await this.database
+      .prepare(
+        `UPDATE games
+         SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), status = 'ARCHIVED',
+             finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND deleted_at IS NULL`,
+      )
+      .bind(id)
+      .run();
+    return result.meta.changes > 0;
+  }
+
+  async restore(id: string, userId: string): Promise<boolean> {
+    const result = await this.database
+      .prepare(
+        `UPDATE games
+         SET deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND deleted_at IS NOT NULL
+           AND deleted_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${DELETED_GAME_RETENTION_DAYS} days')
+           AND EXISTS (SELECT 1 FROM game_members WHERE game_members.game_id = games.id AND game_members.user_id = ? AND game_members.role = 'OWNER')`,
+      )
+      .bind(id, userId)
+      .run();
+    return result.meta.changes > 0;
+  }
+
+  async purgeExpiredDeleted(): Promise<void> {
+    await this.database
+      .prepare(
+        `DELETE FROM games WHERE deleted_at IS NOT NULL AND deleted_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${DELETED_GAME_RETENTION_DAYS} days')`,
+      )
+      .run();
   }
 
   async listFavoriteAmounts(gameId: string): Promise<number[]> {
@@ -297,6 +372,8 @@ interface GameSummaryRow extends GameRow {
   player_count: number;
   is_public_lobby?: number;
   public_join_code?: string | null;
+  deleted_at?: string | null;
+  purge_at?: string | null;
 }
 
 function mapGame(row: GameRow): Game {
