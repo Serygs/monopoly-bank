@@ -6,6 +6,7 @@ import type { GameAccessService } from '../services/game-access-service.js';
 import type { ProfileStatisticsService } from '../services/profile-statistics-service.js';
 import type { GameStatisticsRepository } from '../repositories/game-statistics-repository.js';
 import type { GameLiveGateway } from '../services/game-live-gateway.js';
+import type { DiceRollService } from '../services/dice-roll-service.js';
 import { controlledPlayerIdForBankingCommand } from '../../shared/domain/player-control.js';
 import {
   ConflictError,
@@ -41,6 +42,7 @@ import {
   parseUpgradeGuestRequest,
   parseAddAccountEmailRequest,
   parseFinishGameRequest,
+  parseRecordDiceRollRequest,
 } from '../validation/api-validation.js';
 
 export interface ApiRouterDependencies {
@@ -50,6 +52,7 @@ export interface ApiRouterDependencies {
   access: GameAccessService;
   profileStatistics: ProfileStatisticsService;
   statistics?: GameStatisticsRepository;
+  diceRolls?: DiceRollService;
   live?: GameLiveGateway;
   rateLimits?: SecurityRateLimitRepository;
   metrics?: OperationalMetrics;
@@ -118,6 +121,7 @@ async function route(
   const playerTransactionMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)\/transactions$/.exec(
     pathname,
   );
+  const diceRollsMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)\/dice-rolls$/.exec(pathname);
   const duplicateMatch = /^\/api\/games\/([^/]+)\/duplicate$/.exec(pathname);
   const finishMatch = /^\/api\/games\/([^/]+)\/finish$/.exec(pathname);
   const startMatch = /^\/api\/games\/([^/]+)\/start$/.exec(pathname);
@@ -539,6 +543,24 @@ async function route(
     );
   }
 
+  if (diceRollsMatch !== null) {
+    const gameId = parseResourceId(diceRollsMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const playerId = parseResourceId(diceRollsMatch[2], 'playerId');
+    if (dependencies.diceRolls === undefined)
+      throw new ConflictError('DICE_UNAVAILABLE', 'Dice history is not configured.');
+    if (request.method === 'GET')
+      return success(
+        await dependencies.diceRolls.list(gameId, playerId, readDiceHistoryLimit(request)),
+      );
+    if (request.method === 'POST') {
+      // A roll is recorded only for a wallet the caller controls; anyone in the game may read it.
+      await dependencies.access.requirePlayerController(gameId, actor.id, playerId);
+      const body = await parseRecordDiceRollRequest(request);
+      return success(await dependencies.diceRolls.record(gameId, playerId, body), 201);
+    }
+  }
+
   throw new NotFoundError('NOT_FOUND', 'Endpoint not found.');
 }
 
@@ -561,6 +583,14 @@ function readHistoryLimit(request: Request): number {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
     throw new ApiValidationError('limit must be an integer between 1 and 100.');
   }
+  return limit;
+}
+function readDiceHistoryLimit(request: Request): number {
+  const value = new URL(request.url).searchParams.get('limit');
+  if (value === null) return 20;
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
+    throw new ApiValidationError('limit must be an integer between 1 and 100.');
   return limit;
 }
 function readActivityCursor(value: string | null): { createdAt: string; id: string } | null {

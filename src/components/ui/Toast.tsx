@@ -1,12 +1,6 @@
 import { Transition } from '@headlessui/react';
 import { useRef, type FocusEvent } from 'react';
-import {
-  buttonCoreClass,
-  cx,
-  iconButtonShapeClass,
-  noticeToneClass,
-  type NoticeTone,
-} from './class-names';
+import { buttonCoreClass, cx, iconButtonShapeClass, type NoticeTone } from './class-names';
 
 export interface ToastProps {
   tone: NoticeTone;
@@ -30,6 +24,17 @@ const toastClass = cx(
   'motion-safe:transition-[opacity,translate] motion-safe:duration-(--mb-duration-normal) motion-safe:ease-emphasized',
   'motion-safe:data-closed:-translate-y-(--mb-space-2) motion-safe:data-closed:opacity-0 motion-reduce:transition-none',
 );
+/*
+ * Tone surfaces are translucent soft colours; layered over the opaque elevated surface so a toast
+ * raised over the page header stays readable instead of showing the header through it.
+ */
+const toastToneClass: Record<NoticeTone, string> = {
+  info: 'border-border bg-surface-elevated text-primary',
+  success:
+    'border-status-border bg-surface-elevated bg-[image:linear-gradient(var(--mb-color-status-surface),var(--mb-color-status-surface))] text-status-text',
+  error:
+    'border-danger-border bg-surface-elevated bg-[image:linear-gradient(var(--mb-color-danger-soft),var(--mb-color-danger-soft))] text-danger',
+};
 /* A quiet close button in the toast's own tone colour. */
 const closeClass = cx(
   buttonCoreClass,
@@ -58,7 +63,7 @@ export function Toast({ tone, message, closeLabel, onDismiss, onPause, onResume 
   return (
     <Transition show appear>
       <div
-        className={cx(toastClass, noticeToneClass[tone])}
+        className={cx(toastClass, toastToneClass[tone])}
         data-tone={tone}
         onPointerEnter={() => hold('pointer', true)}
         onPointerLeave={() => hold('pointer', false)}

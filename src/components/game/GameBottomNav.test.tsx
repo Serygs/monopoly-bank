@@ -10,7 +10,6 @@ function renderNav(overrides: Partial<GameBottomNavProps> = {}) {
     payDisabled: false,
     activityDisabled: false,
     toolsDisabled: false,
-    onSelectWallets: vi.fn(),
     onOpenTools: vi.fn(),
     onPay: vi.fn(),
     onOpenActivity: vi.fn(),
@@ -26,23 +25,18 @@ function renderNav(overrides: Partial<GameBottomNavProps> = {}) {
 }
 
 describe('GameBottomNav', () => {
-  it('lists the five destinations in order inside a labelled navigation', () => {
+  it('lists the four destinations in order inside a labelled navigation', () => {
     renderNav();
     const nav = screen.getByRole('navigation', { name: 'Game navigation' });
     const buttons = Array.from(nav.querySelectorAll('button')).map((button) =>
       button.textContent?.trim(),
     );
-    expect(buttons).toEqual(['Wallets', 'Pay', 'Activity', 'Statistics', 'Tools']);
+    expect(buttons).toEqual(['Activity', 'Statistics', 'Tools', 'Pay']);
   });
 
-  it('marks Wallets as the current page and opens Tools as a sheet', async () => {
+  it('opens Tools as a sheet', async () => {
     const { props, user } = renderNav();
-    const wallets = screen.getByRole('button', { name: 'Wallets' });
-    expect(wallets).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('button', { name: 'Tools' })).not.toHaveAttribute('aria-current');
-    await user.click(wallets);
     await user.click(screen.getByRole('button', { name: 'Tools' }));
-    expect(props.onSelectWallets).toHaveBeenCalledTimes(1);
     expect(props.onOpenTools).toHaveBeenCalledTimes(1);
   });
 
@@ -62,7 +56,6 @@ describe('GameBottomNav', () => {
     expect(screen.getByRole('button', { name: 'Activity' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Statistics' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Tools' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Wallets' })).toBeEnabled();
   });
 
   it('shows a pending-request count only when there are requests', () => {

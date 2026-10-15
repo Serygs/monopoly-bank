@@ -1,4 +1,6 @@
 import type {
+  DiceRoll,
+  RecordDiceRollRequest,
   AccountExport,
   ActivityPage,
   ActivityScope,
@@ -68,6 +70,8 @@ export interface MonopolyBankApi {
   startGame(gameId: string): Promise<GameDetails>;
   finishGame(gameId: string, input: FinishGameRequest): Promise<GameDetails>;
   toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
+  listDiceRolls(gameId: string, playerId: string, limit?: number): Promise<DiceRoll[]>;
+  recordDiceRoll(gameId: string, playerId: string, roll: RecordDiceRollRequest): Promise<DiceRoll>;
   createTransaction(
     gameId: string,
     request: CreateTransactionRequest,
@@ -212,6 +216,21 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
       method: 'POST',
       body: JSON.stringify({ amount }),
     });
+  }
+  async listDiceRolls(gameId: string, playerId: string, limit = 20): Promise<DiceRoll[]> {
+    return request<DiceRoll[]>(
+      `/api/games/${encodeURIComponent(gameId)}/players/${encodeURIComponent(playerId)}/dice-rolls?limit=${limit}`,
+    );
+  }
+  async recordDiceRoll(
+    gameId: string,
+    playerId: string,
+    roll: RecordDiceRollRequest,
+  ): Promise<DiceRoll> {
+    return request<DiceRoll>(
+      `/api/games/${encodeURIComponent(gameId)}/players/${encodeURIComponent(playerId)}/dice-rolls`,
+      { method: 'POST', body: JSON.stringify(roll) },
+    );
   }
   async createTransaction(
     gameId: string,

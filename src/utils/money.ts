@@ -7,6 +7,11 @@ export function formatThousands(value: number): string {
     .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
+/** The decimal separator of a locale: `,` for uk-UA, `.` for en-US. */
+export function decimalSeparator(locale: string): string {
+  return new Intl.NumberFormat(locale).format(1.1).charAt(1);
+}
+
 export function formatMoney(value: number, currency: Currency): string {
   const sign = value < 0 ? '-' : '';
   const amount = `${sign}${formatThousands(value)}`;

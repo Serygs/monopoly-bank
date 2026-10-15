@@ -101,6 +101,7 @@ export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
                 time: new Intl.DateTimeFormat(locale, {
                   dateStyle: 'medium',
                   timeStyle: 'short',
+                  hourCycle: 'h23',
                 }).format(new Date(invite.expiresAt)),
               })}
             </p>
