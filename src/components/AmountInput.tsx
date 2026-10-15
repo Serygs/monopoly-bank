@@ -1,6 +1,10 @@
 import { useLanguage } from '../i18n/language-context';
-import { formatThousands } from '../utils/money';
-import { sanitizeMoneyInput, type AmountInputState } from '../utils/money-input';
+import { decimalSeparator } from '../utils/money';
+import {
+  formatDigitsDisplay,
+  sanitizeMoneyInput,
+  type AmountInputState,
+} from '../utils/money-input';
 import type { AmountUnit } from '../utils/preferences';
 import { AMOUNT_UNIT_LABELS, AMOUNT_UNITS } from './amount-input-state';
 import { cx } from './ui/class-names';
@@ -28,14 +32,17 @@ export function AmountInput({
   onDigitsChange,
   onUnitChange,
   invalid = false,
+  keypad = false,
 }: {
   id?: string;
   state: AmountInputState;
   onDigitsChange: (digits: string) => void;
   onUnitChange: (unit: AmountUnit) => void;
   invalid?: boolean;
+  /** An on-screen keypad is the input method, so the system keyboard stays closed. */
+  keypad?: boolean;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const { short, note } = AMOUNT_UNIT_LABELS[state.unit];
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-(--mb-space-2)">
@@ -44,9 +51,10 @@ export function AmountInput({
         <input
           id={id}
           type="text"
-          inputMode="numeric"
+          inputMode={keypad ? 'none' : 'numeric'}
           pattern="[0-9 ]*"
-          value={state.digits === '' ? '' : formatThousands(Number(state.digits))}
+          placeholder={keypad ? '0' : undefined}
+          value={formatDigitsDisplay(state.digits, decimalSeparator(locale))}
           onChange={(event) => onDigitsChange(sanitizeMoneyInput(event.target.value, state.unit))}
           aria-invalid={invalid}
         />

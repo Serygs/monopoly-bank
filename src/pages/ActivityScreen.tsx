@@ -255,6 +255,7 @@ function PendingRow({
         timestamp={new Intl.DateTimeFormat(locale, {
           dateStyle: 'medium',
           timeStyle: 'short',
+          hourCycle: 'h23',
         }).format(new Date(request.createdAt))}
       />
       <span>

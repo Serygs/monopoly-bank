@@ -13,7 +13,7 @@ export type Notify = (feedback: FeedbackMessage) => void;
 export const FeedbackContext = createContext<Notify | null>(null);
 
 /** Auto-dismiss delay for polite (success and info) toasts; errors stay until dismissed. */
-export const TOAST_DURATION_MS = 6000;
+export const TOAST_DURATION_MS = 2500;
 /** Oldest toasts are dropped beyond this many. */
 export const TOAST_LIMIT = 3;
 
