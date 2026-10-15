@@ -6,6 +6,7 @@ import type { Language } from '../../src/i18n/translations';
 import {
   fixtureActiveGame,
   fixtureActivity,
+  fixtureDiceRolls,
   fixtureGameDetails,
   fixturePaymentRequests,
   fixturePendingActivity,
@@ -147,6 +148,15 @@ function fixtureFor(url: URL): unknown {
     case `${game}/transactions`:
       return fixtureTransactions;
     default: {
+      const diceHistory = new RegExp(`^${game}/players/([^/]+)/dice-rolls$`).exec(url.pathname);
+      if (diceHistory !== null) {
+        const playerId = decodeURIComponent(diceHistory[1]);
+        return fixtureDiceRolls.map((roll, index) => ({
+          id: `visual-dice-roll-${playerId}-${index}`,
+          playerId,
+          ...roll,
+        }));
+      }
       const playerHistory = new RegExp(`^${game}/players/([^/]+)/transactions$`).exec(url.pathname);
       if (playerHistory === null) return undefined;
       const playerId = decodeURIComponent(playerHistory[1]);

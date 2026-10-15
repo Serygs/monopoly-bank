@@ -15,7 +15,8 @@ import { Button, MoneyValue, Notice, Row, StatPill } from '../components/ui';
 import { cx, wideDialogClass } from '../components/ui/class-names';
 import { MutedText } from '../components/ui/Text';
 
-const activityScopes: readonly ActivityScope[] = ['ALL', 'MINE', 'PENDING'];
+const allActivityScopes: readonly ActivityScope[] = ['ALL', 'MINE', 'PENDING'];
+const immediateActivityScopes: readonly ActivityScope[] = ['ALL', 'MINE'];
 
 /*
  * `activity-scroll` and `activity-ledger` stay as hooks for the e2e suites. `!` outranks the
@@ -39,7 +40,7 @@ const stickyClass = cx(
 const tabsClass = cx(
   'mx-0 mt-0 mb-(--mb-space-3) flex gap-[3px] overflow-x-auto rounded-md bg-surface-subtle p-[3px]',
   '[&_[aria-selected=true]]:bg-accent [&_[aria-selected=true]]:text-on-accent [&_[aria-selected=true]]:shadow-sm',
-  'glass:grid glass:w-full glass:min-w-0 glass:grid-cols-3 glass:overflow-x-hidden',
+  'glass:grid glass:w-full glass:min-w-0 glass:overflow-x-hidden',
   'glass:*:w-full glass:*:min-w-0 glass:*:px-(--mb-space-2) glass:*:whitespace-normal',
   'glass:border-[rgb(85_98_116/0.16)] glass:bg-[rgb(255_255_255/0.54)] glass:shadow-[inset_0_1px_0_rgb(255_255_255/0.68)]',
   'glass:dark:border-[rgb(255_255_255/0.14)] glass:dark:bg-[rgb(50_61_76/0.68)] glass:dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.1)]',
@@ -68,15 +69,19 @@ export function ActivityScreen({
   players,
   currency,
   liveTransactions,
+  showPending = true,
   onClose,
 }: {
   gameId: string;
   players: Player[];
   currency: Currency;
   liveTransactions: Transaction[];
+  /** Pending payment requests exist only when recipients must confirm payments. */
+  showPending?: boolean;
   onClose: () => void;
 }) {
   const { language, locale, t } = useLanguage();
+  const activityScopes = showPending ? allActivityScopes : immediateActivityScopes;
   const [scope, setScope] = useState<ActivityScope>('ALL');
   const [page, setPage] = useState<ActivityPage>({
     transactions: [],
@@ -196,7 +201,10 @@ export function ActivityScreen({
     >
       <TabGroup as={Fragment} selectedIndex={activityScopes.indexOf(scope)} onChange={selectScope}>
         <div className={stickyClass}>
-          <TabList className={tabsClass} aria-label={t('activity')}>
+          <TabList
+            className={cx(tabsClass, showPending ? 'glass:grid-cols-3' : 'glass:grid-cols-2')}
+            aria-label={t('activity')}
+          >
             {activityScopes.map((value) => (
               <Tab as={Button} variant="quiet" key={value}>
                 {value === 'ALL'
@@ -247,6 +255,7 @@ function PendingRow({
         timestamp={new Intl.DateTimeFormat(locale, {
           dateStyle: 'medium',
           timeStyle: 'short',
+          hourCycle: 'h23',
         }).format(new Date(request.createdAt))}
       />
       <span>

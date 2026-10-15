@@ -14,6 +14,7 @@ import type {
   RegisterRequest,
   UpdateProfileRequest,
   UpgradeGuestRequest,
+  RecordDiceRollRequest,
 } from '../../shared/contracts/api.js';
 import {
   paymentModes,
@@ -151,6 +152,22 @@ export async function parseFinishGameRequest(request: Request): Promise<FinishGa
   if (new Set(winnerPlayerIds).size !== winnerPlayerIds.length)
     throw new ApiValidationError('winnerPlayerIds must not contain duplicates.');
   return { winnerPlayerIds };
+}
+
+export async function parseRecordDiceRollRequest(request: Request): Promise<RecordDiceRollRequest> {
+  const body = await parseJsonObject(request);
+  return {
+    id: readUuid(body, 'id'),
+    dieOne: readDie(body, 'dieOne'),
+    dieTwo: readDie(body, 'dieTwo'),
+  };
+}
+
+function readDie(body: Record<string, unknown>, key: string): number {
+  const value = body[key];
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 6)
+    throw new ApiValidationError(`${key} must be an integer from 1 to 6.`);
+  return value;
 }
 
 function readCurrency(body: Record<string, unknown>): SelectableCurrency {

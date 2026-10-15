@@ -76,7 +76,7 @@ try {
   ]);
 
   const schema = await sql(
-    "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('player_controllers', 'payment_requests', 'command_ledger', 'security_rate_limits', 'game_final_snapshots') ORDER BY name",
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('player_controllers', 'payment_requests', 'command_ledger', 'security_rate_limits', 'game_final_snapshots', 'dice_rolls') ORDER BY name",
   );
   for (const table of [
     'player_controllers',
@@ -84,6 +84,7 @@ try {
     'command_ledger',
     'security_rate_limits',
     'game_final_snapshots',
+    'dice_rolls',
   ]) {
     if (!schema.includes(table)) throw new Error(`Migration did not create ${table}.`);
   }

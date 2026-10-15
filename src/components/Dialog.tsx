@@ -1,5 +1,5 @@
 import { Dialog as HeadlessDialog, DialogPanel, DialogTitle, Transition } from '@headlessui/react';
-import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
+import { useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { buttonCoreClass, buttonToneClass, cx, iconButtonShapeClass } from './ui/class-names';
 import { Eyebrow } from './ui/Text';
 
@@ -17,7 +17,7 @@ interface DialogProps {
 }
 
 /*
- * Entrance motion, driven by the Headless UI `data-closed` state. From `md` up the centred panel
+ * Entrance and exit motion, driven by the Headless UI `data-closed` state. From `md` up the centred panel
  * keeps each visual style's own travel (Classic 4px, Liquid Glass 5px). Below `md` every dialog
  * is a bottom sheet in both styles, so it slides up from the bottom edge instead.
  * Everything is gated on `motion-safe:`, so reduced motion has no closed state to animate from.
@@ -108,8 +108,10 @@ export function Dialog({
   id,
   popoverStyle,
 }: DialogProps) {
+  // The dialog stays mounted for its leave transition; `onClose` runs once that has finished.
+  const [open, setOpen] = useState(true);
   const requestClose = () => {
-    if (!closeDisabled) onClose();
+    if (!closeDisabled) setOpen(false);
   };
   // Headless UI blurs the focused control on Escape before closing; a locked dialog keeps focus.
   const keepFocusWhileLocked = (event: KeyboardEvent<HTMLElement>) => {
@@ -117,7 +119,7 @@ export function Dialog({
   };
 
   return (
-    <Transition show appear>
+    <Transition show={open} appear afterLeave={onClose}>
       <HeadlessDialog
         id={id ?? (className.includes('settings-panel') ? 'settings-panel' : undefined)}
         // `autoFocus` (data-autofocus lookup) otherwise leaves focus on the dialog element; off, it
@@ -146,7 +148,7 @@ export function Dialog({
             <button
               className={closeClass}
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               disabled={closeDisabled}
               aria-label={closeLabel}
             >

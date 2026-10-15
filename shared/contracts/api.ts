@@ -313,3 +313,18 @@ export interface PaymentRequestActionResponse {
   players: Player[];
   transaction?: Transaction;
 }
+
+/** One roll of the two table dice by one player; kept only while the game is active. */
+export interface DiceRoll {
+  id: string;
+  playerId: string;
+  dieOne: number;
+  dieTwo: number;
+  createdAt: string;
+}
+export interface RecordDiceRollRequest {
+  /** Client-generated UUID that makes a retried request idempotent. */
+  id: string;
+  dieOne: number;
+  dieTwo: number;
+}
