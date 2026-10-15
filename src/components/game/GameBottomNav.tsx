@@ -7,7 +7,6 @@ export interface GameBottomNavProps {
   payDisabled: boolean;
   activityDisabled: boolean;
   toolsDisabled: boolean;
-  onSelectWallets: () => void;
   onOpenTools: () => void;
   onPay: () => void;
   onOpenActivity: () => void;
@@ -15,7 +14,7 @@ export interface GameBottomNavProps {
 }
 
 /*
- * Compact-only navigation (`md:hidden`); Wallets is the page itself and Tools opens a sheet. The bar sits above the home indicator and the raised Pay
+ * Compact-only navigation (`md:hidden`); Every destination opens a sheet or screen above the page, so there is no Wallets item. The bar sits above the home indicator and the raised Pay
  * action overlaps it by 12px. `game-bottom-nav` stays as the hook for the e2e checks.
  */
 const navClass = cx(
@@ -25,12 +24,11 @@ const navClass = cx(
   'glass:dark:border-[rgb(255_255_255/0.14)] glass:dark:bg-[rgb(40_49_62/0.78)]',
 );
 const listClass =
-  'mx-auto m-0 grid w-[min(100%,var(--mb-layout-content-max))] list-none grid-cols-5 items-end p-0 px-(--mb-space-2)';
+  'mx-auto m-0 grid w-[min(100%,var(--mb-layout-content-max))] list-none grid-cols-4 items-end p-0 px-(--mb-space-2)';
 const itemClass = cx(
   'relative flex min-h-[56px] w-full min-w-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-control border-0 bg-transparent px-[2px] py-(--mb-space-1)',
   'font-ui text-[0.6875rem] leading-[1.15] font-semibold text-secondary',
   'focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-60',
-  'aria-[current=page]:text-highlight',
 );
 const labelClass = 'max-w-full truncate';
 const payButtonClass = cx(
@@ -59,13 +57,12 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
-/** Wallets, Pay, Activity, Statistics and Tools for the compact game screen. */
+/** Activity, Statistics, Tools and the raised Pay action for the compact game screen. */
 export function GameBottomNav({
   pendingRequests,
   payDisabled,
   activityDisabled,
   toolsDisabled,
-  onSelectWallets,
   onOpenTools,
   onPay,
   onOpenActivity,
@@ -75,38 +72,6 @@ export function GameBottomNav({
   return (
     <nav className={navClass} aria-label={t('gameNavigation')}>
       <ul className={listClass}>
-        <li className="grid">
-          <button type="button" className={itemClass} aria-current="page" onClick={onSelectWallets}>
-            <Icon>
-              <rect x="3" y="6" width="18" height="13" rx="3" />
-              <path d="M16 12.5h2.5M3 10h18" />
-            </Icon>
-            <span className={labelClass}>{t('navWallets')}</span>
-            {pendingRequests > 0 && (
-              <span
-                className={badgeClass}
-                role="status"
-                aria-label={t('navPendingRequests', { count: pendingRequests })}
-              >
-                {pendingRequests}
-              </span>
-            )}
-          </button>
-        </li>
-        <li className="grid justify-items-center">
-          <button type="button" className={payButtonClass} disabled={payDisabled} onClick={onPay}>
-            <Icon>
-              <path d="M7 8h12l-3-3M17 16H5l3 3" />
-            </Icon>
-            <span className="sr-only">{t('navPay')}</span>
-          </button>
-          <span
-            aria-hidden="true"
-            className="text-[0.6875rem] leading-[1.15] font-semibold text-secondary"
-          >
-            {t('navPay')}
-          </span>
-        </li>
         <li className="grid">
           <button
             type="button"
@@ -118,6 +83,15 @@ export function GameBottomNav({
               <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
             </Icon>
             <span className={labelClass}>{t('activity')}</span>
+            {pendingRequests > 0 && (
+              <span
+                className={badgeClass}
+                role="status"
+                aria-label={t('navPendingRequests', { count: pendingRequests })}
+              >
+                {pendingRequests}
+              </span>
+            )}
           </button>
         </li>
         <li className="grid">
@@ -145,6 +119,20 @@ export function GameBottomNav({
             </Icon>
             <span className={labelClass}>{t('navTools')}</span>
           </button>
+        </li>
+        <li className="grid justify-items-center">
+          <button type="button" className={payButtonClass} disabled={payDisabled} onClick={onPay}>
+            <Icon>
+              <path d="M7 8h12l-3-3M17 16H5l3 3" />
+            </Icon>
+            <span className="sr-only">{t('navPay')}</span>
+          </button>
+          <span
+            aria-hidden="true"
+            className="text-[0.6875rem] leading-[1.15] font-semibold text-secondary"
+          >
+            {t('navPay')}
+          </span>
         </li>
       </ul>
     </nav>
