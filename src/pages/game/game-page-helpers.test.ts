@@ -71,8 +71,8 @@ function liveHarness(initialDetails: GameDetails | null, initialHistory: Transac
   const detailsCell = stateCell<GameDetails | null>(initialDetails);
   const historyCell = stateCell<Transaction[] | null>(initialHistory);
   const historyCache: MutableRefObject<Map<string, Transaction[]>> = { current: new Map() };
-  const apply = (event: LiveServerEvent) =>
-    applyLiveEvent(event, detailsCell.set, historyCell.set, historyCache);
+  const apply = (event: LiveServerEvent, historyPlayerId: string | null = null) =>
+    applyLiveEvent(event, detailsCell.set, historyCell.set, historyCache, historyPlayerId);
   return { detailsCell, historyCell, historyCache, apply };
 }
 
@@ -186,6 +186,40 @@ describe('applyLiveEvent', () => {
     const { historyCell, apply } = liveHarness(details(), null);
     apply({ type: 'GAME_COMMITTED', stateVersion: 4, transaction: transaction('t1'), players });
     expect(historyCell.value).toBeNull();
+  });
+
+  it('keeps a player-scoped history filtered when a snapshot arrives', () => {
+    const own = transaction('t1');
+    const others = {
+      ...transaction('t2'),
+      participants: [{ playerId: 'p2', balanceDelta: -50 }],
+    };
+    const { historyCell, historyCache, apply } = liveHarness(details(), [own]);
+    apply(
+      {
+        type: 'GAME_SNAPSHOT',
+        state: { stateVersion: 3, details: details(), transactions: [others, own] },
+      },
+      'p1',
+    );
+    expect(historyCell.value).toEqual([own]);
+    expect(historyCache.current.get('all')).toEqual([others, own]);
+  });
+
+  it('ignores committed transactions that do not involve the scoped player', () => {
+    const own = transaction('t1');
+    const others = {
+      ...transaction('t2'),
+      participants: [{ playerId: 'p2', balanceDelta: -50 }],
+    };
+    const { historyCell, apply } = liveHarness(details(), [own]);
+    apply({ type: 'GAME_COMMITTED', stateVersion: 4, transaction: others, players }, 'p1');
+    expect(historyCell.value).toEqual([own]);
+    apply(
+      { type: 'GAME_COMMITTED', stateVersion: 5, transaction: transaction('t3'), players },
+      'p1',
+    );
+    expect(historyCell.value?.map((item) => item.id)).toEqual(['t3', 't1']);
   });
 
   it('merges finished-game details with client-only fields', () => {
