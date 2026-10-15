@@ -1,8 +1,10 @@
 import type {
   CreateGameRequest,
   DeleteGameResponse,
+  DeletedGameSummary,
   GameDetails,
   GameSummary,
+  RestoreGameResponse,
 } from '../../shared/contracts/api.js';
 import type { Currency } from '../../shared/types/monopoly.js';
 import type { GameRepository } from '../repositories/game-repository.js';
@@ -18,7 +20,9 @@ export interface GameService {
   listGamesForUser(userId: string): Promise<GameSummary[]>;
   createGameForOwner(userId: string, request: CreateGameInput): Promise<GameDetails>;
   getGame(gameId: string): Promise<GameDetails>;
+  listDeletedGamesForUser(userId: string): Promise<DeletedGameSummary[]>;
   deleteGame(gameId: string): Promise<DeleteGameResponse>;
+  restoreGame(gameId: string, userId: string): Promise<RestoreGameResponse>;
   duplicateGameForOwner(
     userId: string,
     gameId: string,
@@ -51,6 +55,10 @@ export class DefaultGameService implements GameService {
   }
   async listGamesForUser(userId: string): Promise<GameSummary[]> {
     return this.games.listSummariesForUser(userId);
+  }
+
+  async listDeletedGamesForUser(userId: string): Promise<DeletedGameSummary[]> {
+    return this.games.listDeletedSummariesForUser(userId);
   }
 
   async createGameForOwner(userId: string, request: CreateGameInput): Promise<GameDetails> {
@@ -117,7 +125,15 @@ export class DefaultGameService implements GameService {
   }
 
   async deleteGame(gameId: string): Promise<DeleteGameResponse> {
-    if (!(await this.games.delete(gameId))) {
+    if (!(await this.games.softDelete(gameId))) {
+      throw new ResourceNotFoundError('Game');
+    }
+
+    return { gameId };
+  }
+
+  async restoreGame(gameId: string, userId: string): Promise<RestoreGameResponse> {
+    if (!(await this.games.restore(gameId, userId))) {
       throw new ResourceNotFoundError('Game');
     }
 

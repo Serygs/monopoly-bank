@@ -117,12 +117,14 @@ export default {
       privacy,
     );
     const rateLimits = new D1SecurityRateLimitRepository(env.MONOPOLY_BANK_DB);
+    const gameRepository = new D1GameRepository(env.MONOPOLY_BANK_DB);
     ctx.waitUntil(
       Promise.all([
         auth.cleanupExpired(),
         rateLimits.cleanup(),
         privacy.cleanupExpiredGuests(),
         privacy.cleanupExpiredOperationalData(),
+        gameRepository.purgeExpiredDeleted(),
       ])
         .then(() => metrics.record('cleanup', 'scheduled', 'success'))
         .catch(() => metrics.record('cleanup', 'scheduled', 'failure')),

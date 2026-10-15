@@ -17,7 +17,7 @@ describe('UI translations', () => {
 
   it('interpolates values without changing user-provided text', () => {
     expect(translate('uk', 'gameRemoved', { name: 'Friday Game' })).toBe(
-      'Гру Friday Game видалено.',
+      'Гру Friday Game переміщено до видалених.',
     );
   });
 

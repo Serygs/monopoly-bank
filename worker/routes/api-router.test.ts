@@ -399,6 +399,8 @@ describe('API router', () => {
       createGameForOwner: async () => gameDetails,
       getGame: async () => gameDetails,
       deleteGame: async () => ({ gameId }),
+      listDeletedGamesForUser: async () => [],
+      restoreGame: async () => ({ gameId }),
       duplicateGame: async () => gameDetails,
       finishGame: async () => gameDetails,
       toggleFavoriteAmount: async () => [],
@@ -442,6 +444,8 @@ describe('API router', () => {
       createGameForOwner: async () => gameDetails,
       getGame: async () => gameDetails,
       deleteGame: async () => ({ gameId }),
+      listDeletedGamesForUser: async () => [],
+      restoreGame: async () => ({ gameId }),
       duplicateGameForOwner: async () => gameDetails,
       finishGame: async () => gameDetails,
       toggleFavoriteAmount: async () => [],
@@ -709,6 +713,45 @@ describe('API router', () => {
     await expect(response.json()).resolves.toEqual({ data: { gameId } });
   });
 
+  it('lists the actor deleted games before treating deleted as a game id', async () => {
+    const listed: string[] = [];
+    const router = createTestRouter({
+      listDeletedGamesForUser: async (userId) => {
+        listed.push(userId);
+        return [];
+      },
+    });
+
+    const response = await router(new Request('https://example.test/api/games/deleted'));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: [] });
+    expect(listed).toHaveLength(1);
+  });
+
+  it('restores a deleted game for its owner and 404s otherwise', async () => {
+    const restored: string[] = [];
+    const router = createTestRouter({
+      restoreGame: async (requestedGameId) => {
+        restored.push(requestedGameId);
+        return { gameId: requestedGameId };
+      },
+    });
+    const ok = await router(
+      new Request(`https://example.test/api/games/${gameId}/restore`, { method: 'POST' }),
+    );
+    expect(ok.status).toBe(200);
+    expect(restored).toEqual([gameId]);
+    await expect(ok.json()).resolves.toEqual({ data: { gameId } });
+
+    const missing = await createTestRouter({
+      restoreGame: async () => {
+        throw new ResourceNotFoundError('Game');
+      },
+    })(new Request(`https://example.test/api/games/${gameId}/restore`, { method: 'POST' }));
+    expect(missing.status).toBe(404);
+  });
+
   it('returns 404 for a missing player history', async () => {
     const router = createTestRouter({
       listPlayerTransactions: async () => {
@@ -753,6 +796,8 @@ function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {
     createGameForOwner: async (_userId, request) => games.createGame(request),
     getGame: async () => gameDetails,
     deleteGame: async (requestedGameId) => ({ gameId: requestedGameId }),
+    listDeletedGamesForUser: async () => [],
+    restoreGame: async (requestedGameId) => ({ gameId: requestedGameId }),
     ...pickGameOverrides(overrides),
   };
   const banking: BankingService = {
@@ -793,14 +838,18 @@ interface TestServiceOverrides {
   createGame: GameService['createGame'];
   getGame: GameService['getGame'];
   deleteGame: GameService['deleteGame'];
+  listDeletedGamesForUser: GameService['listDeletedGamesForUser'];
+  restoreGame: GameService['restoreGame'];
   createTransaction: BankingService['createTransaction'];
   listTransactions: BankingService['listTransactions'];
   listPlayerTransactions: BankingService['listPlayerTransactions'];
 }
 
 function pickGameOverrides(overrides: Partial<TestServiceOverrides>): Partial<GameService> {
-  const { createGame, getGame, deleteGame } = overrides;
+  const { createGame, getGame, deleteGame, listDeletedGamesForUser, restoreGame } = overrides;
   return {
+    ...(listDeletedGamesForUser === undefined ? {} : { listDeletedGamesForUser }),
+    ...(restoreGame === undefined ? {} : { restoreGame }),
     ...(createGame === undefined ? {} : { createGame }),
     ...(getGame === undefined ? {} : { getGame }),
     ...(deleteGame === undefined ? {} : { deleteGame }),
