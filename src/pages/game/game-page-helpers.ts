@@ -38,16 +38,31 @@ export function walletActionTone(action: ActionType): 'income' | 'expense' {
     : 'expense';
 }
 
+export function transactionInvolvesPlayer(transaction: Transaction, playerId: string): boolean {
+  return transaction.participants.some((participant) => participant.playerId === playerId);
+}
+
+export function filterTransactionsForPlayer(
+  transactions: Transaction[],
+  playerId: string | null,
+): Transaction[] {
+  return playerId === null
+    ? transactions
+    : transactions.filter((transaction) => transactionInvolvesPlayer(transaction, playerId));
+}
+
+/** `historyPlayerId` is the player whose history dialog is open, or null for the whole game. */
 export function applyLiveEvent(
   event: LiveServerEvent,
   setDetails: React.Dispatch<React.SetStateAction<GameDetails | null>>,
   setHistory: React.Dispatch<React.SetStateAction<Transaction[] | null>>,
   historyCache: MutableRefObject<Map<string, Transaction[]>>,
+  historyPlayerId: string | null = null,
 ) {
   if (event.type === 'GAME_SNAPSHOT') {
     historyCache.current.set('all', event.state.transactions);
     setDetails((current) => withClientGameDetails(event.state.details, current));
-    setHistory(event.state.transactions);
+    setHistory(filterTransactionsForPlayer(event.state.transactions, historyPlayerId));
     return;
   }
   if (event.type === 'LOBBY_UPDATED') {
@@ -62,7 +77,8 @@ export function applyLiveEvent(
     historyCache.current.clear();
     setDetails((current) => (current === null ? current : { ...current, players: event.players }));
     setHistory((current) =>
-      current === null
+      current === null ||
+      (historyPlayerId !== null && !transactionInvolvesPlayer(event.transaction, historyPlayerId))
         ? current
         : [
             event.transaction,
