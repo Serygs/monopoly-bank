@@ -124,6 +124,7 @@ async function route(
   const diceRollsMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)\/dice-rolls$/.exec(pathname);
   const duplicateMatch = /^\/api\/games\/([^/]+)\/duplicate$/.exec(pathname);
   const finishMatch = /^\/api\/games\/([^/]+)\/finish$/.exec(pathname);
+  const restoreMatch = /^\/api\/games\/([^/]+)\/restore$/.exec(pathname);
   const startMatch = /^\/api\/games\/([^/]+)\/start$/.exec(pathname);
   const invitationMatch = /^\/api\/games\/([^/]+)\/invitations$/.exec(pathname);
   const favoriteMatch = /^\/api\/games\/([^/]+)\/favorite-amounts$/.exec(pathname);
@@ -270,6 +271,10 @@ async function route(
     return success(await dependencies.games.getGame(access.gameId));
   }
 
+  if (pathname === '/api/games/deleted' && request.method === 'GET') {
+    return success(await dependencies.games.listDeletedGamesForUser(actor.id));
+  }
+
   if (pathname === '/api/games') {
     if (request.method === 'GET') {
       return success(await dependencies.games.listGamesForUser(actor.id));
@@ -321,6 +326,10 @@ async function route(
     const gameId = parseResourceId(gameMatch[1], 'gameId');
     await dependencies.access.requireOwner(gameId, actor.id);
     return success(await dependencies.games.deleteGame(gameId));
+  }
+  if (restoreMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(restoreMatch[1], 'gameId');
+    return success(await dependencies.games.restoreGame(gameId, actor.id));
   }
   if (invitationMatch !== null && request.method === 'POST') {
     const gameId = parseResourceId(invitationMatch[1], 'gameId');

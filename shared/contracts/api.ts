@@ -31,6 +31,16 @@ export interface GameSummary {
   joinCode?: string;
 }
 
+/** How long a removed game stays restorable before the scheduled cleanup deletes it. */
+export const DELETED_GAME_RETENTION_DAYS = 30;
+
+/** A removed game in the owner's "Deleted" list; it is stored (and shown) as finished. */
+export interface DeletedGameSummary extends GameSummary {
+  deletedAt: string;
+  /** When the scheduled cleanup removes the game for good unless it is restored first. */
+  purgeAt: string;
+}
+
 export interface GameDetails {
   game: Game;
   players: Player[];
@@ -53,6 +63,8 @@ export interface PlayerController {
 export interface DeleteGameResponse {
   gameId: string;
 }
+
+export type RestoreGameResponse = DeleteGameResponse;
 
 export interface CreateGameRequest {
   name: string;

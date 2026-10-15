@@ -52,7 +52,7 @@ export class D1GameAccessRepository implements GameAccessRepository {
         `SELECT game_members.role
        FROM games
        INNER JOIN game_members ON game_members.game_id = games.id
-       WHERE games.id = ? AND games.owner_user_id IS NOT NULL AND game_members.user_id = ?`,
+       WHERE games.id = ? AND games.owner_user_id IS NOT NULL AND games.deleted_at IS NULL AND game_members.user_id = ?`,
       )
       .bind(gameId, userId)
       .first<{ role: GameMemberRole }>();
@@ -122,7 +122,7 @@ export class D1GameAccessRepository implements GameAccessRepository {
   } | null> {
     const row = await this.database
       .prepare(
-        'SELECT id, game_access_password_hash, game_access_password_salt, status FROM games WHERE join_code = ? AND owner_user_id IS NOT NULL',
+        'SELECT id, game_access_password_hash, game_access_password_salt, status FROM games WHERE join_code = ? AND owner_user_id IS NOT NULL AND deleted_at IS NULL',
       )
       .bind(joinCode)
       .first<{

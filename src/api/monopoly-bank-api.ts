@@ -14,6 +14,8 @@ import type {
   CreateTransactionRequest,
   CreateTransactionResponse,
   DeleteGameResponse,
+  DeletedGameSummary,
+  RestoreGameResponse,
   FinishGameRequest,
   GameDetails,
   GameSummary,
@@ -66,6 +68,8 @@ export interface MonopolyBankApi {
   revokeInvitations(gameId: string): Promise<RevokeInvitationResponse>;
   getGame(gameId: string): Promise<GameDetails>;
   deleteGame(gameId: string): Promise<DeleteGameResponse>;
+  listDeletedGames(): Promise<DeletedGameSummary[]>;
+  restoreGame(gameId: string): Promise<RestoreGameResponse>;
   duplicateGame(gameId: string, gameAccessPassword: string): Promise<GameDetails>;
   startGame(gameId: string): Promise<GameDetails>;
   finishGame(gameId: string, input: FinishGameRequest): Promise<GameDetails>;
@@ -191,6 +195,14 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   async deleteGame(gameId: string): Promise<DeleteGameResponse> {
     return request<DeleteGameResponse>(`/api/games/${encodeURIComponent(gameId)}`, {
       method: 'DELETE',
+    });
+  }
+  async listDeletedGames(): Promise<DeletedGameSummary[]> {
+    return request<DeletedGameSummary[]>('/api/games/deleted');
+  }
+  async restoreGame(gameId: string): Promise<RestoreGameResponse> {
+    return request<RestoreGameResponse>(`/api/games/${encodeURIComponent(gameId)}/restore`, {
+      method: 'POST',
     });
   }
   async duplicateGame(gameId: string, gameAccessPassword: string): Promise<GameDetails> {

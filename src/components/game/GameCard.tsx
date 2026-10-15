@@ -1,4 +1,4 @@
-import type { GameSummary } from '../../../shared/contracts/api';
+import type { DeletedGameSummary, GameSummary } from '../../../shared/contracts/api';
 import { useLanguage } from '../../i18n/language-context';
 import type { GameStatus } from '../../../shared/types/monopoly';
 import { OverflowMenu } from '../OverflowMenu';
@@ -84,6 +84,42 @@ export function GameCard({
             },
           ]}
         />
+      </Toolbar>
+    </Card>
+  );
+}
+
+export interface DeletedGameCardProps {
+  summary: DeletedGameSummary;
+  /** True while this game is being restored. */
+  restoring: boolean;
+  onRestore: () => void;
+}
+
+/** A removed game: shown as finished, with the last day it can be restored. */
+export function DeletedGameCard({ summary, restoring, onRestore }: DeletedGameCardProps) {
+  const { locale, t } = useLanguage();
+  return (
+    <Card as="article" variant="game">
+      <div className={copyClass}>
+        <BankSeal variant="card" />
+        <div>
+          <span className={cx(statusClass, statusToneClass.FINISHED)}>
+            {t('gameStatusFinished')}
+          </span>
+          <h2 title={summary.game.name}>{summary.game.name}</h2>
+          <div className={metaClass}>
+            <span>{t('playersCount', { count: summary.playerCount })}</span>
+            <span>
+              {t('deletedRestorableUntil', { date: formatDate(summary.purgeAt, locale) })}
+            </span>
+          </div>
+        </div>
+      </div>
+      <Toolbar variant="game-card">
+        <Button variant="primary" disabled={restoring} onClick={onRestore}>
+          {restoring ? t('restoring') : t('restoreGame')}
+        </Button>
       </Toolbar>
     </Card>
   );
