@@ -6,7 +6,7 @@ import { LanguageContext } from '../i18n/language-context';
 import { languageLocale, translate, type Language } from '../i18n/translations';
 import { ActivityScreen } from './ActivityScreen';
 
-function renderActivity(language: Language) {
+function renderActivity(language: Language, showPending = true) {
   return render(
     <LanguageContext
       value={{
@@ -21,6 +21,7 @@ function renderActivity(language: Language) {
         players={[]}
         currency="K"
         liveTransactions={[]}
+        showPending={showPending}
         onClose={() => {}}
       />
     </LanguageContext>,
@@ -37,6 +38,16 @@ describe('activity accessibility', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('omits the Pending tab when payments are settled immediately', async () => {
+    renderActivity('en', false);
+    await screen.findByText(translate('en', 'noActivity'));
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      translate('en', 'activityAll'),
+      translate('en', 'activityMine'),
+    ]);
   });
 
   it.each(['en', 'uk'] as const)(

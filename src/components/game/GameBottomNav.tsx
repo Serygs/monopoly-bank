@@ -2,22 +2,20 @@ import type { ReactNode } from 'react';
 import { useLanguage } from '../../i18n/language-context';
 import { cx } from '../ui/class-names';
 
-export type GameView = 'wallets' | 'tools';
-
 export interface GameBottomNavProps {
-  view: GameView;
   pendingRequests: number;
   payDisabled: boolean;
   activityDisabled: boolean;
   toolsDisabled: boolean;
-  onSelectView: (view: GameView) => void;
+  onSelectWallets: () => void;
+  onOpenTools: () => void;
   onPay: () => void;
   onOpenActivity: () => void;
   onOpenStatistics: () => void;
 }
 
 /*
- * Compact-only navigation (`md:hidden`): the bar sits above the home indicator and the raised Pay
+ * Compact-only navigation (`md:hidden`); Wallets is the page itself and Tools opens a sheet. The bar sits above the home indicator and the raised Pay
  * action overlaps it by 12px. `game-bottom-nav` stays as the hook for the e2e checks.
  */
 const navClass = cx(
@@ -63,12 +61,12 @@ function Icon({ children }: { children: ReactNode }) {
 
 /** Wallets, Pay, Activity, Statistics and Tools for the compact game screen. */
 export function GameBottomNav({
-  view,
   pendingRequests,
   payDisabled,
   activityDisabled,
   toolsDisabled,
-  onSelectView,
+  onSelectWallets,
+  onOpenTools,
   onPay,
   onOpenActivity,
   onOpenStatistics,
@@ -78,12 +76,7 @@ export function GameBottomNav({
     <nav className={navClass} aria-label={t('gameNavigation')}>
       <ul className={listClass}>
         <li className="grid">
-          <button
-            type="button"
-            className={itemClass}
-            aria-current={view === 'wallets' ? 'page' : undefined}
-            onClick={() => onSelectView('wallets')}
-          >
+          <button type="button" className={itemClass} aria-current="page" onClick={onSelectWallets}>
             <Icon>
               <rect x="3" y="6" width="18" height="13" rx="3" />
               <path d="M16 12.5h2.5M3 10h18" />
@@ -145,8 +138,7 @@ export function GameBottomNav({
             type="button"
             className={itemClass}
             disabled={toolsDisabled}
-            aria-current={view === 'tools' ? 'page' : undefined}
-            onClick={() => onSelectView('tools')}
+            onClick={onOpenTools}
           >
             <Icon>
               <path d="M14.5 6.5a4 4 0 0 0-5 5L4 17l3 3 5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-2-.5-.5-2z" />
