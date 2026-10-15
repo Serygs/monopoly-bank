@@ -574,6 +574,13 @@ reachable at every size.
   action row. Other players are one-line rows (colour swatch, name, balance,
   textual Bankrupt badge), one column at every compact width, with bankrupt rows
   muted but still at readable contrast. Rows are display-only.
+- **Tools sheet.** The dice card records every roll of the controlled wallet on
+  the server and lists the last ten rolls (two mini dice, total, DOUBLE, time)
+  with a chip per player to read anyone's history; a roll is saved only for a
+  wallet the viewer controls, and the history disappears when the game ends. The
+  calculator is a chained pocket calculator (digits, decimal, + − × ÷, %, ±, ⌫, C,
+  repeated equals, the last five calculations to reuse, physical keyboard) and
+  never changes balances.
 - **Fit target.** On 393×852 and 430×932 the Wallets view for up to six players
   fits without vertical scrolling; the nav labels must not truncate in English or
   Ukrainian.
@@ -594,14 +601,23 @@ list, the form, and the confirmation. Each step fits one phone screen
 - **Recipient.** With exactly one possible recipient it is preselected and shown
   as one read-only line. With several, they are horizontally scrolling chips
   (swatch, name, balance) that keep `aria-pressed`.
-- **Amount.** One large amount input with the unit toggle (×1, K, M) beside it
-  and a single "= full amount" caption when the unit is not ×1. The on-screen
-  keypad is the input method, so the amount field does not raise the system
-  keyboard (`inputMode="none"`); a physical keyboard still types into it. The
-  keypad is four 48px rows.
+- **Amount.** One large amount input with the unit toggle (×1, K, M) beside it.
+  Switching the unit re-expresses the typed amount (85 000 in ×1 is 85 in K and
+  0,085 in M); it never clears it. The keypad has a decimal key (the locale's
+  separator, disabled in ×1) so 3,2 M is possible; K allows three fraction
+  digits and M six, so the amount always stays a whole number. A typed comma or
+  dot is accepted. The on-screen keypad is the input method, so the amount field
+  does not raise the system keyboard (`inputMode="none"`); a physical keyboard
+  still types into it. The keypad is four 48px rows.
+- **Total in front.** The whole amount with its currency symbol ("= $85 000") sits
+  directly under the field for every unit, together with Clear and the favourite
+  toggle, so the player never scrolls to see what will move.
 - **Quick amounts.** One horizontally scrolling row ordered favourites, recent,
-  standard, without duplicates. A favourite shows a star inside its chip; one
-  toggle beside the amount adds or removes the current amount as a favourite.
+  then presets, without duplicates. Presets scale to the game's starting balance:
+  a round 1, 2 or 5 × 10ⁿ unit at or below a tenth of it, times 1, 1.5, 2, 3, 5
+  and 10 (15 000 000 gives 1M, 1.5M, 2M, 3M, 5M, 10M). A favourite shows a star
+  inside its chip; one toggle beside the amount adds or removes the current
+  amount as a favourite.
 - **Comment** is a collapsed "Add comment" row that expands in place.
 - **Pass GO** has no inputs, so it opens directly on the confirmation.
 - **Confirmation** leads with the amount and the from → to line, then the

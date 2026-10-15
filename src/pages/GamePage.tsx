@@ -320,7 +320,11 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
       )}
       {details.game.status === 'ACTIVE' && (
         <div className={cx(gameToolsClass, 'max-md:hidden')}>
-          <DiceRoller />
+          <DiceRoller
+            gameId={gameId}
+            players={details.players}
+            rollerPlayerId={activeWallet?.id ?? null}
+          />
           <TableCalculator />
         </div>
       )}
@@ -331,7 +335,11 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           onClose={() => setToolsOpen(false)}
         >
           <div className="mt-(--mb-space-4) grid gap-(--mb-space-4)">
-            <DiceRoller />
+            <DiceRoller
+              gameId={gameId}
+              players={details.players}
+              rollerPlayerId={activeWallet?.id ?? null}
+            />
             <TableCalculator />
           </div>
         </Dialog>
