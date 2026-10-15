@@ -6,12 +6,12 @@ import { GameBottomNav, type GameBottomNavProps } from './GameBottomNav';
 
 function renderNav(overrides: Partial<GameBottomNavProps> = {}) {
   const props: GameBottomNavProps = {
-    view: 'wallets',
     pendingRequests: 0,
     payDisabled: false,
     activityDisabled: false,
     toolsDisabled: false,
-    onSelectView: vi.fn(),
+    onSelectWallets: vi.fn(),
+    onOpenTools: vi.fn(),
     onPay: vi.fn(),
     onOpenActivity: vi.fn(),
     onOpenStatistics: vi.fn(),
@@ -35,12 +35,15 @@ describe('GameBottomNav', () => {
     expect(buttons).toEqual(['Wallets', 'Pay', 'Activity', 'Statistics', 'Tools']);
   });
 
-  it('marks the current view and switches views', async () => {
-    const { props, user } = renderNav({ view: 'tools' });
-    expect(screen.getByRole('button', { name: 'Tools' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('button', { name: 'Wallets' })).not.toHaveAttribute('aria-current');
-    await user.click(screen.getByRole('button', { name: 'Wallets' }));
-    expect(props.onSelectView).toHaveBeenCalledWith('wallets');
+  it('marks Wallets as the current page and opens Tools as a sheet', async () => {
+    const { props, user } = renderNav();
+    const wallets = screen.getByRole('button', { name: 'Wallets' });
+    expect(wallets).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Tools' })).not.toHaveAttribute('aria-current');
+    await user.click(wallets);
+    await user.click(screen.getByRole('button', { name: 'Tools' }));
+    expect(props.onSelectWallets).toHaveBeenCalledTimes(1);
+    expect(props.onOpenTools).toHaveBeenCalledTimes(1);
   });
 
   it('runs the pay, activity and statistics actions', async () => {
