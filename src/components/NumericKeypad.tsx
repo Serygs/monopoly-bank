@@ -1,8 +1,14 @@
 import type { ReactNode } from 'react';
 import { useLanguage } from '../i18n/language-context';
-import { appendMoneyDigit, removeMoneyDigit } from '../utils/money-input';
+import { decimalSeparator } from '../utils/money';
+import {
+  appendDecimalSeparator,
+  appendMoneyDigit,
+  maxFractionDigits,
+  removeMoneyDigit,
+} from '../utils/money-input';
 import type { AmountUnit } from '../utils/preferences';
-import { keyButtonClass } from './ui/class-names';
+import { cx, keyButtonClass } from './ui/class-names';
 
 const keypadClass =
   'grid grid-cols-[repeat(3,1fr)] content-start gap-[6px] [&>button]:min-h-12 md:mx-auto md:w-[min(100%,360px)]';
@@ -16,7 +22,9 @@ export function NumericKeypad({
   unit: AmountUnit;
   onChange: (digits: string) => void;
 }) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  const separator = decimalSeparator(locale);
+  const decimalDisabled = maxFractionDigits(unit) === 0 || digits.includes('.');
   return (
     <div className={keypadClass} role="group" aria-label={t('numericKeypad')}>
       <>
@@ -26,11 +34,17 @@ export function NumericKeypad({
           </KeypadKey>
         ))}
       </>
+      <KeypadKey
+        label={t('keypadDecimal')}
+        disabled={decimalDisabled}
+        onPress={() => onChange(appendDecimalSeparator(digits, unit))}
+      >
+        {separator}
+      </KeypadKey>
+      <KeypadKey onPress={() => onChange(appendMoneyDigit(digits, '0', unit))}>0</KeypadKey>
       <KeypadKey label={t('keypadBackspace')} onPress={() => onChange(removeMoneyDigit(digits))}>
         ⌫
       </KeypadKey>
-      <KeypadKey onPress={() => onChange(appendMoneyDigit(digits, '0', unit))}>0</KeypadKey>
-      <KeypadKey onPress={() => onChange('')}>{t('clear')}</KeypadKey>
     </div>
   );
 }
@@ -38,15 +52,23 @@ export function NumericKeypad({
 /** One key of the keypad; `label` names a key whose face is a symbol. */
 function KeypadKey({
   label,
+  disabled = false,
   onPress,
   children,
 }: {
   label?: string;
+  disabled?: boolean;
   onPress: () => void;
   children: ReactNode;
 }) {
   return (
-    <button type="button" className={keyButtonClass} aria-label={label} onClick={onPress}>
+    <button
+      type="button"
+      className={cx(keyButtonClass, 'disabled:cursor-not-allowed disabled:opacity-48')}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onPress}
+    >
       {children}
     </button>
   );

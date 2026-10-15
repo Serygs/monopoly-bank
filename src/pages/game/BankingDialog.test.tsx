@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Player } from '../../../shared/types/monopoly';
@@ -37,6 +37,89 @@ function renderDialog(players: Player[], overrides: Partial<BankingDialogProps> 
   );
   return { props, user: userEvent.setup() };
 }
+
+function press(user: ReturnType<typeof userEvent.setup>, ...keys: string[]) {
+  const keypad = screen.getByRole('group', { name: 'Numeric keypad' });
+  return keys.reduce(
+    (chain, key) =>
+      chain.then(() =>
+        user.click(
+          within(keypad).getByRole('button', {
+            name: key === ',' ? 'Decimal separator' : key,
+            exact: true,
+          }),
+        ),
+      ),
+    Promise.resolve(),
+  );
+}
+
+describe('BankingDialog amount entry', () => {
+  it('keeps the typed amount when the unit changes and recalculates it', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    await press(user, '8', '5', '0', '0', '0');
+    const amount = screen.getByRole('textbox', { name: 'Amount' });
+    expect(amount).toHaveValue('85 000');
+    expect(screen.getByText('= $85 000')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Thousands' }));
+    expect(amount).toHaveValue('85');
+    expect(screen.getByText('= $85 000')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Millions' }));
+    expect(amount).toHaveValue('0.085');
+    expect(screen.getByText('= $85 000')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    expect(amount).toHaveValue('85 000');
+  });
+
+  it('takes a decimal in millions and shows the whole total in front', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    expect(screen.getByRole('button', { name: 'Decimal separator' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Millions' }));
+    await press(user, '3', ',', '2');
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('3.2');
+    expect(screen.getByText('= $3 200 000')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Decimal separator' })).toBeDisabled();
+  });
+
+  it('accepts a comma typed into the field', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    await user.click(screen.getByRole('button', { name: 'Millions' }));
+    await user.type(screen.getByRole('textbox', { name: 'Amount' }), '2,5');
+    expect(screen.getByText('= $2 500 000')).toBeInTheDocument();
+  });
+
+  it('clears the amount with the clear button', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeDisabled();
+    await press(user, '7');
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('');
+  });
+
+  it('offers quick amounts scaled to the starting balance', async () => {
+    const { user } = renderDialog([olena, taras], { startingBalance: 15_000_000 });
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    const quick = screen.getByRole('group', { name: 'Quick' });
+    const labels = within(quick)
+      .getAllByRole('button')
+      .map((chip) => chip.textContent);
+    expect(labels).toEqual([
+      '$1 000 000',
+      '$1 500 000',
+      '$2 000 000',
+      '$3 000 000',
+      '$5 000 000',
+      '$10 000 000',
+    ]);
+  });
+});
 
 describe('BankingDialog compact flow', () => {
   it('preselects the only recipient and skips the choice', async () => {

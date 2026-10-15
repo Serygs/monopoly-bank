@@ -7,7 +7,7 @@ import { mergeQuickAmounts } from '../utils/quick-amounts';
 import { AmountInput } from './AmountInput';
 import { useAmountInput } from './amount-input-state';
 import { NumericKeypad } from './NumericKeypad';
-import { FieldHint, MoneyValue } from './ui';
+import { MoneyValue } from './ui';
 import { cx } from './ui/class-names';
 
 const standardAmounts = [100_000, 200_000, 500_000, 1_000_000, 2_000_000] as const;
@@ -16,6 +16,13 @@ const standardAmounts = [100_000, 200_000, 500_000, 1_000_000, 2_000_000] as con
 const amountFieldClass = cx(
   'dialog-field amount-field-large',
   '[&_input]:font-money [&_input]:text-[1.5rem] [&_input]:font-bold [&_input]:tabular-nums',
+);
+/* The total the transfer will move, right under the field so it never needs scrolling to. */
+const totalClass =
+  'min-w-0 font-money text-[1.0625rem] font-bold tracking-[-0.01em] text-primary tabular-nums wrap-anywhere';
+const clearClass = cx(
+  'inline-flex min-h-(--mb-control-height-md) items-center rounded-control border-0 bg-transparent px-(--mb-space-2) font-semibold text-secondary',
+  'disabled:cursor-not-allowed disabled:opacity-48 fine-pointer:enabled:hover:text-primary',
 );
 const chipClass = cx(
   'inline-flex min-h-(--mb-control-height-md) shrink-0 snap-start items-center gap-[6px] rounded-pill border border-border bg-surface-elevated px-[14px] py-[7px] font-semibold text-primary',
@@ -39,6 +46,7 @@ export function AmountSelector({
   onToggleFavorite,
   onQuickAmountSelect,
   currency,
+  presets = standardAmounts,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -47,6 +55,8 @@ export function AmountSelector({
   onToggleFavorite?: (amount: number) => void;
   onQuickAmountSelect?: (amount: number) => void;
   currency: Currency;
+  /** Quick amounts after the favourites and recent ones; defaults to fixed round amounts. */
+  presets?: readonly number[];
 }) {
   const { t } = useLanguage();
   const inputId = useId();
@@ -58,8 +68,7 @@ export function AmountSelector({
   const selected = Number(value);
   const hasAmount = Number.isSafeInteger(selected) && selected > 0;
   const isFavorite = hasAmount && favorites.includes(selected);
-  const showFullAmount = hasAmount && synced.unit !== 'ONES';
-  const quickAmounts = mergeQuickAmounts(favorites, recent, standardAmounts);
+  const quickAmounts = mergeQuickAmounts(favorites, recent, presets);
   return (
     <div className="grid gap-(--mb-space-3)">
       <div className={amountFieldClass}>
@@ -74,15 +83,23 @@ export function AmountSelector({
           keypad
         />
       </div>
-      {(showFullAmount || onToggleFavorite !== undefined) && (
-        <div className="flex min-h-(--mb-control-height-md) items-center justify-between gap-(--mb-space-3)">
-          {showFullAmount ? (
-            <FieldHint>
-              {t('amountFullHint', { amount: formatMoney(selected, currency) })}
-            </FieldHint>
-          ) : (
-            <span />
-          )}
+      <div className="flex min-h-(--mb-control-height-md) items-center justify-between gap-(--mb-space-3)">
+        {hasAmount ? (
+          <strong className={totalClass} aria-live="polite">
+            {t('amountFullHint', { amount: formatMoney(selected, currency) })}
+          </strong>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-(--mb-space-2)">
+          <button
+            type="button"
+            className={clearClass}
+            disabled={synced.digits === ''}
+            onClick={() => changeDigits('')}
+          >
+            {t('clear')}
+          </button>
           {onToggleFavorite !== undefined && (
             <button
               type="button"
@@ -100,7 +117,7 @@ export function AmountSelector({
             </button>
           )}
         </div>
-      )}
+      </div>
       <NumericKeypad digits={synced.digits} unit={synced.unit} onChange={changeDigits} />
       <div className={chipRowClass} role="group" aria-label={t('quickAmounts')}>
         {quickAmounts.map((amount) => (
