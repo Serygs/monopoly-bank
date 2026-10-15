@@ -16,6 +16,7 @@ export type PaymentRequestAction = 'accept' | 'decline';
  */
 const inboxClass = cx(
   'payment-inbox my-(--mb-space-6) rounded-card-large border border-accent bg-surface-subtle p-(--mb-space-5) shadow-sm',
+  'max-md:my-(--mb-space-3) max-md:p-(--mb-space-3) max-md:[&_h2]:text-[1.125rem] max-md:[&>p]:mt-(--mb-space-2) max-md:[&>p]:mb-0',
   '[&>header]:flex [&>header]:items-center [&>header]:justify-between [&>header]:gap-(--mb-space-3)',
   '[&>ol]:mx-0 [&>ol]:mt-(--mb-space-4) [&>ol]:mb-0 [&>ol]:grid [&>ol]:list-none [&>ol]:gap-(--mb-space-3) [&>ol]:p-0',
   '[&_li]:flex [&_li]:items-center [&_li]:justify-between [&_li]:gap-(--mb-space-3) [&_li]:rounded-control [&_li]:border [&_li]:border-border [&_li]:bg-surface-elevated [&_li]:p-(--mb-space-4)',

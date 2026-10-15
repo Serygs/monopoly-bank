@@ -38,9 +38,9 @@ const layoutClass = cx(
 const groupClass =
   'min-w-0 [&>h3]:mx-0 [&>h3]:mt-0 [&>h3]:mb-(--mb-space-3) [&>h3]:text-small [&>h3]:font-semibold [&>h3]:text-secondary';
 
-/** Two columns once the group is 20rem wide, and always from `lg`. */
+/** One-line rows below `md`; from there two columns once the group is 20rem wide, always from `lg`. */
 const gridClass =
-  'grid grid-cols-1 gap-(--mb-space-3) @min-[20rem]:grid-cols-2 lg:grid-cols-2 lg:gap-(--mb-space-4)';
+  'grid grid-cols-1 gap-(--mb-space-2) md:gap-(--mb-space-3) md:@min-[20rem]:grid-cols-2 lg:grid-cols-2 lg:gap-(--mb-space-4)';
 
 /** "Player wallets" section: wallet switcher, the controlled wallet and everyone else's. */
 export function WalletsSection({
@@ -56,12 +56,15 @@ export function WalletsSection({
 }: WalletsSectionProps) {
   const { t } = useLanguage();
   return (
-    <section className="wallets-section mt-(--mb-space-7)" aria-labelledby="player-wallets-title">
-      <header className="mb-(--mb-space-4) flex items-end justify-between gap-(--mb-space-4)">
+    <section
+      className="wallets-section mt-(--mb-space-7) max-md:mt-(--mb-space-4)"
+      aria-labelledby="player-wallets-title"
+    >
+      <header className="mb-(--mb-space-4) max-md:sr-only flex items-end justify-between gap-(--mb-space-4)">
         <h2 id="player-wallets-title">{t('playerWallets')}</h2>
       </header>
       {controlledWallets.length > 0 && (
-        <fieldset className={switcherClass}>
+        <fieldset className={cx(switcherClass, controlledWallets.length === 1 && 'max-md:hidden')}>
           <legend>{t('walletSwitcher')}</legend>
           <div>
             {controlledWallets.map((wallet) => {
@@ -94,7 +97,7 @@ export function WalletsSection({
             className={cx(groupClass, 'md:grid md:grid-rows-[auto_1fr] md:[&_.wallet-card]:h-full')}
             aria-label={t('walletTitle', { name: activeWallet.name })}
           >
-            <h3>{t('yourWallet')}</h3>
+            <h3 className="max-md:sr-only">{t('yourWallet')}</h3>
             <WalletCard
               player={activeWallet}
               players={players}

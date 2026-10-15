@@ -26,7 +26,8 @@ const cardClass = cx(
   'glass:text-primary glass:backdrop-blur-[22px] glass:backdrop-saturate-[1.35]',
 );
 const readonlyCardClass = cx(
-  'min-h-[154px] border-border bg-surface-elevated p-(--mb-space-5) text-primary shadow-sm',
+  'min-h-[154px] border-border bg-surface-elevated p-(--mb-space-5) shadow-sm',
+  'max-md:min-h-0 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:items-center max-md:gap-x-(--mb-space-3) max-md:p-(--mb-space-3) max-md:shadow-none',
   'glass:border-y-[rgb(85_98_116/0.14)] glass:border-e-[rgb(85_98_116/0.14)] glass:bg-[rgb(255_255_255/0.54)]',
   'glass:dark:border-y-[rgb(255_255_255/0.14)] glass:dark:border-e-[rgb(255_255_255/0.14)] glass:dark:bg-[rgb(40_49_62/0.64)]',
 );
@@ -43,12 +44,15 @@ const activeCardClass = cx(
   'glass:dark:fine-pointer:enabled:hover:border-y-[color:color-mix(in_srgb,var(--mb-color-accent)_48%,rgb(255_255_255/0.2))] glass:dark:fine-pointer:enabled:hover:border-e-[color:color-mix(in_srgb,var(--mb-color-accent)_48%,rgb(255_255_255/0.2))]',
   'glass:dark:fine-pointer:enabled:hover:shadow-[0_18px_46px_rgb(0_0_0/0.3),0_0_0_1px_rgb(137_169_207/0.12),inset_0_1px_0_rgb(255_255_255/0.16)]',
 );
-const prominentCardClass = 'min-h-[210px] p-[clamp(var(--mb-space-5),5vw,var(--mb-space-7))]';
+const prominentCardClass =
+  'min-h-[210px] p-[clamp(var(--mb-space-5),5vw,var(--mb-space-7))] max-md:min-h-[120px] max-md:gap-(--mb-space-3) max-md:p-(--mb-space-4)';
 const standardActiveCardClass = 'min-h-[154px] p-(--mb-space-5)';
 
-const headingClass = 'grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-(--mb-space-2)';
-const nameClass = 'min-w-0 text-[1rem] leading-[1.25] font-semibold text-inherit wrap-anywhere';
-const badgesClass = 'col-span-full flex flex-wrap gap-(--mb-space-2)';
+const headingClass =
+  'grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-(--mb-space-2) max-md:flex';
+const nameClass =
+  'min-w-0 max-md:flex-1 text-[1rem] leading-[1.25] font-semibold text-inherit wrap-anywhere';
+const badgesClass = 'col-span-full flex flex-wrap gap-(--mb-space-2) max-md:flex-none';
 const badgeClass =
   'inline-flex min-h-[26px] w-fit items-center rounded-pill border border-[color:color-mix(in_srgb,currentColor_42%,transparent)] px-(--mb-space-2) py-[2px] text-meta font-semibold';
 const badgeToneClass = {
@@ -61,7 +65,7 @@ const badgeToneClass = {
 const balanceClass =
   'min-w-0 font-money leading-none font-bold whitespace-nowrap text-inherit tabular-nums';
 const footerClass =
-  'flex min-h-(--mb-control-height-md) items-center justify-between gap-(--mb-space-3) border-t pt-(--mb-space-3) text-small font-semibold';
+  'max-md:hidden flex min-h-(--mb-control-height-md) items-center justify-between gap-(--mb-space-3) border-t pt-(--mb-space-3) text-small font-semibold';
 
 /** A status pill under the player name: the active wallet or a bankrupt player. */
 function WalletBadge({
@@ -82,7 +86,7 @@ const balanceSizeClass = {
   prominent:
     'tracking-[-0.04em] text-[length:min(var(--mb-text-money-xl),calc(100cqi/var(--balance-em)))]',
   standard:
-    'tracking-[-0.04em] text-[length:min(var(--mb-text-money-lg),calc(100cqi/var(--balance-em)))]',
+    'tracking-[-0.04em] text-[1.0625rem] md:text-[length:min(var(--mb-text-money-lg),calc(100cqi/var(--balance-em)))]',
 };
 const balanceEmPerCharacter = 0.56;
 
@@ -101,12 +105,14 @@ export function WalletCard({
   const interactive = active && !unavailable;
   const balance = formatMoney(player.balance, currency);
   const cardStyle = { '--wallet-player-color': player.color } as CSSProperties;
+  const bankrupt = player.status === 'BANKRUPT';
   const content = (
     <>
       <span className={headingClass}>
         <span
           className={cx(
             playerSwatchClass,
+            bankrupt && 'grayscale',
             '[.wallet-card-active_&]:border-text-on-inverse glass:[.wallet-card-active_&]:border-[rgb(255_255_255/0.86)] glass:dark:[.wallet-card-active_&]:border-[rgb(255_255_255/0.34)]',
           )}
           style={{ backgroundColor: player.color }}
@@ -149,7 +155,7 @@ export function WalletCard({
   if (!active)
     return (
       <article
-        className={cx(cardClass, readonlyCardClass)}
+        className={cx(cardClass, readonlyCardClass, bankrupt ? 'text-secondary' : 'text-primary')}
         style={cardStyle}
         aria-label={accessibleLabel}
       >
