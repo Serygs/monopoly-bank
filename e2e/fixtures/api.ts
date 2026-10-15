@@ -154,6 +154,13 @@ function transfer(
   };
 }
 
+/** Rolls of one player, newest first (the visual harness serves them for every player). */
+export const fixtureDiceRolls = [
+  { dieOne: 6, dieTwo: 6, createdAt: '2026-09-21T10:14:00.000Z' },
+  { dieOne: 2, dieTwo: 5, createdAt: '2026-09-21T10:11:00.000Z' },
+  { dieOne: 4, dieTwo: 1, createdAt: '2026-09-21T10:07:00.000Z' },
+];
+
 export const fixtureTransactions: Transaction[] = [
   transfer(0, 'PLAYER_TO_PLAYER', 1_200_000, 'player-taras', 'player-olena', 'Rent on Boardwalk'),
   transfer(1, 'PASS_GO', 2_000_000, null, 'player-iryna'),

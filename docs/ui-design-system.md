@@ -243,7 +243,7 @@ The kit's rules:
 - Every visible string and accessible name comes from `useLanguage().t`.
 - Transient success and information messages go through `useFeedback()`. The
   single region is mounted in `App.tsx`: success and information toasts sit in
-  a `polite` live stack and auto-dismiss after 6 s, pausing while the pointer or
+  a `polite` live stack and auto-dismiss after 2.5 s, pausing while the pointer or
   focus is on the toast; errors sit in an `assertive` stack and stay until
   dismissed. Form validation and submit errors stay inline beside their form and
   are never also toasted.
@@ -517,7 +517,8 @@ The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
 - The game header reads in one stable order: Saved Games navigation, game
   status, game name, Pass GO reward, connection state when active, then local
   actions. The reward label may wrap, but its formatted monetary value remains
-  intact. Activity and Statistics remain secondary actions; lobby invitation
+  intact. From `md` up, Activity and Statistics remain secondary header actions
+  (below `md` they move to the bottom navigation, see below); lobby invitation
   and game completion retain their existing permissions and state rules.
 - Wallets form one banking desk rather than separate unrelated card grids. The
   selected controlled wallet and the other-player wallets share one responsive
@@ -542,6 +543,86 @@ The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
   utilities in `src/pages/game/` (`GameHeader.tsx`, `WalletsSection.tsx`,
   `WalletCard.tsx`) and the domain composites in `src/components/game/`. Banking
   dialogs and auxiliary game tools use the same UI kit and semantic tokens.
+
+#### Compact game composition (below `md`)
+
+Below `48rem` the active and finished game is a single phone screen driven by a
+bottom navigation bar (`src/components/game/GameBottomNav.tsx`). From `md` up the
+bar is hidden and the layout above applies unchanged, so every action stays
+reachable at every size.
+
+- **Bottom navigation.** Four items in a fixed order: Activity, Statistics, Tools,
+  Pay (raised action at the thumb side). There is no Wallets item: the wallets
+  are the page behind the bar and every sheet closes with its own X or a swipe
+  down. The bar sits above the home indicator (`--mb-app-safe-bottom`), each
+  target is at least 44px, and the raised Pay button overlaps the bar by at most
+  12px. Page content reserves space under the bar so nothing is covered.
+- **Roles.** Tools, Activity and Statistics open sheets; Pay opens the existing banking sheet for the selected
+  controlled wallet. Every sheet slides up on entry and slides back down on exit
+  (the dialog stays mounted for its leave transition and reports `onClose` only
+  afterwards). Pay is disabled when the game is not active, the app is offline,
+  no wallet is controlled, or the wallet is bankrupt. Activity and Statistics are
+  disabled offline; Tools is disabled outside an active game. Dice and calculator
+  appear inline from `md`; below `md` they live only in the Tools sheet.
+- **Confirmation mode only.** The payment inbox, the pending-request badge on
+  Activity and the Pending tab in Activity exist only in games created with
+  confirmation payments. Fast (immediate) games never show them.
+- **Header.** The compact header drops the Activity and Statistics buttons (the
+  bar owns them) and uses a smaller title; Saved games, status, name, Pass GO
+  reward, connection state and the manager actions (invite, finish) remain.
+- **Wallets view.** The controlled wallet is a compact hero card without the
+  action row. Other players are one-line rows (colour swatch, name, balance,
+  textual Bankrupt badge), one column at every compact width, with bankrupt rows
+  muted but still at readable contrast. Rows are display-only.
+- **Tools sheet.** The dice card records every roll of the controlled wallet on
+  the server and lists the last ten rolls (two mini dice, total, DOUBLE, time)
+  with a chip per player to read anyone's history; a roll is saved only for a
+  wallet the viewer controls, and the history disappears when the game ends. The
+  calculator is a chained pocket calculator (digits, decimal, + − × ÷, %, ±, ⌫, C,
+  repeated equals, the last five calculations to reuse, physical keyboard) and
+  never changes balances.
+- **Fit target.** On 393×852 and 430×932 the Wallets view for up to six players
+  fits without vertical scrolling; the nav labels must not truncate in English or
+  Ukrainian.
+
+#### Compact banking sheet (below `md`)
+
+The banking sheet (`src/pages/game/BankingDialog.tsx`) has three steps: the action
+list, the form, and the confirmation. Each step fits one phone screen
+(393×852 and 430×932) without scrolling for up to six players.
+
+- **Structure.** The form and confirmation steps are a three-row grid: header,
+  a body that alone scrolls (`min-h-0 overflow-y-auto`), and a footer outside the
+  scroll area. The footer never overlaps content. On compact it is one row: Back
+  (secondary) and the primary action, the primary wider.
+- **No filler copy.** The action description is visually hidden (still read by
+  screen readers). There is no standing "enter a number" hint and no "optional"
+  note; errors appear only when there is one.
+- **Recipient.** With exactly one possible recipient it is preselected and shown
+  as one read-only line. With several, they are horizontally scrolling chips
+  (swatch, name, balance) that keep `aria-pressed`.
+- **Amount.** One large amount input with the unit toggle (×1, K, M) beside it.
+  Switching the unit re-expresses the typed amount (85 000 in ×1 is 85 in K and
+  0,085 in M); it never clears it. The keypad has a decimal key (the locale's
+  separator, disabled in ×1) so 3,2 M is possible; K allows three fraction
+  digits and M six, so the amount always stays a whole number. A typed comma or
+  dot is accepted. The on-screen keypad is the input method, so the amount field
+  does not raise the system keyboard (`inputMode="none"`); a physical keyboard
+  still types into it. The keypad is four 48px rows.
+- **Total in front.** The whole amount with its currency symbol ("= $85 000") sits
+  directly under the field for every unit, together with Clear and the favourite
+  toggle, so the player never scrolls to see what will move.
+- **Quick amounts.** One horizontally scrolling row ordered favourites, recent,
+  then presets, without duplicates. Presets scale to the game's starting balance:
+  a round 1, 2 or 5 × 10ⁿ unit at or below a tenth of it, times 1, 1.5, 2, 3, 5
+  and 10 (15 000 000 gives 1M, 1.5M, 2M, 3M, 5M, 10M). A favourite shows a star
+  inside its chip; one toggle beside the amount adds or removes the current
+  amount as a favourite.
+- **Comment** is a collapsed "Add comment" row that expands in place.
+- **Pass GO** has no inputs, so it opens directly on the confirmation.
+- **Confirmation** leads with the amount and the from → to line, then the
+  resulting balance and any comment. Repeated rows (actor, operation) and the
+  list of all resulting balances are secondary: the list is collapsed.
 
 ## Accessibility and motion
 

@@ -37,6 +37,7 @@ export function TransactionRow({
   const timestamp = new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'short',
+    hourCycle: 'h23',
   }).format(new Date(transaction.createdAt));
   const delta =
     playerId === undefined

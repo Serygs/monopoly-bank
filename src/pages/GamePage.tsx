@@ -6,6 +6,9 @@ import { StatisticsScreen } from './StatisticsScreen';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { DiceRoller } from '../components/DiceRoller';
 import { TableCalculator } from '../components/TableCalculator';
+import { Dialog } from '../components/Dialog';
+import { GameBottomNav } from '../components/game/GameBottomNav';
+import { cx } from '../components/ui/class-names';
 import { Button, Notice, PageShell, StatPill, useFeedback } from '../components/ui';
 import type { DevicePreferences } from '../utils/preferences';
 import { playPaymentFeedback, vibrate } from '../utils/feedback';
@@ -22,7 +25,6 @@ import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
 import { WalletsSection } from './game/WalletsSection';
 import {
-  actionLabel,
   applyLiveEvent,
   filterTransactionsForPlayer,
   withClientGameDetails,
@@ -30,6 +32,9 @@ import {
 
 /** The lobby banner sits further from the wallets than a plain notice; `!` beats Notice's margin. */
 const stateBannerClass = 'mb-(--mb-space-6)!';
+
+/** Keeps content clear of the compact bottom navigation and the home indicator. */
+const navPaddingClass = 'max-md:pb-[calc(88px+var(--mb-app-safe-bottom))]';
 
 /** Dice and calculator: stacked below `md`, side by side from `md`. */
 const gameToolsClass =
@@ -64,6 +69,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [finishing, setFinishing] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
@@ -206,6 +212,12 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     }
   };
 
+  const openStatistics = () =>
+    void monopolyBankApi.getGameSummary(gameId).then((result) => {
+      setSummary(result);
+      setStatisticsOpen(true);
+    });
+
   if (error !== null) {
     return (
       <PageShell>
@@ -235,11 +247,15 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     : (controlledWallets[0]?.playerId ?? null);
   const activeWallet =
     details.players.find((player) => player.id === activeControlledWalletId) ?? null;
-  const otherPlayers = details.players.filter((player) => player.id !== activeWallet?.id);
+  const otherPlayers = details.players
+    .filter((player) => player.id !== activeWallet?.id)
+    .sort((a, b) => Number(a.status === 'BANKRUPT') - Number(b.status === 'BANKRUPT'));
   const canMutate = details.game.status === 'ACTIVE' && !offline;
+  const showNav = details.game.status !== 'LOBBY';
+  const confirmationMode = details.game.paymentMode === 'CONFIRMATION';
 
   return (
-    <PageShell>
+    <PageShell className={showNav ? navPaddingClass : undefined}>
       <GameHeader
         game={details.game}
         canManage={details.canManage}
@@ -247,12 +263,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         offline={offline}
         onBack={onBack}
         onOpenActivity={() => setActivityOpen(true)}
-        onOpenStatistics={() =>
-          void monopolyBankApi.getGameSummary(gameId).then((result) => {
-            setSummary(result);
-            setStatisticsOpen(true);
-          })
-        }
+        onOpenStatistics={openStatistics}
         onInvite={() => setInviteOpen(true)}
         onFinish={() => setFinishing(true)}
       />
@@ -283,7 +294,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         onSelectWallet={setActiveWalletId}
         onOpenWallet={setSelectedPlayer}
       />
-      {canMutate && (
+      {canMutate && confirmationMode && (
         <PaymentInbox
           requests={paymentRequests}
           players={details.players}
@@ -307,10 +318,44 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         />
       )}
       {details.game.status === 'ACTIVE' && (
-        <div className={gameToolsClass}>
-          <DiceRoller />
+        <div className={cx(gameToolsClass, 'max-md:hidden')}>
+          <DiceRoller
+            gameId={gameId}
+            players={details.players}
+            rollerPlayerId={activeWallet?.id ?? null}
+          />
           <TableCalculator />
         </div>
+      )}
+      {toolsOpen && details.game.status === 'ACTIVE' && (
+        <Dialog
+          title={t('navTools')}
+          closeLabel={t('closeDialog', { title: t('navTools') })}
+          onClose={() => setToolsOpen(false)}
+        >
+          <div className="mt-(--mb-space-4) grid gap-(--mb-space-4)">
+            <DiceRoller
+              gameId={gameId}
+              players={details.players}
+              rollerPlayerId={activeWallet?.id ?? null}
+            />
+            <TableCalculator />
+          </div>
+        </Dialog>
+      )}
+      {showNav && (
+        <GameBottomNav
+          pendingRequests={canMutate && confirmationMode ? paymentRequests.length : 0}
+          payDisabled={!canMutate || activeWallet === null || activeWallet.status === 'BANKRUPT'}
+          activityDisabled={offline}
+          toolsDisabled={details.game.status !== 'ACTIVE'}
+          onOpenTools={() => setToolsOpen(true)}
+          onPay={() => {
+            if (activeWallet !== null) setSelectedPlayer(activeWallet);
+          }}
+          onOpenActivity={() => setActivityOpen(true)}
+          onOpenStatistics={openStatistics}
+        />
       )}
       {activityOpen && (
         <ActivityScreen
@@ -318,6 +363,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           players={details.players}
           currency={details.game.currency}
           liveTransactions={liveTransactions}
+          showPending={confirmationMode}
           onClose={() => setActivityOpen(false)}
         />
       )}
@@ -335,6 +381,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           players={details.players}
           passGoReward={details.game.passGoReward}
           currency={details.game.currency}
+          startingBalance={details.game.startingBalance}
           favoriteAmounts={details.favoriteAmounts ?? []}
           recentAmounts={details.recentAmounts ?? []}
           onToggleFavorite={(amount) =>
@@ -355,7 +402,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             setSelectedPlayer(null);
             void loadHistory(player);
           }}
-          onCompleted={(players, action, amount) => {
+          onCompleted={(players, _action, amount) => {
             historyCache.current.clear();
             playPaymentFeedback(preferences.sound);
             vibrate(35, preferences.vibration);
@@ -371,7 +418,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                     ].slice(0, 5),
             });
             setSelectedPlayer(null);
-            notify({ tone: 'success', message: t('recorded', { action: actionLabel(action, t) }) });
+            notify({ tone: 'success', message: t('paymentSent') });
           }}
           onPaymentRequested={() => {
             loadPaymentRequests();

@@ -15,6 +15,8 @@ import { GameAccessService } from './services/game-access-service.js';
 import { D1GameCompletionRepository } from './repositories/game-completion-repository.js';
 import { ProfileStatisticsService } from './services/profile-statistics-service.js';
 import { D1GameStatisticsRepository } from './repositories/game-statistics-repository.js';
+import { D1DiceRollRepository } from './repositories/dice-roll-repository.js';
+import { DefaultDiceRollService } from './services/dice-roll-service.js';
 import { DurableObjectGameLiveGateway } from './services/game-live-gateway.js';
 import { ResendTransactionalEmailProvider } from './services/transactional-email.js';
 import { D1SecurityRateLimitRepository } from './repositories/security-rate-limit-repository.js';
@@ -61,6 +63,10 @@ export default {
         new D1GameCompletionRepository(env.MONOPOLY_BANK_DB),
       ),
       statistics: new D1GameStatisticsRepository(env.MONOPOLY_BANK_DB),
+      diceRolls: new DefaultDiceRollService({
+        games,
+        rolls: new D1DiceRollRepository(env.MONOPOLY_BANK_DB),
+      }),
       banking: new DefaultBankingService({
         games,
         players,
