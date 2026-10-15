@@ -28,12 +28,15 @@ export function AmountInput({
   onDigitsChange,
   onUnitChange,
   invalid = false,
+  keypad = false,
 }: {
   id?: string;
   state: AmountInputState;
   onDigitsChange: (digits: string) => void;
   onUnitChange: (unit: AmountUnit) => void;
   invalid?: boolean;
+  /** An on-screen keypad is the input method, so the system keyboard stays closed. */
+  keypad?: boolean;
 }) {
   const { t } = useLanguage();
   const { short, note } = AMOUNT_UNIT_LABELS[state.unit];
@@ -44,8 +47,9 @@ export function AmountInput({
         <input
           id={id}
           type="text"
-          inputMode="numeric"
+          inputMode={keypad ? 'none' : 'numeric'}
           pattern="[0-9 ]*"
+          placeholder={keypad ? '0' : undefined}
           value={state.digits === '' ? '' : formatThousands(Number(state.digits))}
           onChange={(event) => onDigitsChange(sanitizeMoneyInput(event.target.value, state.unit))}
           aria-invalid={invalid}

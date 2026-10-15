@@ -578,6 +578,36 @@ reachable at every size.
   fits without vertical scrolling; the nav labels must not truncate in English or
   Ukrainian.
 
+#### Compact banking sheet (below `md`)
+
+The banking sheet (`src/pages/game/BankingDialog.tsx`) has three steps: the action
+list, the form, and the confirmation. Each step fits one phone screen
+(393×852 and 430×932) without scrolling for up to six players.
+
+- **Structure.** The form and confirmation steps are a three-row grid: header,
+  a body that alone scrolls (`min-h-0 overflow-y-auto`), and a footer outside the
+  scroll area. The footer never overlaps content. On compact it is one row: Back
+  (secondary) and the primary action, the primary wider.
+- **No filler copy.** The action description is visually hidden (still read by
+  screen readers). There is no standing "enter a number" hint and no "optional"
+  note; errors appear only when there is one.
+- **Recipient.** With exactly one possible recipient it is preselected and shown
+  as one read-only line. With several, they are horizontally scrolling chips
+  (swatch, name, balance) that keep `aria-pressed`.
+- **Amount.** One large amount input with the unit toggle (×1, K, M) beside it
+  and a single "= full amount" caption when the unit is not ×1. The on-screen
+  keypad is the input method, so the amount field does not raise the system
+  keyboard (`inputMode="none"`); a physical keyboard still types into it. The
+  keypad is four 48px rows.
+- **Quick amounts.** One horizontally scrolling row ordered favourites, recent,
+  standard, without duplicates. A favourite shows a star inside its chip; one
+  toggle beside the amount adds or removes the current amount as a favourite.
+- **Comment** is a collapsed "Add comment" row that expands in place.
+- **Pass GO** has no inputs, so it opens directly on the confirmation.
+- **Confirmation** leads with the amount and the from → to line, then the
+  resulting balance and any comment. Repeated rows (actor, operation) and the
+  list of all resulting balances are secondary: the list is collapsed.
+
 ## Accessibility and motion
 
 Accessibility is a release requirement for every visual style and colour mode:

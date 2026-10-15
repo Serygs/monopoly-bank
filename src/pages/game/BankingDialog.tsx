@@ -1,19 +1,10 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { Currency, Player } from '../../../shared/types/monopoly';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { AmountSelector } from '../../components/AmountSelector';
 import { Dialog } from '../../components/Dialog';
 import { WalletActionGrid } from '../../components/game/WalletActionGrid';
-import {
-  Button,
-  DialogActions,
-  DialogBody,
-  Field,
-  FieldError,
-  FieldHint,
-  MoneyValue,
-  Notice,
-} from '../../components/ui';
+import { Button, DialogActions, Field, FieldError, MoneyValue, Notice } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
@@ -64,8 +55,21 @@ const advancedClass = cx(
 /** Centred, capped-width danger action on its own row (in the single column below `md`). */
 const bankruptcyClass = 'col-span-full w-[min(100%,270px)] justify-self-center max-md:col-auto';
 
-const passGoClass =
-  'mx-0 my-[18px] rounded-[12px] border border-status-border bg-success-soft p-[14px] font-semibold text-status-text';
+/*
+ * The form and confirmation steps: a flex column whose body alone scrolls, so the footer sits
+ * outside the scroll area and never overlaps the content. The shared compact `DialogActions`
+ * (sticky, stacked) becomes a plain one-row footer: Back, then the wider primary action.
+ */
+const stepPanelClass = 'flex flex-col overflow-hidden!';
+const stepBodyClass = 'min-h-0 flex-1 overflow-y-auto overscroll-contain pt-(--mb-space-3)';
+const stepFooterClass = cx(
+  'shrink-0 max-md:static! max-md:m-0! max-md:mt-(--mb-space-3)! max-md:flex-row! max-md:p-0!',
+  'max-md:[&_.button]:w-auto! max-md:[&>:first-child]:flex-1 max-md:[&>:last-child]:flex-[2]',
+);
+
+function StepBody({ children }: { children: ReactNode }) {
+  return <div className={stepBodyClass}>{children}</div>;
+}
 
 export function BankingDialog({
   gameId,
@@ -87,17 +91,24 @@ export function BankingDialog({
   const [targetId, setTargetId] = useState('');
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
+  const [commentOpen, setCommentOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown | null>(null);
   const submittingRef = useRef(false);
   const commandIdRef = useRef<string | null>(null);
-  const target = players.find((candidate) => candidate.id === targetId) ?? null;
+  const targetRequired = action === 'PLAYER_TO_PLAYER';
+  const recipients = players.filter((candidate) => candidate.id !== player.id);
+  // With one possible recipient there is nothing to choose, so it is selected for the player.
+  const soleRecipient = targetRequired && recipients.length === 1 ? recipients[0] : undefined;
+  const effectiveTargetId = targetId !== '' ? targetId : (soleRecipient?.id ?? '');
+  const target = players.find((candidate) => candidate.id === effectiveTargetId) ?? null;
   const amountValue = Number(amount);
   const request =
-    action === null ? null : buildRequest(action, player.id, targetId, amountValue, comment);
+    action === null
+      ? null
+      : buildRequest(action, player.id, effectiveTargetId, amountValue, comment);
   const preview = request === null ? [] : previewBalances(request, players, passGoReward);
-  const targetRequired = action === 'PLAYER_TO_PLAYER';
   const amountRequired = action !== 'PASS_GO';
   const fundsError = preflightFundsError(action, player, players, amountValue, currency, t);
   const valid =
@@ -111,7 +122,9 @@ export function BankingDialog({
     setTargetId('');
     setAmount('');
     setComment('');
-    setConfirming(false);
+    setCommentOpen(false);
+    // Pass GO has no inputs, so it opens directly on the confirmation.
+    setConfirming(next === 'PASS_GO');
     setError(null);
     commandIdRef.current = null;
   };
@@ -176,11 +189,32 @@ export function BankingDialog({
       : (insufficientMessage(error, players, currency, t) ??
         apiErrorMessage(error, t, 'unableRecordTransaction'));
 
+  const commentField =
+    commentOpen || comment !== '' ? (
+      <Field variant="dialog" label={t('comment')}>
+        <input
+          value={comment}
+          maxLength={500}
+          onChange={(event) => changeComment(event.target.value)}
+        />
+      </Field>
+    ) : (
+      <Button variant="quiet" className="justify-start! px-0!" onClick={() => setCommentOpen(true)}>
+        <span aria-hidden="true">+</span> {t('addComment')}
+      </Button>
+    );
+  const errorNotice = transactionError !== null && <Notice tone="error">{transactionError}</Notice>;
+
   return (
-    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
-      {transactionError !== null && <Notice tone="error">{transactionError}</Notice>}
+    <Dialog
+      title={title}
+      closeLabel={t('closeDialog', { title })}
+      onClose={onClose}
+      className={action === null ? undefined : stepPanelClass}
+    >
       {action === null ? (
         <>
+          {errorNotice}
           <section
             className={balanceClass}
             aria-label={t('walletBalanceAria', {
@@ -193,7 +227,6 @@ export function BankingDialog({
               <MoneyValue amount={player.balance} currency={currency} />
             </strong>
           </section>
-          <DialogBody>{t('walletSheetIntro')}</DialogBody>
           <WalletActionGrid actions={primaryWalletActions} onSelect={selectAction} />
           <details className={advancedClass}>
             <summary>{t('advancedActions')}</summary>
@@ -209,19 +242,27 @@ export function BankingDialog({
         </>
       ) : confirming ? (
         <>
-          <DialogBody>{t('confirmationIntro')}</DialogBody>
-          <Confirmation
-            action={action}
-            player={player}
-            target={target}
-            amount={amountValue}
-            passGoReward={passGoReward}
-            currency={currency}
-            preview={preview}
-            comment={comment}
-          />
-          <DialogActions>
-            <Button variant="secondary" disabled={submitting} onClick={() => setConfirming(false)}>
+          <StepBody>
+            <p className="sr-only">{t('confirmationIntro')}</p>
+            {errorNotice}
+            <Confirmation
+              action={action}
+              player={player}
+              target={target}
+              amount={amountValue}
+              passGoReward={passGoReward}
+              currency={currency}
+              preview={preview}
+              comment={comment}
+            />
+            {action === 'PASS_GO' && <div className="mt-(--mb-space-3)">{commentField}</div>}
+          </StepBody>
+          <DialogActions className={stepFooterClass}>
+            <Button
+              variant="secondary"
+              disabled={submitting}
+              onClick={() => (action === 'PASS_GO' ? selectAction(null) : setConfirming(false))}
+            >
               {t('back')}
             </Button>
             <Button variant="primary" disabled={submitting} onClick={() => void submit()}>
@@ -235,19 +276,20 @@ export function BankingDialog({
         </>
       ) : (
         <>
-          <DialogBody>{actionDescription(action, player.name, t)}</DialogBody>
-          {targetRequired && (
-            <PlayerPicker
-              label={t('chooseRecipient')}
-              players={players.filter((candidate) => candidate.id !== player.id)}
-              gamePlayers={players}
-              value={targetId}
-              currency={currency}
-              onChange={changeTarget}
-            />
-          )}
-          {amountRequired && (
-            <>
+          <StepBody>
+            <p className="sr-only">{actionDescription(action, player.name, t)}</p>
+            {errorNotice}
+            {targetRequired && (
+              <PlayerPicker
+                label={t('chooseRecipient')}
+                players={recipients}
+                gamePlayers={players}
+                value={effectiveTargetId}
+                currency={currency}
+                onChange={changeTarget}
+              />
+            )}
+            {amountRequired && (
               <AmountSelector
                 value={amount}
                 onChange={changeAmount}
@@ -257,32 +299,16 @@ export function BankingDialog({
                 onToggleFavorite={onToggleFavorite}
                 onQuickAmountSelect={reviewQuickAmount}
               />
-              <FieldHint>
-                {isPositiveInteger(amount)
-                  ? t('amountTotalHint', { amount: formatMoney(amountValue, currency) })
-                  : t('enterPositiveInteger')}
-              </FieldHint>
-            </>
-          )}
-          {fundsError !== null && (
-            <FieldError as="p" announce>
-              {fundsError}
-            </FieldError>
-          )}
-          {action === 'PASS_GO' && (
-            <p className={passGoClass}>
-              {t('passGoReceives', { amount: formatMoney(passGoReward, currency) })}
-            </p>
-          )}
-          <Field variant="dialog" label={t('comment')} note={t('optional')}>
-            <input
-              value={comment}
-              maxLength={500}
-              onChange={(event) => changeComment(event.target.value)}
-            />
-          </Field>
-          <DialogActions>
-            <Button variant="quiet" onClick={() => selectAction(null)}>
+            )}
+            {fundsError !== null && (
+              <FieldError as="p" announce>
+                {fundsError}
+              </FieldError>
+            )}
+            <div className="mt-(--mb-space-2)">{commentField}</div>
+          </StepBody>
+          <DialogActions className={stepFooterClass}>
+            <Button variant="secondary" onClick={() => selectAction(null)}>
               {t('back')}
             </Button>
             <Button variant="primary" disabled={!valid} onClick={() => setConfirming(true)}>

@@ -1,4 +1,5 @@
 import type { HTMLAttributes } from 'react';
+import { cx } from './class-names';
 
 export type DialogActionsProps = HTMLAttributes<HTMLDivElement>;
 
@@ -10,6 +11,6 @@ const dialogActionsClass =
   'dialog-actions mt-(--mb-space-6) flex justify-end gap-(--mb-space-3) max-md:sticky max-md:-bottom-(--mb-space-5) max-md:z-1 max-md:-mb-(--mb-space-5) max-md:flex-col-reverse max-md:bg-surface-elevated max-md:px-0 max-md:pt-(--mb-space-4) max-md:pb-[max(var(--mb-space-4),var(--mb-app-safe-bottom))] max-md:[&_.button]:w-full';
 
 /** Trailing action row of a dialog or inline decision. */
-export function DialogActions(props: DialogActionsProps) {
-  return <div className={dialogActionsClass} {...props} />;
+export function DialogActions({ className, ...props }: DialogActionsProps) {
+  return <div className={cx(dialogActionsClass, className)} {...props} />;
 }
