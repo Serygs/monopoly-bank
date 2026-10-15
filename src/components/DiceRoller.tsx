@@ -130,7 +130,7 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
   };
 
   const rolls = history?.playerId === viewPlayerId ? history.rolls : null;
-  const time = new Intl.DateTimeFormat(locale, { timeStyle: 'medium' });
+  const time = new Intl.DateTimeFormat(locale, { timeStyle: 'medium', hourCycle: 'h23' });
   return (
     <ToolPanel
       label={t('diceRoller')}

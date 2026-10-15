@@ -75,9 +75,10 @@ export function PaymentInbox({ requests, players, currency, onAction }: PaymentI
                   </strong>
                   <small>
                     {t('paymentRequestExpires', {
-                      time: new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(
-                        new Date(request.expiresAt),
-                      ),
+                      time: new Intl.DateTimeFormat(locale, {
+                        timeStyle: 'short',
+                        hourCycle: 'h23',
+                      }).format(new Date(request.expiresAt)),
                     })}
                   </small>
                 </div>

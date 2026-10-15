@@ -25,7 +25,6 @@ import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
 import { WalletsSection } from './game/WalletsSection';
 import {
-  actionLabel,
   applyLiveEvent,
   filterTransactionsForPlayer,
   withClientGameDetails,
@@ -350,7 +349,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           payDisabled={!canMutate || activeWallet === null || activeWallet.status === 'BANKRUPT'}
           activityDisabled={offline}
           toolsDisabled={details.game.status !== 'ACTIVE'}
-          onSelectWallets={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           onOpenTools={() => setToolsOpen(true)}
           onPay={() => {
             if (activeWallet !== null) setSelectedPlayer(activeWallet);
@@ -404,7 +402,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             setSelectedPlayer(null);
             void loadHistory(player);
           }}
-          onCompleted={(players, action, amount) => {
+          onCompleted={(players, _action, amount) => {
             historyCache.current.clear();
             playPaymentFeedback(preferences.sound);
             vibrate(35, preferences.vibration);
@@ -420,7 +418,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                     ].slice(0, 5),
             });
             setSelectedPlayer(null);
-            notify({ tone: 'success', message: t('recorded', { action: actionLabel(action, t) }) });
+            notify({ tone: 'success', message: t('paymentSent') });
           }}
           onPaymentRequested={() => {
             loadPaymentRequests();
