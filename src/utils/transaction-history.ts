@@ -33,6 +33,28 @@ export function transactionDescription(
         source: nameOf(negative?.playerId),
         destination: nameOf(positive?.playerId),
       });
+    case 'REVERSAL': {
+      // Who pays whom in the correction; several payers or payees read as "everyone".
+      const debited = transaction.participants.filter(
+        (participant) => participant.balanceDelta < 0,
+      );
+      const credited = transaction.participants.filter(
+        (participant) => participant.balanceDelta > 0,
+      );
+      const from =
+        debited.length === 0
+          ? translate(language, 'transactionBank')
+          : debited.length > 1
+            ? translate(language, 'transactionEveryone')
+            : nameOf(debited[0]?.playerId);
+      const to =
+        credited.length === 0
+          ? translate(language, 'transactionBank')
+          : credited.length > 1
+            ? translate(language, 'transactionEveryone')
+            : nameOf(credited[0]?.playerId);
+      return `${translate(language, 'reversal')} · ${from} → ${to}`;
+    }
   }
 }
 
@@ -48,6 +70,7 @@ export function transactionAmount(
       total: money(transaction.totalAmount),
     });
   if (transaction.type === 'PASS_GO') return `+${money(transaction.amount)}`;
+  if (transaction.type === 'REVERSAL') return money(transaction.totalAmount);
   return money(transaction.amount);
 }
 

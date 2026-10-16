@@ -142,21 +142,48 @@ try {
   await legacySql(
     "INSERT INTO users (id, nickname, avatar, password_hash, password_salt) VALUES ('user-upgrade-1', 'Existing player', '😀', 'fixture-password-hash', 'fixture-password-salt'); INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, status) VALUES ('game-upgrade-1', 'Existing game', 1500, 200, 'K', 'ACTIVE'); INSERT INTO players (id, game_id, name, color, balance) VALUES ('player-upgrade-1', 'game-upgrade-1', 'Existing player', '#123456', 1500); INSERT INTO game_members (game_id, user_id, role, player_id) VALUES ('game-upgrade-1', 'user-upgrade-1', 'PLAYER', 'player-upgrade-1');",
   );
+  // Migration 0021 rebuilds `transactions` while payment_requests references it, so it is applied
+  // last, on top of rows that exercise that reference.
+  const rebuildMigration = '0021_transaction_reversals.sql';
   for (const migration of migrationFiles) {
-    if (migration > legacyMigrationBoundary)
+    if (migration > legacyMigrationBoundary && migration < rebuildMigration)
       await cp(join('migrations', migration), join(legacyMigrations, migration));
   }
-  await command([
-    'd1',
-    'migrations',
-    'apply',
-    'MONOPOLY_BANK_DB',
-    '--local',
-    '--config',
-    legacyConfig,
-    '--persist-to',
-    legacyPersistence,
-  ]);
+  const applyLegacy = () =>
+    command([
+      'd1',
+      'migrations',
+      'apply',
+      'MONOPOLY_BANK_DB',
+      '--local',
+      '--config',
+      legacyConfig,
+      '--persist-to',
+      legacyPersistence,
+    ]);
+  await applyLegacy();
+  await legacySql(
+    "INSERT INTO players (id, game_id, name, color, balance) VALUES ('player-upgrade-2', 'game-upgrade-1', 'Second player', '#654321', 1500); INSERT INTO transactions (id, game_id, type, amount, total_amount) VALUES ('transaction-upgrade-1', 'game-upgrade-1', 'PLAYER_TO_PLAYER', 10, 10); INSERT INTO transaction_participants (transaction_id, game_id, player_id, balance_delta) VALUES ('transaction-upgrade-1', 'game-upgrade-1', 'player-upgrade-1', -10), ('transaction-upgrade-1', 'game-upgrade-1', 'player-upgrade-2', 10); INSERT INTO payment_requests (id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, state, expires_at, transaction_id) VALUES ('request-upgrade-1', 'game-upgrade-1', 'player-upgrade-1', 'player-upgrade-2', 'player-upgrade-2', 'player-upgrade-1', 10, 'ACCEPTED', '2099-01-01T00:00:00.000Z', 'transaction-upgrade-1');",
+  );
+  await cp(join('migrations', rebuildMigration), join(legacyMigrations, rebuildMigration));
+  for (const migration of migrationFiles) {
+    if (migration > rebuildMigration)
+      await cp(join('migrations', migration), join(legacyMigrations, migration));
+  }
+  await applyLegacy();
+  const rebuilt = await legacySql(
+    "SELECT (SELECT COUNT(*) FROM transactions) AS transactions, (SELECT COUNT(*) FROM transaction_participants) AS participants, (SELECT transaction_id FROM payment_requests WHERE id = 'request-upgrade-1') AS linked, (SELECT reverses_transaction_id FROM transactions WHERE id = 'transaction-upgrade-1') AS reverses",
+  );
+  const rebuiltRow = JSON.parse(
+    rebuilt.slice(rebuilt.indexOf('['), rebuilt.lastIndexOf(']') + 1),
+  )[0]?.results?.[0];
+  if (
+    rebuiltRow?.transactions !== 1 ||
+    rebuiltRow.participants !== 2 ||
+    rebuiltRow.linked !== 'transaction-upgrade-1' ||
+    rebuiltRow.reverses !== null
+  )
+    throw new Error(`The transactions rebuild lost or changed rows: ${rebuilt}`);
   const upgradedFixture = await legacySql(
     "SELECT pc.player_id, pc.user_id FROM player_controllers pc JOIN users u ON u.id = pc.user_id WHERE pc.game_id = 'game-upgrade-1' AND pc.player_id = 'player-upgrade-1' AND pc.controller_kind = 'PRIMARY'",
   );

@@ -20,6 +20,10 @@ const errorKeys: Record<string, TranslationKey> = {
   INSUFFICIENT_PLAYERS: 'errorInsufficientPlayers',
   INVALID_GAME_STATE: 'errorInvalidGameState',
   RULE_DISABLED: 'errorRuleDisabled',
+  TRANSACTION_NOT_FOUND: 'errorTransactionNotFound',
+  TRANSACTION_ALREADY_REVERSED: 'errorTransactionAlreadyReversed',
+  TRANSACTION_NOT_REVERSIBLE: 'errorTransactionNotReversible',
+  REVERSAL_WINDOW_EXPIRED: 'errorReversalWindowExpired',
 };
 
 export function apiErrorMessage(error: unknown, t: Translate, fallback: TranslationKey): string {

@@ -1,4 +1,11 @@
-import type { Game, Player, TransactionParticipant, TransactionType } from '../types/monopoly.js';
+import type {
+  Game,
+  Player,
+  Transaction,
+  TransactionParticipant,
+  TransactionType,
+} from '../types/monopoly.js';
+import { isReversibleType } from './reversal.js';
 import { AppError } from '../../worker/services/errors.js';
 
 export interface PlayerToPlayerCommand extends BankingCommand {
@@ -36,6 +43,14 @@ export interface PassGoCommand {
   comment?: string | null;
 }
 
+export interface ReversalCommand {
+  game: Game;
+  players: readonly Player[];
+  /** The stored transaction to move back, with its participants. */
+  original: Transaction;
+  comment?: string | null;
+}
+
 export interface BankruptcyCommand extends BankingCommand {
   playerId: string;
   creditorPlayerId?: string;
@@ -59,6 +74,8 @@ export interface PendingTransaction {
   totalAmount: number;
   comment: string | null;
   participants: TransactionParticipant[];
+  /** Set only on a REVERSAL: the stored transaction it moves back. */
+  reversesTransactionId?: string;
 }
 
 export interface PlayerBalanceChange {
@@ -150,6 +167,42 @@ export class InvalidGameStateError extends BankingDomainError {
   constructor(reason: string) {
     super({ code: 'GAME_FINISHED', message: 'This game is finished.', status: 409 });
     this.reason = reason;
+  }
+}
+
+export class TransactionNotFoundError extends BankingDomainError {
+  readonly code = 'TRANSACTION_NOT_FOUND' as const;
+  constructor(transactionId: string) {
+    super({
+      code: 'TRANSACTION_NOT_FOUND',
+      message: 'Transaction not found.',
+      status: 404,
+      details: { transactionId },
+    });
+  }
+}
+
+export class TransactionNotReversibleError extends BankingDomainError {
+  readonly code = 'TRANSACTION_NOT_REVERSIBLE' as const;
+  constructor(type: TransactionType) {
+    super({
+      code: 'TRANSACTION_NOT_REVERSIBLE',
+      message: 'This kind of transaction cannot be reversed.',
+      status: 409,
+      details: { type },
+    });
+  }
+}
+
+export class TransactionAlreadyReversedError extends BankingDomainError {
+  readonly code = 'TRANSACTION_ALREADY_REVERSED' as const;
+  constructor(transactionId: string, reversalId: string) {
+    super({
+      code: 'TRANSACTION_ALREADY_REVERSED',
+      message: 'This transaction has already been reversed.',
+      status: 409,
+      details: { transactionId, reversalId },
+    });
   }
 }
 
@@ -285,6 +338,36 @@ export function passGo(command: PassGoCommand): BankingOperationResult {
   return createResult(command.game.id, 'PASS_GO', reward, reward, command.comment, [
     createBalanceChange(player, reward),
   ]);
+}
+
+/**
+ * Moves exactly the original deltas back as a new REVERSAL record. Every participant must still be
+ * active and, where the original paid them, still hold the money; otherwise nothing is reversed.
+ */
+export function reverseTransaction(command: ReversalCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const { original } = command;
+  if (original.gameId !== command.game.id) throw new TransactionNotFoundError(original.id);
+  if (!isReversibleType(original.type)) throw new TransactionNotReversibleError(original.type);
+  if (original.reversedByTransactionId != null)
+    throw new TransactionAlreadyReversedError(original.id, original.reversedByTransactionId);
+
+  const changes = original.participants.map((participant) => {
+    const player = findPlayer(players, participant.playerId);
+    ensureActive(player);
+    const balanceDelta = -participant.balanceDelta;
+    if (balanceDelta < 0) ensureSufficientFunds(player, -balanceDelta);
+    return createBalanceChange(player, balanceDelta);
+  });
+  const result = createResult(
+    command.game.id,
+    'REVERSAL',
+    original.amount,
+    original.totalAmount,
+    command.comment,
+    changes,
+  );
+  return { ...result, transaction: { ...result.transaction, reversesTransactionId: original.id } };
 }
 
 export function declareBankruptcy(command: BankruptcyCommand): BankingOperationResult {

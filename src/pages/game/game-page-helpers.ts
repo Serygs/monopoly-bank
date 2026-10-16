@@ -1,8 +1,8 @@
 import type { MutableRefObject } from 'react';
 import type {
-  CreateTransactionRequest,
   GameDetails,
   PlayerControllerKind,
+  PlayerTransactionRequest,
 } from '../../../shared/contracts/api';
 import type { LiveServerEvent } from '../../../shared/contracts/live';
 import type {
@@ -15,7 +15,8 @@ import { MonopolyBankApiError } from '../../api/monopoly-bank-api';
 import type { Translate } from '../../i18n/translations';
 import { formatMoney } from '../../utils/money';
 
-export type ActionType = CreateTransactionRequest['type'];
+/** A wallet action the banking dialog can start; a reversal is started from the history instead. */
+export type ActionType = PlayerTransactionRequest['type'];
 
 /** One player's balance before and after a previewed transaction. */
 export interface BalancePreview {
@@ -76,15 +77,25 @@ export function applyLiveEvent(
   if (event.type === 'GAME_COMMITTED') {
     historyCache.current.clear();
     setDetails((current) => (current === null ? current : { ...current, players: event.players }));
-    setHistory((current) =>
-      current === null ||
-      (historyPlayerId !== null && !transactionInvolvesPlayer(event.transaction, historyPlayerId))
-        ? current
-        : [
-            event.transaction,
-            ...current.filter((transaction) => transaction.id !== event.transaction.id),
-          ],
-    );
+    setHistory((current) => {
+      if (
+        current === null ||
+        (historyPlayerId !== null && !transactionInvolvesPlayer(event.transaction, historyPlayerId))
+      )
+        return current;
+      const reversed = event.transaction.reversesTransactionId;
+      return [
+        event.transaction,
+        // A reversal marks the original it moved back, so the row stops offering "Reverse".
+        ...current
+          .filter((transaction) => transaction.id !== event.transaction.id)
+          .map((transaction) =>
+            transaction.id === reversed
+              ? { ...transaction, reversedByTransactionId: event.transaction.id }
+              : transaction,
+          ),
+      ];
+    });
     return;
   }
   if (event.type === 'GAME_FINISHED')
@@ -117,7 +128,7 @@ export function buildRequest(
   amount: number,
   comment: string,
   exactLanding = false,
-): CreateTransactionRequest | null {
+): PlayerTransactionRequest | null {
   const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
   switch (action) {
     case 'PLAYER_TO_PLAYER':
@@ -153,7 +164,7 @@ export function buildRequest(
 }
 
 export function previewBalances(
-  request: CreateTransactionRequest,
+  request: PlayerTransactionRequest,
   players: Player[],
   passGoReward: number,
 ): BalancePreview[] {
@@ -241,6 +252,7 @@ export function transactionLabel(type: TransactionType, t: Translate): string {
     PAY_RENT: t('paidRent'),
     PASS_GO: t('passedGo'),
     BANKRUPTCY_TRANSFER: t('bankruptcyTransfer'),
+    REVERSAL: t('reversal'),
   }[type];
 }
 

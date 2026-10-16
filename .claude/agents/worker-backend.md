@@ -20,7 +20,7 @@ You implement backend changes for the Monopoly Bank repository. `AGENTS.md` and 
 
 - Money is positive safe integers. Multi-wallet operations and their transaction record are one atomic D1 batch; any failure (incl. insufficient funds) leaves every balance unchanged.
 - Player→all amounts are per recipient; all→player amounts are per payer. Validate every affected wallet before writing.
-- Never store a bank balance; never add board, property, or turn-order state; never add undo/edit of past transactions.
+- Never store a bank balance; never add board, property, or turn-order state; never edit or delete a stored transaction; corrections are only a new linked `REVERSAL` (`reverseTransaction`).
 - Errors use the envelope in `worker/services/errors.ts` / `error-handler.ts` (see `docs/api-errors.md`); never leak internals, credentials, or avatar data in logs.
 - If a schema change is needed, stop and report it — migrations are handled separately. Do not touch `wrangler.jsonc` or bindings.
 

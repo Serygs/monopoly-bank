@@ -169,3 +169,27 @@ describe('Pass GO validation', () => {
     ).rejects.toBeInstanceOf(ApiValidationError);
   });
 });
+
+describe('reversal validation', () => {
+  const transactionId = '33333333-3333-4333-8333-333333333333';
+
+  it('accepts a reversal of a transaction with an optional comment', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'REVERSAL', transactionId, comment: ' Wrong player ' }),
+      ),
+    ).resolves.toEqual({ type: 'REVERSAL', transactionId, comment: 'Wrong player' });
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'REVERSAL', transactionId })),
+    ).resolves.toEqual({ type: 'REVERSAL', transactionId });
+  });
+
+  it('rejects a missing or malformed transaction id', async () => {
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'REVERSAL' })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'REVERSAL', transactionId: 'nope' })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+});

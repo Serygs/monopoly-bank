@@ -32,12 +32,24 @@ export function calculateFinalGameSummary(
     string,
     { payerId: string; recipientId: string; amount: number; transactionCount: number }
   >();
+  const reversedIds = new Set(
+    transactions.flatMap((transaction) =>
+      transaction.reversesTransactionId == null ? [] : [transaction.reversesTransactionId],
+    ),
+  );
   let totalMoneyTransferred = 0;
   let playerToPlayerTotal = 0;
   let paidToBank = 0;
   let receivedFromBank = 0;
   let largestTransaction = 0;
   for (const transaction of transactions) {
+    // A reversed transaction and its reversal cancel out; the game did not move that money.
+    if (
+      transaction.type === 'REVERSAL' ||
+      transaction.reversedByTransactionId != null ||
+      reversedIds.has(transaction.id)
+    )
+      continue;
     totalMoneyTransferred += transaction.totalAmount;
     largestTransaction = Math.max(largestTransaction, transaction.totalAmount);
     for (const participant of transaction.participants) {

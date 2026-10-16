@@ -378,3 +378,57 @@ function fakeLedger(options: { failCompleteOnce?: boolean } = {}) {
     },
   };
 }
+
+describe('GameSession reversal authorization', () => {
+  const transactionId = '00000000-0000-4000-8000-0000000000bb';
+  const stored = {
+    id: transactionId,
+    gameId,
+    type: 'PLAYER_TO_BANK',
+    amount: 100,
+    totalAmount: 100,
+    comment: null,
+    createdAt: '2026-01-01 10:00:00',
+    participants: [{ playerId: '00000000-0000-4000-8000-000000000003', balanceDelta: -100 }],
+  };
+  const command = {
+    type: 'CREATE_TRANSACTION',
+    commandId,
+    request: { type: 'REVERSAL', transactionId },
+  };
+
+  function sessionWith(found: typeof stored | null) {
+    const session = new GameSession({} as never, {} as Env) as unknown as {
+      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
+      access(): unknown;
+      banking(command: string): unknown;
+    };
+    const calls = { authorities: [] as unknown[], walletChecks: 0 };
+    session.access = () => ({
+      requireMember: async () => 'PLAYER',
+      requirePlayerController: async () => {
+        calls.walletChecks += 1;
+      },
+      requireReversalAuthority: async (_gameId: string, _userId: string, transaction: unknown) => {
+        calls.authorities.push(transaction);
+      },
+    });
+    session.banking = () => ({ getTransaction: async () => found });
+    return { session, calls };
+  }
+
+  it('checks the stored transaction instead of a wallet named in the command', async () => {
+    const { session, calls } = sessionWith(stored);
+    await session.authorizeMutation(gameId, 'actor', command);
+    expect(calls.authorities).toEqual([stored]);
+    expect(calls.walletChecks).toBe(0);
+  });
+
+  it('refuses a reversal of a transaction that does not exist', async () => {
+    const { session, calls } = sessionWith(null);
+    await expect(session.authorizeMutation(gameId, 'actor', command)).rejects.toMatchObject({
+      code: 'TRANSACTION_NOT_FOUND',
+    });
+    expect(calls.authorities).toEqual([]);
+  });
+});
