@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 import { LanguageContext } from '../i18n/language-context';
 import { languageLocale, translate } from '../i18n/translations';
 import type { UserProfile } from '../../shared/contracts/api';
@@ -60,6 +61,21 @@ describe('create game colour picker', () => {
     expect(onSubmit).not.toHaveBeenCalled();
     expect(blue).toHaveAttribute('aria-checked', 'true');
     expect(createGame).not.toHaveBeenCalled();
+  });
+});
+
+describe('house rule descriptions', () => {
+  it('shows one line per rule, filled with the entered amounts', () => {
+    render(
+      <LanguageProvider>
+        <CreateGamePage profile={profile} onCancel={() => {}} onCreated={() => {}} />
+      </LanguageProvider>,
+    );
+    const auctions = screen.getByRole('switch', { name: 'Auctions' });
+    expect(auctions).toHaveAccessibleDescription(/30-second auction/);
+    expect(screen.getByRole('switch', { name: 'Bank loans' })).toHaveAccessibleDescription(
+      /Borrow up to \$/,
+    );
   });
 });
 
@@ -132,7 +148,7 @@ describe('house rules', () => {
 
   it('lists every rule unchecked by default', () => {
     renderPage();
-    for (const name of rules) expect(screen.getByRole('checkbox', { name })).not.toBeChecked();
+    for (const name of rules) expect(screen.getByRole('switch', { name })).not.toBeChecked();
   });
 
   it('sends exactly the rules that were switched on, in any combination', async () => {
@@ -142,10 +158,10 @@ describe('house rules', () => {
     } as never);
     renderPage();
     await user.type(screen.getByRole('textbox', { name: /Game name/i }), 'Friday table');
-    await user.click(screen.getByRole('checkbox', { name: 'Auctions' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Bank loans' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Bank loans' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Player loans' }));
+    await user.click(screen.getByRole('switch', { name: 'Auctions' }));
+    await user.click(screen.getByRole('switch', { name: 'Bank loans' }));
+    await user.click(screen.getByRole('switch', { name: 'Bank loans' }));
+    await user.click(screen.getByRole('switch', { name: 'Player loans' }));
     await user.click(screen.getByRole('button', { name: /Create/i }));
     expect(createGame).toHaveBeenCalledWith(
       expect.objectContaining({
