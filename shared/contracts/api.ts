@@ -419,8 +419,33 @@ export interface CashLeaderboardEntry {
   passGoCount: number;
   transactionCount: number;
 }
+/** One award card: the player, the amount and, for an auction, the lot. */
+export interface StatisticsAward {
+  playerId: string;
+  amount: number;
+  label?: string | null;
+}
+/** Derived from the ledger on read; absent from snapshots saved before awards existed. */
+export interface GameAwards {
+  biggestOperation: {
+    type: TransactionType;
+    amount: number;
+    playerId: string | null;
+  } | null;
+  rentPaid: StatisticsAward | null;
+  rentCollected: StatisticsAward | null;
+  bestAuctionDeal: StatisticsAward | null;
+  biggestLoan: StatisticsAward | null;
+}
+/** `steps` counted transactions; `balances` hold up to 61 evenly spaced points, first and last included. */
+export interface BalanceSeries {
+  steps: number;
+  players: Array<{ playerId: string; balances: number[] }>;
+}
 export interface LedgerStatistics extends FinalGameSummaryResponse {
   cashLeaderboard: CashLeaderboardEntry[];
+  awards?: GameAwards;
+  balanceSeries?: BalanceSeries;
 }
 
 export type CreateTransactionRequest =
