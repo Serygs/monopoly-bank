@@ -582,3 +582,53 @@ describe('splitPaymentRequests', () => {
     expect(splitPaymentRequests([incomingLoan, outgoingLoan], []).incoming).toHaveLength(2);
   });
 });
+
+describe('Free Parking jackpot', () => {
+  it('builds a pot payment with its note and a collection without an amount', () => {
+    expect(buildRequest('TO_JACKPOT', 'p1', '', 200, 'Income tax')).toEqual({
+      type: 'TO_JACKPOT',
+      playerId: 'p1',
+      amount: 200,
+      comment: 'Income tax',
+    });
+    expect(buildRequest('JACKPOT_PAYOUT', 'p1', '', 999, 'ignored')).toEqual({
+      type: 'JACKPOT_PAYOUT',
+      playerId: 'p1',
+      expectedAmount: 999,
+    });
+  });
+
+  it('previews the payer losing the amount and the collector receiving the whole pot', () => {
+    expect(
+      previewBalances({ type: 'TO_JACKPOT', playerId: 'p2', amount: 50 }, players, 200).map(
+        ({ delta }) => delta,
+      ),
+    ).toEqual([0, -50, 0]);
+    expect(
+      previewBalances(
+        { type: 'JACKPOT_PAYOUT', playerId: 'p3', expectedAmount: 75 },
+        players,
+        200,
+        0,
+        [],
+        0,
+        75,
+      ).map(({ delta }) => delta),
+    ).toEqual([0, 0, 75]);
+    expect(walletActionTone('JACKPOT_PAYOUT')).toBe('income');
+  });
+
+  it('replaces the pot from a commit and leaves it alone when the event carries none', () => {
+    const { detailsCell, apply } = liveHarness(details({ jackpot: 100 }), null);
+    apply({ type: 'GAME_COMMITTED', stateVersion: 2, transaction: transaction('t1'), players });
+    expect(detailsCell.value?.jackpot).toBe(100);
+    apply({
+      type: 'GAME_COMMITTED',
+      stateVersion: 3,
+      transaction: transaction('t2'),
+      players,
+      jackpot: 350,
+    });
+    expect(detailsCell.value?.jackpot).toBe(350);
+  });
+});

@@ -13,6 +13,7 @@ export interface WalletActionGridProps {
     label: string;
     tone: ReturnType<typeof walletActionTone>;
     onSelect: () => void;
+    disabled?: boolean;
   }[];
   /** Extra classes appended after the grid classes. */
   className?: string;
@@ -52,6 +53,7 @@ export function WalletActionGrid({
         <Button
           className={cx(actionButtonClass, actionToneClass[item.tone])}
           key={item.key}
+          disabled={item.disabled === true}
           onClick={item.onSelect}
         >
           {item.label}

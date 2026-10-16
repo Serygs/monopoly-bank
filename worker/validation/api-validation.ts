@@ -309,6 +309,21 @@ export async function parseCreateTransactionRequest(
           ? {}
           : { interestRatePercent: readInterestRatePercent(body) }),
       };
+    case 'TO_JACKPOT':
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        amount: readPositiveInteger(body, 'amount'),
+        ...(comment === undefined ? {} : { comment }),
+      };
+    case 'JACKPOT_PAYOUT':
+      // The paid amount is the whole pot, read on the server; any `amount` is ignored. The client
+      // only says which pot it reviewed, so a pot that changed since is refused (JACKPOT_CHANGED).
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        expectedAmount: readPositiveInteger(body, 'expectedAmount'),
+      };
     case 'REVERSAL':
       return {
         type,

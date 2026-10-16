@@ -18,6 +18,8 @@ export function controlledPlayerIdForBankingCommand(
     case 'MORTGAGE':
     case 'MORTGAGE_REDEMPTION':
     case 'LOAN_REPAYMENT':
+    case 'TO_JACKPOT':
+    case 'JACKPOT_PAYOUT':
       return request.playerId;
     case 'LOAN_ISSUE':
       return request.lenderKind === 'BANK' ? request.playerId : request.borrowerPlayerId;
