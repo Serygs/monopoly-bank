@@ -6,7 +6,12 @@ import type {
   PaymentRequestKind,
   PaymentRequestState,
 } from '../../shared/contracts/api.js';
-import type { Game, Player, Transaction } from '../../shared/types/monopoly.js';
+import {
+  calculateBalanceSeries,
+  calculateGameAwards,
+  type LedgerEntry,
+} from '../../shared/domain/game-awards.js';
+import type { Game, Player, Transaction, TransactionType } from '../../shared/types/monopoly.js';
 import { D1TransactionRepository } from './transaction-repository.js';
 
 export interface GameStatisticsRepository {
@@ -130,6 +135,20 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
       )
       .bind(game.id)
       .all<PlayerMetricRow>();
+    const ledger = await this.database
+      .prepare(
+        `SELECT t.id AS transaction_id, t.type, t.total_amount, t.comment, tp.player_id, tp.balance_delta FROM transactions t JOIN transaction_participants tp ON tp.transaction_id = t.id AND tp.game_id = t.game_id WHERE t.game_id = ? AND ${countedTransaction('t')} ORDER BY t.created_at, t.rowid, tp.rowid`,
+      )
+      .bind(game.id)
+      .all<LedgerRow>();
+    const entries: LedgerEntry[] = ledger.results.map((row) => ({
+      transactionId: row.transaction_id,
+      type: row.type,
+      totalAmount: row.total_amount,
+      comment: row.comment,
+      playerId: row.player_id,
+      balanceDelta: row.balance_delta,
+    }));
     const metricById = new Map(metrics.results.map((row) => [row.player_id, row]));
     const ordered = players.map((player) => ({
       player,
@@ -188,6 +207,12 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
       leastSenderId: bySent.at(-1)?.player.id ?? null,
       biggestPayerRecipient: null,
       cashLeaderboard,
+      awards: calculateGameAwards(entries),
+      balanceSeries: calculateBalanceSeries(
+        entries,
+        players.map((player) => player.id),
+        game.startingBalance,
+      ),
     };
   }
 
@@ -228,6 +253,14 @@ interface TotalsRow {
   p2p: number;
   paid_bank: number;
   received_bank: number;
+}
+interface LedgerRow {
+  transaction_id: string;
+  type: TransactionType;
+  total_amount: number;
+  comment: string | null;
+  player_id: string;
+  balance_delta: number;
 }
 interface PlayerMetricRow {
   player_id: string;
