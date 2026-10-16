@@ -276,6 +276,23 @@ export function preflightFundsError(
   return null;
 }
 
+/** How much the acting player is short of their own payment, or `null` when they can afford it. */
+export function preflightShortfall(
+  action: ActionType | null,
+  player: Player,
+  players: Player[],
+  amount: number,
+): number | null {
+  if (!Number.isSafeInteger(amount) || amount <= 0) return null;
+  const required =
+    action === 'PLAYER_TO_ALL'
+      ? amount * (players.length - 1)
+      : action === 'PLAYER_TO_PLAYER' || action === 'PLAYER_TO_BANK'
+        ? amount
+        : null;
+  return required !== null && player.balance < required ? required - player.balance : null;
+}
+
 export function insufficientMessage(
   error: unknown,
   players: Player[],

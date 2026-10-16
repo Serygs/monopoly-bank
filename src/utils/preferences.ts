@@ -12,6 +12,8 @@ export interface DevicePreferences {
   colorMode: ColorMode;
   sound: boolean;
   vibration: boolean;
+  /** Holds a screen wake lock during an active game so the phone does not dim between turns. */
+  keepScreenAwake: boolean;
 }
 
 const key = 'monopoly-bank-device-preferences';
@@ -20,6 +22,7 @@ const defaults: DevicePreferences = {
   colorMode: 'system',
   sound: true,
   vibration: true,
+  keepScreenAwake: true,
 };
 
 export function isColorMode(value: unknown): value is ColorMode {
@@ -42,6 +45,7 @@ export function readPreferences(): DevicePreferences {
             : defaults.colorMode,
         sound: candidate.sound !== false,
         vibration: candidate.vibration !== false,
+        keepScreenAwake: candidate.keepScreenAwake !== false,
       };
     }
   } catch {

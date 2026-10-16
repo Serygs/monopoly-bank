@@ -168,3 +168,23 @@ describe('formatCalculatorDisplay', () => {
     expect(formatCalculatorDisplay('0', '.')).toBe('0');
   });
 });
+
+describe('calculator mortgage keys', () => {
+  const half: CalculatorAction = { type: 'mortgage', kind: 'half' };
+  const redeem: CalculatorAction = { type: 'mortgage', kind: 'redeem' };
+  it('halves a price into its mortgage value and records it', () => {
+    const state = run(...digits('2400000'), half);
+    expect(state.display).toBe('1200000');
+    expect(state.history[0]).toEqual({ expression: '2400000 ÷ 2 =', result: '1200000' });
+  });
+  it('adds 10% to redeem, rounding whole amounts half up', () => {
+    expect(run(...digits('1200000'), redeem).display).toBe('1320000');
+    expect(run(...digits('15'), redeem).display).toBe('17');
+    expect(run(...digits('14'), redeem).display).toBe('15');
+  });
+  it('starts a new number after the result and drops a pending operation', () => {
+    const state = run(...digits('100'), op('+'), ...digits('60'), half, ...digits('5'));
+    expect(state.display).toBe('5');
+    expect(state.operator).toBeNull();
+  });
+});

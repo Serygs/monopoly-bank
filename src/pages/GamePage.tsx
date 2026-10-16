@@ -11,6 +11,7 @@ import { GameBottomNav } from '../components/game/GameBottomNav';
 import { cx } from '../components/ui/class-names';
 import { Button, Notice, PageShell, StatPill, useFeedback } from '../components/ui';
 import type { DevicePreferences } from '../utils/preferences';
+import { useWakeLock } from '../hooks/useWakeLock';
 import { playPaymentFeedback, vibrate } from '../utils/feedback';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
@@ -102,6 +103,8 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   useEffect(() => {
     if (details?.game.status === 'ACTIVE' && !offline) loadPaymentRequests();
   }, [details?.game.status, loadPaymentRequests, offline]);
+
+  useWakeLock(preferences.keepScreenAwake && details?.game.status === 'ACTIVE');
 
   const shouldConnectLive = details !== null && details.game.status !== 'FINISHED' && !offline;
   useEffect(() => {

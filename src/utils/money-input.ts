@@ -24,13 +24,25 @@ export function maxFractionDigits(unit: AmountUnit): number {
   return FRACTION_DIGITS[unit];
 }
 
-/** The whole-unit amount the typed digits stand for (a decimal such as `3.2` M is 3 200 000). */
-function canonicalNumber(digits: string, unit: AmountUnit): number {
-  return Math.round(Number(digits === '' ? '0' : digits) * AMOUNT_UNIT_FACTOR[unit]);
+/**
+ * The whole-unit amount the typed digits stand for (a decimal such as `3.2` M is 3 200 000), parsed
+ * from the whole and fraction parts without floating point. `null` when the digits do not make a
+ * whole amount in `unit` (`1.5` in ones) or exceed the amount limit.
+ */
+function canonicalNumber(digits: string, unit: AmountUnit): number | null {
+  const dot = digits.indexOf('.');
+  const whole = dot === -1 ? digits : digits.slice(0, dot);
+  const fraction = dot === -1 ? '' : digits.slice(dot + 1);
+  const places = maxFractionDigits(unit);
+  if (fraction.length > places) return null;
+  const amount =
+    Number(whole === '' ? '0' : whole) * AMOUNT_UNIT_FACTOR[unit] +
+    (places === 0 ? 0 : Number(fraction.padEnd(places, '0')));
+  return amount <= maxMoneyInput ? amount : null;
 }
 
 function fitsLimit(digits: string, unit: AmountUnit): boolean {
-  return canonicalNumber(digits, unit) <= maxMoneyInput;
+  return canonicalNumber(digits, unit) !== null;
 }
 
 export function appendMoneyDigit(digits: string, digit: string, unit: AmountUnit): string {
@@ -75,27 +87,21 @@ function capToLimit(digits: string, unit: AmountUnit): string {
   return fitsLimit(digits, unit) ? digits : String(maxDigitsFor(unit));
 }
 
+/** The canonical whole amount, or `''` when nothing is typed or the digits are not a valid amount in the unit. */
 export function toCanonicalAmount(state: AmountInputState): string {
-  return state.digits === '' ? '' : String(canonicalNumber(state.digits, state.unit));
+  if (state.digits === '') return '';
+  const amount = canonicalNumber(state.digits, state.unit);
+  return amount === null ? '' : String(amount);
 }
 
-/** Writes a whole-unit amount in `unit`, with a fraction when it does not divide evenly. */
-export function canonicalToDigits(canonical: number, unit: AmountUnit): string {
-  const factor = AMOUNT_UNIT_FACTOR[unit];
-  const whole = Math.floor(canonical / factor);
-  const remainder = canonical % factor;
-  if (remainder === 0) return String(whole);
-  const fraction = String(remainder).padStart(maxFractionDigits(unit), '0').replace(/0+$/, '');
-  return `${whole}.${fraction}`;
+/** Typed digits that cannot be an amount in the chosen unit, e.g. `1.5` after switching to ones. */
+export function isUnrepresentableAmount(state: AmountInputState): boolean {
+  return state.digits !== '' && canonicalNumber(state.digits, state.unit) === null;
 }
 
-/** Switching the unit keeps the amount and re-expresses it: 85 000 → `85` in thousands. */
+/** Switching the unit changes only the multiplier; the typed digits stay: `3` M → `3` K → `3` M. */
 export function changeAmountUnit(state: AmountInputState, unit: AmountUnit): AmountInputState {
-  if (state.unit === unit) return state;
-  const canonical = canonicalNumber(state.digits, state.unit);
-  return state.digits === '' || canonical === 0
-    ? { digits: '', unit }
-    : { digits: canonicalToDigits(canonical, unit), unit };
+  return state.unit === unit ? state : { digits: state.digits, unit };
 }
 
 /** Typed digits for display: grouped whole part and the locale's decimal separator. */

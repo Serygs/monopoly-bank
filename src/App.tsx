@@ -384,6 +384,11 @@ function AppRoutes() {
             checked={preferences.vibration}
             onChange={(vibration) => setPreferences({ ...preferences, vibration })}
           />
+          <Toggle
+            label={t('keepScreenAwake')}
+            checked={preferences.keepScreenAwake}
+            onChange={(keepScreenAwake) => setPreferences({ ...preferences, keepScreenAwake })}
+          />
           <div className="settings-account-actions grid gap-(--mb-space-3) border-t border-dialog-divider mt-(--mb-space-1) pt-(--mb-space-4)">
             {signOutError !== null && (
               <Notice tone="error" className="m-0">
