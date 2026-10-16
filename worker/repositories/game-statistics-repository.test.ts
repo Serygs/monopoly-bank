@@ -111,22 +111,24 @@ class StatisticsDatabase {
               }
             : null,
         all: async () => ({
-          results: [
-            {
-              player_id: 'a',
-              sent: 500,
-              received: 1000,
-              transaction_count: this.count,
-              pass_go_count: 10,
-            },
-            {
-              player_id: 'b',
-              sent: 1000,
-              received: 500,
-              transaction_count: this.count,
-              pass_go_count: 8,
-            },
-          ],
+          results: query.includes('transaction_id')
+            ? []
+            : [
+                {
+                  player_id: 'a',
+                  sent: 500,
+                  received: 1000,
+                  transaction_count: this.count,
+                  pass_go_count: 10,
+                },
+                {
+                  player_id: 'b',
+                  sent: 1000,
+                  received: 500,
+                  transaction_count: this.count,
+                  pass_go_count: 8,
+                },
+              ],
         }),
       }),
     };
