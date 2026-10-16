@@ -205,7 +205,7 @@ describe('BankingDialog house rules', () => {
 
   it('offers the exact-landing action only when the game enables the rule', async () => {
     const off = renderDialog([olena, taras]);
-    expect(screen.queryByRole('button', { name: /Landed exactly on GO/ })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /Landed exactly on GO/ })).toBeNull();
     off.props.onClose();
   });
 
@@ -218,7 +218,8 @@ describe('BankingDialog house rules', () => {
       rules: { ...defaultGameRules, doubleRewardOnExactGo: true },
       passGoReward: 200_000,
     });
-    await user.click(screen.getByRole('button', { name: 'Landed exactly on GO (double)' }));
+    await user.click(screen.getByRole('switch', { name: 'Landed exactly on GO (double)' }));
+    await user.click(screen.getByRole('button', { name: 'Pass GO' }));
     expect(screen.getAllByText('$400 000').length).toBeGreaterThan(0);
     expect(screen.getByRole('textbox', { name: 'Comment' })).toHaveValue(
       'Landed exactly on GO: double reward',
@@ -779,10 +780,9 @@ describe('BankingDialog Free Parking jackpot', () => {
     createTransaction.mockRestore();
   });
 
-  it('disables the collection and explains why when the pot is empty', () => {
+  it('hides the collection when the pot is empty', () => {
     renderDialog([olena, taras], { rules, settings, jackpot: 0 });
-    expect(screen.getByRole('button', { name: 'Collect Free Parking' })).toBeDisabled();
-    expect(screen.getByText(/pot is empty/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Collect Free Parking' })).toBeNull();
   });
 
   it('hides the jackpot action without the rule', () => {
