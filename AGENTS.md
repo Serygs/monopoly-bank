@@ -4,7 +4,7 @@
 
 - The application is a React 19/Vite client in `src/`, a Cloudflare Worker in `worker/`, and Cloudflare D1 migrations in `migrations/`.
 - Shared API contracts belong in `shared/contracts/`; shared financial rules belong in `shared/domain/`. Keep UI state and rendering out of Worker services.
-- D1 is the source of truth. Do not add a bank balance, board mechanics, property ownership, turn order, or other game-engine state. Bank-loan rounds are only a hint derived on read from the transaction log (`shared/domain/round-tracking.ts`), never stored or enforced.
+- D1 is the source of truth. Do not add a general bank balance, board mechanics, property ownership, turn order, or other game-engine state. Bank-loan rounds are only a hint derived on read from the transaction log (`shared/domain/round-tracking.ts`), never stored or enforced. The one allowed game-level balance is the Free Parking pot (`games.jackpot_balance`), scoped to the `freeParkingJackpot` rule and changed only by its `TO_JACKPOT` / `JACKPOT_PAYOUT` transactions.
 - Monetary values are positive safe integers in whole currency units; the K/M input modifiers only multiply what the player types. Multi-player banking operations must remain atomic and write an explicit transaction record.
 
 ## UI and localization

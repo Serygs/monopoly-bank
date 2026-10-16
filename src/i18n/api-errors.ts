@@ -20,6 +20,8 @@ const errorKeys: Record<string, TranslationKey> = {
   INSUFFICIENT_PLAYERS: 'errorInsufficientPlayers',
   INVALID_GAME_STATE: 'errorInvalidGameState',
   RULE_DISABLED: 'errorRuleDisabled',
+  JACKPOT_EMPTY: 'errorJackpotEmpty',
+  JACKPOT_CHANGED: 'errorJackpotChanged',
   TRANSACTION_NOT_FOUND: 'errorTransactionNotFound',
   TRANSACTION_ALREADY_REVERSED: 'errorTransactionAlreadyReversed',
   TRANSACTION_NOT_REVERSIBLE: 'errorTransactionNotReversible',

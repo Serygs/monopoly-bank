@@ -45,6 +45,8 @@ export type LiveServerEvent =
       loans?: Loan[];
       /** With the bank-loans rule, every commit carries the loans and cooldowns (rounds may advance). */
       bankLoanCooldowns?: BankLoanCooldown[];
+      /** The Free Parking pot after the commit; present whenever the game has the jackpot rule. */
+      jackpot?: number;
     }
   | { type: 'GAME_FINISHED'; stateVersion: number; details: GameDetails }
   | { type: 'LOBBY_UPDATED'; stateVersion: number; details: Pick<GameDetails, 'game' | 'players'> }

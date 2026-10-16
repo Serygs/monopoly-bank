@@ -51,6 +51,21 @@ export interface PassGoCommand {
   comment?: string | null;
 }
 
+export interface ToJackpotCommand extends BankingCommand {
+  playerId: string;
+  amount: number;
+}
+
+export interface JackpotPayoutCommand {
+  game: Game;
+  players: readonly Player[];
+  playerId: string;
+  /** The pot as the server just read it; the whole of it is paid out. */
+  jackpot: number;
+  /** The pot the player reviewed; a different pot is refused before anything is written. */
+  expectedAmount: number;
+}
+
 export interface MortgagePropertyCommand extends BankingCommand {
   playerId: string;
   propertyName: string;
@@ -148,6 +163,12 @@ export interface PendingTransaction {
   participants: TransactionParticipant[];
   /** Set only on a REVERSAL: the stored transaction it moves back. */
   reversesTransactionId?: string;
+  /**
+   * Set only on a TO_JACKPOT or JACKPOT_PAYOUT: how the Free Parking pot changes, written in the
+   * same batch as the transaction. A payout is guarded by the pot it read (`expected`), so a pot
+   * that changed in between rolls the whole batch back.
+   */
+  jackpot?: { kind: 'DEPOSIT'; amount: number } | { kind: 'COLLECT'; expected: number };
   /** Set only on a MORTGAGE: the mortgage record stored with it (its id is the transaction's). */
   newMortgage?: { playerId: string; propertyName: string; mortgageValue: number };
   /** Set only on a MORTGAGE_REDEMPTION: the mortgage it closes. */
@@ -319,6 +340,29 @@ export class TransactionAlreadyReversedError extends BankingDomainError {
   }
 }
 
+export class JackpotEmptyError extends BankingDomainError {
+  readonly code = 'JACKPOT_EMPTY' as const;
+  constructor() {
+    super({
+      code: 'JACKPOT_EMPTY',
+      message: 'The Free Parking pot is empty.',
+      status: 409,
+    });
+  }
+}
+
+export class JackpotChangedError extends BankingDomainError {
+  readonly code = 'JACKPOT_CHANGED' as const;
+  constructor(jackpot: number, expectedAmount: number) {
+    super({
+      code: 'JACKPOT_CHANGED',
+      message: 'The Free Parking pot changed. Review the new amount and try again.',
+      status: 409,
+      details: { jackpot, expectedAmount },
+    });
+  }
+}
+
 export class InvalidPropertyNameError extends BankingDomainError {
   readonly code = 'INVALID_PROPERTY_NAME' as const;
   constructor() {
@@ -462,6 +506,60 @@ export function playerToBank(command: PlayerToBankCommand): BankingOperationResu
     command.comment,
     [createBalanceChange(player, -command.amount)],
   );
+}
+
+/** The player pays a tax into the Free Parking pot instead of the bank. */
+export function toJackpot(command: ToJackpotCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  validateAmount(command.amount);
+
+  const player = findPlayer(players, command.playerId);
+  ensureActive(player);
+  ensureSufficientFunds(player, command.amount);
+  const result = createResult(
+    command.game.id,
+    'TO_JACKPOT',
+    command.amount,
+    command.amount,
+    command.comment,
+    [createBalanceChange(player, -command.amount)],
+  );
+  return {
+    ...result,
+    transaction: {
+      ...result.transaction,
+      jackpot: { kind: 'DEPOSIT', amount: command.amount },
+    },
+  };
+}
+
+/**
+ * The player collects the whole pot, which the caller read on the server. An empty pot is refused,
+ * and so is a pot that is not the one the player reviewed (`expectedAmount`).
+ */
+export function jackpotPayout(command: JackpotPayoutCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const player = findPlayer(players, command.playerId);
+  ensureActive(player);
+  if (command.jackpot === 0) throw new JackpotEmptyError();
+  validateAmount(command.jackpot);
+  if (command.jackpot !== command.expectedAmount)
+    throw new JackpotChangedError(command.jackpot, command.expectedAmount);
+  const result = createResult(
+    command.game.id,
+    'JACKPOT_PAYOUT',
+    command.jackpot,
+    command.jackpot,
+    null,
+    [createBalanceChange(player, command.jackpot)],
+  );
+  return {
+    ...result,
+    transaction: {
+      ...result.transaction,
+      jackpot: { kind: 'COLLECT', expected: command.jackpot },
+    },
+  };
 }
 
 /** The bank pays the mortgage value; the property name becomes the transaction's comment. */

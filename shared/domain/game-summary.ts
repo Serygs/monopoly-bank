@@ -54,6 +54,8 @@ export function calculateFinalGameSummary(
     largestTransaction = Math.max(largestTransaction, transaction.totalAmount);
     // Borrowed and repaid money is a debt, not spending or income, so loan transactions count
     // toward the totals and each player's transaction count but not toward sent/received.
+    // TO_JACKPOT counts as money the player sent and JACKPOT_PAYOUT as money received; neither is
+    // paid to / received from the bank, nor player-to-player (the pot is neither).
     const isLoan = transaction.type === 'LOAN_ISSUE' || transaction.type === 'LOAN_REPAYMENT';
     for (const participant of transaction.participants) {
       const metric = metrics.get(participant.playerId);

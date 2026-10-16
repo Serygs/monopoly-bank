@@ -51,7 +51,8 @@ export function walletActionTone(action: ActionType): 'income' | 'expense' {
     action === 'PASS_GO' ||
     action === 'MORTGAGE' ||
     action === 'BANK_LOAN' ||
-    action === 'LOAN_ISSUE'
+    action === 'LOAN_ISSUE' ||
+    action === 'JACKPOT_PAYOUT'
     ? 'income'
     : 'expense';
 }
@@ -127,6 +128,7 @@ export function applyLiveEvent(
             ...(event.bankLoanCooldowns === undefined
               ? {}
               : { bankLoanCooldowns: event.bankLoanCooldowns }),
+            ...(event.jackpot === undefined ? {} : { jackpot: event.jackpot }),
           },
     );
     setHistory((current) => {
@@ -207,7 +209,11 @@ export function buildRequest(
           };
     case 'PLAYER_TO_BANK':
     case 'BANK_TO_PLAYER':
+    case 'TO_JACKPOT':
       return { type: action, playerId, amount, ...optionalComment };
+    case 'JACKPOT_PAYOUT':
+      // The pot the player reviewed; the Worker refuses the collection if the pot has changed.
+      return { type: action, playerId, expectedAmount: amount };
     case 'PLAYER_TO_ALL':
       return { type: action, payerPlayerId: playerId, amountPerPlayer: amount, ...optionalComment };
     case 'ALL_TO_PLAYER':
@@ -268,6 +274,8 @@ export function previewBalances(
   loans: Loan[] = [],
   /** Interest leaving the game with a bank-loan repayment, on top of the principal. */
   interest = 0,
+  /** The Free Parking pot a collection pays out in full. */
+  jackpot = 0,
 ): BalancePreview[] {
   return players.map((player) => {
     let delta = 0;
@@ -281,6 +289,12 @@ export function previewBalances(
         break;
       case 'BANK_TO_PLAYER':
         if (player.id === request.playerId) delta = request.amount;
+        break;
+      case 'TO_JACKPOT':
+        if (player.id === request.playerId) delta = -request.amount;
+        break;
+      case 'JACKPOT_PAYOUT':
+        if (player.id === request.playerId) delta = jackpot;
         break;
       case 'PLAYER_TO_ALL':
         if (player.id === request.payerPlayerId)
@@ -330,6 +344,8 @@ export function actionLabel(type: ActionType, t: Translate): string {
     LOAN_ISSUE: t('loanBorrow'),
     LOAN_REPAYMENT: t('loanRepay'),
     BANK_LOAN: t('loanBorrowBank'),
+    TO_JACKPOT: t('payFreeParking'),
+    JACKPOT_PAYOUT: t('collectFreeParking'),
   }[type];
 }
 
@@ -347,6 +363,8 @@ export function actionDescription(action: ActionType, name: string, t: Translate
       LOAN_ISSUE: 'actionLoanIssue',
       LOAN_REPAYMENT: 'actionLoanRepay',
       BANK_LOAN: 'actionBankLoan',
+      TO_JACKPOT: 'actionToJackpot',
+      JACKPOT_PAYOUT: 'actionJackpotPayout',
     } as const
   )[action];
   return t(key, { name });
@@ -367,6 +385,7 @@ export function sourceFor(
   )
     return t('bank');
   if (action === 'ALL_TO_PLAYER') return t('allOtherPlayers');
+  if (action === 'JACKPOT_PAYOUT') return t('freeParkingPot');
   return player.name;
 }
 
@@ -385,6 +404,7 @@ export function destinationFor(
   )
     return t('bank');
   if (action === 'PLAYER_TO_ALL') return t('allOtherPlayers');
+  if (action === 'TO_JACKPOT') return t('freeParkingPot');
   if (action === 'PLAYER_TO_PLAYER' || action === 'LOAN_REPAYMENT')
     return target?.name ?? t('selectedPlayer');
   return player.name;
@@ -405,6 +425,8 @@ export function transactionLabel(type: TransactionType, t: Translate): string {
     MORTGAGE_REDEMPTION: t('redemptionLabel'),
     LOAN_ISSUE: t('loanIssueLabel'),
     LOAN_REPAYMENT: t('loanRepaymentLabel'),
+    TO_JACKPOT: t('paidFreeParking'),
+    JACKPOT_PAYOUT: t('collectedFreeParking'),
   }[type];
 }
 

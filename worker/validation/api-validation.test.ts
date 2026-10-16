@@ -376,3 +376,64 @@ describe('bank loan validation', () => {
     },
   );
 });
+
+describe('Free Parking jackpot validation', () => {
+  const playerId = '11111111-1111-4111-8111-111111111111';
+
+  it('accepts a payment into the pot, with or without a comment', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'TO_JACKPOT', playerId, amount: 200, comment: 'Income tax' }),
+      ),
+    ).resolves.toEqual({ type: 'TO_JACKPOT', playerId, amount: 200, comment: 'Income tax' });
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'TO_JACKPOT', playerId, amount: 75 })),
+    ).resolves.toEqual({ type: 'TO_JACKPOT', playerId, amount: 75 });
+  });
+
+  it.each([
+    ['a missing player', { amount: 10 }],
+    ['a malformed player', { playerId: 'nope', amount: 10 }],
+    ['a missing amount', { playerId }],
+    ['a zero amount', { playerId, amount: 0 }],
+    ['a negative amount', { playerId, amount: -5 }],
+    ['a fractional amount', { playerId, amount: 1.5 }],
+    ['an unsafe amount', { playerId, amount: 2 ** 60 }],
+    ['an amount string', { playerId, amount: '10' }],
+    ['a non-string comment', { playerId, amount: 10, comment: 5 }],
+  ])('rejects a pot payment with %s', async (_label, fields) => {
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'TO_JACKPOT', ...fields })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+
+  it('accepts a collection with the reviewed pot and ignores any amount or comment', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({
+          type: 'JACKPOT_PAYOUT',
+          playerId,
+          expectedAmount: 275,
+          amount: 999999,
+          comment: 'x',
+        }),
+      ),
+    ).resolves.toEqual({ type: 'JACKPOT_PAYOUT', playerId, expectedAmount: 275 });
+  });
+
+  it.each([
+    ['a missing player', { expectedAmount: 10 }],
+    ['a malformed player', { playerId: 'nope', expectedAmount: 10 }],
+    ['a missing expected pot', { playerId }],
+    ['a zero expected pot', { playerId, expectedAmount: 0 }],
+    ['a negative expected pot', { playerId, expectedAmount: -5 }],
+    ['a fractional expected pot', { playerId, expectedAmount: 1.5 }],
+    ['an unsafe expected pot', { playerId, expectedAmount: 2 ** 60 }],
+    ['a string expected pot', { playerId, expectedAmount: '10' }],
+    ['only an amount', { playerId, amount: 10 }],
+  ])('rejects a collection with %s', async (_label, fields) => {
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'JACKPOT_PAYOUT', ...fields })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+});

@@ -555,3 +555,65 @@ describe('GameSession bank loan events', () => {
     });
   });
 });
+
+describe('GameSession jackpot events', () => {
+  it('sends the pot with a committed transaction, and omits it without the rule', async () => {
+    const run = async (jackpot: number | undefined) => {
+      const sent: string[] = [];
+      const storage = new Map<string, unknown>();
+      const context = {
+        storage: {
+          get: async <T>(key: string) => storage.get(key) as T | undefined,
+          put: async (key: string, value: unknown) => {
+            storage.set(key, value);
+          },
+        },
+        getWebSockets: () => [{ send: (message: string) => sent.push(message) }],
+      };
+      const session = new GameSession(context as never, {} as Env) as unknown as {
+        mutate(gameId: string, userId: string, request: Request): Promise<Response>;
+        banking(command: string): unknown;
+        authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
+        commandLedger(): ReturnType<typeof fakeLedger>;
+      };
+      session.banking = () => ({
+        createTransaction: async () => ({
+          transaction: {
+            id: commandId,
+            gameId,
+            type: 'JACKPOT_PAYOUT',
+            amount: 275,
+            totalAmount: 275,
+            comment: null,
+            createdAt: '',
+            participants: [],
+          },
+          players: [],
+          ...(jackpot === undefined ? {} : { jackpot }),
+        }),
+      });
+      session.commandLedger = () => fakeLedger();
+      session.authorizeMutation = async () => undefined;
+      await session.mutate(
+        gameId,
+        'actor',
+        new Request('https://game-session/mutation', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'CREATE_TRANSACTION',
+            commandId,
+            request: {
+              type: 'JACKPOT_PAYOUT',
+              playerId: '00000000-0000-4000-8000-000000000003',
+              expectedAmount: 275,
+            },
+          }),
+        }),
+      );
+      return JSON.parse(sent[0] ?? '{}') as Record<string, unknown>;
+    };
+
+    expect(await run(0)).toMatchObject({ type: 'GAME_COMMITTED', jackpot: 0 });
+    expect(await run(undefined)).not.toHaveProperty('jackpot');
+  });
+});

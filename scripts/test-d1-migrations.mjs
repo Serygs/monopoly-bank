@@ -234,6 +234,24 @@ try {
   );
   if (!/UNIQUE constraint failed/i.test(secondActiveBankLoan))
     throw new Error('loans accepts a second active bank loan for one player.');
+  // Migration 0025 adds games.jackpot_balance; the existing game must start with an empty pot.
+  const jackpotMigration = '0025_free_parking_jackpot.sql';
+  await cp(join('migrations', jackpotMigration), join(legacyMigrations, jackpotMigration));
+  await applyLegacy();
+  const jackpotStage = await legacySql(
+    "SELECT jackpot_balance FROM games WHERE id = 'game-upgrade-1'",
+  );
+  const jackpotRow = JSON.parse(
+    jackpotStage.slice(jackpotStage.indexOf('['), jackpotStage.lastIndexOf(']') + 1),
+  )[0]?.results?.[0];
+  if (jackpotRow?.jackpot_balance !== 0)
+    throw new Error(`The jackpot migration did not default the pot to 0: ${jackpotStage}`);
+  const negativeJackpot = await legacySql(
+    "UPDATE games SET jackpot_balance = -1 WHERE id = 'game-upgrade-1'",
+    true,
+  );
+  if (!/CHECK constraint failed/i.test(negativeJackpot))
+    throw new Error('games.jackpot_balance accepts a negative value.');
   const upgradedFixture = await legacySql(
     "SELECT pc.player_id, pc.user_id FROM player_controllers pc JOIN users u ON u.id = pc.user_id WHERE pc.game_id = 'game-upgrade-1' AND pc.player_id = 'player-upgrade-1' AND pc.controller_kind = 'PRIMARY'",
   );
