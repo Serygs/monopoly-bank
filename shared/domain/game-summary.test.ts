@@ -44,6 +44,27 @@ describe('calculateFinalGameSummary', () =>
     });
   }));
 
+describe('the Free Parking pot in the final summary', () => {
+  it('counts pot payments as sent and collections as received, never as bank or player money', () => {
+    const summary = calculateFinalGameSummary(players, [
+      transaction('TO_JACKPOT', 200, [{ playerId: 'a', balanceDelta: -200 }]),
+      transaction('TO_JACKPOT', 75, [{ playerId: 'b', balanceDelta: -75 }]),
+      transaction('JACKPOT_PAYOUT', 275, [{ playerId: 'c', balanceDelta: 275 }]),
+    ]);
+    expect(summary.totalMoneyTransferred).toBe(550);
+    expect(summary.largestTransaction).toBe(275);
+    expect(summary.playerToPlayerTotal).toBe(0);
+    expect(summary.paidToBank).toBe(0);
+    expect(summary.receivedFromBank).toBe(0);
+    expect(summary.biggestPayerRecipient).toBeNull();
+    const metric = (id: string) => summary.players.find((item) => item.playerId === id);
+    expect(metric('a')).toMatchObject({ sent: 200, received: 0, transactionCount: 1 });
+    expect(metric('b')).toMatchObject({ sent: 75, received: 0 });
+    expect(metric('c')).toMatchObject({ sent: 0, received: 275 });
+    expect(summary.biggestSenderId).toBe('a');
+  });
+});
+
 describe('loans in the final summary', () => {
   it('count toward the volume but are neither sent nor received money', () => {
     const summary = calculateFinalGameSummary(players, [

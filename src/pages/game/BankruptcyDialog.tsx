@@ -20,6 +20,7 @@ export interface BankruptcyDialogProps {
     mortgages?: Mortgage[],
     loans?: Loan[],
     bankLoanCooldowns?: BankLoanCooldown[],
+    jackpot?: number,
   ) => void;
 }
 
@@ -43,7 +44,13 @@ export function BankruptcyDialog({
         playerId: player.id,
         ...(creditorId === null ? {} : { creditorPlayerId: creditorId }),
       });
-      onCompleted(result.players, result.mortgages, result.loans, result.bankLoanCooldowns);
+      onCompleted(
+        result.players,
+        result.mortgages,
+        result.loans,
+        result.bankLoanCooldowns,
+        result.jackpot,
+      );
     } catch (caught) {
       setError(apiErrorMessage(caught, t, 'unableRecordTransaction'));
     }

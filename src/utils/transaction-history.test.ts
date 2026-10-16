@@ -149,3 +149,32 @@ describe('bank loan transactions', () => {
     expect(transactionDescription(repayment, players)).toBe('Alex repaid the bank loan');
   });
 });
+
+describe('Free Parking jackpot transactions', () => {
+  const payment: Transaction = {
+    ...rent,
+    type: 'TO_JACKPOT',
+    comment: 'Income tax',
+    participants: [{ playerId: 'alex', balanceDelta: -200 }],
+  };
+  const payout: Transaction = {
+    ...rent,
+    type: 'JACKPOT_PAYOUT',
+    comment: null,
+    participants: [{ playerId: 'alex', balanceDelta: 500 }],
+  };
+
+  it('names the payer and what was paid, or the collector', () => {
+    expect(transactionDescription(payment, players)).toBe('Alex paid Income tax to Free Parking');
+    expect(transactionDescription({ ...payment, comment: null }, players)).toBe(
+      'Alex paid to Free Parking',
+    );
+    expect(transactionDescription(payout, players)).toBe('Alex collected the Free Parking pot');
+    expect(transactionDescription(payout, players, 'uk')).toContain('Безкоштовної стоянки');
+  });
+
+  it('shows a collection as money received', () => {
+    expect(transactionAmount(payout, 'USD')).toMatch(/^\+/);
+    expect(transactionAmount(payment, 'USD')).not.toMatch(/^\+/);
+  });
+});

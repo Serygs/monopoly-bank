@@ -217,3 +217,30 @@ describe('DefaultGameService bank loans', () => {
     expect(details.loans).toEqual([bankLoan]);
   });
 });
+
+describe('DefaultGameService Free Parking jackpot', () => {
+  const repositories = (rules: typeof defaultGameRules) => ({
+    games: {
+      getById: async () => ({ ...game, rules }),
+      getJackpot: async () => 275,
+      listFavoriteAmounts: async () => [],
+      listRecentAmounts: async () => [],
+    } as never,
+    players: { listByGameId: async () => players } as never,
+    createId: () => 'unused',
+  });
+
+  it('reports the pot with a game that enabled the rule', async () => {
+    const details = await new DefaultGameService(
+      repositories({ ...defaultGameRules, freeParkingJackpot: true }),
+    ).getGame('game');
+
+    expect(details.jackpot).toBe(275);
+  });
+
+  it('omits the pot without the rule', async () => {
+    const details = await new DefaultGameService(repositories(defaultGameRules)).getGame('game');
+
+    expect(details).not.toHaveProperty('jackpot');
+  });
+});

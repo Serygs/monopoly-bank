@@ -63,6 +63,8 @@ export interface UpdateGameMetadataInput {
 export interface GameRepository {
   createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void>;
   getById(id: string): Promise<Game | null>;
+  /** The Free Parking pot (jackpot rule); the only place it is read from. */
+  getJackpot(id: string): Promise<number>;
   list(): Promise<Game[]>;
   listSummaries(): Promise<GameSummary[]>;
   listSummariesForUser(userId: string): Promise<GameSummary[]>;
@@ -156,6 +158,14 @@ export class D1GameRepository implements GameRepository {
       .first<GameRow>();
 
     return row === null ? null : mapGame(row);
+  }
+
+  async getJackpot(id: string): Promise<number> {
+    const row = await this.database
+      .prepare('SELECT jackpot_balance FROM games WHERE id = ? AND deleted_at IS NULL')
+      .bind(id)
+      .first<{ jackpot_balance: number }>();
+    return row?.jackpot_balance ?? 0;
   }
 
   async list(): Promise<Game[]> {

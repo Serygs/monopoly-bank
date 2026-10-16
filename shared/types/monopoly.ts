@@ -62,6 +62,8 @@ export const transactionTypes = [
   'MORTGAGE_REDEMPTION',
   'LOAN_ISSUE',
   'LOAN_REPAYMENT',
+  'TO_JACKPOT',
+  'JACKPOT_PAYOUT',
 ] as const;
 
 export type TransactionType = (typeof transactionTypes)[number];

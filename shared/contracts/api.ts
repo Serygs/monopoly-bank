@@ -55,6 +55,8 @@ export interface GameDetails {
   loans?: Loan[];
   /** Players still in the cooldown after repaying a bank loan (bank-loans rule only). */
   bankLoanCooldowns?: BankLoanCooldown[];
+  /** The Free Parking pot; present only when the game has the jackpot rule. */
+  jackpot?: number;
   favoriteAmounts?: number[];
   recentAmounts?: number[];
   /** Wallets the current actor can operate. All other wallets are read-only. */
@@ -284,6 +286,28 @@ export interface BankLoanTransactionRequest extends Omit<TransactionRequestBase,
   acknowledgeCooldown?: boolean;
 }
 
+/**
+ * Pays a tax into the Free Parking pot instead of the bank (jackpot rule). The client sends this
+ * for the income-tax and luxury-tax chips; every other bank payment stays PLAYER_TO_BANK.
+ */
+export interface ToJackpotTransactionRequest extends TransactionRequestBase {
+  type: 'TO_JACKPOT';
+  playerId: string;
+  amount: number;
+}
+
+/** The player landed on Free Parking and collects the whole pot. */
+export interface JackpotPayoutTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
+  type: 'JACKPOT_PAYOUT';
+  playerId: string;
+  /**
+   * The pot the player reviewed. If the pot differs when the command runs, nothing is written and
+   * the request fails with JACKPOT_CHANGED (or JACKPOT_EMPTY), so the player never receives an
+   * amount they did not confirm.
+   */
+  expectedAmount: number;
+}
+
 /** Corrects a mistaken transaction with a new REVERSAL record; the original is never edited. */
 export interface ReversalTransactionRequest extends TransactionRequestBase {
   type: 'REVERSAL';
@@ -372,6 +396,8 @@ export type CreateTransactionRequest =
   | LoanIssueTransactionRequest
   | LoanRepaymentTransactionRequest
   | BankLoanTransactionRequest
+  | ToJackpotTransactionRequest
+  | JackpotPayoutTransactionRequest
   | ReversalTransactionRequest;
 
 /** Every request that names its own wallet; a reversal is authorized from the stored record instead. */
@@ -389,6 +415,8 @@ export interface CreateTransactionResponse {
   loans?: Loan[];
   /** With the bank-loans rule every response carries these, since every operation can advance a round. */
   bankLoanCooldowns?: BankLoanCooldown[];
+  /** The Free Parking pot after this operation; present whenever the game has the jackpot rule. */
+  jackpot?: number;
 }
 
 export const paymentRequestStates = [
@@ -430,6 +458,8 @@ export interface PaymentRequestActionResponse {
   loans?: Loan[];
   /** With the bank-loans rule every response carries these, since every operation can advance a round. */
   bankLoanCooldowns?: BankLoanCooldown[];
+  /** The Free Parking pot after this operation; present whenever the game has the jackpot rule. */
+  jackpot?: number;
 }
 
 /** One roll of the two table dice by one player; kept only while the game is active. */

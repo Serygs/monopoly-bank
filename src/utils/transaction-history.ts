@@ -52,6 +52,18 @@ export function transactionDescription(
         borrower: nameOf(negative?.playerId),
         lender: nameOf(positive?.playerId),
       });
+    case 'TO_JACKPOT':
+      // The comment names what was paid (e.g. "Income tax"); without one the payment is unnamed.
+      return transaction.comment === null || transaction.comment.trim() === ''
+        ? translate(language, 'jackpotPaymentDescription', { name: nameOf(negative?.playerId) })
+        : translate(language, 'jackpotPaymentForDescription', {
+            name: nameOf(negative?.playerId),
+            purpose: transaction.comment.trim(),
+          });
+    case 'JACKPOT_PAYOUT':
+      return translate(language, 'jackpotPayoutDescription', {
+        name: nameOf(positive?.playerId),
+      });
     case 'BANKRUPTCY_TRANSFER':
       return translate(language, 'bankruptcyTransactionDescription', {
         source: nameOf(negative?.playerId),
@@ -93,7 +105,11 @@ export function transactionAmount(
       amount: money(transaction.amount),
       total: money(transaction.totalAmount),
     });
-  if (transaction.type === 'PASS_GO' || transaction.type === 'MORTGAGE')
+  if (
+    transaction.type === 'PASS_GO' ||
+    transaction.type === 'MORTGAGE' ||
+    transaction.type === 'JACKPOT_PAYOUT'
+  )
     return `+${money(transaction.amount)}`;
   if (transaction.type === 'REVERSAL') return money(transaction.totalAmount);
   return money(transaction.amount);

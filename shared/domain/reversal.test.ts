@@ -85,6 +85,8 @@ describe('reversal window', () => {
     expect(isReversibleType('MORTGAGE_REDEMPTION')).toBe(false);
     expect(isReversibleType('LOAN_ISSUE')).toBe(false);
     expect(isReversibleType('LOAN_REPAYMENT')).toBe(false);
+    expect(isReversibleType('TO_JACKPOT')).toBe(false);
+    expect(isReversibleType('JACKPOT_PAYOUT')).toBe(false);
   });
 });
 
@@ -113,6 +115,19 @@ describe('canReverseTransaction', () => {
         transaction: { ...base, reversedByTransactionId: 'later' },
       }),
     ).toBe(false);
+  });
+
+  it('never offers a pot payment or collection, not even to the owner', () => {
+    const input = { isOwner: true, controlledPlayerIds: ['a'], now: start + 1000 };
+    for (const [type, deltas] of [
+      ['TO_JACKPOT', participants(['a', -5])],
+      ['JACKPOT_PAYOUT', participants(['a', 5])],
+    ] as const) {
+      const transaction = { ...base, type, participants: deltas };
+      expect(canReverseTransaction({ ...input, transaction })).toBe(false);
+      expect(canReverseTransaction({ ...input, isOwner: false, transaction })).toBe(false);
+      expect(reversalInitiatorPlayerId(transaction)).toBeNull();
+    }
   });
 
   it('offers a player only their own transactions, and only within the window', () => {

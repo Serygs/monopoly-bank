@@ -348,6 +348,7 @@ describe('BankingDialog mortgages', () => {
       [created],
       undefined,
       undefined,
+      undefined,
     );
     createTransaction.mockRestore();
   });
@@ -380,6 +381,7 @@ describe('BankingDialog mortgages', () => {
       'MORTGAGE_REDEMPTION',
       null,
       [],
+      undefined,
       undefined,
       undefined,
     );
@@ -484,6 +486,7 @@ describe('BankingDialog player loans', () => {
       undefined,
       [],
       undefined,
+      undefined,
     );
     createTransaction.mockRestore();
   });
@@ -536,7 +539,15 @@ describe('BankingDialog bank loans', () => {
       { type: 'LOAN_ISSUE', lenderKind: 'BANK', playerId: 'p1', amount: 250 },
       expect.any(String),
     );
-    expect(props.onCompleted).toHaveBeenCalledWith([], 'BANK_LOAN', 250, undefined, [], []);
+    expect(props.onCompleted).toHaveBeenCalledWith(
+      [],
+      'BANK_LOAN',
+      250,
+      undefined,
+      [],
+      [],
+      undefined,
+    );
     createTransaction.mockRestore();
   });
 
@@ -648,6 +659,7 @@ describe('BankingDialog bank loans', () => {
       undefined,
       [],
       [{ playerId: 'p1', roundsLeft: 2 }],
+      undefined,
     );
     createTransaction.mockRestore();
   });
@@ -678,5 +690,103 @@ describe('BankingDialog bank loans', () => {
   it('opens straight on the bank loan repayment when asked to settle it', () => {
     renderDialog([olena, taras], { rules, settings, loans: [bankLoan], settleOnOpen: true });
     expect(screen.getByText(/400 plus .*40 interest/)).toBeInTheDocument();
+  });
+});
+
+describe('BankingDialog Free Parking jackpot', () => {
+  const settings = buildGameSettings(15_000_000);
+  const rules = { ...defaultGameRules, freeParkingJackpot: true };
+
+  function mockCreate() {
+    return vi.spyOn(monopolyBankApi, 'createTransaction').mockResolvedValue({
+      transaction: { amount: 1_000_000 },
+      players: [],
+      jackpot: 1_000_000,
+    } as never);
+  }
+
+  it('sends a tax chip to the pot and says so in the review', async () => {
+    const createTransaction = mockCreate();
+    const { user, props } = renderDialog([olena, taras], { rules, settings });
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    await user.click(screen.getByRole('button', { name: /Luxury tax/ }));
+    expect(screen.getAllByText(/Free Parking pot/).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      { type: 'TO_JACKPOT', playerId: 'p1', amount: 1_000_000, comment: 'Luxury tax' },
+      expect.any(String),
+    );
+    expect(props.onCompleted).toHaveBeenCalledWith(
+      [],
+      'PLAYER_TO_BANK',
+      1_000_000,
+      undefined,
+      undefined,
+      undefined,
+      1_000_000,
+    );
+    createTransaction.mockRestore();
+  });
+
+  it('keeps the jail fine and a typed amount as payments to the bank', async () => {
+    const createTransaction = mockCreate();
+    const { user } = renderDialog([olena, taras], { rules, settings });
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    await user.click(screen.getByRole('button', { name: /Jail fine/ }));
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction.mock.calls[0]?.[1]).toEqual({
+      type: 'PLAYER_TO_BANK',
+      playerId: 'p1',
+      amount: 500_000,
+      comment: 'Jail fine',
+    });
+    createTransaction.mockRestore();
+  });
+
+  it('pays a chip amount that was then edited by hand to the bank', async () => {
+    const createTransaction = mockCreate();
+    const { user } = renderDialog([olena, taras], { player: taras, rules, settings });
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    // Too expensive to review, so the form stays open with the pot payment selected.
+    await user.click(screen.getByRole('button', { name: /Income tax/ }));
+    expect(screen.getByText(/goes into the Free Parking pot/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    await press(user, '5');
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction.mock.calls[0]?.[1]).toMatchObject({
+      type: 'PLAYER_TO_BANK',
+      amount: 5,
+    });
+    createTransaction.mockRestore();
+  });
+
+  it('collects the whole pot from a confirmation that shows what is received', async () => {
+    const createTransaction = mockCreate();
+    const { user } = renderDialog([olena, taras], { rules, settings, jackpot: 3_000_000 });
+    expect(screen.getByText('The Free Parking pot holds $3 000 000.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Collect Free Parking' }));
+    expect(screen.getAllByText('$3 000 000').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('$8 000 000').length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction.mock.calls[0]?.[1]).toEqual({
+      type: 'JACKPOT_PAYOUT',
+      playerId: 'p1',
+      expectedAmount: 3_000_000,
+    });
+    createTransaction.mockRestore();
+  });
+
+  it('disables the collection and explains why when the pot is empty', () => {
+    renderDialog([olena, taras], { rules, settings, jackpot: 0 });
+    expect(screen.getByRole('button', { name: 'Collect Free Parking' })).toBeDisabled();
+    expect(screen.getByText(/pot is empty/)).toBeInTheDocument();
+  });
+
+  it('hides the jackpot action without the rule', () => {
+    renderDialog([olena, taras], { settings, jackpot: 3_000_000 });
+    expect(screen.queryByRole('button', { name: 'Collect Free Parking' })).toBeNull();
   });
 });

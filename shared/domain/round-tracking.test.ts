@@ -48,6 +48,8 @@ describe('transactionActor', () => {
     [tx('PLAYER_TO_ALL', { a: -20, b: 10, c: 10 }), 'a'],
     [tx('BANK_TO_PLAYER', { a: 10 }), 'a'],
     [tx('PASS_GO', { a: 200 }), 'a'],
+    [tx('TO_JACKPOT', { a: -200 }), 'a'],
+    [tx('JACKPOT_PAYOUT', { a: 275 }), 'a'],
     [tx('ALL_TO_PLAYER', { a: 20, b: -10, c: -10 }), 'a'],
   ] as const)('names the payer or recipient of %o', (transaction, expected) => {
     expect(transactionActor(transaction)).toBe(expected);
@@ -119,6 +121,21 @@ describe('turnsStartedSince', () => {
 
     expect(turnsStartedSince(log, anchor.id, 'b')).toBe(1);
     expect(turnsStartedSince(log, anchor.id, 'a')).toBe(0);
+  });
+
+  it('counts pot payments and collections as the actor taking a turn', () => {
+    const anchor = borrow('a');
+    const log = [
+      anchor,
+      pays('a'),
+      tx('TO_JACKPOT', { b: -200 }),
+      tx('JACKPOT_PAYOUT', { a: 200 }),
+      tx('TO_JACKPOT', { b: -100 }),
+    ];
+
+    // a, b, a, b: b started one turn after the anchor's own turn, and a started one more.
+    expect(turnsStartedSince(log, anchor.id, 'b')).toBe(2);
+    expect(turnsStartedSince(log, anchor.id, 'a')).toBe(1);
   });
 
   it('ignores a reversed transaction, so it neither starts nor ends a turn', () => {

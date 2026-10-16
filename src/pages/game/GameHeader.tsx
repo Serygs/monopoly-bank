@@ -42,6 +42,8 @@ const liveStatusToneClass: Record<LiveStatus, string> = {
 
 export interface GameHeaderProps {
   game: Game;
+  /** The Free Parking pot; shown only when the game has the jackpot rule. */
+  jackpot?: number | undefined;
   canManage: boolean | undefined;
   liveStatus: LiveStatus;
   offline: boolean;
@@ -55,6 +57,7 @@ export interface GameHeaderProps {
 /** Game page heading: status, name, Pass GO reward, toolbar and live-connection pill. */
 export function GameHeader({
   game,
+  jackpot,
   canManage,
   liveStatus,
   offline,
@@ -86,6 +89,15 @@ export function GameHeader({
           <strong>
             <MoneyValue amount={game.passGoReward} currency={game.currency} />
           </strong>
+          {game.rules.freeParkingJackpot && game.status === 'ACTIVE' && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{t('freeParkingPotLabel')}:</span>
+              <strong>
+                <MoneyValue amount={jackpot ?? 0} currency={game.currency} />
+              </strong>
+            </>
+          )}
         </span>
       }
       backAction={
