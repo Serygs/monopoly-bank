@@ -578,6 +578,16 @@ opens the list, and tapping the active Profile tab returns to Games. A screen wi
 `--mb-shell-nav-offset` to sit above it. Screens keep their own scroll position (a map in
 `App.tsx`). Screens must not add their own back links for what the nav replaces.
 
+#### Create-lobby stepper
+
+`/games/new` is three steps (Basics, House rules, Players with a review card) inside the normal
+shell. `ui/StepperBar` replaces the main navigation there (same fixed glass bar, height and
+safe-area inset): step indicator, Back, and Next / "Create lobby". Next validates the current
+step with inline errors; Enter advances too. The header X and the logo ask for confirmation
+(`App.tsx` guard, also for the browser Back button) only when the draft differs from a fresh form.
+The draft lives in `sessionStorage` (`create-game-draft.ts`, never the access password) and is
+cleared on create, discard and sign-out.
+
 #### Compact game composition (below `md`)
 
 Below `48rem` the active and finished game is a single phone screen driven by a

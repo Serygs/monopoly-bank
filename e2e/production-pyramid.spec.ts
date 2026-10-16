@@ -532,7 +532,7 @@ async function exerciseMajorViews(
 
   await page.goto('/games/new');
   await expect(
-    page.getByRole('heading', { name: translate(language, 'createLobby'), exact: true }),
+    page.getByRole('heading', { name: translate(language, 'stepBasics'), exact: true }),
   ).toBeVisible();
   await assertViewportHealth(page);
   await attachPage(page, testInfo, `${attachmentPrefix}-create-game`);
@@ -1017,6 +1017,9 @@ async function createLobby(
   await page.getByRole('button', { name: /create.*game|створити.*гру/i }).click();
   await page.getByLabel(/game name|назва гри/i).fill(`Load test ${paymentMode} ${Date.now()}`);
   await page.getByLabel(/payment mode|режим платежів/i).selectOption(paymentMode);
+  const next = page.getByRole('button', { name: /^(next|далі)$/i });
+  await next.click();
+  await next.click();
   for (let index = 0; index < localPlayers; index += 1) {
     await page.getByRole('button', { name: /add player|додати гравця/i }).click();
     await page
