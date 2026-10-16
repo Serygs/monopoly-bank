@@ -78,3 +78,12 @@
     padding-top: var(--mb-space-4);
   }
 }
+
+/* A screen with the shared bottom navigation keeps its content and sticky bars clear of it. */
+.app-shell[data-bottom-nav] {
+  --mb-shell-nav-offset: var(--mb-bottom-nav-height);
+}
+
+.app-shell[data-bottom-nav] .page {
+  padding-bottom: calc(var(--mb-bottom-nav-height) + var(--mb-space-5));
+}

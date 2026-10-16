@@ -16,6 +16,8 @@ import { SavedGamesPage } from './pages/SavedGamesPage';
 import { readPreferences, writePreferences, type DevicePreferences } from './utils/preferences';
 import { mountAppearance } from './appearance/appearance-controller';
 import { AppearanceSettings, SettingsGroup } from './components/AppearanceSettings';
+import { AppBottomNav } from './components/AppBottomNav';
+import { appTabForPath } from './utils/app-tab';
 import { Dialog } from './components/Dialog';
 import {
   BankSeal,
@@ -141,6 +143,8 @@ function AppRoutes() {
   } | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const accountRequestVersion = useRef(0);
+  const pathRef = useRef(path);
+  const scrollPositions = useRef<Record<string, number>>({});
 
   const { visualStyle, colorMode } = preferences;
   useLayoutEffect(() => mountAppearance({ visualStyle, colorMode }), [visualStyle, colorMode]);
@@ -161,8 +165,23 @@ function AppRoutes() {
   useEffect(() => {
     writePreferences(preferences);
   }, [preferences]);
+  /* Each screen keeps its own scroll position; the browser's restoration cannot know about ours. */
+  useLayoutEffect(() => {
+    pathRef.current = path;
+    window.scrollTo(0, scrollPositions.current[path] ?? 0);
+  }, [path]);
   useEffect(() => {
-    const onPopState = () => setPath(window.location.pathname);
+    const previous = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+    return () => {
+      window.history.scrollRestoration = previous;
+    };
+  }, []);
+  useEffect(() => {
+    const onPopState = () => {
+      scrollPositions.current[pathRef.current] = window.scrollY;
+      setPath(window.location.pathname);
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -208,6 +227,7 @@ function AppRoutes() {
   }, []);
 
   const navigate = (target: string) => {
+    scrollPositions.current[pathRef.current] = window.scrollY;
     setSettingsOpen(false);
     window.history.pushState({}, '', target);
     setPath(routePath(target));
@@ -321,7 +341,7 @@ function AppRoutes() {
     path === '/games/join' ? (new URLSearchParams(window.location.search).get('code') ?? '') : '';
   const invitationToken = path === '/games/join' ? invitationFromLocation() : '';
   return (
-    <div className={appShellClass}>
+    <div className={appShellClass} data-bottom-nav={appTabForPath(path) === null ? undefined : ''}>
       <header className={appHeaderClass}>
         <div className={appHeaderInnerClass}>
           <button type="button" className={brandClass} onClick={() => navigate('/')}>
@@ -440,7 +460,7 @@ function AppRoutes() {
         </section>
       )}
       {path === '/profile' ? (
-        <ProfilePage profile={profile} onUpdated={setProfile} onBack={() => navigate('/')} />
+        <ProfilePage profile={profile} onUpdated={setProfile} />
       ) : path === '/games/new' ? (
         <CreateGamePage
           profile={profile}
@@ -453,7 +473,6 @@ function AppRoutes() {
           invitationToken={invitationToken}
           autoJoin
           onJoined={(id) => navigate(`/games/${encodeURIComponent(id)}`)}
-          onBack={() => navigate('/')}
         />
       ) : gameMatch !== null ? (
         <GamePage
@@ -466,13 +485,13 @@ function AppRoutes() {
       ) : (
         <SavedGamesPage
           onCreateGame={() => navigate('/games/new')}
-          onOpenProfile={() => navigate('/profile')}
           onJoinGame={(code) =>
             navigate(`/games/join${code === undefined ? '' : `?code=${encodeURIComponent(code)}`}`)
           }
           onOpenGame={(id) => navigate('/games/' + encodeURIComponent(id))}
         />
       )}
+      <AppBottomNav path={path} navigate={navigate} />
     </div>
   );
 }

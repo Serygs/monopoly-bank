@@ -40,7 +40,7 @@ const statisticsClass = cx(
 );
 /* Sticks to the bottom edge of the scroll area, clear of the iOS home indicator. */
 const saveBarClass = cx(
-  'glass-panel sticky bottom-[max(var(--mb-space-3),var(--mb-app-safe-bottom))] z-10 grid gap-(--mb-space-2)',
+  'glass-panel sticky bottom-[calc(var(--mb-shell-nav-offset,0px)+var(--mb-space-3))] z-10 grid gap-(--mb-space-2)',
   'rounded-card border border-border bg-surface-elevated p-(--mb-space-3) shadow-lg',
 );
 /* `!` outranks the unlayered `.game-form` gap in `primitives.css`. */
@@ -54,11 +54,9 @@ function ProfileForm(props: Omit<FormHTMLAttributes<HTMLFormElement>, 'className
 export function ProfilePage({
   profile,
   onUpdated,
-  onBack,
 }: {
   profile: UserProfile;
   onUpdated: (profile: UserProfile) => void;
-  onBack: () => void;
 }) {
   const { t } = useLanguage();
   const [nickname, setNickname] = useState(profile.nickname);
@@ -82,15 +80,7 @@ export function ProfilePage({
   };
   return (
     <PageShell>
-      <PageHeader
-        eyebrow={t('playerProfile')}
-        title={t('playerProfile')}
-        backAction={
-          <Button variant="quiet" onClick={onBack}>
-            {t('savedGames')}
-          </Button>
-        }
-      />
+      <PageHeader eyebrow={t('playerProfile')} title={t('playerProfile')} />
       <div className={layoutClass}>
         <form className="grid gap-(--mb-layout-gap-compact)" onSubmit={(event) => void save(event)}>
           <section className={cardClass} aria-label={t('playerProfile')}>
