@@ -568,6 +568,16 @@ The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
   `WalletCard.tsx`) and the domain composites in `src/components/game/`. Banking
   dialogs and auxiliary game tools use the same UI kit and semantic tokens.
 
+#### App shell navigation
+
+`src/components/AppBottomNav.tsx` is rendered once by `App.tsx`, beside the route switch, so
+it stays mounted on every top-level screen (Games, + , Profile, join). It is hidden inside a
+game, which has its own `GameBottomNav`; both are built on `ui/BottomNav`. The Games tab always
+opens the list, and tapping the active Profile tab returns to Games. A screen with the nav sets
+`data-bottom-nav` on `.app-shell`: `.page` gets bottom padding and sticky bars use
+`--mb-shell-nav-offset` to sit above it. Screens keep their own scroll position (a map in
+`App.tsx`). Screens must not add their own back links for what the nav replaces.
+
 #### Compact game composition (below `md`)
 
 Below `48rem` the active and finished game is a single phone screen driven by a

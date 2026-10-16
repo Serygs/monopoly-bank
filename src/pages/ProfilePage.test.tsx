@@ -26,7 +26,7 @@ function setup(onUpdated = vi.fn()) {
   render(
     <LanguageProvider>
       <FeedbackProvider>
-        <ProfilePage profile={profile} onUpdated={onUpdated} onBack={vi.fn()} />
+        <ProfilePage profile={profile} onUpdated={onUpdated} />
       </FeedbackProvider>
     </LanguageProvider>,
   );

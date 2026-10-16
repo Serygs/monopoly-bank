@@ -11,7 +11,8 @@ interface Props {
   initialJoinCode: string;
   invitationToken: string;
   onJoined: (gameId: string) => void;
-  onBack: () => void;
+  /** Only the signed-out flow has a way back; inside the app shell the bottom nav replaces it. */
+  onBack?: () => void;
   onGuestJoined?: (profile: UserProfile, gameId: string) => void;
   /** A signed-in visitor with a link or code joins at once; the form only shows if that fails. */
   autoJoin?: boolean;
@@ -85,9 +86,11 @@ export function JoinGamePage({
   return (
     <PageShell variant="auth" card="join">
       {/* `!` outranks the Button primitive's own centring and inline padding. */}
-      <Button variant="quiet" className="mb-(--mb-space-4) justify-start! px-0!" onClick={onBack}>
-        ← {t('savedGames')}
-      </Button>
+      {onBack !== undefined && (
+        <Button variant="quiet" className="mb-(--mb-space-4) justify-start! px-0!" onClick={onBack}>
+          ← {t('savedGames')}
+        </Button>
+      )}
       <AuthHeading eyebrow={t('lobby')} title={guest ? t('joinAsGuest') : t('joinGame')} />
       <Lede>
         {guest

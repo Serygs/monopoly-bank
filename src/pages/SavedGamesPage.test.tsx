@@ -38,7 +38,6 @@ const handlers = {
   onCreateGame: vi.fn(),
   onJoinGame: vi.fn(),
   onOpenGame: vi.fn(),
-  onOpenProfile: vi.fn(),
 };
 
 function setup(games: GameSummary[], deletedGames: DeletedGameSummary[]) {
@@ -97,16 +96,5 @@ describe('SavedGamesPage deleted games', () => {
     const user = setup([], [deleted]);
     await user.click(await screen.findByRole('radio', { name: 'Deleted' }));
     expect(screen.getByText('Old Table')).toBeInTheDocument();
-  });
-});
-
-describe('SavedGamesPage navigation', () => {
-  it('opens the create/join sheet from the + action and the profile from the nav', async () => {
-    const user = setup([], []);
-    await user.click(screen.getByRole('button', { name: 'New' }));
-    await user.click(screen.getByRole('button', { name: 'Join game' }));
-    expect(handlers.onJoinGame).toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'Profile' }));
-    expect(handlers.onOpenProfile).toHaveBeenCalled();
   });
 });
