@@ -10,6 +10,8 @@ import { buildGameSettings } from '../../shared/domain/game-rules.js';
 import { defaultGameRules, type Currency } from '../../shared/types/monopoly.js';
 import type { AuctionRepository } from '../repositories/auction-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
+import { isBoardMode } from '../../shared/board/index.js';
+import type { PropertyRepository } from '../repositories/property-repository.js';
 import type { LoanRepository } from '../repositories/loan-repository.js';
 import type { MortgageRepository } from '../repositories/mortgage-repository.js';
 import type { CreatePlayerInput, PlayerRepository } from '../repositories/player-repository.js';
@@ -50,6 +52,8 @@ export interface GameServiceDependencies {
   transactions?: TransactionRepository;
   /** Lets a game with the auctions rule report its running (or just closed) auction. */
   auctions?: AuctionRepository;
+  /** Lets a game with a board report the state of its properties. */
+  properties?: PropertyRepository;
   createId: () => string;
 }
 
@@ -60,6 +64,7 @@ export class DefaultGameService implements GameService {
   private readonly loans: LoanRepository | undefined;
   private readonly transactions: TransactionRepository | undefined;
   private readonly auctions: AuctionRepository | undefined;
+  private readonly properties: PropertyRepository | undefined;
   private readonly createId: () => string;
 
   constructor(dependencies: GameServiceDependencies) {
@@ -69,6 +74,7 @@ export class DefaultGameService implements GameService {
     this.loans = dependencies.loans;
     this.transactions = dependencies.transactions;
     this.auctions = dependencies.auctions;
+    this.properties = dependencies.properties;
     this.createId = dependencies.createId;
   }
 
@@ -139,7 +145,7 @@ export class DefaultGameService implements GameService {
         status: 'LOBBY',
         paymentMode: request.paymentMode ?? 'FAST',
         rules: request.rules ?? defaultGameRules,
-        settings: buildGameSettings(request.startingBalance),
+        settings: buildGameSettings(request.startingBalance, request.board),
         ownerUserId: owner.userId,
         isPublic: owner.isPublic,
         joinCode,
@@ -176,6 +182,9 @@ export class DefaultGameService implements GameService {
       ...(game.rules.auctions && this.auctions !== undefined
         ? { auction: await this.auctions.getCurrent(gameId, Date.now()) }
         : {}),
+      ...(game.settings?.board && this.properties !== undefined
+        ? { properties: await this.properties.listByGame(gameId) }
+        : {}),
       favoriteAmounts: await this.games.listFavoriteAmounts(gameId),
       recentAmounts: await this.games.listRecentAmounts(gameId),
     };
@@ -210,6 +219,9 @@ export class DefaultGameService implements GameService {
       currency: source.game.currency,
       paymentMode: source.game.paymentMode,
       rules: source.game.rules,
+      ...(isBoardMode(source.game.settings?.board?.presetId)
+        ? { board: source.game.settings.board.presetId }
+        : {}),
       gameAccessPassword,
       players: source.players.map((player) => ({ name: player.name, color: player.color })),
     });

@@ -6,6 +6,7 @@ import {
   type GameRules,
   type GameSettings,
 } from '../types/monopoly.js';
+import { buildBoardSnapshot, getBoardPreset, type BoardMode } from '../board/index.js';
 
 /** Games per unit: one unit is the starting balance divided by this many. */
 const UNITS_PER_STARTING_BALANCE = 150;
@@ -33,16 +34,21 @@ export function deriveMoneyUnit(startingBalance: number): number {
 }
 
 /** Every amount is a whole multiple of the unit; the half step uses `unit * 5 / 2`, which is whole. */
-export function buildGameSettings(startingBalance: number): GameSettings {
+export function buildGameSettings(
+  startingBalance: number,
+  board: BoardMode = 'none',
+): GameSettings {
   const unit = deriveMoneyUnit(startingBalance);
+  const snapshot = board === 'none' ? null : buildBoardSnapshot(getBoardPreset(board), unit);
   return {
     unit,
-    incomeTax: unit * 20,
-    luxuryTax: unit * 10,
+    incomeTax: snapshot?.incomeTax ?? unit * 20,
+    luxuryTax: snapshot?.luxuryTax ?? unit * 10,
     jailFine: unit * 5,
     bankLoanMax: unit * 20,
     auctionMinBid: unit,
     auctionBidSteps: [unit, (unit * 5) / 2, unit * 5, unit * 10],
+    ...(snapshot ? { board: snapshot } : {}),
   };
 }
 

@@ -7,6 +7,7 @@ import { buildGameSettings } from '../../shared/domain/game-rules.js';
 import { defaultGameRules } from '../../shared/types/monopoly.js';
 import { D1GameAccessRepository } from './game-access-repository.js';
 import { D1GameRepository } from './game-repository.js';
+import { D1PropertyRepository } from './property-repository.js';
 
 /** The slice of D1 the repositories use, backed by a real SQLite database. */
 function d1(database: DatabaseSync): D1Database {
@@ -226,6 +227,24 @@ describe('D1GameRepository house rules', () => {
     const game = await games.getById('plain');
     expect(game?.rules).toEqual(defaultGameRules);
     expect(game?.settings).toBeNull();
+  });
+
+  it('seeds one untouched property row per board tile and lists them', async () => {
+    await create('boarded', { settings: buildGameSettings(15_000_000, 'monopoly-ru-2012') });
+    await create('flat', { settings: buildGameSettings(15_000_000) });
+
+    const properties = await new D1PropertyRepository(d1(database)).listByGame('boarded');
+    expect(properties).toHaveLength(28);
+    expect(new Set(properties.map((property) => property.tileId)).size).toBe(28);
+    for (const property of properties) {
+      expect(property).toMatchObject({
+        gameId: 'boarded',
+        ownerPlayerId: null,
+        mortgaged: false,
+        houses: 0,
+      });
+    }
+    await expect(new D1PropertyRepository(d1(database)).listByGame('flat')).resolves.toEqual([]);
   });
 
   it('keeps the rules through status transitions', async () => {

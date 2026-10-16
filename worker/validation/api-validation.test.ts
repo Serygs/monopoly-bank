@@ -180,6 +180,32 @@ describe('game rules validation', () => {
   });
 });
 
+describe('board validation', () => {
+  const lobby = {
+    name: 'Friday table',
+    startingBalance: 1500,
+    passGoReward: 200,
+    currency: 'USD',
+    players: [{ name: 'Owner', color: '#e05263' }],
+  };
+
+  it('leaves board out when the client sends none', async () => {
+    await expect(parseCreateGameRequest(jsonRequest(lobby))).resolves.not.toHaveProperty('board');
+  });
+
+  it.each(['none', 'monopoly-ru-2012'])('accepts board %s', async (board) => {
+    await expect(parseCreateGameRequest(jsonRequest({ ...lobby, board }))).resolves.toMatchObject({
+      board,
+    });
+  });
+
+  it.each(['custom', 'classic', '', null, 3, true])('rejects board %j', async (board) => {
+    await expect(parseCreateGameRequest(jsonRequest({ ...lobby, board }))).rejects.toBeInstanceOf(
+      ApiValidationError,
+    );
+  });
+});
+
 describe('Pass GO validation', () => {
   const playerId = '11111111-1111-4111-8111-111111111111';
 

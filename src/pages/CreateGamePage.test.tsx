@@ -194,6 +194,40 @@ describe('house rules', () => {
   });
 });
 
+describe('board choice', () => {
+  const renderPage = () =>
+    render(
+      <LanguageProvider>
+        <CreateGamePage profile={profile} onClose={() => {}} onCreated={() => {}} />
+      </LanguageProvider>,
+    );
+
+  it('sends the board when Monopoly RU 2012 is chosen', async () => {
+    const user = userEvent.setup();
+    const createGame = vi.spyOn(monopolyBankApi, 'createGame').mockResolvedValue({
+      game: { id: 'game-1' },
+    } as never);
+    renderPage();
+    expect(screen.getByRole('radio', { name: 'No board' })).toBeChecked();
+    expect(screen.queryByRole('radio', { name: /Custom/i })).toBeNull();
+    await user.click(screen.getByRole('radio', { name: 'Monopoly RU 2012' }));
+    await advance(user, 2);
+    await user.click(screen.getByRole('button', { name: 'Create lobby' }));
+    expect(createGame).toHaveBeenCalledWith(expect.objectContaining({ board: 'monopoly-ru-2012' }));
+  });
+
+  it('does not send a board for No board', async () => {
+    const user = userEvent.setup();
+    const createGame = vi.spyOn(monopolyBankApi, 'createGame').mockResolvedValue({
+      game: { id: 'game-1' },
+    } as never);
+    renderPage();
+    await advance(user, 2);
+    await user.click(screen.getByRole('button', { name: 'Create lobby' }));
+    expect(createGame.mock.calls[0]?.[0]).not.toHaveProperty('board');
+  });
+});
+
 describe('create lobby stepper', () => {
   const renderPage = (props: Partial<Parameters<typeof CreateGamePage>[0]> = {}) =>
     render(

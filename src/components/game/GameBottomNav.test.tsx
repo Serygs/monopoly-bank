@@ -34,6 +34,21 @@ describe('GameBottomNav', () => {
     expect(buttons).toEqual(['Activity', 'Statistics', 'Tools', 'Pay']);
   });
 
+  it('adds the Property item with a card-count badge only for board games', async () => {
+    const onOpen = vi.fn();
+    const { user } = renderNav({ property: { count: 3, onOpen } });
+    const nav = screen.getByRole('navigation', { name: 'Game navigation' });
+    expect(nav.querySelectorAll('button')).toHaveLength(5);
+    expect(screen.getByRole('status', { name: '3 property cards' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Property/ }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps four items when the game has no board', () => {
+    renderNav();
+    expect(screen.queryByRole('button', { name: /Property/ })).toBeNull();
+  });
+
   it('opens Tools as a sheet', async () => {
     const { props, user } = renderNav();
     await user.click(screen.getByRole('button', { name: 'Tools' }));
