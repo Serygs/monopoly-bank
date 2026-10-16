@@ -19,6 +19,8 @@ export interface ConfirmationProps {
   currency: Currency;
   preview: BalancePreview[];
   comment: string;
+  /** The mortgaged property, shown for a mortgage or a redemption. */
+  propertyName?: string;
 }
 
 /** Summary rows (label left, value right) and the resulting-balances list with colour dots. */
@@ -54,6 +56,7 @@ export function Confirmation({
   currency,
   preview,
   comment,
+  propertyName,
 }: ConfirmationProps) {
   const { t } = useLanguage();
   const total =
@@ -94,6 +97,12 @@ export function Confirmation({
           <dt>{t('destination')}</dt>
           <dd>{destinationFor(action, player, target, t)}</dd>
         </div>
+        {propertyName !== undefined && propertyName !== '' && (
+          <div>
+            <dt>{t('property')}</dt>
+            <dd>{propertyName}</dd>
+          </div>
+        )}
         <div className={compactHidden}>
           <dt>{t('amount')}</dt>
           <dd>

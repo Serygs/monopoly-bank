@@ -15,6 +15,8 @@ export function controlledPlayerIdForBankingCommand(
     case 'PLAYER_TO_BANK':
     case 'BANK_TO_PLAYER':
     case 'PASS_GO':
+    case 'MORTGAGE':
+    case 'MORTGAGE_REDEMPTION':
       return request.playerId;
     case 'PLAYER_TO_ALL':
       return request.payerPlayerId;

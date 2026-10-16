@@ -60,8 +60,13 @@ export function calculateFinalGameSummary(
         else metric.received += participant.balanceDelta;
       }
     }
-    if (transaction.type === 'PLAYER_TO_BANK') paidToBank += transaction.totalAmount;
-    if (transaction.type === 'BANK_TO_PLAYER' || transaction.type === 'PASS_GO')
+    if (transaction.type === 'PLAYER_TO_BANK' || transaction.type === 'MORTGAGE_REDEMPTION')
+      paidToBank += transaction.totalAmount;
+    if (
+      transaction.type === 'BANK_TO_PLAYER' ||
+      transaction.type === 'PASS_GO' ||
+      transaction.type === 'MORTGAGE'
+    )
       receivedFromBank += transaction.totalAmount;
     if (
       transaction.type === 'PLAYER_TO_PLAYER' ||

@@ -58,6 +58,8 @@ export const transactionTypes = [
   'PASS_GO',
   'BANKRUPTCY_TRANSFER',
   'REVERSAL',
+  'MORTGAGE',
+  'MORTGAGE_REDEMPTION',
 ] as const;
 
 export type TransactionType = (typeof transactionTypes)[number];
@@ -95,6 +97,21 @@ export interface Player {
 
 export const playerStatuses = ['ACTIVE', 'BANKRUPT'] as const;
 export type PlayerStatus = (typeof playerStatuses)[number];
+
+/**
+ * A property a player mortgaged to the bank. Only the free-text name and the value the player
+ * entered from the property card are stored; the game does not know about ownership.
+ */
+export interface Mortgage {
+  /** The id of the MORTGAGE transaction that created it. */
+  id: string;
+  gameId: string;
+  playerId: string;
+  propertyName: string;
+  /** What the bank paid out; redeeming costs this plus 10%. */
+  mortgageValue: number;
+  createdAt: string;
+}
 
 export interface TransactionParticipant {
   playerId: string;

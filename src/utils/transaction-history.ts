@@ -28,6 +28,10 @@ export function transactionDescription(
       return `${translate(language, 'transactionEveryone')} → ${nameOf(positive?.playerId)}`;
     case 'PASS_GO':
       return `${nameOf(positive?.playerId)} · ${translate(language, 'passedGo')}`;
+    case 'MORTGAGE':
+      return `${nameOf(positive?.playerId)} · ${translate(language, 'mortgageLabel')}`;
+    case 'MORTGAGE_REDEMPTION':
+      return `${nameOf(negative?.playerId)} · ${translate(language, 'redemptionLabel')}`;
     case 'BANKRUPTCY_TRANSFER':
       return translate(language, 'bankruptcyTransactionDescription', {
         source: nameOf(negative?.playerId),
@@ -69,7 +73,8 @@ export function transactionAmount(
       amount: money(transaction.amount),
       total: money(transaction.totalAmount),
     });
-  if (transaction.type === 'PASS_GO') return `+${money(transaction.amount)}`;
+  if (transaction.type === 'PASS_GO' || transaction.type === 'MORTGAGE')
+    return `+${money(transaction.amount)}`;
   if (transaction.type === 'REVERSAL') return money(transaction.totalAmount);
   return money(transaction.amount);
 }

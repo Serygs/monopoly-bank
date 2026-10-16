@@ -277,3 +277,119 @@ describe('BankingDialog house rules', () => {
     expect(screen.queryByRole('group', { name: 'Taxes and fines' })).toBeNull();
   });
 });
+
+describe('BankingDialog mortgages', () => {
+  const boardwalk = {
+    id: 'm1',
+    gameId: 'g1',
+    playerId: 'p1',
+    propertyName: 'Boardwalk',
+    mortgageValue: 400_000,
+    createdAt: '',
+  };
+
+  it('offers to mortgage always, but to redeem only when the player has a mortgage', () => {
+    const without = renderDialog([olena, taras]);
+    expect(screen.getByRole('button', { name: 'Mortgage property' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Redeem mortgage' })).toBeNull();
+    without.props.onClose();
+  });
+
+  it('shows the redeem action for the owner of a mortgage but not for another player', () => {
+    renderDialog([olena, taras], { mortgages: [{ ...boardwalk, playerId: 'p2' }] });
+    expect(screen.queryByRole('button', { name: 'Redeem mortgage' })).toBeNull();
+  });
+
+  it('needs a name, a value and the no-buildings confirmation before it can be reviewed', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await user.click(screen.getByRole('button', { name: 'Mortgage property' }));
+    const review = screen.getByRole('button', { name: 'Review transaction' });
+    expect(review).toBeDisabled();
+
+    await user.click(screen.getByRole('textbox', { name: 'Property name' }));
+    await user.paste('Boardwalk');
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    await press(user, '4', '0', '0');
+    expect(review).toBeDisabled();
+
+    await user.click(screen.getByRole('checkbox', { name: /no houses or hotels/i }));
+    expect(review).toBeEnabled();
+  });
+
+  it('sends the tidied name and value, then reports the new mortgage list', async () => {
+    const created = { ...boardwalk, propertyName: 'Park Place' };
+    const createTransaction = vi.spyOn(monopolyBankApi, 'createTransaction').mockResolvedValue({
+      transaction: { amount: 400 },
+      players: [],
+      mortgages: [created],
+    } as never);
+    const { user, props } = renderDialog([olena, taras]);
+
+    await user.click(screen.getByRole('button', { name: 'Mortgage property' }));
+    await user.click(screen.getByRole('textbox', { name: 'Property name' }));
+    await user.paste('  Park   Place ');
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    await press(user, '4', '0', '0');
+    await user.click(screen.getByRole('checkbox', { name: /no houses or hotels/i }));
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    expect(screen.getByText('Park Place')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      { type: 'MORTGAGE', playerId: 'p1', propertyName: 'Park Place', amount: 400 },
+      expect.any(String),
+    );
+    // A mortgage is not an amount the table reuses, so no recent amount is reported.
+    expect(props.onCompleted).toHaveBeenCalledWith([], 'MORTGAGE', null, [created]);
+    createTransaction.mockRestore();
+  });
+
+  it('lists the mortgages with their redemption cost and reviews the chosen one', async () => {
+    const createTransaction = vi.spyOn(monopolyBankApi, 'createTransaction').mockResolvedValue({
+      transaction: { amount: 440_000 },
+      players: [],
+      mortgages: [],
+    } as never);
+    const { user, props } = renderDialog([olena, taras], { mortgages: [boardwalk] });
+
+    await user.click(screen.getByRole('button', { name: 'Redeem mortgage' }));
+    const choice = screen.getByRole('button', { name: /Boardwalk/ });
+    expect(choice).toHaveTextContent('Redeem for $440 000 (value $400 000 + 10%)');
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+
+    await user.click(choice);
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    expect(screen.getByText('Boardwalk')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      { type: 'MORTGAGE_REDEMPTION', playerId: 'p1', mortgageId: 'm1' },
+      expect.any(String),
+    );
+    expect(props.onCompleted).toHaveBeenCalledWith([], 'MORTGAGE_REDEMPTION', null, []);
+    createTransaction.mockRestore();
+  });
+
+  it('blocks a redemption the player cannot afford and says how much is missing', async () => {
+    const { user } = renderDialog([olena, taras], {
+      player: taras,
+      mortgages: [{ ...boardwalk, playerId: 'p2', mortgageValue: 2_000_000 }],
+    });
+    await user.click(screen.getByRole('button', { name: 'Redeem mortgage' }));
+    await user.click(screen.getByRole('button', { name: /Boardwalk/ }));
+
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+    expect(screen.getByText('Short by $1 200 000.')).toBeInTheDocument();
+  });
+
+  it("tells a payer which of the recipient's properties are mortgaged", async () => {
+    renderDialog([olena, taras], { mortgages: [{ ...boardwalk, playerId: 'p2' }] });
+    const { user } = { user: userEvent.setup() };
+    await user.click(screen.getByRole('button', { name: 'Pay Player' }));
+    expect(
+      screen.getByText('Taras has mortgaged: Boardwalk. No rent is due on those.'),
+    ).toBeInTheDocument();
+  });
+});

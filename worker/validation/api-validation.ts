@@ -26,6 +26,7 @@ import {
   type SelectableCurrency,
   type TransactionType,
 } from '../../shared/types/monopoly.js';
+import { normalizePropertyName } from '../../shared/domain/mortgage.js';
 import { ValidationError } from '../services/errors.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -197,6 +198,16 @@ function readGameRules(value: unknown): GameRules {
   return rules;
 }
 
+function readPropertyName(body: Record<string, unknown>): string {
+  const value = body.propertyName;
+  const name = typeof value === 'string' ? normalizePropertyName(value) : null;
+  if (name === null)
+    throw new ApiValidationError(
+      'propertyName must be 1 to 60 characters without control characters.',
+    );
+  return name;
+}
+
 function readPaymentMode(body: Record<string, unknown>): PaymentMode {
   const value = body.paymentMode;
   if (typeof value !== 'string' || !paymentModes.includes(value as PaymentMode))
@@ -241,6 +252,19 @@ export async function parseCreateTransactionRequest(
         recipientPlayerId: readUuid(body, 'recipientPlayerId'),
         amountPerPlayer: readPositiveInteger(body, 'amountPerPlayer'),
         ...(comment === undefined ? {} : { comment }),
+      };
+    case 'MORTGAGE':
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        propertyName: readPropertyName(body),
+        amount: readPositiveInteger(body, 'amount'),
+      };
+    case 'MORTGAGE_REDEMPTION':
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        mortgageId: readUuid(body, 'mortgageId'),
       };
     case 'REVERSAL':
       return {

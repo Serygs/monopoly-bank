@@ -1,4 +1,5 @@
 import type { PlayerBalanceChange, PendingTransaction } from '../../shared/domain/banking.js';
+import { propertyNameKey } from '../../shared/domain/mortgage.js';
 import { DatabaseError } from '../services/errors.js';
 
 export interface PersistBankingOperationInput {
@@ -6,6 +7,11 @@ export interface PersistBankingOperationInput {
   transaction: PendingTransaction;
   balanceChanges: readonly PlayerBalanceChange[];
   bankruptPlayerId?: string;
+  /**
+   * With a bankruptcy: the player who takes over the bankrupt player's mortgages (the creditor).
+   * Without one the mortgages are released, as the properties went back to the bank.
+   */
+  mortgageHeirPlayerId?: string | null;
   recentAmount?: number;
 }
 
@@ -50,6 +56,38 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
         ),
     );
 
+    // The mortgage record is written in the same batch as its transaction. Redeeming one that is
+    // no longer active turns into a CHECK failure, which rolls the whole batch back.
+    const mortgageStatements: D1PreparedStatement[] = [];
+    const { newMortgage, redeemedMortgageId } = input.transaction;
+    if (newMortgage !== undefined)
+      mortgageStatements.push(
+        this.database
+          .prepare(
+            `INSERT INTO mortgages (id, game_id, player_id, property_name, name_key, mortgage_value)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            input.transactionId,
+            input.transaction.gameId,
+            newMortgage.playerId,
+            newMortgage.propertyName,
+            propertyNameKey(newMortgage.propertyName),
+            newMortgage.mortgageValue,
+          ),
+      );
+    if (redeemedMortgageId !== undefined)
+      mortgageStatements.push(
+        this.database
+          .prepare(
+            `UPDATE mortgages
+             SET state = CASE WHEN state = 'ACTIVE' THEN 'REDEEMED' ELSE 'NOT_ACTIVE' END,
+                 redeemed_by_transaction_id = ?, redeemed_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND game_id = ?`,
+          )
+          .bind(input.transactionId, redeemedMortgageId, input.transaction.gameId),
+      );
+
     const statusStatement =
       input.bankruptPlayerId === undefined
         ? []
@@ -60,6 +98,29 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
               )
               .bind(input.bankruptPlayerId, input.transaction.gameId),
           ];
+    // A bankrupt player's mortgages go to the creditor so they can be redeemed; one the creditor
+    // already has under the same name is skipped by OR IGNORE and, like every mortgage of a
+    // bankruptcy to the bank, is released.
+    const bankruptMortgageStatements: D1PreparedStatement[] = [];
+    if (input.bankruptPlayerId !== undefined) {
+      if (input.mortgageHeirPlayerId != null)
+        bankruptMortgageStatements.push(
+          this.database
+            .prepare(
+              `UPDATE OR IGNORE mortgages SET player_id = ?
+               WHERE game_id = ? AND player_id = ? AND state = 'ACTIVE'`,
+            )
+            .bind(input.mortgageHeirPlayerId, input.transaction.gameId, input.bankruptPlayerId),
+        );
+      bankruptMortgageStatements.push(
+        this.database
+          .prepare(
+            `UPDATE mortgages SET state = 'RELEASED'
+             WHERE game_id = ? AND player_id = ? AND state = 'ACTIVE'`,
+          )
+          .bind(input.transaction.gameId, input.bankruptPlayerId),
+      );
+    }
     try {
       const recentStatements =
         input.recentAmount === undefined
@@ -69,7 +130,9 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
         balanceStatement,
         transactionStatement,
         ...participantStatements,
+        ...mortgageStatements,
         ...statusStatement,
+        ...bankruptMortgageStatements,
         ...recentStatements,
       ]);
     } catch (cause) {

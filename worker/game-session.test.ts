@@ -432,3 +432,64 @@ describe('GameSession reversal authorization', () => {
     expect(calls.authorities).toEqual([]);
   });
 });
+
+describe('GameSession mortgage events', () => {
+  it('sends the active mortgages with the committed transaction', async () => {
+    const sent: string[] = [];
+    const storage = new Map<string, unknown>();
+    const context = {
+      storage: {
+        get: async <T>(key: string) => storage.get(key) as T | undefined,
+        put: async (key: string, value: unknown) => {
+          storage.set(key, value);
+        },
+      },
+      getWebSockets: () => [{ send: (message: string) => sent.push(message) }],
+    };
+    const session = new GameSession(context as never, {} as Env) as unknown as {
+      mutate(gameId: string, userId: string, request: Request): Promise<Response>;
+      banking(command: string): unknown;
+      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
+      commandLedger(): ReturnType<typeof fakeLedger>;
+    };
+    const mortgages = [{ id: 'm1', propertyName: 'Boardwalk' }];
+    session.banking = () => ({
+      createTransaction: async () => ({
+        transaction: {
+          id: commandId,
+          gameId,
+          type: 'MORTGAGE',
+          amount: 100,
+          totalAmount: 100,
+          comment: 'Boardwalk',
+          createdAt: '',
+          participants: [],
+        },
+        players: [],
+        mortgages,
+      }),
+    });
+    session.commandLedger = () => fakeLedger();
+    session.authorizeMutation = async () => undefined;
+
+    await session.mutate(
+      gameId,
+      'actor',
+      new Request('https://game-session/mutation', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'CREATE_TRANSACTION',
+          commandId,
+          request: {
+            type: 'MORTGAGE',
+            playerId: '00000000-0000-4000-8000-000000000003',
+            propertyName: 'Boardwalk',
+            amount: 100,
+          },
+        }),
+      }),
+    );
+
+    expect(JSON.parse(sent[0] ?? '{}')).toMatchObject({ type: 'GAME_COMMITTED', mortgages });
+  });
+});

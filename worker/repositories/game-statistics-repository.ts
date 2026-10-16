@@ -117,7 +117,7 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
   async calculate(game: Game, players: readonly Player[]): Promise<LedgerStatistics> {
     const totals = await this.database
       .prepare(
-        `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS moved, COALESCE(MAX(total_amount), 0) AS largest, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_PLAYER','PAY_RENT','BANKRUPTCY_TRANSFER') THEN total_amount ELSE 0 END), 0) AS p2p, COALESCE(SUM(CASE WHEN type = 'PLAYER_TO_BANK' THEN total_amount ELSE 0 END), 0) AS paid_bank, COALESCE(SUM(CASE WHEN type IN ('BANK_TO_PLAYER','PASS_GO') THEN total_amount ELSE 0 END), 0) AS received_bank FROM transactions WHERE game_id = ? AND ${countedTransaction('transactions')}`,
+        `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS moved, COALESCE(MAX(total_amount), 0) AS largest, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_PLAYER','PAY_RENT','BANKRUPTCY_TRANSFER') THEN total_amount ELSE 0 END), 0) AS p2p, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_BANK','MORTGAGE_REDEMPTION') THEN total_amount ELSE 0 END), 0) AS paid_bank, COALESCE(SUM(CASE WHEN type IN ('BANK_TO_PLAYER','PASS_GO','MORTGAGE') THEN total_amount ELSE 0 END), 0) AS received_bank FROM transactions WHERE game_id = ? AND ${countedTransaction('transactions')}`,
       )
       .bind(game.id)
       .first<TotalsRow>();

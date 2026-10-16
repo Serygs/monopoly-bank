@@ -399,6 +399,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           startingBalance={details.game.startingBalance}
           rules={details.game.rules}
           settings={details.game.settings}
+          mortgages={details.mortgages ?? []}
           favoriteAmounts={details.favoriteAmounts ?? []}
           recentAmounts={details.recentAmounts ?? []}
           onToggleFavorite={(amount) =>
@@ -419,13 +420,14 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             setSelectedPlayer(null);
             void loadHistory(player);
           }}
-          onCompleted={(players, _action, amount) => {
+          onCompleted={(players, action, amount, mortgages) => {
             historyCache.current.clear();
             playPaymentFeedback(preferences.sound);
             vibrate(35, preferences.vibration);
             setDetails({
               ...details,
               players,
+              ...(mortgages === undefined ? {} : { mortgages }),
               recentAmounts:
                 amount === null
                   ? details.recentAmounts
@@ -435,7 +437,16 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                     ].slice(0, 5),
             });
             setSelectedPlayer(null);
-            notify({ tone: 'success', message: t('paymentSent') });
+            notify({
+              tone: 'success',
+              message: t(
+                action === 'MORTGAGE'
+                  ? 'mortgageRecorded'
+                  : action === 'MORTGAGE_REDEMPTION'
+                    ? 'redemptionRecorded'
+                    : 'paymentSent',
+              ),
+            });
           }}
           onPaymentRequested={() => {
             loadPaymentRequests();
@@ -450,9 +461,13 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           player={bankruptPlayer}
           players={details.players}
           onClose={() => setBankruptPlayer(null)}
-          onCompleted={(players) => {
+          onCompleted={(players, mortgages) => {
             historyCache.current.clear();
-            setDetails({ ...details, players });
+            setDetails({
+              ...details,
+              players,
+              ...(mortgages === undefined ? {} : { mortgages }),
+            });
             setBankruptPlayer(null);
           }}
         />
