@@ -10,9 +10,7 @@ import { DeletedGameCard, GameCard } from '../components/game/GameCard';
 import { OverflowMenu } from '../components/OverflowMenu';
 import { PageHeader } from '../components/PageHeader';
 import {
-  BottomNav,
   Button,
-  NavIcon,
   DialogActions,
   DialogBody,
   EmptyState,
@@ -75,10 +73,9 @@ interface Props {
   onCreateGame: () => void;
   onJoinGame: (joinCode?: string) => void;
   onOpenGame: (gameId: string) => void;
-  onOpenProfile: () => void;
 }
 
-export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame, onOpenProfile }: Props) {
+export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) {
   const { locale, t } = useLanguage();
   const [games, setGames] = useState<GameSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,7 +97,6 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame, onOpenPro
   const [restoring, setRestoring] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'updated' | 'name'>('updated');
   const [searchOpen, setSearchOpen] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
 
   const visibleGames = useMemo(
     () =>
@@ -413,77 +409,6 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame, onOpenPro
           onCancel={() => setGameToDuplicate(null)}
           onConfirm={() => void duplicateGame()}
         />
-      )}
-      <div aria-hidden="true" className="h-(--mb-bottom-nav-height)" />
-      <BottomNav
-        label={t('homeNavigation')}
-        className="home-bottom-nav"
-        items={[
-          {
-            key: 'games',
-            label: t('navGames'),
-            active: true,
-            onPress: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
-            icon: (
-              <NavIcon>
-                <rect x="4" y="4" width="16" height="16" rx="3" />
-                <path d="M8 9h8M8 13h8M8 17h4" />
-              </NavIcon>
-            ),
-          },
-          {
-            key: 'add',
-            label: t('navAddGame'),
-            raised: true,
-            onPress: () => setAddOpen(true),
-            icon: (
-              <NavIcon>
-                <path d="M12 5v14M5 12h14" />
-              </NavIcon>
-            ),
-          },
-          {
-            key: 'profile',
-            label: t('navProfile'),
-            onPress: onOpenProfile,
-            icon: (
-              <NavIcon>
-                <circle cx="12" cy="8" r="4" />
-                <path d="M4 20c1.5-4 4.5-5.5 8-5.5s6.5 1.5 8 5.5" />
-              </NavIcon>
-            ),
-          },
-        ]}
-      />
-      {addOpen && (
-        <Dialog
-          title={t('addGameTitle')}
-          closeLabel={t('closeDialog', { title: t('addGameTitle') })}
-          onClose={() => setAddOpen(false)}
-        >
-          <DialogBody>
-            <div className="grid gap-(--mb-space-3)">
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setAddOpen(false);
-                  onCreateGame();
-                }}
-              >
-                {t('createNewGame')}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setAddOpen(false);
-                  onJoinGame();
-                }}
-              >
-                {t('joinGame')}
-              </Button>
-            </div>
-          </DialogBody>
-        </Dialog>
       )}
     </PageShell>
   );
