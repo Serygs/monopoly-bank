@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DefaultBankingService } from './banking-service.js';
 import type { PaymentRequest } from '../../shared/contracts/api.js';
-import type { Game, Player, Transaction } from '../../shared/types/monopoly.js';
+import {
+  defaultGameRules,
+  type Game,
+  type Player,
+  type Transaction,
+} from '../../shared/types/monopoly.js';
 
 const game: Game = {
   id: 'game',
@@ -10,6 +15,8 @@ const game: Game = {
   passGoReward: 200,
   currency: 'K',
   paymentMode: 'CONFIRMATION',
+  rules: defaultGameRules,
+  settings: null,
   status: 'ACTIVE',
   createdAt: '',
   updatedAt: '',

@@ -27,6 +27,12 @@ const errorKeys: Record<string, TranslationKey> = {
   MORTGAGE_ALREADY_ACTIVE: 'errorMortgageAlreadyActive',
   MORTGAGE_NOT_FOUND: 'errorMortgageNotFound',
   INVALID_PROPERTY_NAME: 'errorInvalidPropertyName',
+  BANK_LOAN_LIMIT_EXCEEDED: 'errorBankLoanLimitExceeded',
+  BANK_LOAN_ALREADY_ACTIVE: 'errorBankLoanAlreadyActive',
+  BANK_LOAN_COOLDOWN: 'errorBankLoanCooldown',
+  BANK_LOAN_FULL_REPAYMENT_REQUIRED: 'errorBankLoanFullRepayment',
+  LOAN_NOT_FOUND: 'errorLoanNotFound',
+  LOAN_AMOUNT_EXCEEDS_DEBT: 'errorLoanAmountExceedsDebt',
 };
 
 export function apiErrorMessage(error: unknown, t: Translate, fallback: TranslationKey): string {

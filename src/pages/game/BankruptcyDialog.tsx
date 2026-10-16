@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Mortgage, Player } from '../../../shared/types/monopoly';
+import type { BankLoanCooldown, Loan, Mortgage, Player } from '../../../shared/types/monopoly';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
 import { Button, DialogActions, DialogBody, Notice } from '../../components/ui';
@@ -11,15 +11,23 @@ export interface BankruptcyDialogProps {
   gameId: string;
   player: Player;
   players: Player[];
+  /** The player has an active bank loan, which the bank collects first. */
+  hasBankLoan?: boolean;
   onClose: () => void;
-  /** The balances after the bankruptcy, and the mortgages once they moved to the creditor. */
-  onCompleted: (players: Player[], mortgages?: Mortgage[]) => void;
+  /** The balances after the bankruptcy, and the mortgages and loans once they changed hands. */
+  onCompleted: (
+    players: Player[],
+    mortgages?: Mortgage[],
+    loans?: Loan[],
+    bankLoanCooldowns?: BankLoanCooldown[],
+  ) => void;
 }
 
 export function BankruptcyDialog({
   gameId,
   player,
   players,
+  hasBankLoan = false,
   onClose,
   onCompleted,
 }: BankruptcyDialogProps) {
@@ -35,7 +43,7 @@ export function BankruptcyDialog({
         playerId: player.id,
         ...(creditorId === null ? {} : { creditorPlayerId: creditorId }),
       });
-      onCompleted(result.players, result.mortgages);
+      onCompleted(result.players, result.mortgages, result.loans, result.bankLoanCooldowns);
     } catch (caught) {
       setError(apiErrorMessage(caught, t, 'unableRecordTransaction'));
     }
@@ -63,6 +71,7 @@ export function BankruptcyDialog({
       ) : (
         <>
           <DialogBody>{t('chooseBankruptcyDestination', { name: player.name })}</DialogBody>
+          {hasBankLoan && <Notice tone="info">{t('bankruptcyBankLoanHint')}</Notice>}
           <div className={actionGridClass}>
             <Button variant="secondary" onClick={() => setCreditorId(null)}>
               {t('toBank')}

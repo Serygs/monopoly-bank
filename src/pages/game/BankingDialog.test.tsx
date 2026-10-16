@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Loan, Player } from '../../../shared/types/monopoly';
-import { monopolyBankApi } from '../../api/monopoly-bank-api';
+import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { buildGameSettings } from '../../../shared/domain/game-rules';
 import { defaultGameRules } from '../../../shared/types/monopoly';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
@@ -341,7 +341,14 @@ describe('BankingDialog mortgages', () => {
       expect.any(String),
     );
     // A mortgage is not an amount the table reuses, so no recent amount is reported.
-    expect(props.onCompleted).toHaveBeenCalledWith([], 'MORTGAGE', null, [created], undefined);
+    expect(props.onCompleted).toHaveBeenCalledWith(
+      [],
+      'MORTGAGE',
+      null,
+      [created],
+      undefined,
+      undefined,
+    );
     createTransaction.mockRestore();
   });
 
@@ -368,7 +375,14 @@ describe('BankingDialog mortgages', () => {
       { type: 'MORTGAGE_REDEMPTION', playerId: 'p1', mortgageId: 'm1' },
       expect.any(String),
     );
-    expect(props.onCompleted).toHaveBeenCalledWith([], 'MORTGAGE_REDEMPTION', null, [], undefined);
+    expect(props.onCompleted).toHaveBeenCalledWith(
+      [],
+      'MORTGAGE_REDEMPTION',
+      null,
+      [],
+      undefined,
+      undefined,
+    );
     createTransaction.mockRestore();
   });
 
@@ -463,7 +477,206 @@ describe('BankingDialog player loans', () => {
       { type: 'LOAN_REPAYMENT', playerId: 'p1', loanId: 'ln1', amount: 150 },
       expect.any(String),
     );
-    expect(props.onCompleted).toHaveBeenCalledWith([], 'LOAN_REPAYMENT', 150, undefined, []);
+    expect(props.onCompleted).toHaveBeenCalledWith(
+      [],
+      'LOAN_REPAYMENT',
+      150,
+      undefined,
+      [],
+      undefined,
+    );
     createTransaction.mockRestore();
+  });
+});
+
+describe('BankingDialog bank loans', () => {
+  const rules = { ...defaultGameRules, bankLoans: true };
+  const settings = { ...buildGameSettings(1_500_000), bankLoanMax: 1_000 };
+  const bankLoan: Loan = {
+    id: 'bl1',
+    gameId: 'g1',
+    lenderKind: 'BANK',
+    lenderPlayerId: null,
+    borrowerPlayerId: 'p1',
+    principal: 400,
+    repaidAmount: 0,
+    state: 'ACTIVE',
+    createdAt: '',
+    closedAt: null,
+    rounds: { round: 2, suggestedRatePercent: 10, overdue: false },
+  };
+
+  async function borrow250(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Borrow from the bank' }));
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    await press(user, '2', '5', '0');
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+  }
+
+  it('hides the bank loan unless the rule is on', () => {
+    renderDialog([olena, taras], { settings });
+    expect(screen.queryByRole('button', { name: 'Borrow from the bank' })).toBeNull();
+  });
+
+  it('borrows from the bank at once, without naming a lender', async () => {
+    const createTransaction = vi.spyOn(monopolyBankApi, 'createTransaction').mockResolvedValue({
+      transaction: { amount: 250 },
+      players: [],
+      loans: [],
+      bankLoanCooldowns: [],
+    } as never);
+    const { user, props } = renderDialog([olena, taras], { rules, settings });
+
+    expect(screen.queryByRole('button', { name: 'Borrow from a player' })).toBeNull();
+    await borrow250(user);
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      { type: 'LOAN_ISSUE', lenderKind: 'BANK', playerId: 'p1', amount: 250 },
+      expect.any(String),
+    );
+    expect(props.onCompleted).toHaveBeenCalledWith([], 'BANK_LOAN', 250, undefined, [], []);
+    createTransaction.mockRestore();
+  });
+
+  it('refuses more than the bank lends', async () => {
+    const { user } = renderDialog([olena, taras], { rules, settings });
+    await user.click(screen.getByRole('button', { name: 'Borrow from the bank' }));
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    expect(screen.getByText(/You can borrow up to .*1.000.* from the bank/)).toBeInTheDocument();
+    await press(user, '2', '0', '0', '0');
+    expect(screen.getByText(/The bank lends at most/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+  });
+
+  it('blocks borrowing while a bank loan is still active', async () => {
+    const { user } = renderDialog([olena, taras], { rules, settings, loans: [bankLoan] });
+    await user.click(screen.getByRole('button', { name: 'Borrow from the bank' }));
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    expect(screen.getByText(/already have a bank loan/)).toBeInTheDocument();
+    await press(user, '5', '0');
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+  });
+
+  it('warns during the cooldown and sends the acknowledgement once confirmed', async () => {
+    const createTransaction = vi.spyOn(monopolyBankApi, 'createTransaction').mockResolvedValue({
+      transaction: { amount: 250 },
+      players: [],
+    } as never);
+    const { user } = renderDialog([olena, taras], {
+      rules,
+      settings,
+      bankLoanCooldowns: [{ playerId: 'p1', roundsLeft: 1 }],
+    });
+    await borrow250(user);
+    expect(screen.getByText(/rounds left: 1/)).toBeInTheDocument();
+    expect(createTransaction).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Borrow anyway' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      {
+        type: 'LOAN_ISSUE',
+        lenderKind: 'BANK',
+        playerId: 'p1',
+        amount: 250,
+        acknowledgeCooldown: true,
+      },
+      expect.any(String),
+    );
+    createTransaction.mockRestore();
+  });
+
+  it('shows the cooldown warning when the Worker reports one the client did not know', async () => {
+    const createTransaction = vi.spyOn(monopolyBankApi, 'createTransaction').mockRejectedValue(
+      new MonopolyBankApiError({
+        code: 'BANK_LOAN_COOLDOWN',
+        message: 'cooldown',
+        details: { roundsLeft: 2 },
+      }),
+    );
+    const { user } = renderDialog([olena, taras], { rules, settings });
+    await borrow250(user);
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(await screen.findByText(/rounds left: 2/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Borrow anyway' })).toBeInTheDocument();
+    createTransaction.mockRestore();
+  });
+
+  it('repays a bank loan in full with the suggested rate preselected', async () => {
+    const createTransaction = vi.spyOn(monopolyBankApi, 'createTransaction').mockResolvedValue({
+      transaction: { amount: 440 },
+      players: [],
+      loans: [],
+      bankLoanCooldowns: [{ playerId: 'p1', roundsLeft: 2 }],
+    } as never);
+    const { user, props } = renderDialog([olena, taras], { rules, settings, loans: [bankLoan] });
+
+    await user.click(screen.getByRole('button', { name: 'Repay a loan' }));
+    await user.click(screen.getByRole('button', { name: /Bank · .*400.* still owed · round 2/ }));
+    expect(screen.queryByRole('textbox', { name: 'Amount' })).toBeNull();
+    expect(screen.getByRole('button', { name: '10% · suggested (round 2)' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByText(/400 plus .*40 interest, .*440 in total/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '20%' }));
+    expect(screen.getByText(/400 plus .*80 interest, .*480 in total/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '10% · suggested (round 2)' }));
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    expect(screen.getByText('Interest')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      {
+        type: 'LOAN_REPAYMENT',
+        playerId: 'p1',
+        loanId: 'bl1',
+        amount: 400,
+        interestRatePercent: 10,
+      },
+      expect.any(String),
+    );
+    expect(props.onCompleted).toHaveBeenCalledWith(
+      [],
+      'LOAN_REPAYMENT',
+      440,
+      undefined,
+      [],
+      [{ playerId: 'p1', roundsLeft: 2 }],
+    );
+    createTransaction.mockRestore();
+  });
+
+  it('offers the way out when an overdue bank loan cannot be paid', async () => {
+    const overdue: Loan = {
+      ...bankLoan,
+      principal: 2_000_000,
+      borrowerPlayerId: 'p2',
+      rounds: { round: 4, suggestedRatePercent: 20, overdue: true },
+    };
+    const { user, props } = renderDialog([olena, taras], {
+      rules,
+      settings,
+      player: taras,
+      loans: [overdue],
+    });
+
+    expect(screen.getByText(/is overdue \(round 4\)/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Settle loan' }));
+    expect(screen.getByText(/Short by/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mortgage property' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sell buildings to the bank' })).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: 'Declare bankrupt' })[0]!);
+    expect(props.onBankrupt).toHaveBeenCalled();
+  });
+
+  it('opens straight on the bank loan repayment when asked to settle it', () => {
+    renderDialog([olena, taras], { rules, settings, loans: [bankLoan], settleOnOpen: true });
+    expect(screen.getByText(/400 plus .*40 interest/)).toBeInTheDocument();
   });
 });

@@ -1,12 +1,17 @@
 import type {
+  BankLoanCooldown,
   Game,
+  InterestRatePercent,
   Loan,
+  LoanLenderKind,
   Mortgage,
   Player,
   Transaction,
   TransactionParticipant,
   TransactionType,
 } from '../types/monopoly.js';
+import { bankLoanInterest } from './bank-loan.js';
+import { buildGameSettings } from './game-rules.js';
 import { normalizePropertyName, redemptionCost } from './mortgage.js';
 import { isReversibleType } from './reversal.js';
 import { AppError } from '../../worker/services/errors.js';
@@ -77,6 +82,34 @@ export interface RepayLoanCommand {
   amount: number;
 }
 
+export interface IssueBankLoanCommand {
+  game: Game;
+  players: readonly Player[];
+  /** The borrower. */
+  playerId: string;
+  amount: number;
+  /** The borrower's ACTIVE bank loan, if any; a second one is refused. */
+  activeBankLoan?: Loan | null;
+  /** Set while the borrower is in the cooldown after repaying their previous bank loan. */
+  cooldown?: BankLoanCooldown | null;
+  /** The player confirmed the cooldown warning. */
+  acknowledgeCooldown?: boolean;
+}
+
+export interface RepayBankLoanCommand {
+  game: Game;
+  players: readonly Player[];
+  /** The borrower. */
+  playerId: string;
+  /** The active bank loan; it is repaid in full. */
+  loan: Loan;
+  amount: number;
+  /** The rate the player confirmed. */
+  interestRatePercent: InterestRatePercent;
+  /** The rate the round tracking suggests right now. */
+  suggestedRatePercent: InterestRatePercent;
+}
+
 export interface ReversalCommand {
   game: Game;
   players: readonly Player[];
@@ -88,6 +121,11 @@ export interface ReversalCommand {
 export interface BankruptcyCommand extends BankingCommand {
   playerId: string;
   creditorPlayerId?: string;
+  /**
+   * The bankrupt player's ACTIVE bank loan, if any. The bank is paid first, at the rate the round
+   * tracking suggests right now, before anything goes to a player creditor.
+   */
+  bankLoan?: { loan: Loan; suggestedRatePercent: InterestRatePercent };
 }
 
 interface BankingCommand {
@@ -115,13 +153,41 @@ export interface PendingTransaction {
   /** Set only on a MORTGAGE_REDEMPTION: the mortgage it closes. */
   redeemedMortgageId?: string;
   /** Set only on a LOAN_ISSUE: the loan record stored with it (its id is the transaction's). */
-  newLoan?: { lenderPlayerId: string; borrowerPlayerId: string; principal: number };
+  newLoan?: {
+    /** PLAYER when absent. */
+    lenderKind?: LoanLenderKind;
+    /** Null when the bank lends. */
+    lenderPlayerId: string | null;
+    borrowerPlayerId: string;
+    principal: number;
+    cooldownAcknowledged?: boolean;
+  };
   /** Set only on a LOAN_REPAYMENT: the loan it pays down and its lender and borrower. */
   loanRepayment?: {
     loanId: string;
-    lenderPlayerId: string;
+    /** Null for a bank loan. */
+    lenderPlayerId: string | null;
     borrowerPlayerId: string;
+    /** The principal paid down; for a bank loan the transaction amount also holds the interest. */
     amount: number;
+    interestAmount?: number;
+    interestRatePercent?: InterestRatePercent;
+    suggestedRatePercent?: InterestRatePercent;
+  };
+  /**
+   * Set only on a BANKRUPTCY_TRANSFER of a player with an active bank loan: what the bank took
+   * from the wallet and how the loan ended. Written in the bankruptcy's own batch.
+   */
+  bankLoanSettlement?: {
+    loanId: string;
+    borrowerPlayerId: string;
+    /** REPAID when the principal is covered; otherwise the loan is written off. */
+    outcome: 'REPAID' | 'WRITTEN_OFF';
+    /** Principal and interest the bank took; their sum is what left the wallet for the bank. */
+    paidPrincipal: number;
+    paidInterest: number;
+    interestRatePercent: InterestRatePercent;
+    suggestedRatePercent: InterestRatePercent;
   };
 }
 
@@ -290,6 +356,54 @@ export class LoanAmountExceedsDebtError extends BankingDomainError {
     super({
       code: 'LOAN_AMOUNT_EXCEEDS_DEBT',
       message: 'The amount is more than what is still owed on this loan.',
+      status: 409,
+      details: { loanId, outstanding, amount },
+    });
+  }
+}
+
+export class BankLoanLimitExceededError extends BankingDomainError {
+  readonly code = 'BANK_LOAN_LIMIT_EXCEEDED' as const;
+  constructor(amount: number, max: number) {
+    super({
+      code: 'BANK_LOAN_LIMIT_EXCEEDED',
+      message: 'The amount is more than the bank lends.',
+      status: 409,
+      details: { amount, max },
+    });
+  }
+}
+
+export class BankLoanAlreadyActiveError extends BankingDomainError {
+  readonly code = 'BANK_LOAN_ALREADY_ACTIVE' as const;
+  constructor(playerId: string, loanId?: string) {
+    super({
+      code: 'BANK_LOAN_ALREADY_ACTIVE',
+      message: 'This player already has a bank loan to repay.',
+      status: 409,
+      details: { playerId, ...(loanId === undefined ? {} : { loanId }) },
+    });
+  }
+}
+
+export class BankLoanCooldownError extends BankingDomainError {
+  readonly code = 'BANK_LOAN_COOLDOWN' as const;
+  constructor(playerId: string, roundsLeft: number) {
+    super({
+      code: 'BANK_LOAN_COOLDOWN',
+      message: 'This player repaid a bank loan recently; borrowing again needs a confirmation.',
+      status: 409,
+      details: { playerId, roundsLeft },
+    });
+  }
+}
+
+export class BankLoanFullRepaymentRequiredError extends BankingDomainError {
+  readonly code = 'BANK_LOAN_FULL_REPAYMENT_REQUIRED' as const;
+  constructor(loanId: string, outstanding: number, amount: number) {
+    super({
+      code: 'BANK_LOAN_FULL_REPAYMENT_REQUIRED',
+      message: 'A bank loan is repaid in full.',
       status: 409,
       details: { loanId, outstanding, amount },
     });
@@ -475,6 +589,88 @@ export function repayLoan(command: RepayLoanCommand): BankingOperationResult {
   };
 }
 
+/**
+ * The bank pays the borrower at once. At most `settings.bankLoanMax` (derived from the starting
+ * balance for games created before the settings snapshot), one active bank loan per player, and a
+ * confirmed warning while the borrower is still in the cooldown after repaying the previous one.
+ */
+export function issueBankLoan(command: IssueBankLoanCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  validateAmount(command.amount);
+  const max = (command.game.settings ?? buildGameSettings(command.game.startingBalance))
+    .bankLoanMax;
+  if (command.amount > max) throw new BankLoanLimitExceededError(command.amount, max);
+
+  const borrower = findPlayer(players, command.playerId);
+  ensureActive(borrower);
+  if (command.activeBankLoan != null)
+    throw new BankLoanAlreadyActiveError(borrower.id, command.activeBankLoan.id);
+  const cooldown = command.cooldown ?? null;
+  if (cooldown !== null && command.acknowledgeCooldown !== true)
+    throw new BankLoanCooldownError(borrower.id, cooldown.roundsLeft);
+  const result = createResult(command.game.id, 'LOAN_ISSUE', command.amount, command.amount, null, [
+    createBalanceChange(borrower, command.amount),
+  ]);
+  return {
+    ...result,
+    transaction: {
+      ...result.transaction,
+      newLoan: {
+        lenderKind: 'BANK',
+        lenderPlayerId: null,
+        borrowerPlayerId: borrower.id,
+        principal: command.amount,
+        cooldownAcknowledged: cooldown !== null,
+      },
+    },
+  };
+}
+
+/**
+ * The borrower pays the whole principal plus interest to the bank. The interest is the principal
+ * times the confirmed rate (half up); it leaves the game with the rest of the payment.
+ */
+export function repayBankLoan(command: RepayBankLoanCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const { loan } = command;
+  if (
+    loan.gameId !== command.game.id ||
+    loan.borrowerPlayerId !== command.playerId ||
+    loan.state !== 'ACTIVE' ||
+    loan.lenderKind !== 'BANK'
+  )
+    throw new LoanNotFoundError(loan.id);
+  validateAmount(command.amount);
+  const outstanding = loan.principal - loan.repaidAmount;
+  if (command.amount !== outstanding)
+    throw new BankLoanFullRepaymentRequiredError(loan.id, outstanding, command.amount);
+  const interest = bankLoanInterest(outstanding, command.interestRatePercent);
+  const total = outstanding + interest;
+  validateAmount(total);
+
+  const borrower = findPlayer(players, command.playerId);
+  ensureActive(borrower);
+  ensureSufficientFunds(borrower, total);
+  const result = createResult(command.game.id, 'LOAN_REPAYMENT', total, total, null, [
+    createBalanceChange(borrower, -total),
+  ]);
+  return {
+    ...result,
+    transaction: {
+      ...result.transaction,
+      loanRepayment: {
+        loanId: loan.id,
+        lenderPlayerId: null,
+        borrowerPlayerId: borrower.id,
+        amount: outstanding,
+        interestAmount: interest,
+        interestRatePercent: command.interestRatePercent,
+        suggestedRatePercent: command.suggestedRatePercent,
+      },
+    },
+  };
+}
+
 export function bankToPlayer(command: BankToPlayerCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
   validateAmount(command.amount);
@@ -595,20 +791,71 @@ export function declareBankruptcy(command: BankruptcyCommand): BankingOperationR
     ensureActive(creditor);
     ensureDifferentPlayers(bankruptPlayer, creditor);
   }
-  if (bankruptPlayer.balance === 0) {
-    return createResult(command.game.id, 'BANKRUPTCY_TRANSFER', 1, 1, null, []);
+  const cash = bankruptPlayer.balance;
+  const settlement = settleBankLoan(command, bankruptPlayer);
+  if (cash === 0) {
+    return withBankLoanSettlement(
+      createResult(command.game.id, 'BANKRUPTCY_TRANSFER', 1, 1, null, []),
+      settlement,
+    );
   }
-  return createResult(
-    command.game.id,
-    'BANKRUPTCY_TRANSFER',
-    bankruptPlayer.balance,
-    bankruptPlayer.balance,
-    null,
-    [
-      createBalanceChange(bankruptPlayer, -bankruptPlayer.balance),
-      ...(creditor === null ? [] : [createBalanceChange(creditor, bankruptPlayer.balance)]),
-    ],
+  // The bank is owed first; a player creditor only receives what is left of the wallet.
+  const bankTake = settlement === null ? 0 : settlement.paidPrincipal + settlement.paidInterest;
+  const creditorShare = cash - bankTake;
+  return withBankLoanSettlement(
+    createResult(command.game.id, 'BANKRUPTCY_TRANSFER', cash, cash, null, [
+      createBalanceChange(bankruptPlayer, -cash),
+      ...(creditor === null || creditorShare === 0
+        ? []
+        : [createBalanceChange(creditor, creditorShare)]),
+    ]),
+    settlement,
   );
+}
+
+type BankLoanSettlement = NonNullable<PendingTransaction['bankLoanSettlement']>;
+
+/**
+ * What the bank takes from a bankrupt player's wallet for their active bank loan: the debt is the
+ * outstanding principal plus interest at the suggested rate, and the bank takes whatever of it the
+ * cash covers, principal first. Once the principal is covered the loan counts as repaid (interest
+ * the wallet could not cover is forgiven); otherwise it is written off.
+ */
+function settleBankLoan(
+  command: BankruptcyCommand,
+  bankruptPlayer: Player,
+): BankLoanSettlement | null {
+  if (command.bankLoan === undefined) return null;
+  const { loan, suggestedRatePercent } = command.bankLoan;
+  if (
+    loan.gameId !== command.game.id ||
+    loan.borrowerPlayerId !== bankruptPlayer.id ||
+    loan.state !== 'ACTIVE' ||
+    loan.lenderKind !== 'BANK'
+  )
+    throw new LoanNotFoundError(loan.id);
+  const outstanding = loan.principal - loan.repaidAmount;
+  const debt = outstanding + bankLoanInterest(loan.principal, suggestedRatePercent);
+  const taken = Math.min(bankruptPlayer.balance, debt);
+  const paidPrincipal = Math.min(taken, outstanding);
+  return {
+    loanId: loan.id,
+    borrowerPlayerId: bankruptPlayer.id,
+    outcome: paidPrincipal === outstanding ? 'REPAID' : 'WRITTEN_OFF',
+    paidPrincipal,
+    paidInterest: taken - paidPrincipal,
+    interestRatePercent: suggestedRatePercent,
+    suggestedRatePercent,
+  };
+}
+
+function withBankLoanSettlement(
+  result: BankingOperationResult,
+  settlement: BankLoanSettlement | null,
+): BankingOperationResult {
+  return settlement === null
+    ? result
+    : { ...result, transaction: { ...result.transaction, bankLoanSettlement: settlement } };
 }
 
 function validateGame(game: Game, players: readonly Player[]): readonly Player[] {

@@ -137,6 +137,34 @@ export interface Loan {
   state: LoanState;
   createdAt: string;
   closedAt: string | null;
+  /** A bank loan taken during the cooldown after repaying the previous one, after the warning. */
+  cooldownAcknowledged?: boolean;
+  /** Only for an ACTIVE bank loan: derived from the operation log on read, never stored. */
+  rounds?: LoanRoundStatus;
+}
+
+/** Bank-loan interest is charged on the principal, without compounding. */
+export const interestRatePercents = [0, 10, 20] as const;
+export type InterestRatePercent = (typeof interestRatePercents)[number];
+
+/**
+ * Where a bank loan stands, inferred from whose operations followed it (see
+ * shared/domain/round-tracking.ts). The app never stores or enforces turn order; this is a hint.
+ */
+export interface LoanRoundStatus {
+  /** 1 while the borrower is still in the turn they borrowed in, 2 after their next turn starts, ... */
+  round: number;
+  /** 0% in round 1, 10% in round 2, 20% from round 3. */
+  suggestedRatePercent: InterestRatePercent;
+  /** The loan reached round 4 without being repaid. */
+  overdue: boolean;
+}
+
+/** A player who repaid a bank loan recently; borrowing again now needs a confirmed warning. */
+export interface BankLoanCooldown {
+  playerId: string;
+  /** Rounds until a new bank loan no longer needs the warning (1 or 2). */
+  roundsLeft: number;
 }
 
 export interface TransactionParticipant {

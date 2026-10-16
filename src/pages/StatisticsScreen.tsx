@@ -1,9 +1,10 @@
 import type { LedgerStatistics } from '../../shared/contracts/api';
-import type { Currency, Player } from '../../shared/types/monopoly';
+import type { Currency, Loan, Player } from '../../shared/types/monopoly';
 import { Dialog } from '../components/Dialog';
 import { MoneyValue } from '../components/ui';
 import { useLanguage } from '../i18n/language-context';
 import { cx, wideDialogClass } from '../components/ui/class-names';
+import { playerDebt } from '../utils/loans';
 import { formatMoney } from '../utils/money';
 
 /*
@@ -42,10 +43,15 @@ const leaderboardClass = cx(
 export function StatisticsScreen({
   summary,
   currency,
+  loans = [],
+  finished = false,
   onClose,
 }: {
   summary: { winners: Player[] } & LedgerStatistics;
   currency: Currency;
+  /** The loans still ACTIVE; with a finished game each player's net after debts is shown. */
+  loans?: Loan[];
+  finished?: boolean;
   onClose: () => void;
 }) {
   const { t } = useLanguage();
@@ -105,6 +111,13 @@ export function StatisticsScreen({
                   {t('sent')}: <MoneyValue amount={entry.sent} currency={currency} /> ·{' '}
                   {t('received')}: <MoneyValue amount={entry.received} currency={currency} /> ·{' '}
                   {t('passGoCount')}: {entry.passGoCount}
+                  {finished && loans.length > 0 && (
+                    <>
+                      {' · '}
+                      {t('netAfterDebts')}:{' '}
+                      <MoneyValue amount={netAfterDebts(loans, entry.player)} currency={currency} />
+                    </>
+                  )}
                 </small>
               </li>
             ))}
@@ -113,6 +126,11 @@ export function StatisticsScreen({
       </section>
     </Dialog>
   );
+}
+/** Balance minus what the player still owes plus what they are still owed by players. */
+function netAfterDebts(loans: Loan[], player: Player): number {
+  const { owes, owed } = playerDebt(loans, player.id);
+  return player.balance - owes + owed;
 }
 function Metric({ label, value }: { label: string; value: string }) {
   return (

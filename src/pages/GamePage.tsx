@@ -30,6 +30,7 @@ import { WalletsSection } from './game/WalletsSection';
 import {
   applyLiveEvent,
   filterTransactionsForPlayer,
+  splitPaymentRequests,
   withClientGameDetails,
 } from './game/game-page-helpers';
 
@@ -70,6 +71,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [activityOpen, setActivityOpen] = useState(false);
   const [statisticsOpen, setStatisticsOpen] = useState(false);
   const [bankruptPlayer, setBankruptPlayer] = useState<Player | null>(null);
+  const [settleLoanOnOpen, setSettleLoanOnOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
@@ -259,10 +261,20 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const canMutate = details.game.status === 'ACTIVE' && !offline;
   const showNav = details.game.status !== 'LOBBY';
   const confirmationMode = details.game.paymentMode === 'CONFIRMATION';
+  // The list also holds requests the viewer's wallets made; only the incoming ones need an answer.
+  const { incoming, outgoingLoans: outgoingLoanRequests } = splitPaymentRequests(
+    paymentRequests,
+    details.controlledPlayerIds ?? controlledWallets.map((wallet) => wallet.playerId),
+  );
   // A loan request always waits for the lender, whatever the payment mode.
   const inboxRequests = confirmationMode
-    ? paymentRequests
-    : paymentRequests.filter((request) => request.kind === 'LOAN');
+    ? incoming
+    : incoming.filter((request) => request.kind === 'LOAN');
+  const rules = details.game.rules;
+  // Each rule only shows its own loans.
+  const visibleLoans = (details.loans ?? []).filter((loan) =>
+    loan.lenderKind === 'BANK' ? rules.bankLoans : rules.playerLoans,
+  );
   /** The owner may reverse anything; a player only their own recent transactions (the Worker checks too). */
   const canReverse = (transaction: Transaction): boolean =>
     canMutate &&
@@ -310,39 +322,53 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         activeWallet={activeWallet}
         otherPlayers={otherPlayers}
         canMutate={canMutate}
-        loans={details.game.rules.playerLoans ? (details.loans ?? []) : []}
+        loans={visibleLoans}
         onSelectWallet={setActiveWalletId}
-        onOpenWallet={setSelectedPlayer}
+        onOpenWallet={(player) => {
+          setSettleLoanOnOpen(false);
+          setSelectedPlayer(player);
+        }}
+        onSettleLoan={(player) => {
+          setSettleLoanOnOpen(true);
+          setSelectedPlayer(player);
+        }}
       />
-      {canMutate && (confirmationMode || inboxRequests.length > 0) && (
-        <PaymentInbox
-          requests={inboxRequests}
-          players={details.players}
-          currency={details.game.currency}
-          onAction={async (request, action) => {
-            const commandId = crypto.randomUUID();
-            const result =
-              action === 'accept'
-                ? await monopolyBankApi.acceptPaymentRequest(gameId, request.id, commandId)
-                : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId);
-            setPaymentRequests((current) => current.filter((item) => item.id !== request.id));
-            if (result.transaction !== undefined) {
-              historyCache.current.clear();
-              playPaymentFeedback(preferences.sound);
-              vibrate(35, preferences.vibration);
-              setDetails((current) =>
-                current === null
-                  ? current
-                  : {
-                      ...current,
-                      players: result.players,
-                      ...(result.loans === undefined ? {} : { loans: result.loans }),
-                    },
-              );
-            }
-          }}
-        />
-      )}
+      {canMutate &&
+        (confirmationMode || inboxRequests.length > 0 || outgoingLoanRequests.length > 0) && (
+          <PaymentInbox
+            requests={inboxRequests}
+            outgoing={outgoingLoanRequests}
+            players={details.players}
+            currency={details.game.currency}
+            onAction={async (request, action) => {
+              const commandId = crypto.randomUUID();
+              const result =
+                action === 'accept'
+                  ? await monopolyBankApi.acceptPaymentRequest(gameId, request.id, commandId)
+                  : action === 'cancel'
+                    ? await monopolyBankApi.cancelPaymentRequest(gameId, request.id, commandId)
+                    : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId);
+              setPaymentRequests((current) => current.filter((item) => item.id !== request.id));
+              if (result.transaction !== undefined) {
+                historyCache.current.clear();
+                playPaymentFeedback(preferences.sound);
+                vibrate(35, preferences.vibration);
+                setDetails((current) =>
+                  current === null
+                    ? current
+                    : {
+                        ...current,
+                        players: result.players,
+                        ...(result.loans === undefined ? {} : { loans: result.loans }),
+                        ...(result.bankLoanCooldowns === undefined
+                          ? {}
+                          : { bankLoanCooldowns: result.bankLoanCooldowns }),
+                      },
+                );
+              }
+            }}
+          />
+        )}
       {details.game.status === 'ACTIVE' && (
         <div className={cx(gameToolsClass, 'max-md:hidden')}>
           <DiceRoller
@@ -397,6 +423,8 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         <StatisticsScreen
           summary={summary}
           currency={details.game.currency}
+          loans={visibleLoans}
+          finished={details.game.status === 'FINISHED'}
           onClose={() => setStatisticsOpen(false)}
         />
       )}
@@ -412,6 +440,8 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           settings={details.game.settings}
           mortgages={details.mortgages ?? []}
           loans={details.loans ?? []}
+          bankLoanCooldowns={details.bankLoanCooldowns ?? []}
+          settleOnOpen={settleLoanOnOpen}
           favoriteAmounts={details.favoriteAmounts ?? []}
           recentAmounts={details.recentAmounts ?? []}
           onToggleFavorite={(amount) =>
@@ -432,7 +462,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             setSelectedPlayer(null);
             void loadHistory(player);
           }}
-          onCompleted={(players, action, amount, mortgages, loans) => {
+          onCompleted={(players, action, amount, mortgages, loans, bankLoanCooldowns) => {
             historyCache.current.clear();
             playPaymentFeedback(preferences.sound);
             vibrate(35, preferences.vibration);
@@ -441,6 +471,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               players,
               ...(mortgages === undefined ? {} : { mortgages }),
               ...(loans === undefined ? {} : { loans }),
+              ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
               recentAmounts:
                 amount === null
                   ? details.recentAmounts
@@ -459,7 +490,9 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                     ? 'redemptionRecorded'
                     : action === 'LOAN_REPAYMENT'
                       ? 'loanRepaid'
-                      : 'paymentSent',
+                      : action === 'BANK_LOAN'
+                        ? 'bankLoanRecorded'
+                        : 'paymentSent',
               ),
             });
           }}
@@ -481,13 +514,24 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           gameId={gameId}
           player={bankruptPlayer}
           players={details.players}
+          hasBankLoan={
+            rules.bankLoans &&
+            (details.loans ?? []).some(
+              (loan) =>
+                loan.lenderKind === 'BANK' &&
+                loan.state === 'ACTIVE' &&
+                loan.borrowerPlayerId === bankruptPlayer.id,
+            )
+          }
           onClose={() => setBankruptPlayer(null)}
-          onCompleted={(players, mortgages) => {
+          onCompleted={(players, mortgages, loans, bankLoanCooldowns) => {
             historyCache.current.clear();
             setDetails({
               ...details,
               players,
               ...(mortgages === undefined ? {} : { mortgages }),
+              ...(loans === undefined ? {} : { loans }),
+              ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
             });
             setBankruptPlayer(null);
           }}

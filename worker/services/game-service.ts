@@ -12,6 +12,8 @@ import type { GameRepository } from '../repositories/game-repository.js';
 import type { LoanRepository } from '../repositories/loan-repository.js';
 import type { MortgageRepository } from '../repositories/mortgage-repository.js';
 import type { CreatePlayerInput, PlayerRepository } from '../repositories/player-repository.js';
+import type { TransactionRepository } from '../repositories/transaction-repository.js';
+import { loadBankLoanView } from './bank-loan-view.js';
 import { ConflictError, ResourceNotFoundError } from './errors.js';
 import { hashPassword, randomToken } from './password-security.js';
 
@@ -43,6 +45,8 @@ export interface GameServiceDependencies {
   mortgages?: MortgageRepository;
   /** Lists the loans still being repaid in a game; without it a game reports none. */
   loans?: LoanRepository;
+  /** Lets a game with the bank-loans rule report loan rounds and cooldowns. */
+  transactions?: TransactionRepository;
   createId: () => string;
 }
 
@@ -51,6 +55,7 @@ export class DefaultGameService implements GameService {
   private readonly players: PlayerRepository;
   private readonly mortgages: MortgageRepository | undefined;
   private readonly loans: LoanRepository | undefined;
+  private readonly transactions: TransactionRepository | undefined;
   private readonly createId: () => string;
 
   constructor(dependencies: GameServiceDependencies) {
@@ -58,6 +63,7 @@ export class DefaultGameService implements GameService {
     this.players = dependencies.players;
     this.mortgages = dependencies.mortgages;
     this.loans = dependencies.loans;
+    this.transactions = dependencies.transactions;
     this.createId = dependencies.createId;
   }
 
@@ -129,11 +135,22 @@ export class DefaultGameService implements GameService {
       throw new ResourceNotFoundError('Game');
     }
 
+    const players = await this.players.listByGameId(gameId);
+    // With the bank-loans rule the loans carry their round and the cooldowns are reported too.
+    const bankLoans =
+      game.rules.bankLoans && this.loans !== undefined && this.transactions !== undefined
+        ? await loadBankLoanView(
+            { loans: this.loans, transactions: this.transactions },
+            gameId,
+            players,
+          )
+        : null;
     return {
       game,
-      players: await this.players.listByGameId(gameId),
+      players,
       mortgages: (await this.mortgages?.listActive(gameId)) ?? [],
-      loans: (await this.loans?.listActive(gameId)) ?? [],
+      loans: bankLoans?.loans ?? (await this.loans?.listActive(gameId)) ?? [],
+      ...(bankLoans === null ? {} : { bankLoanCooldowns: bankLoans.bankLoanCooldowns }),
       favoriteAmounts: await this.games.listFavoriteAmounts(gameId),
       recentAmounts: await this.games.listRecentAmounts(gameId),
     };

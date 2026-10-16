@@ -33,6 +33,15 @@ export interface TransactionRepository {
   getById(gameId: string, transactionId: string): Promise<Transaction | null>;
   listByGameId(gameId: string, limit?: number): Promise<Transaction[]>;
   listByPlayerId(gameId: string, playerId: string, limit?: number): Promise<Transaction[]>;
+  /**
+   * Every transaction from the earliest of the given ones onwards (that one included), oldest
+   * first, in the order they were written. Empty without anchors. Used to infer whose turn it was.
+   */
+  listChronologicalSince(
+    gameId: string,
+    anchorTransactionIds: readonly string[],
+    latest?: number,
+  ): Promise<Transaction[]>;
 }
 
 export class D1TransactionRepository implements TransactionRepository {
@@ -87,6 +96,37 @@ export class D1TransactionRepository implements TransactionRepository {
         `,
       )
       .bind(gameId, limit)
+      .all<TransactionRow>();
+
+    return mapTransactions(result.results);
+  }
+
+  async listChronologicalSince(
+    gameId: string,
+    anchorTransactionIds: readonly string[],
+    latest?: number,
+  ): Promise<Transaction[]> {
+    if (anchorTransactionIds.length === 0) return [];
+    // With `latest`, only the game's newest `latest` transactions are read, even if an anchor is older.
+    const window =
+      latest === undefined
+        ? ''
+        : `AND transactions.rowid >= COALESCE((
+             SELECT recent.rowid FROM transactions AS recent WHERE recent.game_id = ?1
+             ORDER BY recent.rowid DESC LIMIT 1 OFFSET ${Math.max(0, Math.floor(latest) - 1)}
+           ), 0)`;
+    const result = await this.database
+      .prepare(
+        `${transactionSelect}
+         WHERE transactions.game_id = ?1
+           AND transactions.rowid >= (
+             SELECT MIN(anchor.rowid) FROM transactions AS anchor
+             WHERE anchor.game_id = ?1 AND anchor.id IN (${anchorTransactionIds.map((_, index) => `?${index + 2}`).join(', ')})
+           )
+           ${window}
+         ORDER BY transactions.rowid ASC, transaction_participants.player_id ASC`,
+      )
+      .bind(gameId, ...anchorTransactionIds)
       .all<TransactionRow>();
 
     return mapTransactions(result.results);

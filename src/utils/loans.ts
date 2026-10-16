@@ -1,4 +1,5 @@
-import type { Loan } from '../../shared/types/monopoly';
+import { bankLoanInterest } from '../../shared/domain/bank-loan';
+import type { InterestRatePercent, Loan } from '../../shared/types/monopoly';
 
 /** What is still owed on a loan. */
 export function loanOutstanding(loan: Pick<Loan, 'principal' | 'repaidAmount'>): number {
@@ -27,4 +28,22 @@ export function playerDebt(loans: Loan[], playerId: string): { owes: number; owe
       owed += loanOutstanding(loan);
   }
   return { owes, owed };
+}
+
+/** The player's active bank loan, if any (the rule allows one at a time). */
+export function activeBankLoan(loans: Loan[], playerId: string): Loan | null {
+  return (
+    loans.find(
+      (loan) =>
+        loan.state === 'ACTIVE' &&
+        loan.lenderKind === 'BANK' &&
+        loan.borrowerPlayerId === playerId &&
+        loanOutstanding(loan) > 0,
+    ) ?? null
+  );
+}
+
+/** Bank-loan interest, from the same rule the Worker charges; 0 while no loan is picked. */
+export function loanInterest(principal: number, ratePercent: InterestRatePercent): number {
+  return principal > 0 ? bankLoanInterest(principal, ratePercent) : 0;
 }

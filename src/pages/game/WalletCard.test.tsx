@@ -52,3 +52,28 @@ describe('WalletCard loans', () => {
     expect(screen.queryByText(/Is owed|Owes/)).toBeNull();
   });
 });
+
+describe('WalletCard bank loan', () => {
+  const bankLoan: Loan = {
+    ...loan,
+    id: 'b1',
+    lenderKind: 'BANK',
+    lenderPlayerId: null,
+    borrowerPlayerId: 'p1',
+    principal: 400,
+    repaidAmount: 0,
+    rounds: { round: 3, suggestedRatePercent: 20, overdue: false },
+  };
+
+  it('shows the bank loan with its round, without an overdue badge', () => {
+    renderCard([bankLoan]);
+    expect(screen.getByText('Bank loan $400 · round 3')).toBeInTheDocument();
+    expect(screen.queryByText('Overdue')).toBeNull();
+    expect(screen.queryByText(/^Owes/)).toBeNull();
+  });
+
+  it('flags an overdue bank loan', () => {
+    renderCard([{ ...bankLoan, rounds: { round: 4, suggestedRatePercent: 20, overdue: true } }]);
+    expect(screen.getByText('Overdue')).toBeInTheDocument();
+  });
+});
