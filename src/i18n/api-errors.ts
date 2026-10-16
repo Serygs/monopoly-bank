@@ -35,6 +35,13 @@ const errorKeys: Record<string, TranslationKey> = {
   BANK_LOAN_FULL_REPAYMENT_REQUIRED: 'errorBankLoanFullRepayment',
   LOAN_NOT_FOUND: 'errorLoanNotFound',
   LOAN_AMOUNT_EXCEEDS_DEBT: 'errorLoanAmountExceedsDebt',
+  AUCTION_ALREADY_ACTIVE: 'errorAuctionAlreadyActive',
+  AUCTION_ALREADY_LEADING: 'errorAuctionAlreadyLeading',
+  AUCTION_CLOSED: 'errorAuctionClosed',
+  AUCTION_BID_STALE: 'errorAuctionBidStale',
+  INVALID_BID_STEP: 'errorInvalidBidStep',
+  AUCTION_NOT_FOUND: 'errorAuctionNotFound',
+  INSUFFICIENT_AVAILABLE_FUNDS: 'errorInsufficientAvailableFunds',
 };
 
 export function apiErrorMessage(error: unknown, t: Translate, fallback: TranslationKey): string {

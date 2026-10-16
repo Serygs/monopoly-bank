@@ -66,6 +66,17 @@ export interface JackpotPayoutCommand {
   expectedAmount: number;
 }
 
+export interface AuctionPaymentCommand {
+  game: Game;
+  players: readonly Player[];
+  /** The winning bidder. */
+  playerId: string;
+  /** The winning bid. */
+  amount: number;
+  /** The lot name, kept as the transaction's comment. */
+  lotName: string;
+}
+
 export interface MortgagePropertyCommand extends BankingCommand {
   playerId: string;
   propertyName: string;
@@ -169,6 +180,8 @@ export interface PendingTransaction {
    * that changed in between rolls the whole batch back.
    */
   jackpot?: { kind: 'DEPOSIT'; amount: number } | { kind: 'COLLECT'; expected: number };
+  /** Set only on an AUCTION_PAYMENT: the auction it closes, written in the same batch. */
+  settlesAuction?: { auctionId: string; expectedVersion: number };
   /** Set only on a MORTGAGE: the mortgage record stored with it (its id is the transaction's). */
   newMortgage?: { playerId: string; propertyName: string; mortgageValue: number };
   /** Set only on a MORTGAGE_REDEMPTION: the mortgage it closes. */
@@ -560,6 +573,24 @@ export function jackpotPayout(command: JackpotPayoutCommand): BankingOperationRe
       jackpot: { kind: 'COLLECT', expected: command.jackpot },
     },
   };
+}
+
+/** The winner of an auction pays the bank the winning bid; the lot name is the comment. */
+export function auctionPayment(command: AuctionPaymentCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  validateAmount(command.amount);
+
+  const player = findPlayer(players, command.playerId);
+  ensureActive(player);
+  ensureSufficientFunds(player, command.amount);
+  return createResult(
+    command.game.id,
+    'AUCTION_PAYMENT',
+    command.amount,
+    command.amount,
+    command.lotName,
+    [createBalanceChange(player, -command.amount)],
+  );
 }
 
 /** The bank pays the mortgage value; the property name becomes the transaction's comment. */

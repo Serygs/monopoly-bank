@@ -43,6 +43,8 @@ import {
   parseUpgradeGuestRequest,
   parseAddAccountEmailRequest,
   parseFinishGameRequest,
+  parsePlaceBidRequest,
+  parseStartAuctionRequest,
   parseRecordDiceRollRequest,
 } from '../validation/api-validation.js';
 
@@ -132,6 +134,9 @@ async function route(
   const bankruptcyMatch = /^\/api\/games\/([^/]+)\/bankruptcy$/.exec(pathname);
   const summaryMatch = /^\/api\/games\/([^/]+)\/summary$/.exec(pathname);
   const activityMatch = /^\/api\/games\/([^/]+)\/activity$/.exec(pathname);
+  const auctionMatch = /^\/api\/games\/([^/]+)\/auction$/.exec(pathname);
+  const auctionsMatch = /^\/api\/games\/([^/]+)\/auctions$/.exec(pathname);
+  const bidMatch = /^\/api\/games\/([^/]+)\/auctions\/([^/]+)\/bids$/.exec(pathname);
   const liveMatch = /^\/api\/games\/([^/]+)\/live$/.exec(pathname);
 
   if (pathname === '/api/auth/register' && request.method === 'POST') {
@@ -450,6 +455,41 @@ async function route(
     const gameId = parseResourceId(favoriteMatch[1], 'gameId');
     await dependencies.access.requireMember(gameId, actor.id);
     return success(await dependencies.games.toggleFavoriteAmount(gameId, body.amount));
+  }
+
+  // Auctions run in the game object, so they settle lazily and keep the live ordering.
+  if (auctionMatch !== null && request.method === 'GET') {
+    const gameId = parseResourceId(auctionMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    if (dependencies.live === undefined)
+      return failure(503, 'LIVE_UNAVAILABLE', 'Live games are not configured.', requestId);
+    return dependencies.live.readAuction(gameId, actor);
+  }
+  if (auctionsMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(auctionsMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const body = await parseStartAuctionRequest(request);
+    await dependencies.access.requirePlayerController(gameId, actor.id, body.initiatorPlayerId);
+    if (dependencies.live === undefined)
+      return failure(503, 'LIVE_UNAVAILABLE', 'Live games are not configured.', requestId);
+    return dependencies.live.mutate(gameId, actor, {
+      type: 'START_AUCTION',
+      commandId: readCommandId(request),
+      request: body,
+    });
+  }
+  if (bidMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(bidMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const body = await parsePlaceBidRequest(request, bidMatch[2]);
+    await dependencies.access.requirePlayerController(gameId, actor.id, body.bidderPlayerId);
+    if (dependencies.live === undefined)
+      return failure(503, 'LIVE_UNAVAILABLE', 'Live games are not configured.', requestId);
+    return dependencies.live.mutate(gameId, actor, {
+      type: 'PLACE_BID',
+      commandId: readCommandId(request),
+      request: body,
+    });
   }
 
   if (bankruptcyMatch !== null && request.method === 'POST') {
