@@ -15,7 +15,7 @@ const triggerClass = cx(
 );
 const panelClass = cx(
   'absolute top-[calc(100%_+_var(--mb-space-2))] right-0 z-20 grid min-w-44 origin-top-right',
-  'rounded-control border border-border bg-surface-elevated p-(--mb-space-2) shadow-lg',
+  'glass-popover rounded-control border border-border bg-surface-elevated p-(--mb-space-2) shadow-lg',
   'classic:animate-[classic-menu-in_var(--mb-duration-fast)_var(--mb-ease-emphasized)] motion-reduce:transform-none!',
 );
 /* Headless UI keeps focus on the menu and marks the keyboard/pointer-active item `data-focus`. */

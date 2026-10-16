@@ -400,6 +400,19 @@ These definitions are implemented by the UI kit in `src/components/ui/` and by
 `src/components/Dialog.tsx`, `OverflowMenu.tsx`, and `AppearanceSettings.tsx`.
 Pages may compose them but must not create a second visual language.
 
+### Glass surface tokens (Liquid Glass)
+
+Shared surfaces are defined once in `src/styles/visual-styles/liquid-glass.css` (tokens) and `src/styles/glass.css` (classes). Components use the classes; they do not hard-code blur or tint.
+
+| Class               | Used for                                                | Tokens                                                                                                                                              |
+| ------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.glass-panel`      | cards, modal panels and sheets, bottom nav, tool panels | `--mb-glass-blur` 28px, `--mb-glass-saturate` 170%, `--mb-glass-tint` (~58% white), `--mb-glass-border`, `--mb-glass-specular`, `--mb-glass-shadow` |
+| `.glass-popover`    | menus, dropdowns, selects, the settings popover         | `--mb-popover-tint` (~90%), `--mb-popover-blur`, `--mb-popover-border`, `--mb-popover-shadow`                                                       |
+| `.glass-scrim`      | the dimming layer under sheets                          | `--mb-scrim-tint` (12% light, 34% dark), `--mb-scrim-blur`                                                                                          |
+| `glassControlClass` | secondary buttons, chips                                | `--mb-glass-control-tint`, `--mb-glass-control-shadow`                                                                                              |
+
+Fallbacks: without `backdrop-filter`, and under `prefers-reduced-transparency` or `forced-colors`, panels and popovers use the `*-solid` tints and the scrim uses `--mb-color-overlay`. The faint board/house/dice pattern (`--mb-background-pattern-opacity`, 5% light / 7% dark) sits behind the content; the ambient drift stops under `prefers-reduced-motion`.
+
 ## Responsive and overlay rules
 
 - Start from a usable 320 CSS-pixel viewport and scale fluidly. Validate compact
