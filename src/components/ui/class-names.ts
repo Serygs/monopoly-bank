@@ -46,16 +46,13 @@ export const banknotePanelClass =
  * to outrank the core's `disabled:shadow-none`, as the old theme sheet did.
  */
 export const glassControlClass = cx(
-  'glass:border-[rgb(255_255_255/0.62)] glass:bg-[rgb(255_255_255/0.36)] glass:text-primary',
-  'glass:shadow-[inset_0_1px_0_rgb(255_255_255/0.55),0_6px_18px_rgb(40_60_90/0.08)]',
-  'glass:disabled:shadow-[inset_0_1px_0_rgb(255_255_255/0.55),0_6px_18px_rgb(40_60_90/0.08)]',
+  'glass:border-(--mb-glass-border) glass:bg-(--mb-glass-control-tint) glass:text-primary',
+  'glass:shadow-(--mb-glass-control-shadow)',
+  'glass:disabled:shadow-(--mb-glass-control-shadow)',
 );
 
 /** Liquid Glass frosted panel: the auth card and the table tools. */
-export const glassPanelClass = cx(
-  'glass:border-border glass:bg-[color-mix(in_srgb,var(--mb-color-surface-elevated)_90%,transparent)] glass:shadow-lg',
-  'glass:backdrop-blur-[22px] glass:backdrop-saturate-[1.35]',
-);
+export const glassPanelClass = cx('glass-panel');
 
 /** Every button: layout, type weight, motion, and the pressed/disabled states. */
 export const buttonCoreClass = cx(

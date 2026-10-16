@@ -25,8 +25,7 @@ export interface GameBottomNavProps {
 const navClass = cx(
   'game-bottom-nav fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface-elevated md:hidden',
   'pb-[max(var(--mb-space-2),var(--mb-app-safe-bottom))] shadow-lg',
-  'glass:border-[rgb(85_98_116/0.14)] glass:bg-[rgb(255_255_255/0.72)] glass:backdrop-blur-[22px] glass:backdrop-saturate-[1.35]',
-  'glass:dark:border-[rgb(255_255_255/0.14)] glass:dark:bg-[rgb(40_49_62/0.78)]',
+  'glass-panel border-x-0 border-b-0',
 );
 const listClass =
   'mx-auto m-0 grid w-[min(100%,var(--mb-layout-content-max))] list-none grid-cols-4 items-end p-0 px-(--mb-space-2)';

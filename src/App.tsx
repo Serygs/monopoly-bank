@@ -94,10 +94,7 @@ const settingsPanelClass = cx(
   // The cap applies to the anchored popover only; below `md` both styles share the full-width sheet.
   'glass:min-w-0 glass:md:max-w-[min(22.5rem,calc(100vw_-_2_*_var(--mb-space-3)))] glass:overflow-x-hidden',
   'glass:md:w-[min(22.5rem,calc(100vw_-_2_*_var(--mb-space-3)))]',
-  'glass:border-[rgb(255_255_255/0.65)] glass:bg-[rgb(255_255_255/0.76)] glass:dark:border-[rgb(255_255_255/0.24)] glass:dark:bg-[rgb(40_49_62/0.88)]',
-  'glass:shadow-[0_18px_45px_rgb(40_60_90/0.14),inset_0_1px_0_rgb(255_255_255/0.65)]',
-  'glass:backdrop-blur-[24px] glass:backdrop-saturate-[1.3] glass:max-md:backdrop-blur-[16px] glass:max-md:backdrop-saturate-[1.24]',
-  'glass:forced-colors:backdrop-filter-none',
+  'glass-popover',
   'glass:[&>header>div]:min-w-0 glass:[&>header_h2]:max-w-full glass:[&>header_h2]:text-[1.75rem] glass:[&>header_h2]:whitespace-nowrap',
   'glass:[&_.settings-options]:min-w-0',
 );
