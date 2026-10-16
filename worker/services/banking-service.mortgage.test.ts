@@ -65,6 +65,7 @@ function service(options: { active?: Mortgage[]; balance?: number; persistError?
       getActive: async (_gameId: string, id: string) =>
         (options.active ?? []).find((item) => item.id === id) ?? null,
     } as never,
+    loans: { listActive: async () => [], getActive: async () => null } as never,
     createId: () => 'command-id',
   });
   return { banking, persist, listActive };
@@ -206,6 +207,7 @@ describe('bankruptcy and mortgages', () => {
       operations: { persist } as never,
       paymentRequests: {} as never,
       mortgages: { listActive: async () => active, getActive: async () => null } as never,
+      loans: { listActive: async () => [], getActive: async () => null } as never,
       createId: () => 'command-id',
     });
     return { banking, persist };

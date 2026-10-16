@@ -235,3 +235,46 @@ describe('mortgage validation', () => {
       ).rejects.toBeInstanceOf(ApiValidationError);
   });
 });
+
+describe('loan validation', () => {
+  const borrowerPlayerId = '11111111-1111-4111-8111-111111111111';
+  const lenderPlayerId = '22222222-2222-4222-8222-222222222222';
+  const loanId = '44444444-4444-4444-8444-444444444444';
+
+  it('accepts a loan request and a repayment', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'LOAN_ISSUE', borrowerPlayerId, lenderPlayerId, amount: 200 }),
+      ),
+    ).resolves.toEqual({ type: 'LOAN_ISSUE', borrowerPlayerId, lenderPlayerId, amount: 200 });
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'LOAN_REPAYMENT', playerId: borrowerPlayerId, loanId, amount: 50 }),
+      ),
+    ).resolves.toEqual({ type: 'LOAN_REPAYMENT', playerId: borrowerPlayerId, loanId, amount: 50 });
+  });
+
+  it.each([
+    ['a missing lender', { borrowerPlayerId, amount: 10 }],
+    ['a malformed borrower', { borrowerPlayerId: 'nope', lenderPlayerId, amount: 10 }],
+    ['a zero amount', { borrowerPlayerId, lenderPlayerId, amount: 0 }],
+    ['a fractional amount', { borrowerPlayerId, lenderPlayerId, amount: 1.5 }],
+    ['an unsafe amount', { borrowerPlayerId, lenderPlayerId, amount: 2 ** 60 }],
+  ])('rejects a loan request with %s', async (_label, fields) => {
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'LOAN_ISSUE', ...fields })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+
+  it.each([
+    ['a missing loan id', { playerId: borrowerPlayerId, amount: 10 }],
+    ['a malformed loan id', { playerId: borrowerPlayerId, loanId: 'x', amount: 10 }],
+    ['a missing player', { loanId, amount: 10 }],
+    ['a negative amount', { playerId: borrowerPlayerId, loanId, amount: -5 }],
+    ['a missing amount', { playerId: borrowerPlayerId, loanId }],
+  ])('rejects a repayment with %s', async (_label, fields) => {
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'LOAN_REPAYMENT', ...fields })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+});

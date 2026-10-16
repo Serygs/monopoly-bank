@@ -10,6 +10,9 @@ const nonReversibleTypes: readonly TransactionType[] = [
   // A mortgage is kept in step with the table's mortgage list, so it is redeemed, not reversed.
   'MORTGAGE',
   'MORTGAGE_REDEMPTION',
+  // A loan is kept in step with the loans table, so it is repaid, not reversed.
+  'LOAN_ISSUE',
+  'LOAN_REPAYMENT',
 ];
 
 export function isReversibleType(type: TransactionType): boolean {
@@ -40,6 +43,8 @@ export function reversalInitiatorPlayerId(
     case 'REVERSAL':
     case 'MORTGAGE':
     case 'MORTGAGE_REDEMPTION':
+    case 'LOAN_ISSUE':
+    case 'LOAN_REPAYMENT':
       return null;
   }
 }
