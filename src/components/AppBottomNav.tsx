@@ -17,7 +17,8 @@ export function AppBottomNav({ path, navigate }: AppBottomNavProps) {
   const { t } = useLanguage();
   const [addOpen, setAddOpen] = useState(false);
   const tab = appTabForPath(path);
-  if (tab === null) return null;
+  /* Creating a lobby swaps the main navigation for the stepper footer. */
+  if (tab === null || path === '/games/new') return null;
   return (
     <>
       <BottomNav
