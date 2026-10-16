@@ -4,7 +4,13 @@ import type { Transaction, TransactionType } from '../types/monopoly.js';
 export const REVERSAL_WINDOW_MS = 15 * 60 * 1000;
 
 /** Types a correction can undo. Bankruptcy hands over a whole wallet and a reversal is final. */
-const nonReversibleTypes: readonly TransactionType[] = ['REVERSAL', 'BANKRUPTCY_TRANSFER'];
+const nonReversibleTypes: readonly TransactionType[] = [
+  'REVERSAL',
+  'BANKRUPTCY_TRANSFER',
+  // A mortgage is kept in step with the table's mortgage list, so it is redeemed, not reversed.
+  'MORTGAGE',
+  'MORTGAGE_REDEMPTION',
+];
 
 export function isReversibleType(type: TransactionType): boolean {
   return !nonReversibleTypes.includes(type);
@@ -32,6 +38,8 @@ export function reversalInitiatorPlayerId(
       return credited.length === 1 ? (credited[0]?.playerId ?? null) : null;
     case 'BANKRUPTCY_TRANSFER':
     case 'REVERSAL':
+    case 'MORTGAGE':
+    case 'MORTGAGE_REDEMPTION':
       return null;
   }
 }

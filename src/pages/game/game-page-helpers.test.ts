@@ -13,6 +13,7 @@ import { translate, type Translate } from '../../i18n/translations';
 import { formatMoney } from '../../utils/money';
 import {
   applyLiveEvent,
+  buildRequest,
   insufficientMessage,
   preflightFundsError,
   previewBalances,
@@ -413,5 +414,77 @@ describe('walletActionTone', () => {
     expect(walletActionTone('PLAYER_TO_PLAYER')).toBe('expense');
     expect(walletActionTone('PLAYER_TO_BANK')).toBe('expense');
     expect(walletActionTone('PLAYER_TO_ALL')).toBe('expense');
+  });
+});
+
+describe('mortgage requests and previews', () => {
+  it('builds a mortgage with the typed name and amount, and no note', () => {
+    expect(
+      buildRequest('MORTGAGE', 'p1', '', 400, 'ignored', { propertyName: 'Boardwalk' }),
+    ).toEqual({ type: 'MORTGAGE', playerId: 'p1', propertyName: 'Boardwalk', amount: 400 });
+  });
+
+  it('builds a redemption only once a mortgage is chosen', () => {
+    expect(buildRequest('MORTGAGE_REDEMPTION', 'p1', '', 0, '', {})).toBeNull();
+    expect(buildRequest('MORTGAGE_REDEMPTION', 'p1', '', 0, '', { mortgageId: 'm1' })).toEqual({
+      type: 'MORTGAGE_REDEMPTION',
+      playerId: 'p1',
+      mortgageId: 'm1',
+    });
+  });
+
+  it('previews a mortgage as money in and a redemption as the cost out', () => {
+    const [first] = players;
+    const mortgage = previewBalances(
+      { type: 'MORTGAGE', playerId: 'p1', propertyName: 'Boardwalk', amount: 400 },
+      players,
+      0,
+    );
+    expect(mortgage.find((item) => item.player.id === first?.id)?.delta).toBe(400);
+    const redemption = previewBalances(
+      { type: 'MORTGAGE_REDEMPTION', playerId: 'p1', mortgageId: 'm1' },
+      players,
+      0,
+      440,
+    );
+    expect(redemption.find((item) => item.player.id === first?.id)?.delta).toBe(-440);
+  });
+
+  it('takes the mortgage list from a committed event', () => {
+    const { detailsCell, apply } = liveHarness(details(), []);
+    const mortgages = [
+      {
+        id: 'm1',
+        gameId: 'g1',
+        playerId: 'p1',
+        propertyName: 'Boardwalk',
+        mortgageValue: 400,
+        createdAt: '',
+      },
+    ];
+    apply({
+      type: 'GAME_COMMITTED',
+      stateVersion: 9,
+      transaction: transaction('t9'),
+      players,
+      mortgages,
+    });
+    expect(detailsCell.value?.mortgages).toEqual(mortgages);
+  });
+
+  it('leaves the mortgage list alone when an event carries none', () => {
+    const mortgages = [
+      {
+        id: 'm1',
+        gameId: 'g1',
+        playerId: 'p1',
+        propertyName: 'Boardwalk',
+        mortgageValue: 400,
+        createdAt: '',
+      },
+    ];
+    const { detailsCell, apply } = liveHarness(details({ mortgages }), []);
+    apply({ type: 'GAME_COMMITTED', stateVersion: 9, transaction: transaction('t9'), players });
+    expect(detailsCell.value?.mortgages).toEqual(mortgages);
   });
 });

@@ -1,10 +1,12 @@
 import type {
   Game,
+  Mortgage,
   Player,
   Transaction,
   TransactionParticipant,
   TransactionType,
 } from '../types/monopoly.js';
+import { normalizePropertyName, redemptionCost } from './mortgage.js';
 import { isReversibleType } from './reversal.js';
 import { AppError } from '../../worker/services/errors.js';
 
@@ -43,6 +45,19 @@ export interface PassGoCommand {
   comment?: string | null;
 }
 
+export interface MortgagePropertyCommand extends BankingCommand {
+  playerId: string;
+  propertyName: string;
+  /** The mortgage value from the property card; the bank pays this. */
+  amount: number;
+}
+
+export interface RedeemMortgageCommand extends BankingCommand {
+  playerId: string;
+  /** The active mortgage being redeemed. */
+  mortgage: Mortgage;
+}
+
 export interface ReversalCommand {
   game: Game;
   players: readonly Player[];
@@ -76,6 +91,10 @@ export interface PendingTransaction {
   participants: TransactionParticipant[];
   /** Set only on a REVERSAL: the stored transaction it moves back. */
   reversesTransactionId?: string;
+  /** Set only on a MORTGAGE: the mortgage record stored with it (its id is the transaction's). */
+  newMortgage?: { playerId: string; propertyName: string; mortgageValue: number };
+  /** Set only on a MORTGAGE_REDEMPTION: the mortgage it closes. */
+  redeemedMortgageId?: string;
 }
 
 export interface PlayerBalanceChange {
@@ -206,6 +225,30 @@ export class TransactionAlreadyReversedError extends BankingDomainError {
   }
 }
 
+export class InvalidPropertyNameError extends BankingDomainError {
+  readonly code = 'INVALID_PROPERTY_NAME' as const;
+  constructor() {
+    super({
+      code: 'INVALID_PROPERTY_NAME',
+      message: 'The property name must be 1 to 60 characters without control characters.',
+      status: 400,
+      details: { field: 'propertyName' },
+    });
+  }
+}
+
+export class MortgageNotFoundError extends BankingDomainError {
+  readonly code = 'MORTGAGE_NOT_FOUND' as const;
+  constructor(mortgageId: string) {
+    super({
+      code: 'MORTGAGE_NOT_FOUND',
+      message: 'Mortgage not found.',
+      status: 404,
+      details: { mortgageId },
+    });
+  }
+}
+
 export class PlayerBankruptError extends BankingDomainError {
   readonly code = 'PLAYER_BANKRUPT' as const;
   constructor(playerId: string) {
@@ -258,6 +301,60 @@ export function playerToBank(command: PlayerToBankCommand): BankingOperationResu
     command.comment,
     [createBalanceChange(player, -command.amount)],
   );
+}
+
+/** The bank pays the mortgage value; the property name becomes the transaction's comment. */
+export function mortgageProperty(command: MortgagePropertyCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  validateAmount(command.amount);
+  // The bank must be able to be repaid: a value whose redemption cost is not a safe integer is refused.
+  validateAmount(redemptionCost(command.amount));
+  const propertyName = normalizePropertyName(command.propertyName);
+  if (propertyName === null) throw new InvalidPropertyNameError();
+
+  const player = findPlayer(players, command.playerId);
+  ensureActive(player);
+  const result = createResult(
+    command.game.id,
+    'MORTGAGE',
+    command.amount,
+    command.amount,
+    propertyName,
+    [createBalanceChange(player, command.amount)],
+  );
+  return {
+    ...result,
+    transaction: {
+      ...result.transaction,
+      newMortgage: { playerId: player.id, propertyName, mortgageValue: command.amount },
+    },
+  };
+}
+
+/** The player pays the bank the mortgage value plus 10%; only the player who mortgaged can redeem. */
+export function redeemMortgage(command: RedeemMortgageCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const { mortgage } = command;
+  if (mortgage.gameId !== command.game.id || mortgage.playerId !== command.playerId)
+    throw new MortgageNotFoundError(mortgage.id);
+  const cost = redemptionCost(mortgage.mortgageValue);
+  validateAmount(cost);
+
+  const player = findPlayer(players, command.playerId);
+  ensureActive(player);
+  ensureSufficientFunds(player, cost);
+  const result = createResult(
+    command.game.id,
+    'MORTGAGE_REDEMPTION',
+    cost,
+    cost,
+    mortgage.propertyName,
+    [createBalanceChange(player, -cost)],
+  );
+  return {
+    ...result,
+    transaction: { ...result.transaction, redeemedMortgageId: mortgage.id },
+  };
 }
 
 export function bankToPlayer(command: BankToPlayerCommand): BankingOperationResult {

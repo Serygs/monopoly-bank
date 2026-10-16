@@ -24,6 +24,9 @@ const errorKeys: Record<string, TranslationKey> = {
   TRANSACTION_ALREADY_REVERSED: 'errorTransactionAlreadyReversed',
   TRANSACTION_NOT_REVERSIBLE: 'errorTransactionNotReversible',
   REVERSAL_WINDOW_EXPIRED: 'errorReversalWindowExpired',
+  MORTGAGE_ALREADY_ACTIVE: 'errorMortgageAlreadyActive',
+  MORTGAGE_NOT_FOUND: 'errorMortgageNotFound',
+  INVALID_PROPERTY_NAME: 'errorInvalidPropertyName',
 };
 
 export function apiErrorMessage(error: unknown, t: Translate, fallback: TranslationKey): string {
