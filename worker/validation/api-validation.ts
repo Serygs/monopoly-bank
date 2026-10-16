@@ -29,6 +29,7 @@ import {
   type SelectableCurrency,
   type TransactionType,
 } from '../../shared/types/monopoly.js';
+import { isBoardMode, type BoardMode } from '../../shared/board/index.js';
 import { isInterestRatePercent } from '../../shared/domain/bank-loan.js';
 import { normalizePropertyName } from '../../shared/domain/mortgage.js';
 import { ValidationError } from '../services/errors.js';
@@ -77,6 +78,7 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     currency: readCurrency(body),
     ...(body.paymentMode === undefined ? {} : { paymentMode: readPaymentMode(body) }),
     ...(body.rules === undefined ? {} : { rules: readGameRules(body.rules) }),
+    ...(body.board === undefined ? {} : { board: readBoardMode(body.board) }),
     ...(isPublic ? { isPublic } : {}),
     ...(body.gameAccessPassword === undefined
       ? {}
@@ -213,6 +215,12 @@ function readCurrency(body: Record<string, unknown>): SelectableCurrency {
     throw new ApiValidationError('currency must be one of USD, EUR, or UAH.');
   }
   return value as SelectableCurrency;
+}
+
+function readBoardMode(value: unknown): BoardMode {
+  if (!isBoardMode(value))
+    throw new ApiValidationError('board must be one of none or monopoly-ru-2012.');
+  return value;
 }
 
 function readGameRules(value: unknown): GameRules {
