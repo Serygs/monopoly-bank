@@ -266,6 +266,20 @@ export async function parseCreateTransactionRequest(
         playerId: readUuid(body, 'playerId'),
         mortgageId: readUuid(body, 'mortgageId'),
       };
+    case 'LOAN_ISSUE':
+      return {
+        type,
+        borrowerPlayerId: readUuid(body, 'borrowerPlayerId'),
+        lenderPlayerId: readUuid(body, 'lenderPlayerId'),
+        amount: readPositiveInteger(body, 'amount'),
+      };
+    case 'LOAN_REPAYMENT':
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        loanId: readUuid(body, 'loanId'),
+        amount: readPositiveInteger(body, 'amount'),
+      };
     case 'REVERSAL':
       return {
         type,

@@ -259,6 +259,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const canMutate = details.game.status === 'ACTIVE' && !offline;
   const showNav = details.game.status !== 'LOBBY';
   const confirmationMode = details.game.paymentMode === 'CONFIRMATION';
+  // A loan request always waits for the lender, whatever the payment mode.
+  const inboxRequests = confirmationMode
+    ? paymentRequests
+    : paymentRequests.filter((request) => request.kind === 'LOAN');
   /** The owner may reverse anything; a player only their own recent transactions (the Worker checks too). */
   const canReverse = (transaction: Transaction): boolean =>
     canMutate &&
@@ -306,12 +310,13 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         activeWallet={activeWallet}
         otherPlayers={otherPlayers}
         canMutate={canMutate}
+        loans={details.game.rules.playerLoans ? (details.loans ?? []) : []}
         onSelectWallet={setActiveWalletId}
         onOpenWallet={setSelectedPlayer}
       />
-      {canMutate && confirmationMode && (
+      {canMutate && (confirmationMode || inboxRequests.length > 0) && (
         <PaymentInbox
-          requests={paymentRequests}
+          requests={inboxRequests}
           players={details.players}
           currency={details.game.currency}
           onAction={async (request, action) => {
@@ -326,7 +331,13 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               playPaymentFeedback(preferences.sound);
               vibrate(35, preferences.vibration);
               setDetails((current) =>
-                current === null ? current : { ...current, players: result.players },
+                current === null
+                  ? current
+                  : {
+                      ...current,
+                      players: result.players,
+                      ...(result.loans === undefined ? {} : { loans: result.loans }),
+                    },
               );
             }
           }}
@@ -360,7 +371,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
       )}
       {showNav && (
         <GameBottomNav
-          pendingRequests={canMutate && confirmationMode ? paymentRequests.length : 0}
+          pendingRequests={canMutate ? inboxRequests.length : 0}
           payDisabled={!canMutate || activeWallet === null || activeWallet.status === 'BANKRUPT'}
           activityDisabled={offline}
           toolsDisabled={details.game.status !== 'ACTIVE'}
@@ -400,6 +411,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           rules={details.game.rules}
           settings={details.game.settings}
           mortgages={details.mortgages ?? []}
+          loans={details.loans ?? []}
           favoriteAmounts={details.favoriteAmounts ?? []}
           recentAmounts={details.recentAmounts ?? []}
           onToggleFavorite={(amount) =>
@@ -420,7 +432,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             setSelectedPlayer(null);
             void loadHistory(player);
           }}
-          onCompleted={(players, action, amount, mortgages) => {
+          onCompleted={(players, action, amount, mortgages, loans) => {
             historyCache.current.clear();
             playPaymentFeedback(preferences.sound);
             vibrate(35, preferences.vibration);
@@ -428,6 +440,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               ...details,
               players,
               ...(mortgages === undefined ? {} : { mortgages }),
+              ...(loans === undefined ? {} : { loans }),
               recentAmounts:
                 amount === null
                   ? details.recentAmounts
@@ -444,14 +457,22 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                   ? 'mortgageRecorded'
                   : action === 'MORTGAGE_REDEMPTION'
                     ? 'redemptionRecorded'
-                    : 'paymentSent',
+                    : action === 'LOAN_REPAYMENT'
+                      ? 'loanRepaid'
+                      : 'paymentSent',
               ),
             });
           }}
-          onPaymentRequested={() => {
+          onPaymentRequested={(action, lenderName) => {
             loadPaymentRequests();
             setSelectedPlayer(null);
-            notify({ tone: 'success', message: t('paymentRequestCreated') });
+            notify({
+              tone: 'success',
+              message:
+                action === 'LOAN_ISSUE'
+                  ? t('loanRequestSent', { name: lenderName ?? t('playerFallback') })
+                  : t('paymentRequestCreated'),
+            });
           }}
         />
       )}

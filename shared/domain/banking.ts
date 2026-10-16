@@ -1,5 +1,6 @@
 import type {
   Game,
+  Loan,
   Mortgage,
   Player,
   Transaction,
@@ -58,6 +59,24 @@ export interface RedeemMortgageCommand extends BankingCommand {
   mortgage: Mortgage;
 }
 
+export interface IssueLoanCommand {
+  game: Game;
+  players: readonly Player[];
+  lenderPlayerId: string;
+  borrowerPlayerId: string;
+  amount: number;
+}
+
+export interface RepayLoanCommand {
+  game: Game;
+  players: readonly Player[];
+  /** The borrower. */
+  playerId: string;
+  /** The active loan being repaid. */
+  loan: Loan;
+  amount: number;
+}
+
 export interface ReversalCommand {
   game: Game;
   players: readonly Player[];
@@ -95,6 +114,15 @@ export interface PendingTransaction {
   newMortgage?: { playerId: string; propertyName: string; mortgageValue: number };
   /** Set only on a MORTGAGE_REDEMPTION: the mortgage it closes. */
   redeemedMortgageId?: string;
+  /** Set only on a LOAN_ISSUE: the loan record stored with it (its id is the transaction's). */
+  newLoan?: { lenderPlayerId: string; borrowerPlayerId: string; principal: number };
+  /** Set only on a LOAN_REPAYMENT: the loan it pays down and its lender and borrower. */
+  loanRepayment?: {
+    loanId: string;
+    lenderPlayerId: string;
+    borrowerPlayerId: string;
+    amount: number;
+  };
 }
 
 export interface PlayerBalanceChange {
@@ -249,6 +277,25 @@ export class MortgageNotFoundError extends BankingDomainError {
   }
 }
 
+export class LoanNotFoundError extends BankingDomainError {
+  readonly code = 'LOAN_NOT_FOUND' as const;
+  constructor(loanId: string) {
+    super({ code: 'LOAN_NOT_FOUND', message: 'Loan not found.', status: 404, details: { loanId } });
+  }
+}
+
+export class LoanAmountExceedsDebtError extends BankingDomainError {
+  readonly code = 'LOAN_AMOUNT_EXCEEDS_DEBT' as const;
+  constructor(loanId: string, outstanding: number, amount: number) {
+    super({
+      code: 'LOAN_AMOUNT_EXCEEDS_DEBT',
+      message: 'The amount is more than what is still owed on this loan.',
+      status: 409,
+      details: { loanId, outstanding, amount },
+    });
+  }
+}
+
 export class PlayerBankruptError extends BankingDomainError {
   readonly code = 'PLAYER_BANKRUPT' as const;
   constructor(playerId: string) {
@@ -354,6 +401,77 @@ export function redeemMortgage(command: RedeemMortgageCommand): BankingOperation
   return {
     ...result,
     transaction: { ...result.transaction, redeemedMortgageId: mortgage.id },
+  };
+}
+
+/** The lender hands the borrower the amount; the loan record travels with the transaction. */
+export function issueLoan(command: IssueLoanCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  validateAmount(command.amount);
+
+  const lender = findPlayer(players, command.lenderPlayerId);
+  const borrower = findPlayer(players, command.borrowerPlayerId);
+  ensureActive(lender);
+  ensureActive(borrower);
+  ensureDifferentPlayers(lender, borrower);
+  ensureSufficientFunds(lender, command.amount);
+  const result = createResult(command.game.id, 'LOAN_ISSUE', command.amount, command.amount, null, [
+    createBalanceChange(lender, -command.amount),
+    createBalanceChange(borrower, command.amount),
+  ]);
+  return {
+    ...result,
+    transaction: {
+      ...result.transaction,
+      newLoan: {
+        lenderPlayerId: lender.id,
+        borrowerPlayerId: borrower.id,
+        principal: command.amount,
+      },
+    },
+  };
+}
+
+/** The borrower pays back part or all of what is still owed; only the borrower can repay a loan. */
+export function repayLoan(command: RepayLoanCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const { loan } = command;
+  if (
+    loan.gameId !== command.game.id ||
+    loan.borrowerPlayerId !== command.playerId ||
+    loan.state !== 'ACTIVE' ||
+    loan.lenderPlayerId === null
+  )
+    throw new LoanNotFoundError(loan.id);
+  validateAmount(command.amount);
+  const outstanding = loan.principal - loan.repaidAmount;
+  if (command.amount > outstanding)
+    throw new LoanAmountExceedsDebtError(loan.id, outstanding, command.amount);
+
+  const borrower = findPlayer(players, command.playerId);
+  const lender = findPlayer(players, loan.lenderPlayerId);
+  ensureActive(borrower);
+  ensureActive(lender);
+  ensureSufficientFunds(borrower, command.amount);
+  const result = createResult(
+    command.game.id,
+    'LOAN_REPAYMENT',
+    command.amount,
+    command.amount,
+    null,
+    [createBalanceChange(borrower, -command.amount), createBalanceChange(lender, command.amount)],
+  );
+  return {
+    ...result,
+    transaction: {
+      ...result.transaction,
+      loanRepayment: {
+        loanId: loan.id,
+        lenderPlayerId: lender.id,
+        borrowerPlayerId: borrower.id,
+        amount: command.amount,
+      },
+    },
   };
 }
 

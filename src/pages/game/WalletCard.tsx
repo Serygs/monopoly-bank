@@ -1,7 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
-import type { Currency, Player } from '../../../shared/types/monopoly';
+import type { Currency, Loan, Player } from '../../../shared/types/monopoly';
 import { cx, playerSwatchClass } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
+import { playerDebt } from '../../utils/loans';
 import { formatMoney } from '../../utils/money';
 import { playerNameWithGameId } from '../../utils/player-display';
 
@@ -12,6 +13,8 @@ export interface WalletCardProps {
   active: boolean;
   gameActive: boolean;
   prominent?: boolean;
+  /** Active player loans; the card shows what the player owes and is owed. */
+  loans?: Loan[];
   onOpen: () => void;
 }
 
@@ -62,6 +65,7 @@ const badgeToneClass = {
   ),
   bankrupt: 'bg-danger-soft text-danger',
 };
+const debtClass = 'flex flex-wrap gap-x-(--mb-space-3) text-small font-semibold';
 const balanceClass =
   'min-w-0 font-money leading-none font-bold whitespace-nowrap text-inherit tabular-nums';
 const footerClass =
@@ -97,6 +101,7 @@ export function WalletCard({
   active,
   gameActive,
   prominent = false,
+  loans = [],
   onOpen,
 }: WalletCardProps) {
   const { t } = useLanguage();
@@ -106,6 +111,7 @@ export function WalletCard({
   const balance = formatMoney(player.balance, currency);
   const cardStyle = { '--wallet-player-color': player.color } as CSSProperties;
   const bankrupt = player.status === 'BANKRUPT';
+  const debt = playerDebt(loans, player.id);
   const content = (
     <>
       <span className={headingClass}>
@@ -132,6 +138,20 @@ export function WalletCard({
       >
         {balance}
       </strong>
+      {(debt.owes > 0 || debt.owed > 0) && (
+        <span className={debtClass}>
+          {debt.owes > 0 && (
+            <span className="text-danger">
+              {t('loanOwes', { amount: formatMoney(debt.owes, currency) })}
+            </span>
+          )}
+          {debt.owed > 0 && (
+            <span className="text-status-text">
+              {t('loanOwed', { amount: formatMoney(debt.owed, currency) })}
+            </span>
+          )}
+        </span>
+      )}
       <span
         className={cx(
           footerClass,

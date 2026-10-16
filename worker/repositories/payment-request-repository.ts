@@ -1,9 +1,14 @@
-import type { PaymentRequest, PaymentRequestState } from '../../shared/contracts/api.js';
+import type {
+  PaymentRequest,
+  PaymentRequestKind,
+  PaymentRequestState,
+} from '../../shared/contracts/api.js';
 import type { PendingTransaction, PlayerBalanceChange } from '../../shared/domain/banking.js';
 import { DatabaseError } from '../services/errors.js';
 
 interface PaymentRequestRow {
   id: string;
+  kind: PaymentRequestKind;
   game_id: string;
   payer_player_id: string;
   recipient_player_id: string;
@@ -47,11 +52,12 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
   ): Promise<void> {
     await this.database
       .prepare(
-        `INSERT INTO payment_requests (id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+        `INSERT INTO payment_requests (id, kind, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
       )
       .bind(
         input.id,
+        input.kind,
         input.gameId,
         input.payerPlayerId,
         input.recipientPlayerId,
@@ -68,7 +74,7 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
   async getById(gameId: string, id: string): Promise<PaymentRequest | null> {
     const row = await this.database
       .prepare(
-        `SELECT id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at, created_at, resolved_at, transaction_id
+        `SELECT id, kind, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at, created_at, resolved_at, transaction_id
       FROM payment_requests WHERE game_id = ? AND id = ?`,
       )
       .bind(gameId, id)
@@ -84,7 +90,7 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
     await this.expirePending(gameId);
     const result = await this.database
       .prepare(
-        `SELECT id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at, created_at, resolved_at, transaction_id
+        `SELECT id, kind, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at, created_at, resolved_at, transaction_id
       FROM payment_requests WHERE game_id = ? AND approver_player_id IN (${payerPlayerIds.map(() => '?').join(', ')}) AND state = 'PENDING'
       ORDER BY created_at ASC, id ASC`,
       )
@@ -152,6 +158,31 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
       WHERE id = ? AND state = 'PENDING' AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
       )
       .bind(input.transactionId, input.requestId);
+    // A loan request creates its loan record in the same batch as the transaction that funds it.
+    const { newLoan } = input.transaction;
+    const loanStatements =
+      newLoan === undefined
+        ? []
+        : [
+            this.database
+              .prepare(
+                `INSERT INTO loans (id, game_id, lender_kind, lender_player_id, borrower_player_id, principal)
+                 VALUES (?, ?, 'PLAYER', ?, ?,
+                   CASE WHEN EXISTS (SELECT 1 FROM payment_requests WHERE id = ? AND state = 'ACCEPTED' AND transaction_id = ?)
+                     THEN ? ELSE 0 END)`,
+              )
+              // A request that expired a moment ago was not accepted: principal 0 breaks the
+              // CHECK, so the whole batch (balances, transaction, loan) rolls back.
+              .bind(
+                input.transactionId,
+                input.transaction.gameId,
+                newLoan.lenderPlayerId,
+                newLoan.borrowerPlayerId,
+                input.requestId,
+                input.transactionId,
+                newLoan.principal,
+              ),
+          ];
     const recentStatements = [
       this.database
         .prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?')
@@ -173,6 +204,7 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
         transactionStatement,
         ...participants,
         requestStatement,
+        ...loanStatements,
         ...recentStatements,
       ]);
     } catch (cause) {
@@ -215,6 +247,7 @@ function balanceUpdate(
 function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
   return {
     id: row.id,
+    kind: row.kind,
     gameId: row.game_id,
     payerPlayerId: row.payer_player_id,
     recipientPlayerId: row.recipient_player_id,

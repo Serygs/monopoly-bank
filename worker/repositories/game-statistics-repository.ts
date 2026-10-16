@@ -3,6 +3,7 @@ import type {
   ActivityPage,
   LedgerStatistics,
   PaymentRequest,
+  PaymentRequestKind,
   PaymentRequestState,
 } from '../../shared/contracts/api.js';
 import type { Game, Player, Transaction } from '../../shared/types/monopoly.js';
@@ -123,7 +124,7 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
       .first<TotalsRow>();
     const metrics = await this.database
       .prepare(
-        `SELECT p.id AS player_id, COALESCE(SUM(CASE WHEN tp.balance_delta < 0 THEN -tp.balance_delta ELSE 0 END),0) AS sent, COALESCE(SUM(CASE WHEN tp.balance_delta > 0 THEN tp.balance_delta ELSE 0 END),0) AS received, COUNT(tp.transaction_id) AS transaction_count, COALESCE(SUM(CASE WHEN t.type = 'PASS_GO' THEN 1 ELSE 0 END),0) AS pass_go_count FROM players p LEFT JOIN transaction_participants tp ON tp.game_id = p.game_id AND tp.player_id = p.id AND tp.transaction_id IN (SELECT counted.id FROM transactions counted WHERE counted.game_id = p.game_id AND ${countedTransaction('counted')}) LEFT JOIN transactions t ON t.id = tp.transaction_id WHERE p.game_id = ? GROUP BY p.id`,
+        `SELECT p.id AS player_id, COALESCE(SUM(CASE WHEN tp.balance_delta < 0 AND t.type NOT IN ('LOAN_ISSUE','LOAN_REPAYMENT') THEN -tp.balance_delta ELSE 0 END),0) AS sent, COALESCE(SUM(CASE WHEN tp.balance_delta > 0 AND t.type NOT IN ('LOAN_ISSUE','LOAN_REPAYMENT') THEN tp.balance_delta ELSE 0 END),0) AS received, COUNT(tp.transaction_id) AS transaction_count, COALESCE(SUM(CASE WHEN t.type = 'PASS_GO' THEN 1 ELSE 0 END),0) AS pass_go_count FROM players p LEFT JOIN transaction_participants tp ON tp.game_id = p.game_id AND tp.player_id = p.id AND tp.transaction_id IN (SELECT counted.id FROM transactions counted WHERE counted.game_id = p.game_id AND ${countedTransaction('counted')}) LEFT JOIN transactions t ON t.id = tp.transaction_id WHERE p.game_id = ? GROUP BY p.id`,
       )
       .bind(game.id)
       .all<PlayerMetricRow>();
@@ -238,6 +239,7 @@ function emptyMetric(player_id: string): PlayerMetricRow {
 }
 interface PaymentRequestRow {
   id: string;
+  kind: PaymentRequestKind;
   game_id: string;
   payer_player_id: string;
   recipient_player_id: string;
@@ -254,6 +256,7 @@ interface PaymentRequestRow {
 function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
   return {
     id: row.id,
+    kind: row.kind,
     gameId: row.game_id,
     payerPlayerId: row.payer_player_id,
     recipientPlayerId: row.recipient_player_id,
