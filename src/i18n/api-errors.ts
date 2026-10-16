@@ -12,6 +12,8 @@ const errorKeys: Record<string, TranslationKey> = {
   ACCOUNT_IDENTIFIER_UNAVAILABLE: 'errorNicknameTaken',
   INVALID_JOIN_CODE: 'errorInvalidJoinCode',
   LOBBY_CLOSED: 'errorLobbyClosed',
+  LOBBY_FULL: 'errorLobbyFull',
+  PLAYER_NOT_REMOVABLE: 'errorPlayerNotRemovable',
   RATE_LIMITED: 'errorRateLimited',
   UNAUTHORIZED: 'errorSessionExpired',
   INVALID_CREDENTIALS: 'errorInvalidCredentials',

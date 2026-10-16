@@ -6,13 +6,15 @@ import type {
   PaymentRequest,
 } from '../../shared/contracts/api';
 import type { Game, Player, Transaction } from '../../shared/types/monopoly';
+import { RulesScreen } from './RulesScreen';
 import { ActivityScreen } from './ActivityScreen';
 import { StatisticsScreen } from './StatisticsScreen';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { DiceRoller } from '../components/DiceRoller';
 import { TableCalculator } from '../components/TableCalculator';
 import { Dialog } from '../components/Dialog';
-import { GameBottomNav } from '../components/game/GameBottomNav';
+import { DialogNavContext } from '../components/dialog-nav-context';
+import { GameBottomNav, type GameNavDestination } from '../components/game/GameBottomNav';
 import { cx } from '../components/ui/class-names';
 import { Button, Notice, PageShell, StatPill, useFeedback } from '../components/ui';
 import type { DevicePreferences } from '../utils/preferences';
@@ -82,8 +84,20 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [settleLoanOnOpen, setSettleLoanOnOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [removeError, setRemoveError] = useState<unknown>(null);
+  const removePlayer = async (playerId: string) => {
+    setRemoveError(null);
+    try {
+      setDetails(
+        withClientGameDetails(await monopolyBankApi.removeLobbyPlayer(gameId, playerId), details),
+      );
+    } catch (caught) {
+      setRemoveError(caught);
+    }
+  };
   const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
@@ -269,9 +283,17 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     }
   };
 
+  /** Closes the sheet behind the bottom navigation, so choosing another item replaces it. */
+  const closeNavSheets = () => {
+    setActivityOpen(false);
+    setStatisticsOpen(false);
+    setToolsOpen(false);
+    setSelectedPlayer(null);
+  };
   const openStatistics = () =>
     void monopolyBankApi.getGameSummary(gameId).then((result) => {
       setSummary(result);
+      closeNavSheets();
       setStatisticsOpen(true);
     });
 
@@ -334,110 +356,151 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
       now: Date.now(),
     });
 
+  const activeNav: GameNavDestination | null = toolsOpen
+    ? 'tools'
+    : activityOpen
+      ? 'activity'
+      : statisticsOpen
+        ? 'statistics'
+        : selectedPlayer !== null
+          ? 'pay'
+          : null;
+  // Rendered on the page and again inside every open dialog (see `DialogNavContext`).
+  const bottomNav = (
+    <GameBottomNav
+      active={activeNav}
+      onClose={closeNavSheets}
+      pendingRequests={canMutate ? inboxRequests.length : 0}
+      payDisabled={!canMutate || activeWallet === null || activeWallet.status === 'BANKRUPT'}
+      activityDisabled={offline}
+      toolsDisabled={details.game.status !== 'ACTIVE'}
+      onOpenTools={() => {
+        closeNavSheets();
+        setToolsOpen(true);
+      }}
+      onPay={() => {
+        if (activeWallet === null) return;
+        closeNavSheets();
+        setSelectedPlayer(activeWallet);
+      }}
+      onOpenActivity={() => {
+        closeNavSheets();
+        setActivityOpen(true);
+      }}
+      onOpenStatistics={openStatistics}
+    />
+  );
+
   return (
-    <PageShell className={showNav ? navPaddingClass : undefined}>
-      <GameHeader
-        game={details.game}
-        jackpot={details.jackpot}
-        canManage={details.canManage}
-        liveStatus={liveStatus}
-        offline={offline}
-        onBack={onBack}
-        onOpenActivity={() => setActivityOpen(true)}
-        onOpenStatistics={openStatistics}
-        onInvite={() => setInviteOpen(true)}
-        onFinish={() => setFinishing(true)}
-      />
-      {details.game.status === 'LOBBY' && (
-        <Notice tone="success" as="section" className={stateBannerClass}>
-          <p>
-            {t('waitingForPlayers')} — {t('startGameHint')}
-          </p>
-          {details.canManage && (
-            <Button
-              variant="primary"
-              disabled={offline || details.players.length < 2}
-              onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}
-            >
-              {t('startGame')}
-            </Button>
-          )}
-        </Notice>
-      )}
-      <WalletsSection
-        players={details.players}
-        currency={details.game.currency}
-        controlledWallets={controlledWallets}
-        activeControlledWalletId={activeControlledWalletId}
-        activeWallet={activeWallet}
-        otherPlayers={otherPlayers}
-        canMutate={canMutate}
-        loans={visibleLoans}
-        auction={rules.auctions ? (details.auction ?? null) : null}
-        onSelectWallet={setActiveWalletId}
-        onOpenWallet={(player) => {
-          setSettleLoanOnOpen(false);
-          setSelectedPlayer(player);
-        }}
-        onSettleLoan={(player) => {
-          setSettleLoanOnOpen(true);
-          setSelectedPlayer(player);
-        }}
-      />
-      {canMutate &&
-        (confirmationMode || inboxRequests.length > 0 || outgoingLoanRequests.length > 0) && (
-          <PaymentInbox
-            requests={inboxRequests}
-            outgoing={outgoingLoanRequests}
-            players={details.players}
-            currency={details.game.currency}
-            onAction={async (request, action) => {
-              const commandId = crypto.randomUUID();
-              const result =
-                action === 'accept'
-                  ? await monopolyBankApi.acceptPaymentRequest(gameId, request.id, commandId)
-                  : action === 'cancel'
-                    ? await monopolyBankApi.cancelPaymentRequest(gameId, request.id, commandId)
-                    : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId);
-              setPaymentRequests((current) => current.filter((item) => item.id !== request.id));
-              if (result.transaction !== undefined) {
-                historyCache.current.clear();
-                playPaymentFeedback(preferences.sound);
-                vibrate(35, preferences.vibration);
-                setDetails((current) =>
-                  current === null
-                    ? current
-                    : {
-                        ...current,
-                        players: result.players,
-                        ...(result.loans === undefined ? {} : { loans: result.loans }),
-                        ...(result.bankLoanCooldowns === undefined
-                          ? {}
-                          : { bankLoanCooldowns: result.bankLoanCooldowns }),
-                        ...(result.jackpot === undefined ? {} : { jackpot: result.jackpot }),
-                      },
-                );
-              }
-            }}
-          />
+    <DialogNavContext.Provider value={showNav ? bottomNav : null}>
+      <PageShell className={showNav ? navPaddingClass : undefined}>
+        <GameHeader
+          game={details.game}
+          jackpot={details.jackpot}
+          canManage={details.canManage}
+          liveStatus={liveStatus}
+          offline={offline}
+          onBack={onBack}
+          onOpenActivity={() => setActivityOpen(true)}
+          onOpenStatistics={openStatistics}
+          onOpenRules={() => setRulesOpen(true)}
+          onInvite={() => setInviteOpen(true)}
+          onFinish={() => setFinishing(true)}
+        />
+        {details.game.status === 'LOBBY' && (
+          <Notice tone="success" as="section" className={stateBannerClass}>
+            <p>
+              {t('waitingForPlayers')} — {t('startGameHint')}
+            </p>
+            {details.canManage && (
+              <Button
+                variant="primary"
+                disabled={offline || details.players.length < 2}
+                onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}
+              >
+                {t('startGame')}
+              </Button>
+            )}
+          </Notice>
         )}
-      {details.game.status === 'ACTIVE' && (
-        <div className={cx(gameToolsClass, 'max-md:hidden')}>
-          <DiceRoller
-            gameId={gameId}
-            players={details.players}
-            rollerPlayerId={activeWallet?.id ?? null}
-          />
-          <TableCalculator />
-        </div>
-      )}
-      {toolsOpen && details.game.status === 'ACTIVE' && (
-        <Dialog
-          title={t('navTools')}
-          closeLabel={t('closeDialog', { title: t('navTools') })}
-          onClose={() => setToolsOpen(false)}
-        >
-          <div className="mt-(--mb-space-4) grid gap-(--mb-space-4)">
+        {details.game.status === 'LOBBY' && details.canManage && (
+          <section aria-label={t('lobbyPlayersTitle')} className="grid gap-(--mb-space-2)">
+            {details.players
+              .filter((player) => !(details.controlledPlayerIds ?? []).includes(player.id))
+              .map((player) => (
+                <Button
+                  key={player.id}
+                  variant="quiet"
+                  disabled={offline}
+                  onClick={() => void removePlayer(player.id)}
+                >
+                  {t('removePlayer', { name: player.name })}
+                </Button>
+              ))}
+            {removeError !== null && (
+              <Notice tone="error">{apiErrorMessage(removeError, t, 'unableRemovePlayer')}</Notice>
+            )}
+          </section>
+        )}
+        <WalletsSection
+          players={details.players}
+          currency={details.game.currency}
+          controlledWallets={controlledWallets}
+          activeControlledWalletId={activeControlledWalletId}
+          activeWallet={activeWallet}
+          otherPlayers={otherPlayers}
+          canMutate={canMutate}
+          loans={visibleLoans}
+          auction={rules.auctions ? (details.auction ?? null) : null}
+          onSelectWallet={setActiveWalletId}
+          onOpenWallet={(player) => {
+            setSettleLoanOnOpen(false);
+            setSelectedPlayer(player);
+          }}
+          onSettleLoan={(player) => {
+            setSettleLoanOnOpen(true);
+            setSelectedPlayer(player);
+          }}
+        />
+        {canMutate &&
+          (confirmationMode || inboxRequests.length > 0 || outgoingLoanRequests.length > 0) && (
+            <PaymentInbox
+              requests={inboxRequests}
+              outgoing={outgoingLoanRequests}
+              players={details.players}
+              currency={details.game.currency}
+              onAction={async (request, action) => {
+                const commandId = crypto.randomUUID();
+                const result =
+                  action === 'accept'
+                    ? await monopolyBankApi.acceptPaymentRequest(gameId, request.id, commandId)
+                    : action === 'cancel'
+                      ? await monopolyBankApi.cancelPaymentRequest(gameId, request.id, commandId)
+                      : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId);
+                setPaymentRequests((current) => current.filter((item) => item.id !== request.id));
+                if (result.transaction !== undefined) {
+                  historyCache.current.clear();
+                  playPaymentFeedback(preferences.sound);
+                  vibrate(35, preferences.vibration);
+                  setDetails((current) =>
+                    current === null
+                      ? current
+                      : {
+                          ...current,
+                          players: result.players,
+                          ...(result.loans === undefined ? {} : { loans: result.loans }),
+                          ...(result.bankLoanCooldowns === undefined
+                            ? {}
+                            : { bankLoanCooldowns: result.bankLoanCooldowns }),
+                          ...(result.jackpot === undefined ? {} : { jackpot: result.jackpot }),
+                        },
+                  );
+                }
+              }}
+            />
+          )}
+        {details.game.status === 'ACTIVE' && (
+          <div className={cx(gameToolsClass, 'max-md:hidden')}>
             <DiceRoller
               gameId={gameId}
               players={details.players}
@@ -445,256 +508,270 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             />
             <TableCalculator />
           </div>
-        </Dialog>
-      )}
-      {showNav && (
-        <GameBottomNav
-          pendingRequests={canMutate ? inboxRequests.length : 0}
-          payDisabled={!canMutate || activeWallet === null || activeWallet.status === 'BANKRUPT'}
-          activityDisabled={offline}
-          toolsDisabled={details.game.status !== 'ACTIVE'}
-          onOpenTools={() => setToolsOpen(true)}
-          onPay={() => {
-            if (activeWallet !== null) setSelectedPlayer(activeWallet);
-          }}
-          onOpenActivity={() => setActivityOpen(true)}
-          onOpenStatistics={openStatistics}
-        />
-      )}
-      {activityOpen && (
-        <ActivityScreen
-          gameId={gameId}
-          players={details.players}
-          currency={details.game.currency}
-          liveTransactions={liveTransactions}
-          showPending={confirmationMode}
-          onClose={() => setActivityOpen(false)}
-        />
-      )}
-      {statisticsOpen && summary !== null && (
-        <StatisticsScreen
-          summary={summary}
-          currency={details.game.currency}
-          loans={visibleLoans}
-          finished={details.game.status === 'FINISHED'}
-          onClose={() => setStatisticsOpen(false)}
-        />
-      )}
-      {selectedPlayer !== null && (
-        <BankingDialog
-          gameId={gameId}
-          player={selectedPlayer}
-          players={details.players}
-          passGoReward={details.game.passGoReward}
-          currency={details.game.currency}
-          startingBalance={details.game.startingBalance}
-          rules={details.game.rules}
-          settings={details.game.settings}
-          mortgages={details.mortgages ?? []}
-          loans={details.loans ?? []}
-          bankLoanCooldowns={details.bankLoanCooldowns ?? []}
-          jackpot={details.jackpot ?? 0}
-          settleOnOpen={settleLoanOnOpen}
-          auction={rules.auctions ? (details.auction ?? null) : null}
-          onStartAuction={(lotName) => {
-            setAuctionPrompt({ player: selectedPlayer, lotName });
-            setSelectedPlayer(null);
-          }}
-          favoriteAmounts={details.favoriteAmounts ?? []}
-          recentAmounts={details.recentAmounts ?? []}
-          onToggleFavorite={(amount) =>
-            void monopolyBankApi
-              .toggleFavoriteAmount(gameId, amount)
-              .then((favoriteAmounts) =>
-                setDetails((current) =>
-                  current === null ? current : { ...current, favoriteAmounts },
-                ),
-              )
-          }
-          onClose={() => setSelectedPlayer(null)}
-          onBankrupt={() => {
-            setBankruptPlayer(selectedPlayer);
-            setSelectedPlayer(null);
-          }}
-          onViewHistory={(player) => {
-            setSelectedPlayer(null);
-            void loadHistory(player);
-          }}
-          onCompleted={(players, action, amount, mortgages, loans, bankLoanCooldowns, jackpot) => {
-            historyCache.current.clear();
-            playPaymentFeedback(preferences.sound);
-            vibrate(35, preferences.vibration);
-            setDetails({
-              ...details,
-              players,
-              ...(mortgages === undefined ? {} : { mortgages }),
-              ...(loans === undefined ? {} : { loans }),
-              ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
-              ...(jackpot === undefined ? {} : { jackpot }),
-              recentAmounts:
-                amount === null
-                  ? details.recentAmounts
-                  : [
-                      amount,
-                      ...(details.recentAmounts ?? []).filter((value) => value !== amount),
-                    ].slice(0, 5),
-            });
-            setSelectedPlayer(null);
-            notify({
-              tone: 'success',
-              message: t(
-                action === 'MORTGAGE'
-                  ? 'mortgageRecorded'
-                  : action === 'MORTGAGE_REDEMPTION'
-                    ? 'redemptionRecorded'
-                    : action === 'LOAN_REPAYMENT'
-                      ? 'loanRepaid'
-                      : action === 'BANK_LOAN'
-                        ? 'bankLoanRecorded'
-                        : action === 'JACKPOT_PAYOUT'
-                          ? 'jackpotCollected'
-                          : 'paymentSent',
-              ),
-            });
-          }}
-          onPaymentRequested={(action, lenderName) => {
-            loadPaymentRequests();
-            setSelectedPlayer(null);
-            notify({
-              tone: 'success',
-              message:
-                action === 'LOAN_ISSUE'
-                  ? t('loanRequestSent', { name: lenderName ?? t('playerFallback') })
-                  : t('paymentRequestCreated'),
-            });
-          }}
-        />
-      )}
-      {bankruptPlayer !== null && (
-        <BankruptcyDialog
-          gameId={gameId}
-          player={bankruptPlayer}
-          players={details.players}
-          hasBankLoan={
-            rules.bankLoans &&
-            (details.loans ?? []).some(
-              (loan) =>
-                loan.lenderKind === 'BANK' &&
-                loan.state === 'ACTIVE' &&
-                loan.borrowerPlayerId === bankruptPlayer.id,
-            )
-          }
-          onClose={() => setBankruptPlayer(null)}
-          onCompleted={(players, mortgages, loans, bankLoanCooldowns, jackpot) => {
-            historyCache.current.clear();
-            setDetails({
-              ...details,
-              players,
-              ...(mortgages === undefined ? {} : { mortgages }),
-              ...(loans === undefined ? {} : { loans }),
-              ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
-              ...(jackpot === undefined ? {} : { jackpot }),
-            });
-            setBankruptPlayer(null);
-          }}
-        />
-      )}
-      {rules.auctions &&
-        details.auction?.state === 'ACTIVE' &&
-        dismissedAuction === `${details.auction.id}:ACTIVE` && (
-          <Notice tone="info" as="section">
-            <p>{details.auction.lotName}</p>
-            <Button variant="secondary" onClick={() => setDismissedAuction(null)}>
-              {t('auctionDialogTitle')}
-            </Button>
-          </Notice>
         )}
-      {auctionPrompt !== null && (
-        <StartAuctionDialog
-          gameId={gameId}
-          initiator={auctionPrompt.player}
-          initialLotName={auctionPrompt.lotName}
-          onClose={() => setAuctionPrompt(null)}
-          onStarted={(response) => {
-            applyAuctionResponse(response);
-            setAuctionPrompt(null);
-            setDismissedAuction(null);
-          }}
-        />
-      )}
-      {rules.auctions &&
-        details.auction !== null &&
-        details.auction !== undefined &&
-        details.game.status !== 'LOBBY' &&
-        dismissedAuction !== `${details.auction.id}:${details.auction.state}` && (
-          <AuctionDialog
+        {toolsOpen && details.game.status === 'ACTIVE' && (
+          <Dialog
+            title={t('navTools')}
+            closeLabel={t('closeDialog', { title: t('navTools') })}
+            onClose={() => setToolsOpen(false)}
+          >
+            <div className="mt-(--mb-space-4) grid gap-(--mb-space-4)">
+              <DiceRoller
+                gameId={gameId}
+                players={details.players}
+                rollerPlayerId={activeWallet?.id ?? null}
+              />
+              <TableCalculator />
+            </div>
+          </Dialog>
+        )}
+        {showNav && bottomNav}
+        {rulesOpen && <RulesScreen game={details.game} onClose={() => setRulesOpen(false)} />}
+        {activityOpen && (
+          <ActivityScreen
             gameId={gameId}
-            auction={details.auction}
             players={details.players}
-            controlledPlayerIds={
-              details.controlledPlayerIds ?? controlledWallets.map((wallet) => wallet.playerId)
-            }
             currency={details.game.currency}
-            settings={details.game.settings}
-            canMutate={canMutate}
-            onClose={() =>
-              details.auction &&
-              setDismissedAuction(`${details.auction.id}:${details.auction.state}`)
-            }
-            onUpdated={applyAuctionResponse}
-            onRefresh={refreshAuction}
+            liveTransactions={liveTransactions}
+            showPending={confirmationMode}
+            onClose={() => setActivityOpen(false)}
           />
         )}
-      {inviteOpen && <InviteDialog gameId={gameId} onClose={() => setInviteOpen(false)} />}
-      {finishing && (
-        <FinishGameDialog
-          players={details.players}
-          currency={details.game.currency}
-          gameId={gameId}
-          onFinished={(finished) => {
-            setDetails((current) => withClientGameDetails(finished, current));
-            setFinishing(false);
-          }}
-          onClose={() => setFinishing(false)}
-        />
-      )}
-      {historyOpen && (
-        <HistoryDialog
-          history={history}
-          player={historyPlayer}
-          players={details.players}
-          currency={details.game.currency}
-          error={historyError}
-          language={language}
-          locale={locale}
-          onClose={() => {
-            historyPlayerId.current = null;
-            setHistoryOpen(false);
-            setHistory(null);
-            setHistoryError(null);
-          }}
-          onRetry={() => void loadHistory(historyPlayer)}
-          canReverse={canReverse}
-          onReverse={setReversing}
-        />
-      )}
-      {reversing !== null && (
-        <ReverseTransactionDialog
-          gameId={gameId}
-          transaction={reversing}
-          players={details.players}
-          currency={details.game.currency}
-          language={language}
-          onClose={() => setReversing(null)}
-          onReversed={(players) => {
-            historyCache.current.clear();
-            setDetails({ ...details, players });
-            setReversing(null);
-            void loadHistory(historyPlayer);
-            notify({ tone: 'success', message: t('reversalRecorded') });
-          }}
-        />
-      )}
-    </PageShell>
+        {statisticsOpen && summary !== null && (
+          <StatisticsScreen
+            summary={summary}
+            currency={details.game.currency}
+            loans={visibleLoans}
+            finished={details.game.status === 'FINISHED'}
+            onClose={() => setStatisticsOpen(false)}
+          />
+        )}
+        {selectedPlayer !== null && (
+          <BankingDialog
+            gameId={gameId}
+            player={selectedPlayer}
+            players={details.players}
+            passGoReward={details.game.passGoReward}
+            currency={details.game.currency}
+            startingBalance={details.game.startingBalance}
+            rules={details.game.rules}
+            settings={details.game.settings}
+            mortgages={details.mortgages ?? []}
+            loans={details.loans ?? []}
+            bankLoanCooldowns={details.bankLoanCooldowns ?? []}
+            jackpot={details.jackpot ?? 0}
+            settleOnOpen={settleLoanOnOpen}
+            auction={rules.auctions ? (details.auction ?? null) : null}
+            onStartAuction={(lotName) => {
+              setAuctionPrompt({ player: selectedPlayer, lotName });
+              setSelectedPlayer(null);
+            }}
+            favoriteAmounts={details.favoriteAmounts ?? []}
+            recentAmounts={details.recentAmounts ?? []}
+            onToggleFavorite={(amount) =>
+              void monopolyBankApi
+                .toggleFavoriteAmount(gameId, amount)
+                .then((favoriteAmounts) =>
+                  setDetails((current) =>
+                    current === null ? current : { ...current, favoriteAmounts },
+                  ),
+                )
+            }
+            onClose={() => setSelectedPlayer(null)}
+            onBankrupt={() => {
+              setBankruptPlayer(selectedPlayer);
+              setSelectedPlayer(null);
+            }}
+            onViewHistory={(player) => {
+              setSelectedPlayer(null);
+              void loadHistory(player);
+            }}
+            onCompleted={(
+              players,
+              action,
+              amount,
+              mortgages,
+              loans,
+              bankLoanCooldowns,
+              jackpot,
+            ) => {
+              historyCache.current.clear();
+              playPaymentFeedback(preferences.sound);
+              vibrate(35, preferences.vibration);
+              setDetails({
+                ...details,
+                players,
+                ...(mortgages === undefined ? {} : { mortgages }),
+                ...(loans === undefined ? {} : { loans }),
+                ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
+                ...(jackpot === undefined ? {} : { jackpot }),
+                recentAmounts:
+                  amount === null
+                    ? details.recentAmounts
+                    : [
+                        amount,
+                        ...(details.recentAmounts ?? []).filter((value) => value !== amount),
+                      ].slice(0, 5),
+              });
+              setSelectedPlayer(null);
+              notify({
+                tone: 'success',
+                message: t(
+                  action === 'MORTGAGE'
+                    ? 'mortgageRecorded'
+                    : action === 'MORTGAGE_REDEMPTION'
+                      ? 'redemptionRecorded'
+                      : action === 'LOAN_REPAYMENT'
+                        ? 'loanRepaid'
+                        : action === 'BANK_LOAN'
+                          ? 'bankLoanRecorded'
+                          : action === 'JACKPOT_PAYOUT'
+                            ? 'jackpotCollected'
+                            : 'paymentSent',
+                ),
+              });
+            }}
+            onPaymentRequested={(action, lenderName) => {
+              loadPaymentRequests();
+              setSelectedPlayer(null);
+              notify({
+                tone: 'success',
+                message:
+                  action === 'LOAN_ISSUE'
+                    ? t('loanRequestSent', { name: lenderName ?? t('playerFallback') })
+                    : t('paymentRequestCreated'),
+              });
+            }}
+          />
+        )}
+        {bankruptPlayer !== null && (
+          <BankruptcyDialog
+            gameId={gameId}
+            player={bankruptPlayer}
+            players={details.players}
+            hasBankLoan={
+              rules.bankLoans &&
+              (details.loans ?? []).some(
+                (loan) =>
+                  loan.lenderKind === 'BANK' &&
+                  loan.state === 'ACTIVE' &&
+                  loan.borrowerPlayerId === bankruptPlayer.id,
+              )
+            }
+            onClose={() => setBankruptPlayer(null)}
+            onCompleted={(players, mortgages, loans, bankLoanCooldowns, jackpot) => {
+              historyCache.current.clear();
+              setDetails({
+                ...details,
+                players,
+                ...(mortgages === undefined ? {} : { mortgages }),
+                ...(loans === undefined ? {} : { loans }),
+                ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
+                ...(jackpot === undefined ? {} : { jackpot }),
+              });
+              setBankruptPlayer(null);
+            }}
+          />
+        )}
+        {rules.auctions &&
+          details.auction?.state === 'ACTIVE' &&
+          dismissedAuction === `${details.auction.id}:ACTIVE` && (
+            <Notice tone="info" as="section">
+              <p>{details.auction.lotName}</p>
+              <Button variant="secondary" onClick={() => setDismissedAuction(null)}>
+                {t('auctionDialogTitle')}
+              </Button>
+            </Notice>
+          )}
+        {auctionPrompt !== null && (
+          <StartAuctionDialog
+            gameId={gameId}
+            initiator={auctionPrompt.player}
+            initialLotName={auctionPrompt.lotName}
+            onClose={() => setAuctionPrompt(null)}
+            onStarted={(response) => {
+              applyAuctionResponse(response);
+              setAuctionPrompt(null);
+              setDismissedAuction(null);
+            }}
+          />
+        )}
+        {rules.auctions &&
+          details.auction !== null &&
+          details.auction !== undefined &&
+          details.game.status !== 'LOBBY' &&
+          dismissedAuction !== `${details.auction.id}:${details.auction.state}` && (
+            <AuctionDialog
+              gameId={gameId}
+              auction={details.auction}
+              players={details.players}
+              controlledPlayerIds={
+                details.controlledPlayerIds ?? controlledWallets.map((wallet) => wallet.playerId)
+              }
+              currency={details.game.currency}
+              settings={details.game.settings}
+              canMutate={canMutate}
+              onClose={() =>
+                details.auction &&
+                setDismissedAuction(`${details.auction.id}:${details.auction.state}`)
+              }
+              onUpdated={applyAuctionResponse}
+              onRefresh={refreshAuction}
+            />
+          )}
+        {inviteOpen && (
+          <InviteDialog joinCode={details.joinCode} onClose={() => setInviteOpen(false)} />
+        )}
+        {finishing && (
+          <FinishGameDialog
+            players={details.players}
+            currency={details.game.currency}
+            gameId={gameId}
+            onFinished={(finished) => {
+              setDetails((current) => withClientGameDetails(finished, current));
+              setFinishing(false);
+            }}
+            onClose={() => setFinishing(false)}
+          />
+        )}
+        {historyOpen && (
+          <HistoryDialog
+            history={history}
+            player={historyPlayer}
+            players={details.players}
+            currency={details.game.currency}
+            error={historyError}
+            language={language}
+            locale={locale}
+            onClose={() => {
+              historyPlayerId.current = null;
+              setHistoryOpen(false);
+              setHistory(null);
+              setHistoryError(null);
+            }}
+            onRetry={() => void loadHistory(historyPlayer)}
+            canReverse={canReverse}
+            onReverse={setReversing}
+          />
+        )}
+        {reversing !== null && (
+          <ReverseTransactionDialog
+            gameId={gameId}
+            transaction={reversing}
+            players={details.players}
+            currency={details.game.currency}
+            language={language}
+            onClose={() => setReversing(null)}
+            onReversed={(players) => {
+              historyCache.current.clear();
+              setDetails({ ...details, players });
+              setReversing(null);
+              void loadHistory(historyPlayer);
+              notify({ tone: 'success', message: t('reversalRecorded') });
+            }}
+          />
+        )}
+      </PageShell>
+    </DialogNavContext.Provider>
   );
 }

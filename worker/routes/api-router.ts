@@ -1,4 +1,8 @@
-import type { ApiSuccess, GameDetails } from '../../shared/contracts/api.js';
+import {
+  MAX_LOBBY_PLAYERS,
+  type ApiSuccess,
+  type GameDetails,
+} from '../../shared/contracts/api.js';
 import type { BankingService } from '../services/banking-service.js';
 import type { GameService } from '../services/game-service.js';
 import type { AuthService } from '../services/auth-service.js';
@@ -12,6 +16,7 @@ import { controlledPlayerIdForBankingCommand } from '../../shared/domain/player-
 import {
   ConflictError,
   InvalidJoinCodeError,
+  LobbyFullError,
   NotFoundError,
   RateLimitError,
 } from '../services/errors.js';
@@ -124,6 +129,7 @@ async function route(
   const playerTransactionMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)\/transactions$/.exec(
     pathname,
   );
+  const lobbyPlayerMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)$/.exec(pathname);
   const diceRollsMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)\/dice-rolls$/.exec(pathname);
   const duplicateMatch = /^\/api\/games\/([^/]+)\/duplicate$/.exec(pathname);
   const finishMatch = /^\/api\/games\/([^/]+)\/finish$/.exec(pathname);
@@ -172,8 +178,9 @@ async function route(
     if (access === null) throw new InvalidJoinCodeError();
     if (access.status !== 'LOBBY')
       throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
-    const profile = await dependencies.auth.createGuest(body.nickname, body.avatar);
     const details = await dependencies.games.getGame(access.gameId);
+    if (details.players.length >= MAX_LOBBY_PLAYERS) throw new LobbyFullError();
+    const profile = await dependencies.auth.createGuest(body.nickname, body.avatar);
     const playerId = crypto.randomUUID();
     const color = nextPlayerColor(details.players);
     if (dependencies.live !== undefined) {
@@ -255,6 +262,7 @@ async function route(
     if (access.status !== 'LOBBY')
       throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
     const details = await dependencies.games.getGame(access.gameId);
+    await dependencies.access.requireLobbySeat(access.gameId, actor.id, details.players.length);
     const playerId = crypto.randomUUID();
     const color = nextPlayerColor(details.players);
     if (dependencies.live !== undefined)
@@ -332,6 +340,19 @@ async function route(
     const gameId = parseResourceId(gameMatch[1], 'gameId');
     await dependencies.access.requireOwner(gameId, actor.id);
     return success(await dependencies.games.deleteGame(gameId));
+  }
+  if (lobbyPlayerMatch !== null && request.method === 'DELETE') {
+    const gameId = parseResourceId(lobbyPlayerMatch[1], 'gameId');
+    const playerId = parseResourceId(lobbyPlayerMatch[2], 'playerId');
+    await dependencies.access.requireOwner(gameId, actor.id);
+    if (dependencies.live !== undefined)
+      return dependencies.live.mutate(gameId, actor, {
+        type: 'REMOVE_PLAYER',
+        commandId: readCommandId(request),
+        playerId,
+      });
+    await dependencies.access.removeLobbyPlayer(gameId, actor.id, playerId);
+    return success(await dependencies.games.getGame(gameId));
   }
   if (restoreMatch !== null && request.method === 'POST') {
     const gameId = parseResourceId(restoreMatch[1], 'gameId');
@@ -717,9 +738,11 @@ async function enforceRateLimit(
         ? { category: 'email', limit: 5, seconds: 3600 }
         : pathname === '/api/games/join/guest'
           ? { category: 'guest-join', limit: 12, seconds: 600 }
-          : /^\/api\/games\/[^/]+\/invitations$/.test(pathname) && request.method === 'POST'
-            ? { category: 'invite', limit: 12, seconds: 3600 }
-            : undefined;
+          : pathname === '/api/games/join' && request.method === 'POST'
+            ? { category: 'join', limit: 30, seconds: 600 }
+            : /^\/api\/games\/[^/]+\/invitations$/.test(pathname) && request.method === 'POST'
+              ? { category: 'invite', limit: 12, seconds: 3600 }
+              : undefined;
   if (rule === undefined) return;
   const bucket = `${rule.category}:${await tokenHash(source)}`;
   if (await repository.take(bucket, rule.limit, rule.seconds)) return;

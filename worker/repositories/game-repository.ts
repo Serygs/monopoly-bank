@@ -50,6 +50,7 @@ export interface CreateGameInput {
   status?: GameStatus;
   ownerUserId: string;
   joinCode: string;
+  isPublic?: boolean;
   gameAccessPasswordHash: string | null;
   gameAccessPasswordSalt: string | null;
 }
@@ -92,8 +93,8 @@ export class D1GameRepository implements GameRepository {
     const rules = input.rules ?? normalizeGameRules(null);
     const gameStatement = this.database
       .prepare(
-        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, payment_mode, ${RULE_COLUMNS}, status, owner_user_id, join_code, game_access_password_hash, game_access_password_salt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, payment_mode, ${RULE_COLUMNS}, status, owner_user_id, join_code, is_public, game_access_password_hash, game_access_password_salt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         input.id,
@@ -111,6 +112,7 @@ export class D1GameRepository implements GameRepository {
         input.status ?? 'LOBBY',
         input.ownerUserId,
         input.joinCode,
+        input.isPublic === true ? 1 : 0,
         input.gameAccessPasswordHash,
         input.gameAccessPasswordSalt,
       );
@@ -205,10 +207,10 @@ export class D1GameRepository implements GameRepository {
     const result = await this.database
       .prepare(
         `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode, ${RULE_COLUMNS}, games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, COUNT(players.id) AS player_count,
-              CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN 1 ELSE 0 END AS is_public_lobby,
-              CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN games.join_code ELSE NULL END AS public_join_code
+              CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.is_public = 1 THEN 1 ELSE 0 END AS is_public_lobby,
+              CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.is_public = 1 THEN games.join_code ELSE NULL END AS public_join_code
        FROM games LEFT JOIN game_members ON game_members.game_id = games.id AND game_members.user_id = ? LEFT JOIN players ON players.game_id = games.id
-       WHERE games.owner_user_id IS NOT NULL AND games.deleted_at IS NULL AND (game_members.user_id IS NOT NULL OR (games.status = 'LOBBY' AND games.game_access_password_hash IS NULL))
+       WHERE games.owner_user_id IS NOT NULL AND games.deleted_at IS NULL AND (game_members.user_id IS NOT NULL OR (games.status = 'LOBBY' AND games.is_public = 1))
        GROUP BY games.id ORDER BY games.updated_at DESC, games.id DESC`,
       )
       .bind(userId)

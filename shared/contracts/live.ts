@@ -27,6 +27,7 @@ export type LiveMutationCommand =
   | { type: 'START_AUCTION'; commandId: string; request: StartAuctionRequest }
   | { type: 'PLACE_BID'; commandId: string; request: PlaceBidRequest }
   | { type: 'START_GAME'; commandId: string }
+  | { type: 'REMOVE_PLAYER'; commandId: string; playerId: string }
   | {
       type: 'JOIN_LOBBY';
       commandId: string;
@@ -88,6 +89,7 @@ export function isLiveMutationCommand(value: unknown): value is LiveMutationComm
       command.type === 'CANCEL_PAYMENT_REQUEST' ||
       command.type === 'START_GAME' ||
       command.type === 'JOIN_LOBBY' ||
+      command.type === 'REMOVE_PLAYER' ||
       command.type === 'START_AUCTION' ||
       command.type === 'PLACE_BID') &&
     (command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY'
@@ -103,12 +105,14 @@ export function isLiveMutationCommand(value: unknown): value is LiveMutationComm
               )
             : command.type === 'START_GAME'
               ? true
-              : command.type === 'JOIN_LOBBY'
-                ? typeof (value as { playerId?: unknown }).playerId === 'string' &&
-                  typeof (value as { nickname?: unknown }).nickname === 'string' &&
-                  typeof (value as { color?: unknown }).color === 'string' &&
-                  typeof (value as { startingBalance?: unknown }).startingBalance === 'number'
-                : typeof (value as { paymentRequestId?: unknown }).paymentRequestId === 'string')
+              : command.type === 'REMOVE_PLAYER'
+                ? typeof (value as { playerId?: unknown }).playerId === 'string'
+                : command.type === 'JOIN_LOBBY'
+                  ? typeof (value as { playerId?: unknown }).playerId === 'string' &&
+                    typeof (value as { nickname?: unknown }).nickname === 'string' &&
+                    typeof (value as { color?: unknown }).color === 'string' &&
+                    typeof (value as { startingBalance?: unknown }).startingBalance === 'number'
+                  : typeof (value as { paymentRequestId?: unknown }).paymentRequestId === 'string')
   );
 }
 

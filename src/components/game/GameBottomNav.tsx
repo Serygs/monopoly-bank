@@ -2,7 +2,12 @@ import type { ReactNode } from 'react';
 import { useLanguage } from '../../i18n/language-context';
 import { cx } from '../ui/class-names';
 
+export type GameNavDestination = 'activity' | 'statistics' | 'tools' | 'pay';
+
 export interface GameBottomNavProps {
+  /** The destination whose sheet is open; it is highlighted and tapping it again closes it. */
+  active?: GameNavDestination | null;
+  onClose?: () => void;
   pendingRequests: number;
   payDisabled: boolean;
   activityDisabled: boolean;
@@ -30,6 +35,7 @@ const itemClass = cx(
   'font-ui text-[0.6875rem] leading-[1.15] font-semibold text-secondary',
   'focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-60',
 );
+const activeItemClass = 'bg-surface-subtle text-primary';
 const labelClass = 'max-w-full truncate';
 const payButtonClass = cx(
   'relative -mt-[12px] flex size-[56px] cursor-pointer flex-col items-center justify-center rounded-[50%] border-0',
@@ -59,6 +65,8 @@ function Icon({ children }: { children: ReactNode }) {
 
 /** Activity, Statistics, Tools and the raised Pay action for the compact game screen. */
 export function GameBottomNav({
+  active = null,
+  onClose,
   pendingRequests,
   payDisabled,
   activityDisabled,
@@ -69,15 +77,21 @@ export function GameBottomNav({
   onOpenStatistics,
 }: GameBottomNavProps) {
   const { t } = useLanguage();
+  /** Tapping the open destination closes it; any other one opens it, replacing the open sheet. */
+  const press = (destination: GameNavDestination, open: () => void) =>
+    active === destination && onClose !== undefined ? onClose : open;
+  const current = (destination: GameNavDestination) =>
+    active === destination ? ('page' as const) : undefined;
   return (
     <nav className={navClass} aria-label={t('gameNavigation')}>
       <ul className={listClass}>
         <li className="grid">
           <button
             type="button"
-            className={itemClass}
+            className={cx(itemClass, active === 'activity' && activeItemClass)}
+            aria-current={current('activity')}
             disabled={activityDisabled}
-            onClick={onOpenActivity}
+            onClick={press('activity', onOpenActivity)}
           >
             <Icon>
               <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
@@ -97,9 +111,10 @@ export function GameBottomNav({
         <li className="grid">
           <button
             type="button"
-            className={itemClass}
+            className={cx(itemClass, active === 'statistics' && activeItemClass)}
+            aria-current={current('statistics')}
             disabled={activityDisabled}
-            onClick={onOpenStatistics}
+            onClick={press('statistics', onOpenStatistics)}
           >
             <Icon>
               <path d="M5 20V10M12 20V4M19 20v-7" />
@@ -110,9 +125,10 @@ export function GameBottomNav({
         <li className="grid">
           <button
             type="button"
-            className={itemClass}
+            className={cx(itemClass, active === 'tools' && activeItemClass)}
+            aria-current={current('tools')}
             disabled={toolsDisabled}
-            onClick={onOpenTools}
+            onClick={press('tools', onOpenTools)}
           >
             <Icon>
               <path d="M14.5 6.5a4 4 0 0 0-5 5L4 17l3 3 5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-2-.5-.5-2z" />
@@ -121,7 +137,13 @@ export function GameBottomNav({
           </button>
         </li>
         <li className="grid justify-items-center">
-          <button type="button" className={payButtonClass} disabled={payDisabled} onClick={onPay}>
+          <button
+            type="button"
+            className={cx(payButtonClass, active === 'pay' && 'ring-2 ring-accent ring-offset-2')}
+            aria-current={current('pay')}
+            disabled={payDisabled}
+            onClick={press('pay', onPay)}
+          >
             <Icon>
               <path d="M7 8h12l-3-3M17 16H5l3 3" />
             </Icon>

@@ -378,6 +378,10 @@ export class GameSession {
       });
       return { status: 201, data: await this.gameService().getGame(gameId) };
     }
+    if (command.type === 'REMOVE_PLAYER') {
+      await this.access().removeLobbyPlayer(gameId, userId, command.playerId);
+      return { status: 200, data: await this.gameService().getGame(gameId) };
+    }
     if (command.type === 'START_AUCTION') {
       const data = await this.auctions().startAuction(gameId, command.request, command.commandId);
       if (data.auction?.state === 'ACTIVE') await this.armAuction(gameId, data.auction);
@@ -422,13 +426,17 @@ export class GameSession {
     command: LiveMutationCommand,
   ): Promise<void> {
     const access = this.access();
-    if (command.type === 'START_GAME' || command.type === 'FINISH_GAME')
+    if (
+      command.type === 'START_GAME' ||
+      command.type === 'FINISH_GAME' ||
+      command.type === 'REMOVE_PLAYER'
+    )
       return access.requireOwner(gameId, userId);
     if (command.type === 'JOIN_LOBBY') {
       const details = await this.gameService().getGame(gameId);
       if (details.game.status !== 'LOBBY')
         throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
-      return;
+      return access.requireLobbySeat(gameId, userId, details.players.length);
     }
     if (command.type === 'ACCEPT_PAYMENT_REQUEST' || command.type === 'DECLINE_PAYMENT_REQUEST') {
       const paymentRequest = await this.banking(command.commandId).getPaymentRequest(
@@ -472,7 +480,11 @@ export class GameSession {
     data: unknown,
     stateVersion: number,
   ): Promise<void> {
-    if (command.type === 'START_GAME' || command.type === 'JOIN_LOBBY') {
+    if (
+      command.type === 'START_GAME' ||
+      command.type === 'JOIN_LOBBY' ||
+      command.type === 'REMOVE_PLAYER'
+    ) {
       const details = data as GameDetails;
       await this.broadcast({
         type: 'LOBBY_UPDATED',

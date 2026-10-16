@@ -8,9 +8,15 @@ import { useLanguage } from '../i18n/language-context';
 import { AuthForm, AuthHeading } from '../components/ui/AuthCard';
 import { Lede } from '../components/ui/Text';
 
-export function AuthPage({ onAuthenticated }: { onAuthenticated: (profile: UserProfile) => void }) {
+export function AuthPage({
+  onAuthenticated,
+  initialRegistering = false,
+}: {
+  onAuthenticated: (profile: UserProfile) => void;
+  initialRegistering?: boolean;
+}) {
   const { t } = useLanguage();
-  const [registering, setRegistering] = useState(false);
+  const [registering, setRegistering] = useState(initialRegistering);
   const [nickname, setNickname] = useState('');
   const [avatar, setAvatar] = useState('🎩');
   const [password, setPassword] = useState('');
