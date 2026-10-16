@@ -6,6 +6,7 @@ import type {
   ActivityScope,
   AddAccountEmailRequest,
   ApiError,
+  AuctionResponse,
   ApiResponse,
   BankruptcyRequest,
   CreateBankingCommandResponse,
@@ -26,8 +27,10 @@ import type {
   LoginRequest,
   PaymentRequest,
   PaymentRequestActionResponse,
+  PlaceBidRequest,
   RegisterRequest,
   RevokeInvitationResponse,
+  StartAuctionRequest,
   UpdateProfileRequest,
   UpgradeGuestRequest,
   UserProfile,
@@ -98,6 +101,15 @@ export interface MonopolyBankApi {
     commandId?: string,
   ): Promise<PaymentRequestActionResponse>;
   declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<CreateTransactionResponse>;
+  /** The active auction, or the one that closed most recently (polling fallback). */
+  getAuction(gameId: string): Promise<AuctionResponse>;
+  startAuction(
+    gameId: string,
+    request: StartAuctionRequest,
+    commandId?: string,
+  ): Promise<AuctionResponse>;
+  /** The bid is `request.step` on top of the current bid; the auction id is in the path. */
+  placeBid(gameId: string, request: PlaceBidRequest, commandId?: string): Promise<AuctionResponse>;
   getGameSummary(gameId: string): Promise<{ game: Game; winners: Player[] } & LedgerStatistics>;
   getActivity(gameId: string, scope: ActivityScope, cursor?: string): Promise<ActivityPage>;
   listTransactions(gameId: string, limit?: number): Promise<Transaction[]>;
@@ -294,6 +306,30 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
     return request<CreateTransactionResponse>(
       `/api/games/${encodeURIComponent(gameId)}/bankruptcy`,
       commandInit({ method: 'POST', body: JSON.stringify(input) }),
+    );
+  }
+  async getAuction(gameId: string): Promise<AuctionResponse> {
+    return request<AuctionResponse>(`/api/games/${encodeURIComponent(gameId)}/auction`);
+  }
+  async startAuction(
+    gameId: string,
+    input: StartAuctionRequest,
+    commandId?: string,
+  ): Promise<AuctionResponse> {
+    return request<AuctionResponse>(
+      `/api/games/${encodeURIComponent(gameId)}/auctions`,
+      commandInit({ method: 'POST', body: JSON.stringify(input) }, commandId),
+    );
+  }
+  async placeBid(
+    gameId: string,
+    input: PlaceBidRequest,
+    commandId?: string,
+  ): Promise<AuctionResponse> {
+    const { auctionId, ...body } = input;
+    return request<AuctionResponse>(
+      `/api/games/${encodeURIComponent(gameId)}/auctions/${encodeURIComponent(auctionId)}/bids`,
+      commandInit({ method: 'POST', body: JSON.stringify(body) }, commandId),
     );
   }
   async getGameSummary(

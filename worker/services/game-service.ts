@@ -8,6 +8,7 @@ import type {
 } from '../../shared/contracts/api.js';
 import { buildGameSettings } from '../../shared/domain/game-rules.js';
 import { defaultGameRules, type Currency } from '../../shared/types/monopoly.js';
+import type { AuctionRepository } from '../repositories/auction-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { LoanRepository } from '../repositories/loan-repository.js';
 import type { MortgageRepository } from '../repositories/mortgage-repository.js';
@@ -47,6 +48,8 @@ export interface GameServiceDependencies {
   loans?: LoanRepository;
   /** Lets a game with the bank-loans rule report loan rounds and cooldowns. */
   transactions?: TransactionRepository;
+  /** Lets a game with the auctions rule report its running (or just closed) auction. */
+  auctions?: AuctionRepository;
   createId: () => string;
 }
 
@@ -56,6 +59,7 @@ export class DefaultGameService implements GameService {
   private readonly mortgages: MortgageRepository | undefined;
   private readonly loans: LoanRepository | undefined;
   private readonly transactions: TransactionRepository | undefined;
+  private readonly auctions: AuctionRepository | undefined;
   private readonly createId: () => string;
 
   constructor(dependencies: GameServiceDependencies) {
@@ -64,6 +68,7 @@ export class DefaultGameService implements GameService {
     this.mortgages = dependencies.mortgages;
     this.loans = dependencies.loans;
     this.transactions = dependencies.transactions;
+    this.auctions = dependencies.auctions;
     this.createId = dependencies.createId;
   }
 
@@ -152,6 +157,9 @@ export class DefaultGameService implements GameService {
       loans: bankLoans?.loans ?? (await this.loans?.listActive(gameId)) ?? [],
       ...(bankLoans === null ? {} : { bankLoanCooldowns: bankLoans.bankLoanCooldowns }),
       ...(game.rules.freeParkingJackpot ? { jackpot: await this.games.getJackpot(gameId) } : {}),
+      ...(game.rules.auctions && this.auctions !== undefined
+        ? { auction: await this.auctions.getCurrent(gameId, Date.now()) }
+        : {}),
       favoriteAmounts: await this.games.listFavoriteAmounts(gameId),
       recentAmounts: await this.games.listRecentAmounts(gameId),
     };

@@ -1,4 +1,5 @@
 import { createApiRouter } from './routes/api-router.js';
+import { D1AuctionRepository } from './repositories/auction-repository.js';
 import { D1BankingOperationRepository } from './repositories/banking-operation-repository.js';
 import { D1GameRepository } from './repositories/game-repository.js';
 import { D1PlayerRepository } from './repositories/player-repository.js';
@@ -51,6 +52,7 @@ export default {
         mortgages: new D1MortgageRepository(env.MONOPOLY_BANK_DB),
         loans: new D1LoanRepository(env.MONOPOLY_BANK_DB),
         transactions,
+        auctions: new D1AuctionRepository(env.MONOPOLY_BANK_DB),
         createId,
       }),
       auth: new AuthService(
@@ -84,6 +86,7 @@ export default {
         paymentRequests: new D1PaymentRequestRepository(env.MONOPOLY_BANK_DB),
         mortgages: new D1MortgageRepository(env.MONOPOLY_BANK_DB),
         loans: new D1LoanRepository(env.MONOPOLY_BANK_DB),
+        auctions: new D1AuctionRepository(env.MONOPOLY_BANK_DB),
         createId,
       }),
       live: new DurableObjectGameLiveGateway(env.GAME_SESSIONS),
@@ -147,7 +150,12 @@ function apiOperation(request: Request): string {
   const path = new URL(request.url).pathname;
   if (path.startsWith('/api/auth/')) return 'auth';
   if (path.includes('/live')) return 'live';
-  if (path.includes('/transactions') || path.includes('/payment-requests')) return 'banking';
+  if (
+    path.includes('/transactions') ||
+    path.includes('/payment-requests') ||
+    path.includes('/auction')
+  )
+    return 'banking';
   if (path.startsWith('/api/games')) return 'games';
   return 'other';
 }

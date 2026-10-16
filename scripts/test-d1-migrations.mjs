@@ -252,6 +252,20 @@ try {
   );
   if (!/CHECK constraint failed/i.test(negativeJackpot))
     throw new Error('games.jackpot_balance accepts a negative value.');
+  // Migration 0026 adds the auctions table: one ACTIVE auction per game, SOLD needs a settling transaction.
+  const auctionsMigration = '0026_auctions.sql';
+  await cp(join('migrations', auctionsMigration), join(legacyMigrations, auctionsMigration));
+  await applyLegacy();
+  const auctionInsert = (id, state) =>
+    `INSERT INTO auctions (id, game_id, lot_name, initiator_player_id, state, started_at, ends_at) VALUES ('${id}', 'game-upgrade-1', 'Lot', 'player-upgrade-1', '${state}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:30.000Z')`;
+  await legacySql(auctionInsert('auction-upgrade-1', 'ACTIVE'));
+  const secondActiveAuction = await legacySql(auctionInsert('auction-upgrade-2', 'ACTIVE'), true);
+  if (!/UNIQUE constraint failed/i.test(secondActiveAuction))
+    throw new Error('auctions accepts a second active auction for one game.');
+  const soldWithoutPayment = await legacySql(auctionInsert('auction-upgrade-3', 'SOLD'), true);
+  if (!/CHECK constraint failed/i.test(soldWithoutPayment))
+    throw new Error('auctions accepts a SOLD auction without a settling transaction.');
+  await legacySql(auctionInsert('auction-upgrade-4', 'NO_SALE'));
   const upgradedFixture = await legacySql(
     "SELECT pc.player_id, pc.user_id FROM player_controllers pc JOIN users u ON u.id = pc.user_id WHERE pc.game_id = 'game-upgrade-1' AND pc.player_id = 'player-upgrade-1' AND pc.controller_kind = 'PRIMARY'",
   );

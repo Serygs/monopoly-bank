@@ -4,6 +4,8 @@ import {
   parseCreateGameRequest,
   parseCreateTransactionRequest,
   parseJoinGameRequest,
+  parsePlaceBidRequest,
+  parseStartAuctionRequest,
   parseRegisterRequest,
   parseUpdateProfileRequest,
 } from './api-validation.js';
@@ -434,6 +436,65 @@ describe('Free Parking jackpot validation', () => {
   ])('rejects a collection with %s', async (_label, fields) => {
     await expect(
       parseCreateTransactionRequest(jsonRequest({ type: 'JACKPOT_PAYOUT', ...fields })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+});
+
+describe('auction validation', () => {
+  const playerId = '11111111-1111-4111-8111-111111111111';
+  const auctionId = '22222222-2222-4222-8222-222222222222';
+
+  it('normalises the lot name and requires an initiator', async () => {
+    await expect(
+      parseStartAuctionRequest(
+        jsonRequest({ initiatorPlayerId: playerId, lotName: '  Park   Place ' }),
+      ),
+    ).resolves.toEqual({ initiatorPlayerId: playerId, lotName: 'Park Place' });
+  });
+
+  it.each([
+    ['a missing lot', { initiatorPlayerId: playerId }],
+    ['a blank lot', { initiatorPlayerId: playerId, lotName: '   ' }],
+    ['a too long lot', { initiatorPlayerId: playerId, lotName: 'x'.repeat(61) }],
+    ['a control character', { initiatorPlayerId: playerId, lotName: 'a\u0000b' }],
+    ['a malformed initiator', { initiatorPlayerId: 'nope', lotName: 'Lot' }],
+  ])('rejects %s when starting', async (_name, body) => {
+    await expect(parseStartAuctionRequest(jsonRequest(body))).rejects.toBeInstanceOf(
+      ApiValidationError,
+    );
+  });
+
+  it('takes the auction from the URL and reads the bid', async () => {
+    await expect(
+      parsePlaceBidRequest(
+        jsonRequest({ bidderPlayerId: playerId, expectedVersion: 3, step: 25 }),
+        auctionId,
+      ),
+    ).resolves.toEqual({ bidderPlayerId: playerId, auctionId, expectedVersion: 3, step: 25 });
+  });
+
+  it.each([
+    ['a missing bidder', { expectedVersion: 1, step: 10 }],
+    ['a missing version', { bidderPlayerId: playerId, step: 10 }],
+    ['a zero version', { bidderPlayerId: playerId, expectedVersion: 0, step: 10 }],
+    ['a fractional step', { bidderPlayerId: playerId, expectedVersion: 1, step: 2.5 }],
+    ['a negative step', { bidderPlayerId: playerId, expectedVersion: 1, step: -10 }],
+    ['a string step', { bidderPlayerId: playerId, expectedVersion: 1, step: '10' }],
+  ])('rejects %s when bidding', async (_name, body) => {
+    await expect(parsePlaceBidRequest(jsonRequest(body), auctionId)).rejects.toBeInstanceOf(
+      ApiValidationError,
+    );
+  });
+
+  it('rejects a malformed auction id and a client-sent AUCTION_PAYMENT', async () => {
+    await expect(
+      parsePlaceBidRequest(
+        jsonRequest({ bidderPlayerId: playerId, expectedVersion: 1, step: 10 }),
+        'nope',
+      ),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'AUCTION_PAYMENT', playerId, amount: 10 })),
     ).rejects.toBeInstanceOf(ApiValidationError);
   });
 });

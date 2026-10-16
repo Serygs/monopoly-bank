@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { GameDetails, LedgerStatistics, PaymentRequest } from '../../shared/contracts/api';
+import type {
+  AuctionResponse,
+  GameDetails,
+  LedgerStatistics,
+  PaymentRequest,
+} from '../../shared/contracts/api';
 import type { Game, Player, Transaction } from '../../shared/types/monopoly';
 import { ActivityScreen } from './ActivityScreen';
 import { StatisticsScreen } from './StatisticsScreen';
@@ -17,7 +22,9 @@ import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { isLiveServerEvent } from '../../shared/contracts/live';
 import { canReverseTransaction } from '../../shared/domain/reversal';
+import { newerAuction } from '../utils/auction';
 import { acceptsLiveVersion } from '../utils/live-version';
+import { AuctionDialog } from './game/AuctionDialog';
 import { BankingDialog } from './game/BankingDialog';
 import { BankruptcyDialog } from './game/BankruptcyDialog';
 import { FinishGameDialog } from './game/FinishGameDialog';
@@ -26,6 +33,7 @@ import { HistoryDialog } from './game/HistoryDialog';
 import { ReverseTransactionDialog } from './game/ReverseTransactionDialog';
 import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
+import { StartAuctionDialog } from './game/StartAuctionDialog';
 import { WalletsSection } from './game/WalletsSection';
 import {
   applyLiveEvent,
@@ -80,6 +88,12 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
   const lastAppliedVersion = useRef(0);
+  // The wallet putting a property up for auction, with the suggested name.
+  const [auctionPrompt, setAuctionPrompt] = useState<{ player: Player; lotName: string } | null>(
+    null,
+  );
+  // The auction (id and state) whose dialog the viewer closed, so it does not reopen by itself.
+  const [dismissedAuction, setDismissedAuction] = useState<string | null>(null);
   useEffect(() => {
     onPaymentFlowChange(selectedPlayer !== null || bankruptPlayer !== null);
     return () => onPaymentFlowChange(false);
@@ -108,6 +122,41 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   useEffect(() => {
     if (details?.game.status === 'ACTIVE' && !offline) loadPaymentRequests();
   }, [details?.game.status, loadPaymentRequests, offline]);
+
+  /** Applies an auction answer: the newest auction, and the balances when it settled a sale. */
+  const applyAuctionResponse = useCallback((response: AuctionResponse) => {
+    if (response.transaction !== undefined) {
+      historyCache.current.clear();
+      const settled = response.transaction;
+      setLiveTransactions((current) =>
+        [settled, ...current.filter((item) => item.id !== settled.id)].slice(0, 50),
+      );
+    }
+    setDetails((current) =>
+      current === null
+        ? current
+        : {
+            ...current,
+            ...(response.players === undefined ? {} : { players: response.players }),
+            auction: newerAuction(current.auction ?? null, response.auction),
+          },
+    );
+  }, []);
+  const refreshAuction = useCallback(
+    () => void monopolyBankApi.getAuction(gameId).then(applyAuctionResponse, () => undefined),
+    [gameId, applyAuctionResponse],
+  );
+  // Without the socket nobody tells this device about bids, so ask every 2 seconds while one may run.
+  const auctionPolling =
+    details?.game.rules.auctions === true &&
+    details.game.status === 'ACTIVE' &&
+    !offline &&
+    liveStatus !== 'live';
+  useEffect(() => {
+    if (!auctionPolling) return;
+    const timer = window.setInterval(refreshAuction, 2000);
+    return () => window.clearInterval(timer);
+  }, [auctionPolling, refreshAuction]);
 
   useWakeLock(preferences.keepScreenAwake && details?.game.status === 'ACTIVE');
 
@@ -324,6 +373,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         otherPlayers={otherPlayers}
         canMutate={canMutate}
         loans={visibleLoans}
+        auction={rules.auctions ? (details.auction ?? null) : null}
         onSelectWallet={setActiveWalletId}
         onOpenWallet={(player) => {
           setSettleLoanOnOpen(false);
@@ -445,6 +495,11 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           bankLoanCooldowns={details.bankLoanCooldowns ?? []}
           jackpot={details.jackpot ?? 0}
           settleOnOpen={settleLoanOnOpen}
+          auction={rules.auctions ? (details.auction ?? null) : null}
+          onStartAuction={(lotName) => {
+            setAuctionPrompt({ player: selectedPlayer, lotName });
+            setSelectedPlayer(null);
+          }}
           favoriteAmounts={details.favoriteAmounts ?? []}
           recentAmounts={details.recentAmounts ?? []}
           onToggleFavorite={(amount) =>
@@ -544,6 +599,52 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           }}
         />
       )}
+      {rules.auctions &&
+        details.auction?.state === 'ACTIVE' &&
+        dismissedAuction === `${details.auction.id}:ACTIVE` && (
+          <Notice tone="info" as="section">
+            <p>{details.auction.lotName}</p>
+            <Button variant="secondary" onClick={() => setDismissedAuction(null)}>
+              {t('auctionDialogTitle')}
+            </Button>
+          </Notice>
+        )}
+      {auctionPrompt !== null && (
+        <StartAuctionDialog
+          gameId={gameId}
+          initiator={auctionPrompt.player}
+          initialLotName={auctionPrompt.lotName}
+          onClose={() => setAuctionPrompt(null)}
+          onStarted={(response) => {
+            applyAuctionResponse(response);
+            setAuctionPrompt(null);
+            setDismissedAuction(null);
+          }}
+        />
+      )}
+      {rules.auctions &&
+        details.auction !== null &&
+        details.auction !== undefined &&
+        details.game.status !== 'LOBBY' &&
+        dismissedAuction !== `${details.auction.id}:${details.auction.state}` && (
+          <AuctionDialog
+            gameId={gameId}
+            auction={details.auction}
+            players={details.players}
+            controlledPlayerIds={
+              details.controlledPlayerIds ?? controlledWallets.map((wallet) => wallet.playerId)
+            }
+            currency={details.game.currency}
+            settings={details.game.settings}
+            canMutate={canMutate}
+            onClose={() =>
+              details.auction &&
+              setDismissedAuction(`${details.auction.id}:${details.auction.state}`)
+            }
+            onUpdated={applyAuctionResponse}
+            onRefresh={refreshAuction}
+          />
+        )}
       {inviteOpen && <InviteDialog gameId={gameId} onClose={() => setInviteOpen(false)} />}
       {finishing && (
         <FinishGameDialog

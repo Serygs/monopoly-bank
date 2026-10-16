@@ -64,6 +64,16 @@ export function transactionDescription(
       return translate(language, 'jackpotPayoutDescription', {
         name: nameOf(positive?.playerId),
       });
+    case 'AUCTION_PAYMENT':
+      // The comment is the lot name.
+      return transaction.comment === null || transaction.comment.trim() === ''
+        ? translate(language, 'auctionPaymentUnnamedDescription', {
+            name: nameOf(negative?.playerId),
+          })
+        : translate(language, 'auctionPaymentDescription', {
+            name: nameOf(negative?.playerId),
+            lot: transaction.comment.trim(),
+          });
     case 'BANKRUPTCY_TRANSFER':
       return translate(language, 'bankruptcyTransactionDescription', {
         source: nameOf(negative?.playerId),

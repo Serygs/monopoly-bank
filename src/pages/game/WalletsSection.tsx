@@ -1,8 +1,9 @@
 import type { PlayerController } from '../../../shared/contracts/api';
-import type { Currency, Loan, Player } from '../../../shared/types/monopoly';
+import type { Auction, Currency, Loan, Player } from '../../../shared/types/monopoly';
 import { Button, Notice } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
+import { auctionReserveFor } from '../../utils/auction';
 import { activeBankLoan, loanOutstanding } from '../../utils/loans';
 import { formatMoney } from '../../utils/money';
 import { controllerLabel } from './game-page-helpers';
@@ -18,6 +19,8 @@ export interface WalletsSectionProps {
   canMutate: boolean;
   /** Active player loans, shown on each wallet card. */
   loans?: Loan[];
+  /** The running auction; its leading bid is shown as reserved on the leader's card. */
+  auction?: Auction | null;
   onSelectWallet: (playerId: string) => void;
   onOpenWallet: (player: Player) => void;
   /** Opens the repay flow for the player's overdue bank loan. */
@@ -58,6 +61,7 @@ export function WalletsSection({
   otherPlayers,
   canMutate,
   loans = [],
+  auction = null,
   onSelectWallet,
   onOpenWallet,
   onSettleLoan,
@@ -122,8 +126,8 @@ export function WalletsSection({
               active
               gameActive={canMutate}
               prominent
-
               loans={loans}
+              auctionReserve={auctionReserveFor(auction, activeWallet.id)}
               onOpen={() => onOpenWallet(activeWallet)}
             />
             {settleLoan !== null && (
@@ -156,6 +160,7 @@ export function WalletsSection({
                 currency={currency}
                 active={false}
                 loans={loans}
+                auctionReserve={auctionReserveFor(auction, player.id)}
                 gameActive={canMutate}
                 onOpen={() => onOpenWallet(player)}
               />

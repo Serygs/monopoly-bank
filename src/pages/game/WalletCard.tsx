@@ -15,6 +15,8 @@ export interface WalletCardProps {
   prominent?: boolean;
   /** Active player loans; the card shows what the player owes and is owed. */
   loans?: Loan[];
+  /** Cash held back for this player's leading auction bid (auctions rule). */
+  auctionReserve?: number;
   onOpen: () => void;
 }
 
@@ -103,6 +105,7 @@ export function WalletCard({
   gameActive,
   prominent = false,
   loans = [],
+  auctionReserve = 0,
   onOpen,
 }: WalletCardProps) {
   const { t } = useLanguage();
@@ -147,6 +150,15 @@ export function WalletCard({
       >
         {balance}
       </strong>
+      {auctionReserve > 0 && (
+        <span className={debtClass}>
+          <span>
+            {t(active ? 'auctionReservedYours' : 'auctionReservedOther', {
+              amount: formatMoney(auctionReserve, currency),
+            })}
+          </span>
+        </span>
+      )}
       {bankLoan !== null && (
         <span className={debtClass}>
           <span className="text-danger">

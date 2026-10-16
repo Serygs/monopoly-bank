@@ -36,6 +36,7 @@ export function reversalInitiatorPlayerId(
     case 'PLAYER_TO_PLAYER':
     case 'PAY_RENT':
     case 'PLAYER_TO_BANK':
+    case 'AUCTION_PAYMENT':
     case 'PLAYER_TO_ALL':
       return debited.length === 1 ? (debited[0]?.playerId ?? null) : null;
     case 'BANK_TO_PLAYER':
