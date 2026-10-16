@@ -137,4 +137,42 @@ describe('DiceRoller history', () => {
     setup();
     expect(await screen.findByText('No rolls yet.')).toBeInTheDocument();
   });
+
+  describe('paging', () => {
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, index) => stored(`r${index}`, 'p1', 1 + (index % 6), 2));
+    const rows = () =>
+      within(screen.getByRole('region', { name: 'Roll history' })).getAllByRole('listitem');
+
+    it('shows the latest 3 rolls with a date and time, then 10 more per click', async () => {
+      list.mockImplementation(async (_game, _player, limit) => many(30).slice(0, limit));
+      const user = setup();
+      await screen.findAllByRole('listitem');
+      expect(rows()).toHaveLength(3);
+      expect(rows()[0].querySelector('time')?.textContent).toMatch(/\d.*\d/);
+      await user.click(screen.getByRole('button', { name: 'Show more' }));
+      await waitFor(() => expect(rows()).toHaveLength(13));
+      expect(list).toHaveBeenLastCalledWith('g1', 'p1', 13);
+    });
+
+    it('hides Show more when the player has nothing beyond what is shown', async () => {
+      list.mockImplementation(async () => many(2));
+      setup();
+      await screen.findAllByRole('listitem');
+      expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    });
+
+    it('stops at 100 rolls', async () => {
+      list.mockImplementation(async (_game, _player, limit) => many(150).slice(0, limit));
+      const user = setup();
+      await screen.findAllByRole('listitem');
+      for (let click = 0; click < 10; click += 1) {
+        await user.click(await screen.findByRole('button', { name: 'Show more' }));
+        await waitFor(() => expect(rows().length).toBeGreaterThan(3));
+      }
+      await waitFor(() => expect(rows()).toHaveLength(100));
+      expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+      expect(list).toHaveBeenLastCalledWith('g1', 'p1', 100);
+    });
+  });
 });
