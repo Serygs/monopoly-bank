@@ -7,9 +7,12 @@ import {
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Dialog } from '../components/Dialog';
 import { DeletedGameCard, GameCard } from '../components/game/GameCard';
+import { OverflowMenu } from '../components/OverflowMenu';
 import { PageHeader } from '../components/PageHeader';
 import {
+  BottomNav,
   Button,
+  NavIcon,
   DialogActions,
   DialogBody,
   EmptyState,
@@ -63,10 +66,6 @@ const searchClass = cx(
   'saved-games-search relative block md:col-span-full lg:col-auto',
   '[&_input]:block [&_input]:w-full [&_input]:ps-12',
 );
-const searchIconClass =
-  'saved-games-search-icon pointer-events-none absolute top-1/2 left-4 z-1 block size-5 -translate-y-1/2 text-muted';
-const sortClass =
-  'flex items-center gap-(--mb-space-2) text-small font-semibold text-secondary md:justify-self-end [&_select]:min-h-(--mb-control-height-md)';
 const gridClass = cx(
   'grid grid-cols-[1fr] gap-(--mb-layout-gap-compact)',
   'md:grid-cols-2 md:gap-(--mb-layout-gap-medium) lg:gap-(--mb-layout-gap-wide)',
@@ -76,9 +75,10 @@ interface Props {
   onCreateGame: () => void;
   onJoinGame: (joinCode?: string) => void;
   onOpenGame: (gameId: string) => void;
+  onOpenProfile: () => void;
 }
 
-export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) {
+export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame, onOpenProfile }: Props) {
   const { locale, t } = useLanguage();
   const [games, setGames] = useState<GameSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +99,8 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   const [deletedError, setDeletedError] = useState<unknown | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'updated' | 'name'>('updated');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   const visibleGames = useMemo(
     () =>
@@ -242,16 +244,6 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
         eyebrow={t('appName')}
         title={t('savedGames')}
         description={t('savedGamesLede')}
-        actions={
-          <>
-            <Button variant="primary" onClick={onCreateGame}>
-              {t('createNewGame')}
-            </Button>
-            <Button variant="secondary" onClick={() => onJoinGame()}>
-              {t('joinGame')}
-            </Button>
-          </>
-        }
       />
 
       {loading && (
@@ -281,64 +273,82 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
       {!loading && error === null && (games.length > 0 || deletedGames.length > 0) && (
         <>
           <section className={controlsClass} aria-label={t('savedGamesControls')}>
-            <label className={searchClass}>
-              <span className="sr-only">{t('searchGames')}</span>
-              <svg
-                className={searchIconClass}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                aria-hidden="true"
+            <div className="flex items-center gap-(--mb-space-2)">
+              <Button
+                variant="secondary"
+                className="w-(--mb-control-height-md) shrink-0 px-0"
+                aria-label={t('searchGames')}
+                aria-expanded={searchOpen || query !== ''}
+                onClick={() => setSearchOpen((open) => !open)}
               >
-                <circle cx="10.75" cy="10.75" r="5.75" />
-                <path d="m15 15 4 4" />
-              </svg>
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={t('searchGames')}
+                <svg
+                  className="size-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="10.75" cy="10.75" r="5.75" />
+                  <path d="m15 15 4 4" />
+                </svg>
+              </Button>
+              <div className="min-w-0 flex-1 overflow-x-auto">
+                <SegmentedControl
+                  variant="filter"
+                  className="flex flex-nowrap gap-(--mb-space-2) whitespace-nowrap"
+                  label={t('filterGames')}
+                  options={(
+                    [
+                      'ALL',
+                      'ACTIVE',
+                      'LOBBY',
+                      'FINISHED',
+                      ...(deletedGames.length > 0 || statusFilter === 'DELETED'
+                        ? (['DELETED'] as const)
+                        : []),
+                    ] as const
+                  ).map((status) => ({
+                    value: status,
+                    label: t(
+                      status === 'ALL'
+                        ? 'allGames'
+                        : status === 'DELETED'
+                          ? 'deletedGames'
+                          : (`gameStatus${status[0]}${status.slice(1).toLowerCase()}` as 'gameStatusLobby'),
+                    ),
+                  }))}
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                />
+              </div>
+              <OverflowMenu
+                label={t('sortGames')}
+                items={[
+                  {
+                    label: `${sortOrder === 'updated' ? '✓ ' : ''}${t('sortUpdated')}`,
+                    onSelect: () => setSortOrder('updated'),
+                  },
+                  {
+                    label: `${sortOrder === 'name' ? '✓ ' : ''}${t('sortName')}`,
+                    onSelect: () => setSortOrder('name'),
+                  },
+                ]}
               />
-            </label>
-            <SegmentedControl
-              variant="filter"
-              className="flex flex-wrap gap-(--mb-space-2)"
-              label={t('filterGames')}
-              options={(
-                [
-                  'ALL',
-                  'ACTIVE',
-                  'LOBBY',
-                  'FINISHED',
-                  ...(deletedGames.length > 0 || statusFilter === 'DELETED'
-                    ? (['DELETED'] as const)
-                    : []),
-                ] as const
-              ).map((status) => ({
-                value: status,
-                label: t(
-                  status === 'ALL'
-                    ? 'allGames'
-                    : status === 'DELETED'
-                      ? 'deletedGames'
-                      : (`gameStatus${status[0]}${status.slice(1).toLowerCase()}` as 'gameStatusLobby'),
-                ),
-              }))}
-              value={statusFilter}
-              onChange={setStatusFilter}
-            />
-            <label className={sortClass}>
-              <span>{t('sortGames')}</span>
-              <select
-                value={sortOrder}
-                onChange={(event) => setSortOrder(event.target.value as 'updated' | 'name')}
-              >
-                <option value="updated">{t('sortUpdated')}</option>
-                <option value="name">{t('sortName')}</option>
-              </select>
-            </label>
+            </div>
+            {(searchOpen || query !== '') && (
+              <label className={searchClass}>
+                <span className="sr-only">{t('searchGames')}</span>
+                <input
+                  type="search"
+                  autoFocus={searchOpen}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={t('searchGames')}
+                />
+              </label>
+            )}
           </section>
           {statusFilter === 'DELETED' ? (
             <>
@@ -403,6 +413,77 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
           onCancel={() => setGameToDuplicate(null)}
           onConfirm={() => void duplicateGame()}
         />
+      )}
+      <div aria-hidden="true" className="h-(--mb-bottom-nav-height)" />
+      <BottomNav
+        label={t('homeNavigation')}
+        className="home-bottom-nav"
+        items={[
+          {
+            key: 'games',
+            label: t('navGames'),
+            active: true,
+            onPress: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+            icon: (
+              <NavIcon>
+                <rect x="4" y="4" width="16" height="16" rx="3" />
+                <path d="M8 9h8M8 13h8M8 17h4" />
+              </NavIcon>
+            ),
+          },
+          {
+            key: 'add',
+            label: t('navAddGame'),
+            raised: true,
+            onPress: () => setAddOpen(true),
+            icon: (
+              <NavIcon>
+                <path d="M12 5v14M5 12h14" />
+              </NavIcon>
+            ),
+          },
+          {
+            key: 'profile',
+            label: t('navProfile'),
+            onPress: onOpenProfile,
+            icon: (
+              <NavIcon>
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 20c1.5-4 4.5-5.5 8-5.5s6.5 1.5 8 5.5" />
+              </NavIcon>
+            ),
+          },
+        ]}
+      />
+      {addOpen && (
+        <Dialog
+          title={t('addGameTitle')}
+          closeLabel={t('closeDialog', { title: t('addGameTitle') })}
+          onClose={() => setAddOpen(false)}
+        >
+          <DialogBody>
+            <div className="grid gap-(--mb-space-3)">
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setAddOpen(false);
+                  onCreateGame();
+                }}
+              >
+                {t('createNewGame')}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setAddOpen(false);
+                  onJoinGame();
+                }}
+              >
+                {t('joinGame')}
+              </Button>
+            </div>
+          </DialogBody>
+        </Dialog>
       )}
     </PageShell>
   );
