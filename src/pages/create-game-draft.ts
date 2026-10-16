@@ -1,3 +1,4 @@
+import { isBoardMode, type BoardMode } from '../../shared/board';
 import {
   defaultGameRules,
   selectableCurrencies,
@@ -28,6 +29,7 @@ export interface CreateGameDraft {
   startingBalance: string;
   passGoReward: string;
   rules: GameRules;
+  board: BoardMode;
   players: DraftPlayer[];
 }
 
@@ -42,6 +44,7 @@ export function defaultDraft(userId: string, nickname: string): CreateGameDraft 
     startingBalance: String(defaultStartingBalance),
     passGoReward: String(defaultPassGoReward),
     rules: defaultGameRules,
+    board: 'none',
     players: [{ key: 1, name: nickname, color: firstPlayerColor }],
   };
 }
@@ -82,6 +85,7 @@ export function readDraft(userId: string, nickname: string): CreateGameDraft {
       ...stored,
       step: Math.min(Math.max(Math.trunc(stored.step), 0), 2),
       rules: { ...defaultGameRules, ...stored.rules },
+      board: isBoardMode(stored.board) ? stored.board : 'none',
     };
   } catch {
     return fallback;

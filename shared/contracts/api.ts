@@ -1,5 +1,7 @@
+import type { BoardMode } from '../board/index.js';
 import type {
   Game,
+  GameProperty,
   GameRules,
   BankLoanCooldown,
   InterestRatePercent,
@@ -50,6 +52,8 @@ export interface DeletedGameSummary extends GameSummary {
 export interface GameDetails {
   game: Game;
   players: Player[];
+  /** The property registry, one row per tile; present only for games with a board. */
+  properties?: GameProperty[];
   /** Properties currently mortgaged to the bank. */
   mortgages?: Mortgage[];
   /** Loans that are still being repaid (player loans; the bank's later). */
@@ -93,6 +97,8 @@ export interface CreateGameRequest {
   paymentMode?: PaymentMode;
   /** Optional house rules; omitted rules are off. Fixed once the game is created. */
   rules?: GameRules;
+  /** Board mode, fixed at creation. Omitted means 'none' (manual mortgages and auctions). */
+  board?: BoardMode;
   /** A public lobby is listed for every signed-in user and has no password. Default: private. */
   isPublic?: boolean;
   gameAccessPassword?: string;

@@ -21,6 +21,8 @@ export interface WalletsSectionProps {
   loans?: Loan[];
   /** The running auction; its leading bid is shown as reserved on the leader's card. */
   auction?: Auction | null;
+  /** Board games: the viewer's cards (count, formatted list value) and the entry to the Property screen. */
+  property?: { count: number; value: string; onOpen: () => void };
   onSelectWallet: (playerId: string) => void;
   onOpenWallet: (player: Player) => void;
   /** Opens the repay flow for the player's overdue bank loan. */
@@ -62,6 +64,7 @@ export function WalletsSection({
   canMutate,
   loans = [],
   auction = null,
+  property,
   onSelectWallet,
   onOpenWallet,
   onSettleLoan,
@@ -130,6 +133,15 @@ export function WalletsSection({
               auctionReserve={auctionReserveFor(auction, activeWallet.id)}
               onOpen={() => onOpenWallet(activeWallet)}
             />
+            {property !== undefined && (
+              <Button
+                variant="secondary"
+                className="mt-(--mb-space-3) w-full"
+                onClick={property.onOpen}
+              >
+                {t('walletProperty', { count: property.count, value: property.value })}
+              </Button>
+            )}
             {settleLoan !== null && (
               <Notice tone="error" className="mt-(--mb-space-3)">
                 <span className="block">

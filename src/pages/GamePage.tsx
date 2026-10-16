@@ -14,6 +14,9 @@ import { DiceRoller } from '../components/DiceRoller';
 import { TableCalculator } from '../components/TableCalculator';
 import { Dialog } from '../components/Dialog';
 import { DialogNavContext } from '../components/dialog-nav-context';
+import { formatMoney } from '../utils/money';
+import { PropertyScreen } from './PropertyScreen';
+import { cardsOwnedBy, cardsValue, tileViews } from '../utils/property-view';
 import { GameBottomNav, type GameNavDestination } from '../components/game/GameBottomNav';
 import { cx } from '../components/ui/class-names';
 import { Button, Notice, PageShell, StatPill, useFeedback } from '../components/ui';
@@ -74,6 +77,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   >(null);
   const [activityOpen, setActivityOpen] = useState(false);
   const [statisticsOpen, setStatisticsOpen] = useState(false);
+  const [propertyOpen, setPropertyOpen] = useState(false);
   const [bankruptPlayer, setBankruptPlayer] = useState<Player | null>(null);
   const [settleLoanOnOpen, setSettleLoanOnOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -249,6 +253,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const closeNavSheets = () => {
     setActivityOpen(false);
     setStatisticsOpen(false);
+    setPropertyOpen(false);
     setToolsOpen(false);
     setSelectedPlayer(null);
   };
@@ -308,21 +313,40 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const visibleLoans = (details.loans ?? []).filter((loan) =>
     loan.lenderKind === 'BANK' ? rules.bankLoans : rules.playerLoans,
   );
+  // Board games only: the property registry of the viewer's wallets.
+  const board = details.game.settings?.board ?? null;
+  const properties = details.properties ?? [];
+  const controlledIds =
+    details.controlledPlayerIds ?? controlledWallets.map((wallet) => wallet.playerId);
+  const myCards = board === null ? [] : cardsOwnedBy(tileViews(board, properties), controlledIds);
   const activeNav: GameNavDestination | null = toolsOpen
     ? 'tools'
     : activityOpen
       ? 'activity'
       : statisticsOpen
         ? 'statistics'
-        : selectedPlayer !== null
-          ? 'pay'
-          : null;
+        : propertyOpen
+          ? 'property'
+          : selectedPlayer !== null
+            ? 'pay'
+            : null;
   // Rendered on the page and again inside every open dialog (see `DialogNavContext`).
   const bottomNav = (
     <GameBottomNav
       active={activeNav}
       onClose={closeNavSheets}
       pendingRequests={canMutate ? inboxRequests.length : 0}
+      property={
+        board === null
+          ? undefined
+          : {
+              count: myCards.length,
+              onOpen: () => {
+                closeNavSheets();
+                setPropertyOpen(true);
+              },
+            }
+      }
       payDisabled={!canMutate || activeWallet === null || activeWallet.status === 'BANKRUPT'}
       activityDisabled={offline}
       toolsDisabled={details.game.status !== 'ACTIVE'}
@@ -404,6 +428,18 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           canMutate={canMutate}
           loans={visibleLoans}
           auction={rules.auctions ? (details.auction ?? null) : null}
+          property={
+            board === null
+              ? undefined
+              : {
+                  count: myCards.length,
+                  value: formatMoney(cardsValue(myCards), details.game.currency),
+                  onOpen: () => {
+                    closeNavSheets();
+                    setPropertyOpen(true);
+                  },
+                }
+          }
           onSelectWallet={setActiveWalletId}
           onOpenWallet={(player) => {
             setSettleLoanOnOpen(false);
@@ -497,6 +533,16 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                 : undefined
             }
             onClose={() => setActivityOpen(false)}
+          />
+        )}
+        {propertyOpen && board !== null && (
+          <PropertyScreen
+            board={board}
+            properties={properties}
+            players={details.players}
+            currency={details.game.currency}
+            controlledPlayerIds={controlledIds}
+            onClose={() => setPropertyOpen(false)}
           />
         )}
         {statisticsOpen && summary !== null && (

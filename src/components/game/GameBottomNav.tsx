@@ -1,13 +1,15 @@
 import { useLanguage } from '../../i18n/language-context';
 import { BottomNav, NavIcon } from '../ui/BottomNav';
 
-export type GameNavDestination = 'activity' | 'statistics' | 'tools' | 'pay';
+export type GameNavDestination = 'activity' | 'statistics' | 'property' | 'tools' | 'pay';
 
 export interface GameBottomNavProps {
   /** The destination whose sheet is open; it is highlighted and tapping it again closes it. */
   active?: GameNavDestination | null;
   onClose?: () => void;
   pendingRequests: number;
+  /** Show the Property item (board games only) with the viewer's card count as its badge. */
+  property?: { count: number; onOpen: () => void };
   payDisabled: boolean;
   activityDisabled: boolean;
   toolsDisabled: boolean;
@@ -18,7 +20,7 @@ export interface GameBottomNavProps {
 }
 
 /**
- * Compact-only navigation (`md:hidden`): Activity, Statistics, Tools and the raised Pay action.
+ * Compact-only navigation (`md:hidden`): Activity, Statistics, Property (board games only), Tools and the raised Pay action.
  * Every destination opens a sheet or screen above the page, so there is no Wallets item.
  * `game-bottom-nav` stays as the hook for the e2e checks.
  */
@@ -26,6 +28,7 @@ export function GameBottomNav({
   active = null,
   onClose,
   pendingRequests,
+  property,
   payDisabled,
   activityDisabled,
   toolsDisabled,
@@ -71,6 +74,26 @@ export function GameBottomNav({
           disabled: activityDisabled,
           onPress: press('statistics', onOpenStatistics),
         },
+        ...(property === undefined
+          ? []
+          : [
+              {
+                key: 'property',
+                label: t('navProperty'),
+                icon: (
+                  <NavIcon>
+                    <path d="M4 11l8-7 8 7M6 10v10h12V10M10 20v-5h4v5" />
+                  </NavIcon>
+                ),
+                active: active === 'property',
+                disabled: activityDisabled,
+                onPress: press('property', property.onOpen),
+                badge: {
+                  count: property.count,
+                  label: t('navPropertyCards', { count: property.count }),
+                },
+              },
+            ]),
         {
           key: 'tools',
           label: t('navTools'),

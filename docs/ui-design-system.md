@@ -596,7 +596,12 @@ bar is hidden and the layout above applies unchanged, so every action stays
 reachable at every size.
 
 - **Bottom navigation.** Four items in a fixed order: Activity, Statistics, Tools,
-  Pay (raised action at the thumb side). There is no Wallets item: the wallets
+  Pay (raised action at the thumb side). A game with a board (`settings.board`)
+  adds a fifth item, Property, between Statistics and Tools with a badge of the
+  viewer's card count; it opens `PropertyScreen` (Mine / All, read-only), which
+  the active wallet's "Property: N cards" button also opens. Without a board
+  the bar stays at four items. Keep the label short ("Майно") so five items fit
+  at 393px without clipping. There is no Wallets item: the wallets
   are the page behind the bar and every sheet closes with its own X or a swipe
   down. The bar sits above the home indicator (`--mb-app-safe-bottom`), each
   target is at least 44px, and the raised Pay button overlaps the bar by at most
