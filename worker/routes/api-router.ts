@@ -7,6 +7,7 @@ import type { ProfileStatisticsService } from '../services/profile-statistics-se
 import type { GameStatisticsRepository } from '../repositories/game-statistics-repository.js';
 import type { GameLiveGateway } from '../services/game-live-gateway.js';
 import type { DiceRollService } from '../services/dice-roll-service.js';
+import { TransactionNotFoundError } from '../../shared/domain/banking.js';
 import { controlledPlayerIdForBankingCommand } from '../../shared/domain/player-control.js';
 import {
   ConflictError,
@@ -474,11 +475,16 @@ async function route(
       const gameId = parseResourceId(transactionMatch[1], 'gameId');
       await dependencies.access.requireMember(gameId, actor.id);
       const body = await parseCreateTransactionRequest(request);
-      await dependencies.access.requirePlayerController(
-        gameId,
-        actor.id,
-        controlledPlayerIdForBankingCommand(body),
-      );
+      if (body.type === 'REVERSAL') {
+        const original = await dependencies.banking.getTransaction(gameId, body.transactionId);
+        if (original === null) throw new TransactionNotFoundError(body.transactionId);
+        await dependencies.access.requireReversalAuthority(gameId, actor.id, original);
+      } else
+        await dependencies.access.requirePlayerController(
+          gameId,
+          actor.id,
+          controlledPlayerIdForBankingCommand(body),
+        );
       if (dependencies.live !== undefined)
         return dependencies.live.mutate(gameId, actor, {
           type: 'CREATE_TRANSACTION',

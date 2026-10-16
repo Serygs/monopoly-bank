@@ -16,12 +16,14 @@ import { playPaymentFeedback, vibrate } from '../utils/feedback';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { isLiveServerEvent } from '../../shared/contracts/live';
+import { canReverseTransaction } from '../../shared/domain/reversal';
 import { acceptsLiveVersion } from '../utils/live-version';
 import { BankingDialog } from './game/BankingDialog';
 import { BankruptcyDialog } from './game/BankruptcyDialog';
 import { FinishGameDialog } from './game/FinishGameDialog';
 import { GameHeader, type LiveStatus } from './game/GameHeader';
 import { HistoryDialog } from './game/HistoryDialog';
+import { ReverseTransactionDialog } from './game/ReverseTransactionDialog';
 import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
 import { WalletsSection } from './game/WalletsSection';
@@ -56,6 +58,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [history, setHistory] = useState<Transaction[] | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [reversing, setReversing] = useState<Transaction | null>(null);
   const [historyPlayer, setHistoryPlayer] = useState<Player | null>(null);
   const [historyError, setHistoryError] = useState<unknown | null>(null);
   const historyCache = useRef(new Map<string, Transaction[]>());
@@ -256,6 +259,15 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const canMutate = details.game.status === 'ACTIVE' && !offline;
   const showNav = details.game.status !== 'LOBBY';
   const confirmationMode = details.game.paymentMode === 'CONFIRMATION';
+  /** The owner may reverse anything; a player only their own recent transactions (the Worker checks too). */
+  const canReverse = (transaction: Transaction): boolean =>
+    canMutate &&
+    canReverseTransaction({
+      transaction,
+      isOwner: details.canManage === true,
+      controlledPlayerIds: details.controlledPlayerIds ?? [],
+      now: Date.now(),
+    });
 
   return (
     <PageShell className={showNav ? navPaddingClass : undefined}>
@@ -474,6 +486,25 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             setHistoryError(null);
           }}
           onRetry={() => void loadHistory(historyPlayer)}
+          canReverse={canReverse}
+          onReverse={setReversing}
+        />
+      )}
+      {reversing !== null && (
+        <ReverseTransactionDialog
+          gameId={gameId}
+          transaction={reversing}
+          players={details.players}
+          currency={details.game.currency}
+          language={language}
+          onClose={() => setReversing(null)}
+          onReversed={(players) => {
+            historyCache.current.clear();
+            setDetails({ ...details, players });
+            setReversing(null);
+            void loadHistory(historyPlayer);
+            notify({ tone: 'success', message: t('reversalRecorded') });
+          }}
         />
       )}
     </PageShell>

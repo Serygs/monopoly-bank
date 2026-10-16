@@ -322,6 +322,100 @@ describe('API router', () => {
     expect(liveMutations).toBe(0);
   });
 
+  describe('reversing a transaction', () => {
+    const reversalId = '00000000-0000-4000-8000-0000000000aa';
+    const stored = {
+      id: reversalId,
+      gameId,
+      type: 'PLAYER_TO_BANK' as const,
+      amount: 100,
+      totalAmount: 100,
+      comment: null,
+      createdAt: '2026-01-01 10:00:00',
+      participants: [{ playerId: secondPlayerId, balanceDelta: -100 }],
+    };
+
+    function reversalRouter(options: {
+      stored: typeof stored | null;
+      authorize: () => Promise<void>;
+    }) {
+      const calls = { writes: 0, walletChecks: 0, authorities: [] as unknown[] };
+      const router = createApiRouter({
+        games: {} as GameService,
+        banking: {
+          getTransaction: async () => options.stored,
+          createTransaction: async () => {
+            calls.writes += 1;
+            return transactionResponse();
+          },
+        } as unknown as BankingService,
+        auth: {
+          current: async () => ({
+            id: '00000000-0000-4000-8000-000000000099',
+            nickname: 'Member',
+            avatar: '🧩',
+            gamesPlayed: 0,
+            gamesWon: 0,
+            winRate: 0,
+            createdAt: '',
+            updatedAt: '',
+          }),
+        } as never,
+        access: {
+          requireMember: async () => 'PLAYER',
+          requirePlayerController: async () => {
+            calls.walletChecks += 1;
+          },
+          requireReversalAuthority: async (...args: unknown[]) => {
+            calls.authorities.push(args[2]);
+            await options.authorize();
+          },
+        } as never,
+        profileStatistics: {} as never,
+      });
+      const reverse = () =>
+        router(
+          jsonRequest('POST', `/api/games/${gameId}/transactions`, {
+            type: 'REVERSAL',
+            transactionId: reversalId,
+          }),
+        );
+      return { reverse, calls };
+    }
+
+    it('authorizes from the stored transaction, not from a wallet named in the request', async () => {
+      const { reverse, calls } = reversalRouter({ stored, authorize: async () => undefined });
+      const response = await reverse();
+      expect(response.status).toBe(201);
+      expect(calls.authorities).toEqual([stored]);
+      expect(calls.walletChecks).toBe(0);
+      expect(calls.writes).toBe(1);
+    });
+
+    it('rejects a player without authority before any banking write', async () => {
+      const { reverse, calls } = reversalRouter({
+        stored,
+        authorize: async () => {
+          throw new ForbiddenError();
+        },
+      });
+      const response = await reverse();
+      expect(response.status).toBe(403);
+      expect(calls.writes).toBe(0);
+    });
+
+    it('reports an unknown transaction as not found before any banking write', async () => {
+      const { reverse, calls } = reversalRouter({ stored: null, authorize: async () => undefined });
+      const response = await reverse();
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: 'TRANSACTION_NOT_FOUND' },
+      });
+      expect(calls.writes).toBe(0);
+      expect(calls.authorities).toEqual([]);
+    });
+  });
+
   it('rejects retired PAY_RENT creation requests', async () => {
     const response = await createTestRouter()(
       jsonRequest('POST', `/api/games/${gameId}/transactions`, {

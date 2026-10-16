@@ -1,4 +1,10 @@
 import type { CreateInvitationResponse, PlayerController } from '../../shared/contracts/api.js';
+import {
+  isWithinReversalWindow,
+  REVERSAL_WINDOW_MS,
+  reversalInitiatorPlayerId,
+} from '../../shared/domain/reversal.js';
+import type { Transaction } from '../../shared/types/monopoly.js';
 import type {
   GameMemberRole,
   GameAccessRepository,
@@ -27,6 +33,28 @@ export class GameAccessService {
   async requirePlayerController(gameId: string, userId: string, playerId: string): Promise<void> {
     if (!(await this.access.isPlayerControlledBy(gameId, userId, playerId)))
       throw new ForbiddenError();
+  }
+
+  /**
+   * The game owner may reverse any transaction. Anyone else must control the wallet that made it,
+   * and only for a short time afterwards, so money already spent on is not clawed back later.
+   */
+  async requireReversalAuthority(
+    gameId: string,
+    userId: string,
+    transaction: Transaction,
+    now = Date.now(),
+  ): Promise<void> {
+    if ((await this.access.getRole(gameId, userId)) === 'OWNER') return;
+    const initiator = reversalInitiatorPlayerId(transaction);
+    if (initiator === null || !(await this.access.isPlayerControlledBy(gameId, userId, initiator)))
+      throw new ForbiddenError();
+    if (!isWithinReversalWindow(transaction.createdAt, now))
+      throw new ConflictError(
+        'REVERSAL_WINDOW_EXPIRED',
+        'Only the game owner can reverse this transaction now.',
+        { windowMs: REVERSAL_WINDOW_MS },
+      );
   }
 
   async controlledWallets(gameId: string, userId: string): Promise<PlayerController[]> {
