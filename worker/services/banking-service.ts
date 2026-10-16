@@ -1,4 +1,5 @@
 import type {
+  BankLoanTransactionRequest,
   BankruptcyRequest,
   CreateTransactionRequest,
   CreateBankingCommandResponse,
@@ -21,18 +22,28 @@ import {
   playerToBank,
   playerToPlayer,
   type BankingOperationResult,
+  BankLoanAlreadyActiveError,
   declareBankruptcy,
+  issueBankLoan,
   issueLoan,
   LoanNotFoundError,
   MortgageNotFoundError,
   mortgageProperty,
   redeemMortgage,
+  repayBankLoan,
   repayLoan,
   reverseTransaction,
   TransactionAlreadyReversedError,
   TransactionNotFoundError,
 } from '../../shared/domain/banking.js';
-import type { Game, Loan, Mortgage, Player, Transaction } from '../../shared/types/monopoly.js';
+import type {
+  BankLoanCooldown,
+  Game,
+  Loan,
+  Mortgage,
+  Player,
+  Transaction,
+} from '../../shared/types/monopoly.js';
 import type { BankingOperationRepository } from '../repositories/banking-operation-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { LoanRepository } from '../repositories/loan-repository.js';
@@ -45,7 +56,9 @@ import {
   DatabaseError,
   PersistenceConsistencyError,
   ResourceNotFoundError,
+  ValidationError,
 } from './errors.js';
+import { loadBankLoanView } from './bank-loan-view.js';
 import { assertRuleEnabled } from './rule-guard.js';
 import { propertyNameKey } from '../../shared/domain/mortgage.js';
 
@@ -54,7 +67,8 @@ export interface BankingService {
     gameId: string,
     request: CreateTransactionRequest,
   ): Promise<CreateBankingCommandResponse>;
-  listPaymentRequests(gameId: string, payerPlayerIds: readonly string[]): Promise<PaymentRequest[]>;
+  /** The PENDING requests the given wallets must answer (approver) or started (creator). */
+  listPaymentRequests(gameId: string, playerIds: readonly string[]): Promise<PaymentRequest[]>;
   acceptPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse>;
   declinePaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse>;
   cancelPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse>;
@@ -103,23 +117,29 @@ export class DefaultBankingService implements BankingService {
   ): Promise<CreateBankingCommandResponse> {
     const transactionId = this.createId();
     const existing = await this.transactions.getById(gameId, transactionId);
-    if (existing !== null)
+    if (existing !== null) {
+      const players = await this.players.listByGameId(gameId);
       return {
         transaction: existing,
-        players: await this.players.listByGameId(gameId),
+        players,
         ...(await this.mortgagesFor(gameId, existing.type)),
-        ...(await this.loansFor(gameId, existing.type)),
+        ...(await this.loansFor(await this.games.getById(gameId), players, existing.type)),
       };
+    }
     const game = await this.games.getById(gameId);
     if (game === null) {
       throw new ResourceNotFoundError('Game');
     }
     const players = await this.players.listByGameId(gameId);
-    if (request.type === 'LOAN_ISSUE' || request.type === 'LOAN_REPAYMENT')
+    // A player loan is always offered to the lender first, whatever the game payment mode.
+    if (request.type === 'LOAN_ISSUE' && request.lenderKind !== 'BANK') {
       assertRuleEnabled(game, 'playerLoans');
-    // A loan is always offered to the lender first, whatever the game payment mode.
-    if (request.type === 'LOAN_ISSUE')
       return this.createLoanRequest(game, request, players, transactionId);
+    }
+    if (request.type === 'LOAN_ISSUE') assertRuleEnabled(game, 'bankLoans');
+    // A repayment is gated by the kind of loan it pays, checked once the loan is read.
+    if (request.type === 'LOAN_REPAYMENT' && !game.rules.bankLoans)
+      assertRuleEnabled(game, 'playerLoans');
     if (
       game.paymentMode === 'CONFIRMATION' &&
       (request.type === 'PLAYER_TO_PLAYER' || request.type === 'ALL_TO_PLAYER')
@@ -131,13 +151,15 @@ export class DefaultBankingService implements BankingService {
     const result =
       request.type === 'REVERSAL'
         ? await this.reverse(game, players, request)
-        : request.type === 'MORTGAGE'
-          ? await this.mortgage(game, players, request)
-          : request.type === 'MORTGAGE_REDEMPTION'
-            ? await this.redeem(game, players, request)
-            : request.type === 'LOAN_REPAYMENT'
-              ? await this.repay(game, players, request)
-              : executeOperation(game, players, request);
+        : request.type === 'LOAN_ISSUE'
+          ? await this.issueFromBank(game, players, request as BankLoanTransactionRequest)
+          : request.type === 'MORTGAGE'
+            ? await this.mortgage(game, players, request)
+            : request.type === 'MORTGAGE_REDEMPTION'
+              ? await this.redeem(game, players, request)
+              : request.type === 'LOAN_REPAYMENT'
+                ? await this.repay(game, players, request)
+                : executeOperation(game, players, request);
     try {
       await this.operations.persist({
         transactionId,
@@ -155,6 +177,9 @@ export class DefaultBankingService implements BankingService {
       // Two commands for the same property race on the unique active name; say so plainly.
       if (request.type === 'MORTGAGE' && error instanceof DatabaseError)
         await this.assertNotMortgaged(gameId, request.playerId, result);
+      // Two bank loans for one player race on the unique active loan; the loser says so plainly.
+      if (request.type === 'LOAN_ISSUE' && error instanceof DatabaseError)
+        await this.assertNoActiveBankLoan(gameId, request.playerId);
       // Two reversals of one transaction race on its UNIQUE link; the loser reports it plainly.
       if (request.type === 'REVERSAL' && error instanceof DatabaseError) {
         const original = await this.transactions.getById(gameId, request.transactionId);
@@ -169,22 +194,61 @@ export class DefaultBankingService implements BankingService {
       throw new PersistenceConsistencyError();
     }
 
+    const updatedPlayers = await this.players.listByGameId(gameId);
     return {
       transaction,
-      players: await this.players.listByGameId(gameId),
+      players: updatedPlayers,
       ...(await this.mortgagesFor(gameId, transaction.type)),
-      ...(await this.loansFor(gameId, transaction.type)),
+      ...(await this.loansFor(game, updatedPlayers, transaction.type)),
     };
   }
 
-  /** The active loans, but only for the operations that change them. */
+  /**
+   * The active loans. With the bank-loans rule every operation can advance a round, so every
+   * response carries them (bank loans with their round) plus the cooldowns; without it, only the
+   * operations that change loans do.
+   */
   private async loansFor(
-    gameId: string,
+    game: Game | null,
+    players: readonly Player[],
     type: Transaction['type'],
-  ): Promise<{ loans: Loan[] } | Record<string, never>> {
-    return type === 'LOAN_ISSUE' || type === 'LOAN_REPAYMENT'
-      ? { loans: await this.loans.listActive(gameId) }
+  ): Promise<{ loans: Loan[]; bankLoanCooldowns?: BankLoanCooldown[] } | Record<string, never>> {
+    if (game?.rules.bankLoans === true)
+      return loadBankLoanView(
+        { loans: this.loans, transactions: this.transactions },
+        game.id,
+        players,
+      );
+    return game !== null && (type === 'LOAN_ISSUE' || type === 'LOAN_REPAYMENT')
+      ? { loans: await this.loans.listActive(game.id) }
       : {};
+  }
+
+  /** Borrows from the bank: paid out at once, no payment request. */
+  private async issueFromBank(
+    game: Game,
+    players: Player[],
+    request: BankLoanTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    const view = await loadBankLoanView(
+      { loans: this.loans, transactions: this.transactions },
+      game.id,
+      players,
+    );
+    return issueBankLoan({
+      game,
+      players,
+      playerId: request.playerId,
+      amount: request.amount,
+      activeBankLoan: bankLoanOf(view.loans, request.playerId),
+      cooldown: view.bankLoanCooldowns.find((item) => item.playerId === request.playerId) ?? null,
+      acknowledgeCooldown: request.acknowledgeCooldown === true,
+    });
+  }
+
+  private async assertNoActiveBankLoan(gameId: string, playerId: string): Promise<void> {
+    const active = bankLoanOf(await this.loans.listActive(gameId), playerId);
+    if (active !== null) throw new BankLoanAlreadyActiveError(playerId, active.id);
   }
 
   private async repay(
@@ -194,7 +258,35 @@ export class DefaultBankingService implements BankingService {
   ): Promise<BankingOperationResult> {
     const loan = await this.loans.getActive(game.id, request.loanId);
     if (loan === null) throw new LoanNotFoundError(request.loanId);
-    return repayLoan({ game, players, playerId: request.playerId, loan, amount: request.amount });
+    if (loan.lenderKind !== 'BANK') {
+      assertRuleEnabled(game, 'playerLoans');
+      if (request.interestRatePercent !== undefined)
+        throw new ValidationError('interestRatePercent applies to bank loans only.', {
+          field: 'interestRatePercent',
+        });
+      return repayLoan({ game, players, playerId: request.playerId, loan, amount: request.amount });
+    }
+    assertRuleEnabled(game, 'bankLoans');
+    if (request.interestRatePercent === undefined)
+      throw new ValidationError('interestRatePercent is required to repay a bank loan.', {
+        field: 'interestRatePercent',
+      });
+    const view = await loadBankLoanView(
+      { loans: this.loans, transactions: this.transactions },
+      game.id,
+      players,
+    );
+    const rounds = view.loans.find((item) => item.id === loan.id)?.rounds;
+    if (rounds === undefined) throw new PersistenceConsistencyError();
+    return repayBankLoan({
+      game,
+      players,
+      playerId: request.playerId,
+      loan,
+      amount: request.amount,
+      interestRatePercent: request.interestRatePercent,
+      suggestedRatePercent: rounds.suggestedRatePercent,
+    });
   }
 
   /**
@@ -336,11 +428,12 @@ export class DefaultBankingService implements BankingService {
           ? null
           : await this.transactions.getById(gameId, paymentRequest.transactionId);
       if (transaction === null) throw new PersistenceConsistencyError();
+      const players = await this.players.listByGameId(gameId);
       return {
         paymentRequest,
         transaction,
-        players: await this.players.listByGameId(gameId),
-        ...(paymentRequest.kind === 'LOAN' ? { loans: await this.loans.listActive(gameId) } : {}),
+        players,
+        ...(await this.loansFor(await this.games.getById(gameId), players, transaction.type)),
       };
     }
     if (paymentRequest.state !== 'PENDING')
@@ -379,11 +472,12 @@ export class DefaultBankingService implements BankingService {
     const transaction = await this.transactions.getById(gameId, transactionId);
     if (transaction === null) throw new PersistenceConsistencyError();
     const accepted = await this.requirePaymentRequest(gameId, requestId);
+    const updatedPlayers = await this.players.listByGameId(gameId);
     return {
       paymentRequest: accepted,
       transaction,
-      players: await this.players.listByGameId(gameId),
-      ...(isLoan ? { loans: await this.loans.listActive(gameId) } : {}),
+      players: updatedPlayers,
+      ...(await this.loansFor(game, updatedPlayers, transaction.type)),
     };
   }
 
@@ -426,16 +520,43 @@ export class DefaultBankingService implements BankingService {
     const game = await this.games.getById(gameId);
     if (game === null) throw new ResourceNotFoundError('Game');
     const players = await this.players.listByGameId(gameId);
-    const result = declareBankruptcy({ game, players, ...request });
+    // The bank is paid first from the wallet, at the rate the round tracking suggests right now.
+    const bankLoan = game.rules.bankLoans
+      ? bankLoanOf(
+          (
+            await loadBankLoanView(
+              { loans: this.loans, transactions: this.transactions },
+              gameId,
+              players,
+            )
+          ).loans,
+          request.playerId,
+        )
+      : null;
+    const result = declareBankruptcy({
+      game,
+      players,
+      ...request,
+      ...(bankLoan === null
+        ? {}
+        : {
+            bankLoan: {
+              loan: bankLoan,
+              suggestedRatePercent: bankLoan.rounds?.suggestedRatePercent ?? 0,
+            },
+          }),
+    });
     const transactionId = this.createId();
     const existing = await this.transactions.getById(gameId, transactionId);
-    if (existing !== null)
+    if (existing !== null) {
+      const current = await this.players.listByGameId(gameId);
       return {
         transaction: existing,
-        players: await this.players.listByGameId(gameId),
+        players: current,
         mortgages: await this.mortgages.listActive(gameId),
-        loans: await this.loans.listActive(gameId),
+        ...(await this.bankruptcyLoans(game, current)),
       };
+    }
     await this.operations.persist({
       transactionId,
       transaction: result.transaction,
@@ -447,12 +568,23 @@ export class DefaultBankingService implements BankingService {
     const transaction = await this.transactions.getById(gameId, transactionId);
     if (transaction === null) throw new PersistenceConsistencyError();
     // The bankrupt player's mortgages moved to the creditor or were released, so the list changed.
+    const updatedPlayers = await this.players.listByGameId(gameId);
     return {
       transaction,
-      players: await this.players.listByGameId(gameId),
+      players: updatedPlayers,
       mortgages: await this.mortgages.listActive(gameId),
-      loans: await this.loans.listActive(gameId),
+      ...(await this.bankruptcyLoans(game, updatedPlayers)),
     };
+  }
+
+  /** A bankruptcy always reports the loans, since the bankrupt player's were closed or handed over. */
+  private async bankruptcyLoans(
+    game: Game,
+    players: readonly Player[],
+  ): Promise<{ loans: Loan[]; bankLoanCooldowns?: BankLoanCooldown[] }> {
+    return game.rules.bankLoans
+      ? loadBankLoanView({ loans: this.loans, transactions: this.transactions }, game.id, players)
+      : { loans: await this.loans.listActive(game.id) };
   }
 
   private async createConfirmationRequests(
@@ -537,6 +669,13 @@ export class DefaultBankingService implements BankingService {
   }
 }
 
+/** The player's ACTIVE bank loan, if they have one. */
+function bankLoanOf(loans: readonly Loan[], playerId: string): Loan | null {
+  return (
+    loans.find((loan) => loan.lenderKind === 'BANK' && loan.borrowerPlayerId === playerId) ?? null
+  );
+}
+
 function commandScopedId(commandId: string, index: number): string {
   return `${commandId.slice(0, -1)}${index.toString(16)}`;
 }
@@ -550,6 +689,7 @@ function executeOperation(
     | RedeemMortgageTransactionRequest
     | LoanIssueTransactionRequest
     | LoanRepaymentTransactionRequest
+    | BankLoanTransactionRequest
   >,
 ): BankingOperationResult {
   switch (request.type) {

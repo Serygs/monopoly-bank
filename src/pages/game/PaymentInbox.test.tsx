@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { PaymentRequest } from '../../../shared/contracts/api';
 import type { Player } from '../../../shared/types/monopoly';
@@ -49,5 +50,27 @@ describe('PaymentInbox', () => {
     renderInbox('PAYMENT');
     expect(screen.getByText('Olena requests $300.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument();
+  });
+});
+
+describe('PaymentInbox outgoing loan requests', () => {
+  it('shows who the borrower is waiting for and cancels the request', async () => {
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const outgoing = { ...request('LOAN'), creatorPlayerId: 'p2', approverPlayerId: 'p1' };
+    render(
+      <LanguageProvider>
+        <PaymentInbox
+          requests={[]}
+          outgoing={[outgoing]}
+          players={players}
+          currency="USD"
+          onAction={onAction}
+        />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText('Waiting for Olena to lend $300.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Lend' })).toBeNull();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Cancel request' }));
+    expect(onAction).toHaveBeenCalledWith(outgoing, 'cancel');
   });
 });

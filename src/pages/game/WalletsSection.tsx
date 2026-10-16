@@ -1,8 +1,10 @@
 import type { PlayerController } from '../../../shared/contracts/api';
 import type { Currency, Loan, Player } from '../../../shared/types/monopoly';
-import { Button } from '../../components/ui';
+import { Button, Notice } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
+import { activeBankLoan, loanOutstanding } from '../../utils/loans';
+import { formatMoney } from '../../utils/money';
 import { controllerLabel } from './game-page-helpers';
 import { WalletCard } from './WalletCard';
 
@@ -18,6 +20,8 @@ export interface WalletsSectionProps {
   loans?: Loan[];
   onSelectWallet: (playerId: string) => void;
   onOpenWallet: (player: Player) => void;
+  /** Opens the repay flow for the player's overdue bank loan. */
+  onSettleLoan?: (player: Player) => void;
 }
 
 /*
@@ -56,8 +60,18 @@ export function WalletsSection({
   loans = [],
   onSelectWallet,
   onOpenWallet,
+  onSettleLoan,
 }: WalletsSectionProps) {
   const { t } = useLanguage();
+  const overdueLoan = activeWallet === null ? null : activeBankLoan(loans, activeWallet.id);
+  const settleLoan =
+    activeWallet !== null &&
+    overdueLoan?.rounds?.overdue === true &&
+    canMutate &&
+    activeWallet.status !== 'BANKRUPT' &&
+    onSettleLoan !== undefined
+      ? { player: activeWallet, loan: overdueLoan, onSettle: onSettleLoan }
+      : null;
   return (
     <section
       className="wallets-section mt-(--mb-space-7) max-md:mt-(--mb-space-4)"
@@ -112,6 +126,23 @@ export function WalletsSection({
               loans={loans}
               onOpen={() => onOpenWallet(activeWallet)}
             />
+            {settleLoan !== null && (
+              <Notice tone="error" className="mt-(--mb-space-3)">
+                <span className="block">
+                  {t('settleLoanPrompt', {
+                    amount: formatMoney(loanOutstanding(settleLoan.loan), currency),
+                    round: settleLoan.loan.rounds?.round ?? 4,
+                  })}
+                </span>
+                <Button
+                  variant="danger"
+                  className="mt-(--mb-space-2)"
+                  onClick={() => settleLoan.onSettle(settleLoan.player)}
+                >
+                  {t('settleLoan')}
+                </Button>
+              </Notice>
+            )}
           </section>
         )}
         <div className={cx(groupClass, '@container')}>

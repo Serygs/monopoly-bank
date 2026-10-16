@@ -278,3 +278,101 @@ describe('loan validation', () => {
     ).rejects.toBeInstanceOf(ApiValidationError);
   });
 });
+
+describe('bank loan validation', () => {
+  const playerId = '11111111-1111-4111-8111-111111111111';
+  const lenderPlayerId = '22222222-2222-4222-8222-222222222222';
+  const loanId = '44444444-4444-4444-8444-444444444444';
+
+  it('accepts a bank loan request, with or without the cooldown acknowledgement', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'LOAN_ISSUE', lenderKind: 'BANK', playerId, amount: 100 }),
+      ),
+    ).resolves.toEqual({ type: 'LOAN_ISSUE', lenderKind: 'BANK', playerId, amount: 100 });
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({
+          type: 'LOAN_ISSUE',
+          lenderKind: 'BANK',
+          playerId,
+          amount: 100,
+          acknowledgeCooldown: true,
+        }),
+      ),
+    ).resolves.toEqual({
+      type: 'LOAN_ISSUE',
+      lenderKind: 'BANK',
+      playerId,
+      amount: 100,
+      acknowledgeCooldown: true,
+    });
+  });
+
+  it('still reads a player loan with an explicit lenderKind PLAYER', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({
+          type: 'LOAN_ISSUE',
+          lenderKind: 'PLAYER',
+          borrowerPlayerId: playerId,
+          lenderPlayerId,
+          amount: 50,
+        }),
+      ),
+    ).resolves.toEqual({
+      type: 'LOAN_ISSUE',
+      borrowerPlayerId: playerId,
+      lenderPlayerId,
+      amount: 50,
+    });
+  });
+
+  it.each([
+    ['an unknown lender kind', { lenderKind: 'BOT', playerId, amount: 10 }],
+    ['a missing player', { lenderKind: 'BANK', amount: 10 }],
+    ['a malformed player', { lenderKind: 'BANK', playerId: 'x', amount: 10 }],
+    ['a zero amount', { lenderKind: 'BANK', playerId, amount: 0 }],
+    ['a fractional amount', { lenderKind: 'BANK', playerId, amount: 1.5 }],
+    ['an unsafe amount', { lenderKind: 'BANK', playerId, amount: 2 ** 60 }],
+    [
+      'a non-boolean acknowledgement',
+      { lenderKind: 'BANK', playerId, amount: 10, acknowledgeCooldown: 'yes' },
+    ],
+  ])('rejects a bank loan request with %s', async (_label, fields) => {
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'LOAN_ISSUE', ...fields })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+
+  it.each([0, 10, 20])('accepts a repayment at %i%% interest', async (interestRatePercent) => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'LOAN_REPAYMENT', playerId, loanId, amount: 50, interestRatePercent }),
+      ),
+    ).resolves.toEqual({
+      type: 'LOAN_REPAYMENT',
+      playerId,
+      loanId,
+      amount: 50,
+      interestRatePercent,
+    });
+  });
+
+  it.each([5, 15, -10, 100, '10', null, 10.5, true])(
+    'rejects the interest rate %j',
+    async (interestRatePercent) => {
+      await expect(
+        parseCreateTransactionRequest(
+          jsonRequest({
+            type: 'LOAN_REPAYMENT',
+            playerId,
+            loanId,
+            amount: 50,
+            interestRatePercent,
+          }),
+        ),
+      ).rejects.toBeInstanceOf(ApiValidationError);
+    },
+  );
+});

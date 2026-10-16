@@ -7,7 +7,13 @@ import {
 } from '../shared/contracts/live.js';
 import { TransactionNotFoundError } from '../shared/domain/banking.js';
 import { controlledPlayerIdForBankingCommand } from '../shared/domain/player-control.js';
-import type { Loan, Mortgage, Player, Transaction } from '../shared/types/monopoly.js';
+import type {
+  BankLoanCooldown,
+  Loan,
+  Mortgage,
+  Player,
+  Transaction,
+} from '../shared/types/monopoly.js';
 import { D1BankingOperationRepository } from './repositories/banking-operation-repository.js';
 import {
   D1CommandLedgerRepository,
@@ -308,6 +314,7 @@ export class GameSession {
       players?: Player[];
       mortgages?: Mortgage[];
       loans?: Loan[];
+      bankLoanCooldowns?: BankLoanCooldown[];
     };
     if (result.transaction !== undefined && result.players !== undefined)
       await this.broadcast({
@@ -317,6 +324,9 @@ export class GameSession {
         players: result.players,
         ...(result.mortgages === undefined ? {} : { mortgages: result.mortgages }),
         ...(result.loans === undefined ? {} : { loans: result.loans }),
+        ...(result.bankLoanCooldowns === undefined
+          ? {}
+          : { bankLoanCooldowns: result.bankLoanCooldowns }),
         ...(command.type === 'DECLARE_BANKRUPTCY'
           ? { bankruptPlayerId: command.request.playerId }
           : {}),
@@ -403,6 +413,7 @@ export class GameSession {
       players: new D1PlayerRepository(database),
       mortgages: new D1MortgageRepository(database),
       loans: new D1LoanRepository(database),
+      transactions: new D1TransactionRepository(database),
       createId: () => crypto.randomUUID(),
     });
   }

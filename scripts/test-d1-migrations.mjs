@@ -192,8 +192,9 @@ try {
   )
     throw new Error(`The transactions rebuilds lost or changed rows: ${rebuilt}`);
   // Migration 0023 adds payment_requests.kind and the loan tables on top of the existing rows.
+  const bankLoansMigration = '0024_bank_loans.sql';
   for (const migration of migrationFiles) {
-    if (migration >= loansMigration)
+    if (migration >= loansMigration && migration < bankLoansMigration)
       await cp(join('migrations', migration), join(legacyMigrations, migration));
   }
   await applyLegacy();
@@ -210,6 +211,29 @@ try {
     loansRow.repayments !== 0
   )
     throw new Error(`The loans migration lost or changed rows: ${loansStage}`);
+  // Migration 0024 adds the bank-loan columns and index on top of an existing player loan and repayment.
+  await legacySql(
+    "INSERT INTO transactions (id, game_id, type, amount, total_amount) VALUES ('loan-upgrade-1', 'game-upgrade-1', 'LOAN_ISSUE', 50, 50), ('loan-upgrade-2', 'game-upgrade-1', 'LOAN_REPAYMENT', 20, 20); INSERT INTO loans (id, game_id, lender_kind, lender_player_id, borrower_player_id, principal, repaid_amount) VALUES ('loan-upgrade-1', 'game-upgrade-1', 'PLAYER', 'player-upgrade-1', 'player-upgrade-2', 50, 20); INSERT INTO loan_repayments (transaction_id, game_id, loan_id, amount) VALUES ('loan-upgrade-2', 'game-upgrade-1', 'loan-upgrade-1', 20);",
+  );
+  await cp(join('migrations', bankLoansMigration), join(legacyMigrations, bankLoansMigration));
+  await applyLegacy();
+  const bankLoansStage = await legacySql(
+    "SELECT (SELECT cooldown_acknowledged FROM loans WHERE id = 'loan-upgrade-1') AS cooldown, (SELECT interest_amount FROM loan_repayments WHERE transaction_id = 'loan-upgrade-2') AS interest, (SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'loans_one_active_bank_loan') AS idx",
+  );
+  const bankLoansRow = JSON.parse(
+    bankLoansStage.slice(bankLoansStage.indexOf('['), bankLoansStage.lastIndexOf(']') + 1),
+  )[0]?.results?.[0];
+  if (bankLoansRow?.cooldown !== 0 || bankLoansRow.interest !== 0 || bankLoansRow.idx !== 1)
+    throw new Error(`The bank loans migration lost or changed rows: ${bankLoansStage}`);
+  await legacySql(
+    "INSERT INTO transactions (id, game_id, type, amount, total_amount) VALUES ('bank-loan-1', 'game-upgrade-1', 'LOAN_ISSUE', 30, 30), ('bank-loan-2', 'game-upgrade-1', 'LOAN_ISSUE', 30, 30); INSERT INTO loans (id, game_id, lender_kind, borrower_player_id, principal) VALUES ('bank-loan-1', 'game-upgrade-1', 'BANK', 'player-upgrade-1', 30);",
+  );
+  const secondActiveBankLoan = await legacySql(
+    "INSERT INTO loans (id, game_id, lender_kind, borrower_player_id, principal) VALUES ('bank-loan-2', 'game-upgrade-1', 'BANK', 'player-upgrade-1', 30)",
+    true,
+  );
+  if (!/UNIQUE constraint failed/i.test(secondActiveBankLoan))
+    throw new Error('loans accepts a second active bank loan for one player.');
   const upgradedFixture = await legacySql(
     "SELECT pc.player_id, pc.user_id FROM player_controllers pc JOIN users u ON u.id = pc.user_id WHERE pc.game_id = 'game-upgrade-1' AND pc.player_id = 'player-upgrade-1' AND pc.controller_kind = 'PRIMARY'",
   );
