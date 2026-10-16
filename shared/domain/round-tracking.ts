@@ -28,10 +28,12 @@ export function transactionActor(
     case 'PAY_RENT':
     case 'PLAYER_TO_BANK':
     case 'PLAYER_TO_ALL':
+    case 'TO_JACKPOT':
       return debited.length === 1 ? (debited[0]?.playerId ?? null) : null;
     case 'BANK_TO_PLAYER':
     case 'PASS_GO':
     case 'ALL_TO_PLAYER':
+    case 'JACKPOT_PAYOUT':
       return credited.length === 1 ? (credited[0]?.playerId ?? null) : null;
     default:
       // Loans, mortgages, reversals and bankruptcies say nothing about whose turn it is.

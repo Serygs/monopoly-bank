@@ -289,6 +289,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     <PageShell className={showNav ? navPaddingClass : undefined}>
       <GameHeader
         game={details.game}
+        jackpot={details.jackpot}
         canManage={details.canManage}
         liveStatus={liveStatus}
         offline={offline}
@@ -363,6 +364,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                         ...(result.bankLoanCooldowns === undefined
                           ? {}
                           : { bankLoanCooldowns: result.bankLoanCooldowns }),
+                        ...(result.jackpot === undefined ? {} : { jackpot: result.jackpot }),
                       },
                 );
               }
@@ -441,6 +443,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           mortgages={details.mortgages ?? []}
           loans={details.loans ?? []}
           bankLoanCooldowns={details.bankLoanCooldowns ?? []}
+          jackpot={details.jackpot ?? 0}
           settleOnOpen={settleLoanOnOpen}
           favoriteAmounts={details.favoriteAmounts ?? []}
           recentAmounts={details.recentAmounts ?? []}
@@ -462,7 +465,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             setSelectedPlayer(null);
             void loadHistory(player);
           }}
-          onCompleted={(players, action, amount, mortgages, loans, bankLoanCooldowns) => {
+          onCompleted={(players, action, amount, mortgages, loans, bankLoanCooldowns, jackpot) => {
             historyCache.current.clear();
             playPaymentFeedback(preferences.sound);
             vibrate(35, preferences.vibration);
@@ -472,6 +475,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               ...(mortgages === undefined ? {} : { mortgages }),
               ...(loans === undefined ? {} : { loans }),
               ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
+              ...(jackpot === undefined ? {} : { jackpot }),
               recentAmounts:
                 amount === null
                   ? details.recentAmounts
@@ -492,7 +496,9 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                       ? 'loanRepaid'
                       : action === 'BANK_LOAN'
                         ? 'bankLoanRecorded'
-                        : 'paymentSent',
+                        : action === 'JACKPOT_PAYOUT'
+                          ? 'jackpotCollected'
+                          : 'paymentSent',
               ),
             });
           }}
@@ -524,7 +530,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             )
           }
           onClose={() => setBankruptPlayer(null)}
-          onCompleted={(players, mortgages, loans, bankLoanCooldowns) => {
+          onCompleted={(players, mortgages, loans, bankLoanCooldowns, jackpot) => {
             historyCache.current.clear();
             setDetails({
               ...details,
@@ -532,6 +538,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               ...(mortgages === undefined ? {} : { mortgages }),
               ...(loans === undefined ? {} : { loans }),
               ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
+              ...(jackpot === undefined ? {} : { jackpot }),
             });
             setBankruptPlayer(null);
           }}

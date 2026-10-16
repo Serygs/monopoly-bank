@@ -13,6 +13,9 @@ const nonReversibleTypes: readonly TransactionType[] = [
   // A loan is kept in step with the loans table, so it is repaid, not reversed.
   'LOAN_ISSUE',
   'LOAN_REPAYMENT',
+  // The Free Parking pot is changed only by its own two operations, so a correction is a new one.
+  'TO_JACKPOT',
+  'JACKPOT_PAYOUT',
 ];
 
 export function isReversibleType(type: TransactionType): boolean {
@@ -45,6 +48,8 @@ export function reversalInitiatorPlayerId(
     case 'MORTGAGE_REDEMPTION':
     case 'LOAN_ISSUE':
     case 'LOAN_REPAYMENT':
+    case 'TO_JACKPOT':
+    case 'JACKPOT_PAYOUT':
       return null;
   }
 }

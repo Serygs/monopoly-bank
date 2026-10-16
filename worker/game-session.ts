@@ -315,6 +315,7 @@ export class GameSession {
       mortgages?: Mortgage[];
       loans?: Loan[];
       bankLoanCooldowns?: BankLoanCooldown[];
+      jackpot?: number;
     };
     if (result.transaction !== undefined && result.players !== undefined)
       await this.broadcast({
@@ -327,6 +328,7 @@ export class GameSession {
         ...(result.bankLoanCooldowns === undefined
           ? {}
           : { bankLoanCooldowns: result.bankLoanCooldowns }),
+        ...(result.jackpot === undefined ? {} : { jackpot: result.jackpot }),
         ...(command.type === 'DECLARE_BANKRUPTCY'
           ? { bankruptPlayerId: command.request.playerId }
           : {}),

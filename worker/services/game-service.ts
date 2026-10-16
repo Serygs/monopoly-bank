@@ -151,6 +151,7 @@ export class DefaultGameService implements GameService {
       mortgages: (await this.mortgages?.listActive(gameId)) ?? [],
       loans: bankLoans?.loans ?? (await this.loans?.listActive(gameId)) ?? [],
       ...(bankLoans === null ? {} : { bankLoanCooldowns: bankLoans.bankLoanCooldowns }),
+      ...(game.rules.freeParkingJackpot ? { jackpot: await this.games.getJackpot(gameId) } : {}),
       favoriteAmounts: await this.games.listFavoriteAmounts(gameId),
       recentAmounts: await this.games.listRecentAmounts(gameId),
     };

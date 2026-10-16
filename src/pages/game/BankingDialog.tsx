@@ -74,6 +74,8 @@ export interface BankingDialogProps {
   loans?: Loan[];
   /** Players who repaid a bank loan recently (bank-loans rule). */
   bankLoanCooldowns?: BankLoanCooldown[];
+  /** The Free Parking pot (jackpot rule); what a collection pays out in full. */
+  jackpot?: number;
   /** Open straight on repaying the player's bank loan (the overdue "Settle loan" prompt). */
   settleOnOpen?: boolean;
   favoriteAmounts: number[];
@@ -89,6 +91,7 @@ export interface BankingDialogProps {
     mortgages?: Mortgage[],
     loans?: Loan[],
     bankLoanCooldowns?: BankLoanCooldown[],
+    jackpot?: number,
   ) => void;
   /** A payment or loan request was created; a loan request names the lender being asked. */
   onPaymentRequested: (action: ActionType, lenderName?: string) => void;
@@ -140,6 +143,7 @@ export function BankingDialog({
   mortgages = [],
   loans = [],
   bankLoanCooldowns = [],
+  jackpot = 0,
   settleOnOpen = false,
   favoriteAmounts,
   recentAmounts,
@@ -163,6 +167,8 @@ export function BankingDialog({
   const [commentOpen, setCommentOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [exactLanding, setExactLanding] = useState(false);
+  // An income-tax or luxury-tax chip was used: with the jackpot rule the money goes to the pot.
+  const [payToPot, setPayToPot] = useState(false);
   const [propertyName, setPropertyName] = useState('');
   const [noBuildings, setNoBuildings] = useState(false);
   const [mortgageId, setMortgageId] = useState('');
@@ -177,6 +183,7 @@ export function BankingDialog({
   const commandIdRef = useRef<string | null>(null);
   const balancePresets = startingBalance === undefined ? [] : presetAmounts(startingBalance);
   const presets = balancePresets.length > 0 ? balancePresets : undefined;
+  const jackpotRule = rules.freeParkingJackpot;
   const targetRequired = action === 'PLAYER_TO_PLAYER' || action === 'LOAN_ISSUE';
   // A lender must still be playing; payments to anyone else are left to the Worker's checks.
   const recipients = players.filter(
@@ -185,7 +192,10 @@ export function BankingDialog({
   );
   // With one possible recipient there is nothing to choose, so it is selected for the player.
   const soleRecipient = targetRequired && recipients.length === 1 ? recipients[0] : undefined;
-  const amountValue = Number(amount);
+  // A collection always pays the whole pot, which the Worker reads again when it records it.
+  const amountValue = action === 'JACKPOT_PAYOUT' ? jackpot : Number(amount);
+  const requestAction: ActionType | null =
+    action === 'PLAYER_TO_BANK' && payToPot && rules.freeParkingJackpot ? 'TO_JACKPOT' : action;
   const playerLoans = rules.playerLoans ? activeLoansAsBorrower(loans, player.id) : [];
   const bankLoan = rules.bankLoans ? activeBankLoan(loans, player.id) : null;
   const repayableLoans = bankLoan === null ? playerLoans : [...playerLoans, bankLoan];
@@ -216,9 +226,9 @@ export function BankingDialog({
   // Paying rent to a player: tell the payer which properties of that player are mortgaged.
   const targetMortgages = mortgages.filter((item) => item.playerId === effectiveTargetId);
   const request =
-    action === null
+    requestAction === null
       ? null
-      : buildRequest(action, player.id, effectiveTargetId, amountValue, comment, {
+      : buildRequest(requestAction, player.id, effectiveTargetId, amountValue, comment, {
           exactLanding,
           propertyName: tidyName,
           mortgageId,
@@ -230,8 +240,8 @@ export function BankingDialog({
   const preview =
     request === null
       ? []
-      : previewBalances(request, players, reward, redemptionAmount, loans, interest);
-  const amountRequired = action !== 'PASS_GO';
+      : previewBalances(request, players, reward, redemptionAmount, loans, interest, jackpot);
+  const amountRequired = action !== 'PASS_GO' && action !== 'JACKPOT_PAYOUT';
   const isMortgageAction = action === 'MORTGAGE' || action === 'MORTGAGE_REDEMPTION';
   const isLoanAction =
     action === 'LOAN_ISSUE' || action === 'LOAN_REPAYMENT' || action === 'BANK_LOAN';
@@ -249,11 +259,13 @@ export function BankingDialog({
     (action !== 'MORTGAGE_REDEMPTION' || selectedMortgage !== null) &&
     (action !== 'LOAN_REPAYMENT' || (selectedLoan !== null && !overRepayment)) &&
     (action !== 'BANK_LOAN' || (bankLoan === null && !exceedsBankLoanMax)) &&
+    (action !== 'JACKPOT_PAYOUT' || (rules.freeParkingJackpot && jackpot > 0)) &&
     fundsError === null;
 
   const selectAction = (next: ActionType | null, exact = false) => {
     setAction(next);
     setExactLanding(exact);
+    setPayToPot(false);
     setPropertyName('');
     setNoBuildings(false);
     setMortgageId('');
@@ -266,14 +278,15 @@ export function BankingDialog({
     // The doubled reward says why in the history; the player can still edit the note.
     setComment(exact ? t('passGoExactComment') : '');
     setCommentOpen(false);
-    // Pass GO has no inputs, so it opens directly on the confirmation.
-    setConfirming(next === 'PASS_GO');
+    // Pass GO and collecting the pot have no inputs, so they open directly on the confirmation.
+    setConfirming(next === 'PASS_GO' || next === 'JACKPOT_PAYOUT');
     setError(null);
     commandIdRef.current = null;
   };
 
   const changeAmount = (nextAmount: string) => {
     setAmount(nextAmount);
+    setPayToPot(false);
     setError(null);
     commandIdRef.current = null;
   };
@@ -330,8 +343,10 @@ export function BankingDialog({
   };
 
   /** A tax or fine from the game's settings: fill the amount and its name, then review it. */
-  const reviewFixedPayment = (label: string, fixedAmount: number) => {
+  const reviewFixedPayment = (label: string, fixedAmount: number, toPot: boolean) => {
     changeAmount(String(fixedAmount));
+    // Set after changeAmount, which clears it: only the tax chips pay the pot.
+    setPayToPot(toPot);
     setComment(label);
     if (player.balance >= fixedAmount) setConfirming(true);
   };
@@ -361,10 +376,13 @@ export function BankingDialog({
         onCompleted(
           result.players,
           action,
-          action === 'PASS_GO' || isMortgageAction ? null : result.transaction.amount,
+          action === 'PASS_GO' || action === 'JACKPOT_PAYOUT' || isMortgageAction
+            ? null
+            : result.transaction.amount,
           result.mortgages,
           result.loans,
           result.bankLoanCooldowns,
+          result.jackpot,
         );
     } catch (caught) {
       if (caught instanceof MonopolyBankApiError && caught.code === 'BANK_LOAN_COOLDOWN') {
@@ -381,7 +399,10 @@ export function BankingDialog({
     }
   };
 
-  const title = action === null ? t('walletTitle', { name: player.name }) : actionLabel(action, t);
+  const title =
+    requestAction === null
+      ? t('walletTitle', { name: player.name })
+      : actionLabel(requestAction, t);
   const transactionError =
     error === null
       ? null
@@ -446,19 +467,37 @@ export function BankingDialog({
           <WalletActionGrid
             actions={primaryWalletActions}
             onSelect={selectAction}
-            extraActions={
-              rules.doubleRewardOnExactGo
+            extraActions={[
+              ...(rules.doubleRewardOnExactGo
                 ? [
                     {
                       key: 'PASS_GO_EXACT',
                       label: t('passGoExact'),
-                      tone: 'income',
+                      tone: 'income' as const,
                       onSelect: () => selectAction('PASS_GO', true),
                     },
                   ]
-                : []
-            }
+                : []),
+              ...(rules.freeParkingJackpot
+                ? [
+                    {
+                      key: 'JACKPOT_PAYOUT',
+                      label: actionLabel('JACKPOT_PAYOUT', t),
+                      tone: 'income' as const,
+                      disabled: jackpot <= 0,
+                      onSelect: () => selectAction('JACKPOT_PAYOUT'),
+                    },
+                  ]
+                : []),
+            ]}
           />
+          {rules.freeParkingJackpot && (
+            <FieldHint>
+              {jackpot > 0
+                ? t('jackpotPotHint', { amount: formatMoney(jackpot, currency) })
+                : t('jackpotEmptyHint')}
+            </FieldHint>
+          )}
           <details className={advancedClass}>
             <summary>{t('advancedActions')}</summary>
             <WalletActionGrid
@@ -501,7 +540,7 @@ export function BankingDialog({
             <p className="sr-only">{t('confirmationIntro')}</p>
             {errorNotice}
             <Confirmation
-              action={action}
+              action={requestAction ?? action}
               player={player}
               target={target}
               amount={amountValue}
@@ -519,7 +558,11 @@ export function BankingDialog({
             <Button
               variant="secondary"
               disabled={submitting}
-              onClick={() => (action === 'PASS_GO' ? selectAction(null) : setConfirming(false))}
+              onClick={() =>
+                action === 'PASS_GO' || action === 'JACKPOT_PAYOUT'
+                  ? selectAction(null)
+                  : setConfirming(false)
+              }
             >
               {t('back')}
             </Button>
@@ -610,6 +653,7 @@ export function BankingDialog({
               </FieldHint>
             )}
             {action === 'MORTGAGE' && <FieldHint>{t('mortgageValueHint')}</FieldHint>}
+            {requestAction === 'TO_JACKPOT' && <FieldHint>{t('payToPotHint')}</FieldHint>}
             {amountRequired &&
               action !== 'MORTGAGE_REDEMPTION' &&
               (action !== 'LOAN_REPAYMENT' || (selectedLoan !== null && !isBankRepayment)) && (
@@ -640,7 +684,9 @@ export function BankingDialog({
                     <Button
                       key={key}
                       variant="secondary"
-                      onClick={() => reviewFixedPayment(t(key), fixedAmount)}
+                      onClick={() =>
+                        reviewFixedPayment(t(key), fixedAmount, key !== 'jailFine' && jackpotRule)
+                      }
                     >
                       {t(key)} · <MoneyValue amount={fixedAmount} currency={currency} />
                     </Button>

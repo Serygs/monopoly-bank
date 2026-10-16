@@ -5,6 +5,7 @@ import type {
   CreateBankingCommandResponse,
   CreatePaymentRequestResponse,
   CreateTransactionResponse,
+  JackpotPayoutTransactionRequest,
   LoanIssueTransactionRequest,
   LoanRepaymentTransactionRequest,
   PaymentRequest,
@@ -26,6 +27,9 @@ import {
   declareBankruptcy,
   issueBankLoan,
   issueLoan,
+  jackpotPayout,
+  JackpotChangedError,
+  JackpotEmptyError,
   LoanNotFoundError,
   MortgageNotFoundError,
   mortgageProperty,
@@ -33,6 +37,7 @@ import {
   repayBankLoan,
   repayLoan,
   reverseTransaction,
+  toJackpot,
   TransactionAlreadyReversedError,
   TransactionNotFoundError,
 } from '../../shared/domain/banking.js';
@@ -124,6 +129,7 @@ export class DefaultBankingService implements BankingService {
         players,
         ...(await this.mortgagesFor(gameId, existing.type)),
         ...(await this.loansFor(await this.games.getById(gameId), players, existing.type)),
+        ...(await this.jackpotFor(await this.games.getById(gameId))),
       };
     }
     const game = await this.games.getById(gameId);
@@ -136,6 +142,8 @@ export class DefaultBankingService implements BankingService {
       assertRuleEnabled(game, 'playerLoans');
       return this.createLoanRequest(game, request, players, transactionId);
     }
+    if (request.type === 'TO_JACKPOT' || request.type === 'JACKPOT_PAYOUT')
+      assertRuleEnabled(game, 'freeParkingJackpot');
     if (request.type === 'LOAN_ISSUE') assertRuleEnabled(game, 'bankLoans');
     // A repayment is gated by the kind of loan it pays, checked once the loan is read.
     if (request.type === 'LOAN_REPAYMENT' && !game.rules.bankLoans)
@@ -159,7 +167,9 @@ export class DefaultBankingService implements BankingService {
               ? await this.redeem(game, players, request)
               : request.type === 'LOAN_REPAYMENT'
                 ? await this.repay(game, players, request)
-                : executeOperation(game, players, request);
+                : request.type === 'JACKPOT_PAYOUT'
+                  ? await this.collectJackpot(game, players, request)
+                  : executeOperation(game, players, request);
     try {
       await this.operations.persist({
         transactionId,
@@ -169,7 +179,8 @@ export class DefaultBankingService implements BankingService {
         request.type === 'REVERSAL' ||
         request.type === 'MORTGAGE' ||
         request.type === 'MORTGAGE_REDEMPTION' ||
-        request.type === 'LOAN_REPAYMENT'
+        request.type === 'LOAN_REPAYMENT' ||
+        request.type === 'JACKPOT_PAYOUT'
           ? {}
           : { recentAmount: result.transaction.amount }),
       });
@@ -180,6 +191,9 @@ export class DefaultBankingService implements BankingService {
       // Two bank loans for one player race on the unique active loan; the loser says so plainly.
       if (request.type === 'LOAN_ISSUE' && error instanceof DatabaseError)
         await this.assertNoActiveBankLoan(gameId, request.playerId);
+      // The pot changed (or was collected) between reading it and writing the payout.
+      if (request.type === 'JACKPOT_PAYOUT' && error instanceof DatabaseError)
+        await this.assertJackpotUnchanged(gameId, result);
       // Two reversals of one transaction race on its UNIQUE link; the loser reports it plainly.
       if (request.type === 'REVERSAL' && error instanceof DatabaseError) {
         const original = await this.transactions.getById(gameId, request.transactionId);
@@ -200,7 +214,48 @@ export class DefaultBankingService implements BankingService {
       players: updatedPlayers,
       ...(await this.mortgagesFor(gameId, transaction.type)),
       ...(await this.loansFor(game, updatedPlayers, transaction.type)),
+      ...(await this.jackpotFor(game)),
     };
+  }
+
+  /** The Free Parking pot, carried by every response of a game with the jackpot rule. */
+  private async jackpotFor(
+    game: Game | null,
+  ): Promise<{ jackpot: number } | Record<string, never>> {
+    return game?.rules.freeParkingJackpot === true
+      ? { jackpot: await this.games.getJackpot(game.id) }
+      : {};
+  }
+
+  /** Collects the whole pot; its amount is read here, never taken from the client. */
+  private async collectJackpot(
+    game: Game,
+    players: Player[],
+    request: JackpotPayoutTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    return jackpotPayout({
+      game,
+      players,
+      playerId: request.playerId,
+      jackpot: await this.games.getJackpot(game.id),
+      expectedAmount: request.expectedAmount,
+    });
+  }
+
+  /**
+   * A payout is guarded by the pot it read. When the write fails, say why: the pot was collected
+   * meanwhile (JACKPOT_EMPTY) or changed after it was read (JACKPOT_CHANGED, retry to see the new
+   * amount). Any other failure is rethrown unchanged.
+   */
+  private async assertJackpotUnchanged(
+    gameId: string,
+    result: BankingOperationResult,
+  ): Promise<void> {
+    const expected =
+      result.transaction.jackpot?.kind === 'COLLECT' ? result.transaction.jackpot.expected : 0;
+    const current = await this.games.getJackpot(gameId);
+    if (current === 0) throw new JackpotEmptyError();
+    if (current !== expected) throw new JackpotChangedError(current, expected);
   }
 
   /**
@@ -434,6 +489,7 @@ export class DefaultBankingService implements BankingService {
         transaction,
         players,
         ...(await this.loansFor(await this.games.getById(gameId), players, transaction.type)),
+        ...(await this.jackpotFor(await this.games.getById(gameId))),
       };
     }
     if (paymentRequest.state !== 'PENDING')
@@ -478,6 +534,7 @@ export class DefaultBankingService implements BankingService {
       transaction,
       players: updatedPlayers,
       ...(await this.loansFor(game, updatedPlayers, transaction.type)),
+      ...(await this.jackpotFor(game)),
     };
   }
 
@@ -555,6 +612,7 @@ export class DefaultBankingService implements BankingService {
         players: current,
         mortgages: await this.mortgages.listActive(gameId),
         ...(await this.bankruptcyLoans(game, current)),
+        ...(await this.jackpotFor(game)),
       };
     }
     await this.operations.persist({
@@ -574,6 +632,7 @@ export class DefaultBankingService implements BankingService {
       players: updatedPlayers,
       mortgages: await this.mortgages.listActive(gameId),
       ...(await this.bankruptcyLoans(game, updatedPlayers)),
+      ...(await this.jackpotFor(game)),
     };
   }
 
@@ -659,6 +718,7 @@ export class DefaultBankingService implements BankingService {
     return {
       paymentRequest: await this.requirePaymentRequest(gameId, requestId),
       players: await this.players.listByGameId(gameId),
+      ...(await this.jackpotFor(await this.games.getById(gameId))),
     };
   }
 
@@ -690,6 +750,7 @@ function executeOperation(
     | LoanIssueTransactionRequest
     | LoanRepaymentTransactionRequest
     | BankLoanTransactionRequest
+    | JackpotPayoutTransactionRequest
   >,
 ): BankingOperationResult {
   switch (request.type) {
@@ -705,5 +766,7 @@ function executeOperation(
       return allToPlayer({ ...request, game, players });
     case 'PASS_GO':
       return passGo({ ...request, game, players });
+    case 'TO_JACKPOT':
+      return toJackpot({ ...request, game, players });
   }
 }
