@@ -85,3 +85,33 @@ describe('reversal formatting', () => {
     expect(transactionAmount({ ...reversal([]), totalAmount: 120 }, 'USD')).toBe('$120');
   });
 });
+
+describe('mortgage formatting', () => {
+  const mortgage: Transaction = {
+    ...rent,
+    id: 'mortgage',
+    type: 'MORTGAGE',
+    amount: 400,
+    totalAmount: 400,
+    comment: 'Boardwalk',
+    participants: [{ playerId: 'john', balanceDelta: 400 }],
+  };
+
+  it('names the player and the kind of operation', () => {
+    expect(transactionDescription(mortgage, players)).toBe('John · Mortgage');
+    expect(
+      transactionDescription(
+        {
+          ...mortgage,
+          type: 'MORTGAGE_REDEMPTION',
+          participants: [{ playerId: 'john', balanceDelta: -440 }],
+        },
+        players,
+      ),
+    ).toBe('John · Mortgage redeemed');
+  });
+
+  it('shows a mortgage as money received', () => {
+    expect(transactionAmount(mortgage, 'USD')).toBe('+$400');
+  });
+});

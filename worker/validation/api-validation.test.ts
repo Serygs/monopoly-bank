@@ -193,3 +193,45 @@ describe('reversal validation', () => {
     ).rejects.toBeInstanceOf(ApiValidationError);
   });
 });
+
+describe('mortgage validation', () => {
+  const playerId = '11111111-1111-4111-8111-111111111111';
+  const mortgageId = '33333333-3333-4333-8333-333333333333';
+
+  it('accepts a mortgage and stores the tidied property name', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'MORTGAGE', playerId, propertyName: '  Park   Place ', amount: 350 }),
+      ),
+    ).resolves.toEqual({ type: 'MORTGAGE', playerId, propertyName: 'Park Place', amount: 350 });
+  });
+
+  it.each([
+    ['a missing name', { amount: 10 }],
+    ['an empty name', { propertyName: '   ', amount: 10 }],
+    ['a too long name', { propertyName: 'x'.repeat(61), amount: 10 }],
+    ['a name that is not text', { propertyName: 5, amount: 10 }],
+    ['a control character', { propertyName: 'Bad', amount: 10 }],
+    ['a missing amount', { propertyName: 'Boardwalk' }],
+    ['a zero amount', { propertyName: 'Boardwalk', amount: 0 }],
+    ['a fractional amount', { propertyName: 'Boardwalk', amount: 1.5 }],
+  ])('rejects a mortgage with %s', async (_label, fields) => {
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'MORTGAGE', playerId, ...fields })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+
+  it('accepts a redemption by mortgage id and rejects a malformed one', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'MORTGAGE_REDEMPTION', playerId, mortgageId }),
+      ),
+    ).resolves.toEqual({ type: 'MORTGAGE_REDEMPTION', playerId, mortgageId });
+    for (const bad of [undefined, 'nope'])
+      await expect(
+        parseCreateTransactionRequest(
+          jsonRequest({ type: 'MORTGAGE_REDEMPTION', playerId, mortgageId: bad }),
+        ),
+      ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+});

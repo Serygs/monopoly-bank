@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Player } from '../../../shared/types/monopoly';
+import type { Mortgage, Player } from '../../../shared/types/monopoly';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
 import { Button, DialogActions, DialogBody, Notice } from '../../components/ui';
@@ -12,7 +12,8 @@ export interface BankruptcyDialogProps {
   player: Player;
   players: Player[];
   onClose: () => void;
-  onCompleted: (players: Player[]) => void;
+  /** The balances after the bankruptcy, and the mortgages once they moved to the creditor. */
+  onCompleted: (players: Player[], mortgages?: Mortgage[]) => void;
 }
 
 export function BankruptcyDialog({
@@ -34,7 +35,7 @@ export function BankruptcyDialog({
         playerId: player.id,
         ...(creditorId === null ? {} : { creditorPlayerId: creditorId }),
       });
-      onCompleted(result.players);
+      onCompleted(result.players, result.mortgages);
     } catch (caught) {
       setError(apiErrorMessage(caught, t, 'unableRecordTransaction'));
     }
