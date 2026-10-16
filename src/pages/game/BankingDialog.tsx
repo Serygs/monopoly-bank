@@ -16,7 +16,7 @@ import { normalizePropertyName, redemptionCost } from '../../../shared/domain/mo
 import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { AmountSelector } from '../../components/AmountSelector';
 import { Dialog } from '../../components/Dialog';
-import { WalletActionGrid } from '../../components/game/WalletActionGrid';
+import { WalletMenu } from '../../components/game/WalletMenu';
 import {
   Button,
   DialogActions,
@@ -43,15 +43,14 @@ import {
   actionDescription,
   actionLabel,
   advancedWalletActions,
-  bankLoanWalletActions,
   buildRequest,
   insufficientMessage,
   isPositiveInteger,
-  loanWalletActions,
   preflightFundsError,
   preflightShortfall,
   previewBalances,
   primaryWalletActions,
+  walletActionTone,
   type ActionType,
 } from './game-page-helpers';
 import { InterestRatePicker, LoanPicker } from './LoanFields';
@@ -110,16 +109,13 @@ const balanceClass = cx(
   '[&_strong]:font-money [&_strong]:text-money-xl [&_strong]:leading-[0.98] [&_strong]:font-bold [&_strong]:tracking-[-0.05em] [&_strong]:text-on-inverse [&_strong]:tabular-nums [&_strong]:wrap-anywhere',
 );
 
-const advancedClass = cx(
-  'mt-[16px] border-t border-border [&_.action-grid]:mt-[4px]',
-  '[&>summary]:cursor-pointer [&>summary]:px-0 [&>summary]:pt-[16px] [&>summary]:pb-[10px] [&>summary]:font-bold [&>summary]:text-accent open:[&>summary]:text-primary',
-);
-
 /** Centred, capped-width danger action on its own row (in the single column below `md`). */
 /* What the payer is missing, with the way out when no amount change will help. */
 const shortfallClass =
   'mt-(--mb-space-2) flex flex-wrap items-center justify-between gap-(--mb-space-3) [&>p]:m-0 [&>p]:font-semibold [&>p]:text-danger';
-const bankruptcyClass = 'col-span-full w-[min(100%,270px)] justify-self-center max-md:col-auto';
+const bankruptcyClass = 'w-full';
+const dangerZoneClass =
+  'mt-(--mb-space-2) rounded-control border border-danger-border bg-danger-soft/40 p-(--mb-space-3)';
 
 /*
  * The form and confirmation steps: a flex column whose body alone scrolls, so the footer sits
@@ -167,6 +163,7 @@ export function BankingDialog({
   const [action, setAction] = useState<ActionType | null>(
     initialBankLoan === null ? null : 'LOAN_REPAYMENT',
   );
+  const [exactGoChosen, setExactGoChosen] = useState(false);
   const [targetId, setTargetId] = useState('');
   const [amount, setAmount] = useState(
     initialBankLoan === null ? '' : String(loanOutstanding(initialBankLoan)),
@@ -484,73 +481,131 @@ export function BankingDialog({
               </Button>
             </Notice>
           )}
-          <WalletActionGrid
-            actions={primaryWalletActions}
-            onSelect={selectAction}
-            extraActions={[
-              ...(rules.doubleRewardOnExactGo
-                ? [
-                    {
-                      key: 'PASS_GO_EXACT',
-                      label: t('passGoExact'),
-                      tone: 'income' as const,
-                      onSelect: () => selectAction('PASS_GO', true),
-                    },
-                  ]
-                : []),
-              ...(canAuction
-                ? [
-                    {
-                      key: 'AUCTION',
-                      label: t('auctionPutUp'),
-                      tone: 'expense' as const,
-                      disabled: auctionBusy,
-                      onSelect: () => onStartAuction(''),
-                    },
-                  ]
-                : []),
-              ...(rules.freeParkingJackpot
-                ? [
-                    {
-                      key: 'JACKPOT_PAYOUT',
-                      label: actionLabel('JACKPOT_PAYOUT', t),
-                      tone: 'income' as const,
-                      disabled: jackpot <= 0,
-                      onSelect: () => selectAction('JACKPOT_PAYOUT'),
-                    },
-                  ]
-                : []),
+          <WalletMenu
+            primary={primaryWalletActions.map((item) => ({
+              key: item,
+              label: actionLabel(item, t),
+              outgoing: walletActionTone(item) === 'expense',
+              onSelect: () => selectAction(item, item === 'PASS_GO' && exactGoChosen),
+            }))}
+            exactGo={
+              rules.doubleRewardOnExactGo
+                ? { label: t('passGoExact'), checked: exactGoChosen, onChange: setExactGoChosen }
+                : undefined
+            }
+            groups={[
+              {
+                key: 'property',
+                label: t('walletGroupProperty'),
+                icon: '🏠',
+                items: [
+                  {
+                    key: 'MORTGAGE',
+                    label: actionLabel('MORTGAGE', t),
+                    onSelect: () => selectAction('MORTGAGE'),
+                  },
+                  ...(playerMortgages.length > 0
+                    ? [
+                        {
+                          key: 'MORTGAGE_REDEMPTION',
+                          label: actionLabel('MORTGAGE_REDEMPTION', t),
+                          outgoing: true,
+                          onSelect: () => selectAction('MORTGAGE_REDEMPTION'),
+                        },
+                      ]
+                    : []),
+                  ...(canAuction
+                    ? [
+                        {
+                          key: 'AUCTION',
+                          label: t('auctionPutUp'),
+                          disabled: auctionBusy,
+                          onSelect: () => onStartAuction(''),
+                        },
+                      ]
+                    : []),
+                ],
+              },
+              {
+                key: 'loans',
+                label: t('walletGroupLoans'),
+                icon: '🤝',
+                items: [
+                  ...(rules.playerLoans
+                    ? [
+                        {
+                          key: 'LOAN_ISSUE',
+                          label: actionLabel('LOAN_ISSUE', t),
+                          onSelect: () => selectAction('LOAN_ISSUE'),
+                        },
+                      ]
+                    : []),
+                  ...(rules.bankLoans
+                    ? [
+                        {
+                          key: 'BANK_LOAN',
+                          label: actionLabel('BANK_LOAN', t),
+                          onSelect: () => selectAction('BANK_LOAN'),
+                        },
+                      ]
+                    : []),
+                  ...(repayableLoans.length > 0
+                    ? [
+                        {
+                          key: 'LOAN_REPAYMENT',
+                          label: actionLabel('LOAN_REPAYMENT', t),
+                          outgoing: true,
+                          onSelect: () => selectAction('LOAN_REPAYMENT'),
+                        },
+                      ]
+                    : []),
+                ],
+              },
+              {
+                key: 'group',
+                label: t('walletGroupGroup'),
+                icon: '👥',
+                items: advancedWalletActions
+                  .filter((item) => item === 'PLAYER_TO_ALL' || item === 'ALL_TO_PLAYER')
+                  .map((item) => ({
+                    key: item,
+                    label: actionLabel(item, t),
+                    outgoing: walletActionTone(item) === 'expense',
+                    onSelect: () => selectAction(item),
+                  })),
+              },
+              {
+                key: 'fund',
+                label: t('walletGroupFund'),
+                icon: '🅿️',
+                items:
+                  rules.freeParkingJackpot && jackpot > 0
+                    ? [
+                        {
+                          key: 'JACKPOT_PAYOUT',
+                          label: actionLabel('JACKPOT_PAYOUT', t),
+                          onSelect: () => selectAction('JACKPOT_PAYOUT'),
+                        },
+                      ]
+                    : [],
+              },
             ]}
-          />
-          {canAuction && auctionBusy && <FieldHint>{t('auctionActionBusy')}</FieldHint>}
-          {rules.freeParkingJackpot && (
-            <FieldHint>
-              {jackpot > 0
-                ? t('jackpotPotHint', { amount: formatMoney(jackpot, currency) })
-                : t('jackpotEmptyHint')}
-            </FieldHint>
-          )}
-          <details className={advancedClass}>
-            <summary>{t('advancedActions')}</summary>
-            <WalletActionGrid
-              actions={[
-                ...advancedWalletActions.filter(
-                  (item) => item !== 'MORTGAGE_REDEMPTION' || playerMortgages.length > 0,
-                ),
-                ...(rules.playerLoans ? loanWalletActions.slice(0, 1) : []),
-                ...(rules.bankLoans ? bankLoanWalletActions : []),
-                ...(repayableLoans.length > 0 ? ['LOAN_REPAYMENT' as const] : []),
-              ]}
-              onSelect={selectAction}
-            >
+          >
+            {canAuction && auctionBusy && <FieldHint>{t('auctionActionBusy')}</FieldHint>}
+            {rules.freeParkingJackpot && jackpot > 0 && (
+              <FieldHint>
+                {t('jackpotPotHint', { amount: formatMoney(jackpot, currency) })}
+              </FieldHint>
+            )}
+            <section className={dangerZoneClass} aria-label={t('walletDangerZone')}>
               <Button variant="danger" className={bankruptcyClass} onClick={onBankrupt}>
                 {t('declareBankrupt')}
               </Button>
-            </WalletActionGrid>
-            <Button variant="quiet" className="mt-[14px]" onClick={() => onViewHistory(player)}>
+            </section>
+            <Button variant="quiet" onClick={() => onViewHistory(player)}>
               {t('viewPlayerHistory', { name: player.name })}
             </Button>
-          </details>
+          </WalletMenu>
         </>
       ) : cooldownRounds !== null ? (
         <>

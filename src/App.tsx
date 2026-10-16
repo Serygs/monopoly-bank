@@ -466,6 +466,7 @@ function AppRoutes() {
       ) : (
         <SavedGamesPage
           onCreateGame={() => navigate('/games/new')}
+          onOpenProfile={() => navigate('/profile')}
           onJoinGame={(code) =>
             navigate(`/games/join${code === undefined ? '' : `?code=${encodeURIComponent(code)}`}`)
           }
