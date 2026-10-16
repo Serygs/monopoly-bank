@@ -1,6 +1,7 @@
 import type {
   Game,
   GameRules,
+  Mortgage,
   PaymentMode,
   Player,
   SelectableCurrency,
@@ -45,6 +46,8 @@ export interface DeletedGameSummary extends GameSummary {
 export interface GameDetails {
   game: Game;
   players: Player[];
+  /** Properties currently mortgaged to the bank. */
+  mortgages?: Mortgage[];
   favoriteAmounts?: number[];
   recentAmounts?: number[];
   /** Wallets the current actor can operate. All other wallets are read-only. */
@@ -214,6 +217,22 @@ export interface PassGoTransactionRequest extends TransactionRequestBase {
   exactLanding?: boolean;
 }
 
+/** A player mortgages a property to the bank for the value printed on its card. */
+export interface MortgageTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
+  type: 'MORTGAGE';
+  playerId: string;
+  propertyName: string;
+  /** The mortgage value; the bank pays this amount. */
+  amount: number;
+}
+
+/** Redeems one active mortgage; the cost is the mortgage value plus 10%, worked out server-side. */
+export interface RedeemMortgageTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
+  type: 'MORTGAGE_REDEMPTION';
+  playerId: string;
+  mortgageId: string;
+}
+
 /** Corrects a mistaken transaction with a new REVERSAL record; the original is never edited. */
 export interface ReversalTransactionRequest extends TransactionRequestBase {
   type: 'REVERSAL';
@@ -297,6 +316,8 @@ export type CreateTransactionRequest =
   | PlayerToAllTransactionRequest
   | AllToPlayerTransactionRequest
   | PassGoTransactionRequest
+  | MortgageTransactionRequest
+  | RedeemMortgageTransactionRequest
   | ReversalTransactionRequest;
 
 /** Every request that names its own wallet; a reversal is authorized from the stored record instead. */
@@ -308,6 +329,8 @@ export type PlayerTransactionRequest = Exclude<
 export interface CreateTransactionResponse {
   transaction: Transaction;
   players: Player[];
+  /** The active mortgages after a mortgage, a redemption or a bankruptcy; absent for every other operation. */
+  mortgages?: Mortgage[];
 }
 
 export const paymentRequestStates = [

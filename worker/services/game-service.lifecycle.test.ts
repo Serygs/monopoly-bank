@@ -119,4 +119,35 @@ describe('DefaultGameService lifecycle', () => {
       expect.anything(),
     );
   });
+
+  it('reports the active mortgages with the game, and none when mortgages are not wired', async () => {
+    const mortgages = [
+      {
+        id: 'm1',
+        gameId: 'game',
+        playerId: 'player-1',
+        propertyName: 'Boardwalk',
+        mortgageValue: 400,
+        createdAt: '',
+      },
+    ];
+    const dependencies = {
+      games: {
+        getById: async () => game,
+        listFavoriteAmounts: async () => [],
+        listRecentAmounts: async () => [],
+      } as never,
+      players: { listByGameId: async () => players } as never,
+      createId: () => 'unused',
+    };
+
+    const wired = new DefaultGameService({
+      ...dependencies,
+      mortgages: { listActive: async () => mortgages, getActive: async () => null },
+    });
+    await expect(wired.getGame('game')).resolves.toMatchObject({ mortgages });
+    await expect(new DefaultGameService(dependencies).getGame('game')).resolves.toMatchObject({
+      mortgages: [],
+    });
+  });
 });

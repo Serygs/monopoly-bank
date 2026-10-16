@@ -4,13 +4,23 @@ import {
   type Currency,
   type GameRules,
   type GameSettings,
+  type Mortgage,
   type Player,
 } from '../../../shared/types/monopoly';
+import { normalizePropertyName, redemptionCost } from '../../../shared/domain/mortgage';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { AmountSelector } from '../../components/AmountSelector';
 import { Dialog } from '../../components/Dialog';
 import { WalletActionGrid } from '../../components/game/WalletActionGrid';
-import { Button, DialogActions, Field, FieldError, MoneyValue, Notice } from '../../components/ui';
+import {
+  Button,
+  DialogActions,
+  Field,
+  FieldError,
+  FieldHint,
+  MoneyValue,
+  Notice,
+} from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
@@ -30,6 +40,7 @@ import {
   primaryWalletActions,
   type ActionType,
 } from './game-page-helpers';
+import { MortgageDetails, RedemptionPicker } from './MortgageFields';
 import { PlayerPicker } from './PlayerPicker';
 
 export interface BankingDialogProps {
@@ -44,13 +55,20 @@ export interface BankingDialogProps {
   rules?: GameRules;
   /** Amounts derived at creation (taxes, jail fine); older games have none, so no fixed payments. */
   settings?: GameSettings | null;
+  /** Every property currently mortgaged in the game. */
+  mortgages?: Mortgage[];
   favoriteAmounts: number[];
   recentAmounts: number[];
   onToggleFavorite: (amount: number) => void;
   onClose: () => void;
   onBankrupt: () => void;
   onViewHistory: (player: Player) => void;
-  onCompleted: (players: Player[], action: ActionType, amount: number | null) => void;
+  onCompleted: (
+    players: Player[],
+    action: ActionType,
+    amount: number | null,
+    mortgages?: Mortgage[],
+  ) => void;
   onPaymentRequested: () => void;
 }
 
@@ -97,6 +115,7 @@ export function BankingDialog({
   startingBalance,
   rules = defaultGameRules,
   settings = null,
+  mortgages = [],
   favoriteAmounts,
   recentAmounts,
   onToggleFavorite,
@@ -114,6 +133,9 @@ export function BankingDialog({
   const [commentOpen, setCommentOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [exactLanding, setExactLanding] = useState(false);
+  const [propertyName, setPropertyName] = useState('');
+  const [noBuildings, setNoBuildings] = useState(false);
+  const [mortgageId, setMortgageId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown | null>(null);
   const submittingRef = useRef(false);
@@ -127,24 +149,43 @@ export function BankingDialog({
   const effectiveTargetId = targetId !== '' ? targetId : (soleRecipient?.id ?? '');
   const target = players.find((candidate) => candidate.id === effectiveTargetId) ?? null;
   const amountValue = Number(amount);
+  // The name is sent and shown as the server will store it: trimmed, spaces collapsed.
+  const tidyName = normalizePropertyName(propertyName) ?? propertyName.trim();
+  const playerMortgages = mortgages.filter((item) => item.playerId === player.id);
+  const selectedMortgage = playerMortgages.find((item) => item.id === mortgageId) ?? null;
+  const redemptionAmount =
+    selectedMortgage === null ? 0 : redemptionCost(selectedMortgage.mortgageValue);
+  // Paying rent to a player: tell the payer which properties of that player are mortgaged.
+  const targetMortgages = mortgages.filter((item) => item.playerId === effectiveTargetId);
   const request =
     action === null
       ? null
-      : buildRequest(action, player.id, effectiveTargetId, amountValue, comment, exactLanding);
+      : buildRequest(action, player.id, effectiveTargetId, amountValue, comment, {
+          exactLanding,
+          propertyName: tidyName,
+          mortgageId,
+        });
   const reward = exactLanding ? passGoReward * 2 : passGoReward;
-  const preview = request === null ? [] : previewBalances(request, players, reward);
+  const preview =
+    request === null ? [] : previewBalances(request, players, reward, redemptionAmount);
   const amountRequired = action !== 'PASS_GO';
+  const isMortgageAction = action === 'MORTGAGE' || action === 'MORTGAGE_REDEMPTION';
   const fundsError = preflightFundsError(action, player, players, amountValue, currency, t);
   const shortfall = preflightShortfall(action, player, players, amountValue);
   const valid =
     request !== null &&
     (!targetRequired || (target !== null && target.id !== player.id)) &&
     (!amountRequired || isPositiveInteger(amount)) &&
+    (action !== 'MORTGAGE' || (normalizePropertyName(propertyName) !== null && noBuildings)) &&
+    (action !== 'MORTGAGE_REDEMPTION' || selectedMortgage !== null) &&
     fundsError === null;
 
   const selectAction = (next: ActionType | null, exact = false) => {
     setAction(next);
     setExactLanding(exact);
+    setPropertyName('');
+    setNoBuildings(false);
+    setMortgageId('');
     setTargetId('');
     setAmount('');
     // The doubled reward says why in the history; the player can still edit the note.
@@ -172,6 +213,12 @@ export function BankingDialog({
     setComment(nextComment);
     setError(null);
     commandIdRef.current = null;
+  };
+
+  /** Picking a mortgage fixes the cost, so the amount follows it. */
+  const chooseMortgage = (mortgage: Mortgage) => {
+    setMortgageId(mortgage.id);
+    changeAmount(String(redemptionCost(mortgage.mortgageValue)));
   };
 
   /** A tax or fine from the game's settings: fill the amount and its name, then review it. */
@@ -206,7 +253,8 @@ export function BankingDialog({
         onCompleted(
           result.players,
           action,
-          action === 'PASS_GO' ? null : result.transaction.amount,
+          action === 'PASS_GO' || isMortgageAction ? null : result.transaction.amount,
+          result.mortgages,
         );
     } catch (caught) {
       setError(caught);
@@ -279,7 +327,12 @@ export function BankingDialog({
           />
           <details className={advancedClass}>
             <summary>{t('advancedActions')}</summary>
-            <WalletActionGrid actions={advancedWalletActions} onSelect={selectAction}>
+            <WalletActionGrid
+              actions={advancedWalletActions.filter(
+                (item) => item !== 'MORTGAGE_REDEMPTION' || playerMortgages.length > 0,
+              )}
+              onSelect={selectAction}
+            >
               <Button variant="danger" className={bankruptcyClass} onClick={onBankrupt}>
                 {t('declareBankrupt')}
               </Button>
@@ -303,6 +356,7 @@ export function BankingDialog({
               currency={currency}
               preview={preview}
               comment={comment}
+              propertyName={action === 'MORTGAGE' ? tidyName : selectedMortgage?.propertyName}
             />
             {action === 'PASS_GO' && <div className="mt-(--mb-space-3)">{commentField}</div>}
           </StepBody>
@@ -338,7 +392,36 @@ export function BankingDialog({
                 onChange={changeTarget}
               />
             )}
-            {amountRequired && (
+            {action === 'PLAYER_TO_PLAYER' && targetMortgages.length > 0 && (
+              <Notice tone="info">
+                {t('mortgagedRentHint', {
+                  name: target?.name ?? '',
+                  properties: targetMortgages.map((item) => item.propertyName).join(', '),
+                })}
+              </Notice>
+            )}
+            {action === 'MORTGAGE' && (
+              <MortgageDetails
+                propertyName={propertyName}
+                onPropertyNameChange={(name) => {
+                  setPropertyName(name);
+                  setError(null);
+                  commandIdRef.current = null;
+                }}
+                noBuildings={noBuildings}
+                onNoBuildingsChange={setNoBuildings}
+              />
+            )}
+            {action === 'MORTGAGE_REDEMPTION' && (
+              <RedemptionPicker
+                mortgages={playerMortgages}
+                currency={currency}
+                value={mortgageId}
+                onChange={chooseMortgage}
+              />
+            )}
+            {action === 'MORTGAGE' && <FieldHint>{t('mortgageValueHint')}</FieldHint>}
+            {amountRequired && action !== 'MORTGAGE_REDEMPTION' && (
               <AmountSelector
                 value={amount}
                 onChange={changeAmount}
@@ -387,7 +470,7 @@ export function BankingDialog({
                 </Button>
               </div>
             )}
-            <div className="mt-(--mb-space-2)">{commentField}</div>
+            {!isMortgageAction && <div className="mt-(--mb-space-2)">{commentField}</div>}
           </StepBody>
           <DialogActions className={stepFooterClass}>
             <Button variant="secondary" onClick={() => selectAction(null)}>

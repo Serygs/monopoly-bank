@@ -81,6 +81,8 @@ describe('reversal window', () => {
     expect(isReversibleType('PASS_GO')).toBe(true);
     expect(isReversibleType('REVERSAL')).toBe(false);
     expect(isReversibleType('BANKRUPTCY_TRANSFER')).toBe(false);
+    expect(isReversibleType('MORTGAGE')).toBe(false);
+    expect(isReversibleType('MORTGAGE_REDEMPTION')).toBe(false);
   });
 });
 

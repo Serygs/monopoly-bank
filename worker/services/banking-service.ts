@@ -5,7 +5,9 @@ import type {
   CreatePaymentRequestResponse,
   CreateTransactionResponse,
   PaymentRequest,
+  MortgageTransactionRequest,
   PlayerTransactionRequest,
+  RedeemMortgageTransactionRequest,
   ReversalTransactionRequest,
   PaymentRequestActionResponse,
 } from '../../shared/contracts/api.js';
@@ -18,13 +20,17 @@ import {
   playerToPlayer,
   type BankingOperationResult,
   declareBankruptcy,
+  MortgageNotFoundError,
+  mortgageProperty,
+  redeemMortgage,
   reverseTransaction,
   TransactionAlreadyReversedError,
   TransactionNotFoundError,
 } from '../../shared/domain/banking.js';
-import type { Game, Player, Transaction } from '../../shared/types/monopoly.js';
+import type { Game, Mortgage, Player, Transaction } from '../../shared/types/monopoly.js';
 import type { BankingOperationRepository } from '../repositories/banking-operation-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
+import type { MortgageRepository } from '../repositories/mortgage-repository.js';
 import type { PlayerRepository } from '../repositories/player-repository.js';
 import type { TransactionRepository } from '../repositories/transaction-repository.js';
 import type { PaymentRequestRepository } from '../repositories/payment-request-repository.js';
@@ -35,6 +41,7 @@ import {
   ResourceNotFoundError,
 } from './errors.js';
 import { assertRuleEnabled } from './rule-guard.js';
+import { propertyNameKey } from '../../shared/domain/mortgage.js';
 
 export interface BankingService {
   createTransaction(
@@ -58,6 +65,7 @@ export interface BankingServiceDependencies {
   transactions: TransactionRepository;
   operations: BankingOperationRepository;
   paymentRequests: PaymentRequestRepository;
+  mortgages: MortgageRepository;
   createId: () => string;
 }
 
@@ -67,6 +75,7 @@ export class DefaultBankingService implements BankingService {
   private readonly transactions: TransactionRepository;
   private readonly operations: BankingOperationRepository;
   private readonly paymentRequests: PaymentRequestRepository;
+  private readonly mortgages: MortgageRepository;
   private readonly createId: () => string;
 
   constructor(dependencies: BankingServiceDependencies) {
@@ -75,6 +84,7 @@ export class DefaultBankingService implements BankingService {
     this.transactions = dependencies.transactions;
     this.operations = dependencies.operations;
     this.paymentRequests = dependencies.paymentRequests;
+    this.mortgages = dependencies.mortgages;
     this.createId = dependencies.createId;
   }
 
@@ -85,7 +95,11 @@ export class DefaultBankingService implements BankingService {
     const transactionId = this.createId();
     const existing = await this.transactions.getById(gameId, transactionId);
     if (existing !== null)
-      return { transaction: existing, players: await this.players.listByGameId(gameId) };
+      return {
+        transaction: existing,
+        players: await this.players.listByGameId(gameId),
+        ...(await this.mortgagesFor(gameId, existing.type)),
+      };
     const game = await this.games.getById(gameId);
     if (game === null) {
       throw new ResourceNotFoundError('Game');
@@ -102,17 +116,27 @@ export class DefaultBankingService implements BankingService {
     const result =
       request.type === 'REVERSAL'
         ? await this.reverse(game, players, request)
-        : executeOperation(game, players, request);
+        : request.type === 'MORTGAGE'
+          ? await this.mortgage(game, players, request)
+          : request.type === 'MORTGAGE_REDEMPTION'
+            ? await this.redeem(game, players, request)
+            : executeOperation(game, players, request);
     try {
       await this.operations.persist({
         transactionId,
         transaction: result.transaction,
         balanceChanges: result.affectedPlayers,
-        ...(request.type === 'PASS_GO' || request.type === 'REVERSAL'
+        ...(request.type === 'PASS_GO' ||
+        request.type === 'REVERSAL' ||
+        request.type === 'MORTGAGE' ||
+        request.type === 'MORTGAGE_REDEMPTION'
           ? {}
           : { recentAmount: result.transaction.amount }),
       });
     } catch (error) {
+      // Two commands for the same property race on the unique active name; say so plainly.
+      if (request.type === 'MORTGAGE' && error instanceof DatabaseError)
+        await this.assertNotMortgaged(gameId, request.playerId, result);
       // Two reversals of one transaction race on its UNIQUE link; the loser reports it plainly.
       if (request.type === 'REVERSAL' && error instanceof DatabaseError) {
         const original = await this.transactions.getById(gameId, request.transactionId);
@@ -130,7 +154,61 @@ export class DefaultBankingService implements BankingService {
     return {
       transaction,
       players: await this.players.listByGameId(gameId),
+      ...(await this.mortgagesFor(gameId, transaction.type)),
     };
+  }
+
+  /** The active mortgages, but only for the operations that change them. */
+  private async mortgagesFor(
+    gameId: string,
+    type: Transaction['type'],
+  ): Promise<{ mortgages: Mortgage[] } | Record<string, never>> {
+    return type === 'MORTGAGE' || type === 'MORTGAGE_REDEMPTION'
+      ? { mortgages: await this.mortgages.listActive(gameId) }
+      : {};
+  }
+
+  private async mortgage(
+    game: Game,
+    players: Player[],
+    request: MortgageTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    const result = mortgageProperty({
+      game,
+      players,
+      playerId: request.playerId,
+      propertyName: request.propertyName,
+      amount: request.amount,
+    });
+    await this.assertNotMortgaged(game.id, request.playerId, result);
+    return result;
+  }
+
+  private async assertNotMortgaged(
+    gameId: string,
+    playerId: string,
+    result: BankingOperationResult,
+  ): Promise<void> {
+    const name = propertyNameKey(result.transaction.newMortgage?.propertyName ?? '');
+    const active = await this.mortgages.listActive(gameId);
+    if (
+      active.some(
+        (item) => item.playerId === playerId && propertyNameKey(item.propertyName) === name,
+      )
+    )
+      throw new ConflictError('MORTGAGE_ALREADY_ACTIVE', 'This property is already mortgaged.', {
+        propertyName: result.transaction.newMortgage?.propertyName,
+      });
+  }
+
+  private async redeem(
+    game: Game,
+    players: Player[],
+    request: RedeemMortgageTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    const mortgage = await this.mortgages.getActive(game.id, request.mortgageId);
+    if (mortgage === null) throw new MortgageNotFoundError(request.mortgageId);
+    return redeemMortgage({ game, players, playerId: request.playerId, mortgage });
   }
 
   private async reverse(
@@ -249,16 +327,26 @@ export class DefaultBankingService implements BankingService {
     const transactionId = this.createId();
     const existing = await this.transactions.getById(gameId, transactionId);
     if (existing !== null)
-      return { transaction: existing, players: await this.players.listByGameId(gameId) };
+      return {
+        transaction: existing,
+        players: await this.players.listByGameId(gameId),
+        mortgages: await this.mortgages.listActive(gameId),
+      };
     await this.operations.persist({
       transactionId,
       transaction: result.transaction,
       balanceChanges: result.affectedPlayers,
       bankruptPlayerId: request.playerId,
+      mortgageHeirPlayerId: request.creditorPlayerId ?? null,
     });
     const transaction = await this.transactions.getById(gameId, transactionId);
     if (transaction === null) throw new PersistenceConsistencyError();
-    return { transaction, players: await this.players.listByGameId(gameId) };
+    // The bankrupt player's mortgages moved to the creditor or were released, so the list changed.
+    return {
+      transaction,
+      players: await this.players.listByGameId(gameId),
+      mortgages: await this.mortgages.listActive(gameId),
+    };
   }
 
   private async createConfirmationRequests(
@@ -349,7 +437,10 @@ function commandScopedId(commandId: string, index: number): string {
 function executeOperation(
   game: Parameters<typeof playerToPlayer>[0]['game'],
   players: Parameters<typeof playerToPlayer>[0]['players'],
-  request: PlayerTransactionRequest,
+  request: Exclude<
+    PlayerTransactionRequest,
+    MortgageTransactionRequest | RedeemMortgageTransactionRequest
+  >,
 ): BankingOperationResult {
   switch (request.type) {
     case 'PLAYER_TO_PLAYER':

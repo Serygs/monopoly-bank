@@ -9,6 +9,7 @@ import type {
 import { buildGameSettings } from '../../shared/domain/game-rules.js';
 import { defaultGameRules, type Currency } from '../../shared/types/monopoly.js';
 import type { GameRepository } from '../repositories/game-repository.js';
+import type { MortgageRepository } from '../repositories/mortgage-repository.js';
 import type { CreatePlayerInput, PlayerRepository } from '../repositories/player-repository.js';
 import { ConflictError, ResourceNotFoundError } from './errors.js';
 import { hashPassword, randomToken } from './password-security.js';
@@ -37,17 +38,21 @@ export interface GameService {
 export interface GameServiceDependencies {
   games: GameRepository;
   players: PlayerRepository;
+  /** Lists the properties mortgaged in a game; without it a game reports none. */
+  mortgages?: MortgageRepository;
   createId: () => string;
 }
 
 export class DefaultGameService implements GameService {
   private readonly games: GameRepository;
   private readonly players: PlayerRepository;
+  private readonly mortgages: MortgageRepository | undefined;
   private readonly createId: () => string;
 
   constructor(dependencies: GameServiceDependencies) {
     this.games = dependencies.games;
     this.players = dependencies.players;
+    this.mortgages = dependencies.mortgages;
     this.createId = dependencies.createId;
   }
 
@@ -122,6 +127,7 @@ export class DefaultGameService implements GameService {
     return {
       game,
       players: await this.players.listByGameId(gameId),
+      mortgages: (await this.mortgages?.listActive(gameId)) ?? [],
       favoriteAmounts: await this.games.listFavoriteAmounts(gameId),
       recentAmounts: await this.games.listRecentAmounts(gameId),
     };

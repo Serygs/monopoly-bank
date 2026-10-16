@@ -166,24 +166,30 @@ try {
     "INSERT INTO players (id, game_id, name, color, balance) VALUES ('player-upgrade-2', 'game-upgrade-1', 'Second player', '#654321', 1500); INSERT INTO transactions (id, game_id, type, amount, total_amount) VALUES ('transaction-upgrade-1', 'game-upgrade-1', 'PLAYER_TO_PLAYER', 10, 10); INSERT INTO transaction_participants (transaction_id, game_id, player_id, balance_delta) VALUES ('transaction-upgrade-1', 'game-upgrade-1', 'player-upgrade-1', -10), ('transaction-upgrade-1', 'game-upgrade-1', 'player-upgrade-2', 10); INSERT INTO payment_requests (id, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, state, expires_at, transaction_id) VALUES ('request-upgrade-1', 'game-upgrade-1', 'player-upgrade-1', 'player-upgrade-2', 'player-upgrade-2', 'player-upgrade-1', 10, 'ACCEPTED', '2099-01-01T00:00:00.000Z', 'transaction-upgrade-1');",
   );
   await cp(join('migrations', rebuildMigration), join(legacyMigrations, rebuildMigration));
+  await applyLegacy();
+  // Migration 0022 rebuilds `transactions` again, this time over a reversal that links to another row.
+  await legacySql(
+    "INSERT INTO transactions (id, game_id, type, amount, total_amount, reverses_transaction_id) VALUES ('reversal-upgrade-1', 'game-upgrade-1', 'REVERSAL', 10, 10, 'transaction-upgrade-1'); INSERT INTO transaction_participants (transaction_id, game_id, player_id, balance_delta) VALUES ('reversal-upgrade-1', 'game-upgrade-1', 'player-upgrade-1', 10), ('reversal-upgrade-1', 'game-upgrade-1', 'player-upgrade-2', -10);",
+  );
   for (const migration of migrationFiles) {
     if (migration > rebuildMigration)
       await cp(join('migrations', migration), join(legacyMigrations, migration));
   }
   await applyLegacy();
   const rebuilt = await legacySql(
-    "SELECT (SELECT COUNT(*) FROM transactions) AS transactions, (SELECT COUNT(*) FROM transaction_participants) AS participants, (SELECT transaction_id FROM payment_requests WHERE id = 'request-upgrade-1') AS linked, (SELECT reverses_transaction_id FROM transactions WHERE id = 'transaction-upgrade-1') AS reverses",
+    "SELECT (SELECT COUNT(*) FROM transactions) AS transactions, (SELECT COUNT(*) FROM transaction_participants) AS participants, (SELECT transaction_id FROM payment_requests WHERE id = 'request-upgrade-1') AS linked, (SELECT reverses_transaction_id FROM transactions WHERE id = 'reversal-upgrade-1') AS reverses, (SELECT COUNT(*) FROM mortgages) AS mortgages",
   );
   const rebuiltRow = JSON.parse(
     rebuilt.slice(rebuilt.indexOf('['), rebuilt.lastIndexOf(']') + 1),
   )[0]?.results?.[0];
   if (
-    rebuiltRow?.transactions !== 1 ||
-    rebuiltRow.participants !== 2 ||
+    rebuiltRow?.transactions !== 2 ||
+    rebuiltRow.participants !== 4 ||
     rebuiltRow.linked !== 'transaction-upgrade-1' ||
-    rebuiltRow.reverses !== null
+    rebuiltRow.reverses !== 'transaction-upgrade-1' ||
+    rebuiltRow.mortgages !== 0
   )
-    throw new Error(`The transactions rebuild lost or changed rows: ${rebuilt}`);
+    throw new Error(`The transactions rebuilds lost or changed rows: ${rebuilt}`);
   const upgradedFixture = await legacySql(
     "SELECT pc.player_id, pc.user_id FROM player_controllers pc JOIN users u ON u.id = pc.user_id WHERE pc.game_id = 'game-upgrade-1' AND pc.player_id = 'player-upgrade-1' AND pc.controller_kind = 'PRIMARY'",
   );

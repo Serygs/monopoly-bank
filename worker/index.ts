@@ -3,6 +3,7 @@ import { D1BankingOperationRepository } from './repositories/banking-operation-r
 import { D1GameRepository } from './repositories/game-repository.js';
 import { D1PlayerRepository } from './repositories/player-repository.js';
 import { D1TransactionRepository } from './repositories/transaction-repository.js';
+import { D1MortgageRepository } from './repositories/mortgage-repository.js';
 import { D1PaymentRequestRepository } from './repositories/payment-request-repository.js';
 import { DefaultBankingService } from './services/banking-service.js';
 import { DefaultGameService } from './services/game-service.js';
@@ -43,7 +44,12 @@ export default {
     const createId = () => crypto.randomUUID();
     const access = new GameAccessService(new D1GameAccessRepository(env.MONOPOLY_BANK_DB));
     const router = createApiRouter({
-      games: new DefaultGameService({ games, players, createId }),
+      games: new DefaultGameService({
+        games,
+        players,
+        mortgages: new D1MortgageRepository(env.MONOPOLY_BANK_DB),
+        createId,
+      }),
       auth: new AuthService(
         new D1UserRepository(env.MONOPOLY_BANK_DB),
         new D1SessionRepository(env.MONOPOLY_BANK_DB),
@@ -73,6 +79,7 @@ export default {
         transactions,
         operations: new D1BankingOperationRepository(env.MONOPOLY_BANK_DB),
         paymentRequests: new D1PaymentRequestRepository(env.MONOPOLY_BANK_DB),
+        mortgages: new D1MortgageRepository(env.MONOPOLY_BANK_DB),
         createId,
       }),
       live: new DurableObjectGameLiveGateway(env.GAME_SESSIONS),
