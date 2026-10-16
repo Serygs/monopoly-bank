@@ -67,6 +67,73 @@ export function isWithinReversalWindow(createdAt: string, now: number): boolean 
 }
 
 /**
+ * Later operations that build on money a transaction moved: a mortgage, a loan, an auction
+ * payment, a Free Parking step or a bankruptcy by one of the same players. Undoing the earlier
+ * transaction beneath them would leave those records without their cause, so it is refused.
+ */
+const dependentTypes: readonly TransactionType[] = [
+  'MORTGAGE',
+  'MORTGAGE_REDEMPTION',
+  'LOAN_ISSUE',
+  'LOAN_REPAYMENT',
+  'AUCTION_PAYMENT',
+  'TO_JACKPOT',
+  'JACKPOT_PAYOUT',
+  'BANKRUPTCY_TRANSFER',
+];
+
+/**
+ * The first later transaction that depends on `original`, or null. `later` is every transaction
+ * written after it; one that was itself reversed no longer counts.
+ */
+export function findReversalDependency(
+  original: Pick<Transaction, 'id' | 'participants'>,
+  later: readonly Transaction[],
+): Transaction | null {
+  const playerIds = new Set(original.participants.map((participant) => participant.playerId));
+  return (
+    later.find(
+      (candidate) =>
+        candidate.id !== original.id &&
+        dependentTypes.includes(candidate.type) &&
+        candidate.reversedByTransactionId == null &&
+        candidate.participants.some((participant) => playerIds.has(participant.playerId)),
+    ) ?? null
+  );
+}
+
+/** Why a viewer who made a transaction cannot reverse it now. */
+export type ReversalBlockReason = 'WINDOW_EXPIRED' | 'LATER_OPERATION';
+
+/**
+ * What to show for a stored transaction: `allowed`, `hidden` (the viewer did not make it, or it
+ * is final), or `blocked` with the reason. `later` is whatever newer transactions the caller
+ * knows; the Worker checks them all again.
+ */
+export function reversalAvailability(input: {
+  transaction: Transaction;
+  isOwner: boolean;
+  controlledPlayerIds: readonly string[];
+  now: number;
+  later?: readonly Transaction[];
+}):
+  | { status: 'allowed' }
+  | { status: 'hidden' }
+  | { status: 'blocked'; reason: ReversalBlockReason; dependency: Transaction | null } {
+  const { transaction } = input;
+  if (!isReversibleType(transaction.type) || transaction.reversedByTransactionId != null)
+    return { status: 'hidden' };
+  const initiator = reversalInitiatorPlayerId(transaction);
+  const isActor = initiator !== null && input.controlledPlayerIds.includes(initiator);
+  if (!input.isOwner && !isActor) return { status: 'hidden' };
+  if (!input.isOwner && !isWithinReversalWindow(transaction.createdAt, input.now))
+    return { status: 'blocked', reason: 'WINDOW_EXPIRED', dependency: null };
+  const dependency = findReversalDependency(transaction, input.later ?? []);
+  if (dependency !== null) return { status: 'blocked', reason: 'LATER_OPERATION', dependency };
+  return { status: 'allowed' };
+}
+
+/**
  * Whether a viewer should be offered "Reverse" for a stored transaction. The Worker repeats the
  * authority check on the server; this only decides what the interface shows.
  */
@@ -75,15 +142,7 @@ export function canReverseTransaction(input: {
   isOwner: boolean;
   controlledPlayerIds: readonly string[];
   now: number;
+  later?: readonly Transaction[];
 }): boolean {
-  const { transaction } = input;
-  if (!isReversibleType(transaction.type) || transaction.reversedByTransactionId != null)
-    return false;
-  if (input.isOwner) return true;
-  const initiator = reversalInitiatorPlayerId(transaction);
-  return (
-    initiator !== null &&
-    input.controlledPlayerIds.includes(initiator) &&
-    isWithinReversalWindow(transaction.createdAt, input.now)
-  );
+  return reversalAvailability(input).status === 'allowed';
 }

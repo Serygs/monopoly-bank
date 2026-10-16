@@ -20,8 +20,10 @@ export interface TransactionRowProps {
   playerId?: string;
   /** Exposed as `data-tone` for styling; omitted when not given. */
   tone?: TransactionTone;
-  /** Offers a "Reverse" action on a history row; omitted when the viewer cannot reverse it. */
+  /** Offers a "Reverse" action; omitted when the viewer cannot reverse it. */
   onReverse?: () => void;
+  /** Ledger rows: why the viewer's own operation cannot be reversed right now. */
+  reversalNote?: string;
 }
 
 /** One ledger/history list item for a committed transaction. */
@@ -35,6 +37,7 @@ export function TransactionRow({
   playerId,
   tone,
   onReverse,
+  reversalNote,
 }: TransactionRowProps) {
   const reversed = transaction.reversedByTransactionId != null;
   const title = transactionDescription(transaction, players, language);
@@ -78,6 +81,14 @@ export function TransactionRow({
       <span>{amount}</span>
       {reversedBadge}
       {comment}
+      {onReverse !== undefined && (
+        <Button variant="quiet" className="col-span-full justify-self-start" onClick={onReverse}>
+          {translate(language, 'reverseTransaction')}
+        </Button>
+      )}
+      {reversalNote !== undefined && (
+        <small className="col-span-full text-[0.84rem] text-secondary">{reversalNote}</small>
+      )}
     </li>
   );
 }
