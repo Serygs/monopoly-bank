@@ -1,7 +1,7 @@
 import { Radio, RadioGroup } from '@headlessui/react';
 import {
   Fragment,
-  useEffect,
+  useCallback,
   useId,
   useRef,
   useState,
@@ -17,9 +17,11 @@ import { useAmountInput } from '../components/amount-input-state';
 import { PageHeader } from '../components/PageHeader';
 import {
   Button,
+  AnchoredPopover,
   Field,
   FieldError,
   FieldHint,
+  FormSection,
   Notice,
   PageShell,
   Toggle,
@@ -28,6 +30,7 @@ import {
 import { cx } from '../components/ui/class-names';
 import { keepEnterInRadio } from '../components/ui/radio-keys';
 import type { Translate, TranslationKey } from '../i18n/translations';
+import { buildRulesValues, ruleSummaries } from '../content/game-rules';
 import { formatMoney } from '../utils/money';
 import { getGameNameSuggestions, randomSuggestionStart } from '../utils/game-name-suggestions';
 import {
@@ -134,24 +137,18 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<unknown | null>(null);
   const suggestions = getGameNameSuggestions(language, suggestionStart);
-
-  useEffect(() => {
-    if (!suggestionsOpen) return;
-    const closeFromOutside = (event: PointerEvent) => {
-      if (!suggestionsRootRef.current?.contains(event.target as Node)) setSuggestionsOpen(false);
-    };
-    const closeFromEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setSuggestionsOpen(false);
-      gameNameInputRef.current?.focus();
-    };
-    document.addEventListener('pointerdown', closeFromOutside);
-    document.addEventListener('keydown', closeFromEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeFromOutside);
-      document.removeEventListener('keydown', closeFromEscape);
-    };
-  }, [suggestionsOpen]);
+  const closeSuggestions = useCallback(() => {
+    setSuggestionsOpen(false);
+    gameNameInputRef.current?.focus();
+  }, []);
+  const summaries = ruleSummaries(
+    language,
+    buildRulesValues(
+      Number(startingBalance) > 0 ? Number(startingBalance) : defaultStartingBalance,
+      Number(passGoReward) > 0 ? Number(passGoReward) : defaultPassGoReward,
+      currency,
+    ),
+  );
 
   const toggleSuggestions = () => {
     setSuggestionsOpen((open) => {
@@ -210,8 +207,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
         }
       />
       <form className={formClass} onSubmit={(event) => void submit(event)} noValidate>
-        <fieldset>
-          <legend>{t('gameBasics')}</legend>
+        <FormSection legend={t('gameBasics')}>
           <FieldStack>
             <div className="game-name-field grid gap-[7px] font-medium text-primary">
               <label htmlFor={gameNameInputId}>{t('gameName')}</label>
@@ -238,11 +234,12 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                   <span className="max-[24rem]:sr-only">{t('suggestGameName')}</span>
                 </Button>
                 {suggestionsOpen && (
-                  <div
-                    className="game-name-suggestions absolute z-20 inset-[calc(100%_+_var(--mb-space-2))_0_auto_auto] w-[min(22rem,100%)] rounded-card border border-border bg-surface-elevated p-(--mb-space-2) text-primary shadow-lg"
+                  <AnchoredPopover
+                    anchorRef={suggestionsRootRef}
                     id={suggestionsId}
-                    role="dialog"
-                    aria-label={t('suggestedGameNames')}
+                    label={t('suggestedGameNames')}
+                    onClose={closeSuggestions}
+                    className="game-name-suggestions"
                   >
                     <div className="flex min-h-10 items-center gap-(--mb-space-2) px-(--mb-space-3) text-small font-semibold text-secondary [&_svg]:text-highlight">
                       <SparklesIcon />
@@ -255,8 +252,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                           key={suggestion.name}
                           onClick={() => {
                             setName(suggestion.name);
-                            setSuggestionsOpen(false);
-                            gameNameInputRef.current?.focus();
+                            closeSuggestions();
                           }}
                         >
                           <span aria-hidden="true">{suggestion.icon}</span>
@@ -264,7 +260,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                         </Button>
                       ))}
                     </div>
-                  </div>
+                  </AnchoredPopover>
                 )}
               </div>
               {errors.name !== undefined && (
@@ -284,9 +280,8 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
               </select>
             </Field>
           </FieldStack>
-        </fieldset>
-        <fieldset>
-          <legend>{t('bankingRules')}</legend>
+        </FormSection>
+        <FormSection legend={t('bankingRules')}>
           <FieldStack>
             <Field label={t('paymentMode')} hint={t('paymentModeLocked')}>
               <select
@@ -341,22 +336,24 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
               />
             </div>
           </FieldStack>
-        </fieldset>
-        <fieldset>
-          <legend>{t('houseRules')}</legend>
+        </FormSection>
+        <FormSection legend={t('houseRules')}>
           <FieldStack>
             <FieldHint>{t('houseRulesHint')}</FieldHint>
-            {houseRuleOptions.map(({ key, label }) => (
-              <Toggle
-                key={key}
-                variant="inline"
-                label={t(label)}
-                checked={rules[key]}
-                onChange={(checked) => setRules((current) => ({ ...current, [key]: checked }))}
-              />
-            ))}
+            <div>
+              {houseRuleOptions.map(({ key, label }) => (
+                <Toggle
+                  key={key}
+                  variant="row"
+                  label={t(label)}
+                  description={summaries[key]}
+                  checked={rules[key]}
+                  onChange={(checked) => setRules((current) => ({ ...current, [key]: checked }))}
+                />
+              ))}
+            </div>
           </FieldStack>
-        </fieldset>
+        </FormSection>
         <PlayersFieldset column={1} legend={t('ownerPlayer')}>
           {players.slice(0, 1).map((player) => (
             <section key={player.key}>
@@ -462,11 +459,10 @@ function PlayersFieldset({
 }) {
   const classes = playersFieldsetClass[column];
   return (
-    <fieldset className={classes.fieldset}>
-      <legend>{legend}</legend>
+    <FormSection legend={legend} className={classes.fieldset}>
       {intro}
       <div className={classes.list}>{children}</div>
-    </fieldset>
+    </FormSection>
   );
 }
 

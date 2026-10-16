@@ -1,13 +1,10 @@
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react';
 import { useMemo } from 'react';
-import { buildGameSettings } from '../../shared/domain/game-rules';
-import { REVERSAL_WINDOW_MS } from '../../shared/domain/reversal';
 import type { Game } from '../../shared/types/monopoly';
 import { Dialog } from '../components/Dialog';
 import { cx } from '../components/ui/class-names';
-import { rulesForGame, type RulesValues } from '../content/game-rules';
+import { buildRulesValues, rulesForGame, type RulesValues } from '../content/game-rules';
 import { useLanguage } from '../i18n/language-context';
-import { formatMoney } from '../utils/money';
 
 const listClass = 'mt-(--mb-space-4) grid gap-(--mb-space-2)';
 const itemClass = 'rounded-control border border-border bg-surface-subtle';
@@ -22,21 +19,12 @@ const bulletsClass = 'm-0 grid list-disc gap-(--mb-space-2) ps-(--mb-space-5)';
 
 /** The values a game's own settings put into the rules text; older games derive them from the starting balance. */
 function rulesValues(game: Game): RulesValues {
-  const settings = game.settings ?? buildGameSettings(game.startingBalance);
-  const money = (amount: number) => formatMoney(amount, game.currency);
-  return {
-    startingBalance: money(game.startingBalance),
-    passGoReward: money(game.passGoReward),
-    doubleGoReward: money(game.passGoReward * 2),
-    unit: money(settings.unit),
-    incomeTax: money(settings.incomeTax),
-    luxuryTax: money(settings.luxuryTax),
-    jailFine: money(settings.jailFine),
-    bankLoanMax: money(settings.bankLoanMax),
-    auctionMinBid: money(settings.auctionMinBid),
-    auctionBidSteps: settings.auctionBidSteps.map(money).join(', '),
-    reversalMinutes: String(REVERSAL_WINDOW_MS / 60_000),
-  };
+  return buildRulesValues(
+    game.startingBalance,
+    game.passGoReward,
+    game.currency,
+    game.settings ?? undefined,
+  );
 }
 
 /** The rulebook for this game: static text from the bundle, so it also opens offline. */

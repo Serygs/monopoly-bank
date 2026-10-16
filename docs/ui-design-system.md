@@ -413,6 +413,13 @@ Shared surfaces are defined once in `src/styles/visual-styles/liquid-glass.css` 
 
 Fallbacks: without `backdrop-filter`, and under `prefers-reduced-transparency` or `forced-colors`, panels and popovers use the `*-solid` tints and the scrim uses `--mb-color-overlay`. The faint board/house/dice pattern (`--mb-background-pattern-opacity`, 5% light / 7% dark) sits behind the content; the ambient drift stops under `prefers-reduced-motion`.
 
+### Form primitives
+
+- `FormSection` is the one form card: a `fieldset` whose `legend` is the header inside the card padding (floated full width, never on the border). Use it for every titled form block (create lobby, profile, account upgrade).
+- `Toggle variant="row"` is the settings row: label left, switch right, optional one-line `description`, 44px tap target, rows ruled off from each other. House-rule descriptions come from `summary` in `src/content/game-rules.ts` (`ruleSummaries`), so the create form and the in-game Rules screen share one source.
+- `AnchoredPopover` renders dropdown content (name suggestions) in `document.body` at fixed coordinates with the `glass-popover` surface, so no card, overflow or glass stacking context can clip or cover it. It closes on outside tap, Escape and resize.
+- Native `<select>` stays for short pickers (currency, payment mode, lobby access): on iOS it opens the system picker, which is the right mobile behaviour.
+
 ## Responsive and overlay rules
 
 - Start from a usable 320 CSS-pixel viewport and scale fluidly. Validate compact

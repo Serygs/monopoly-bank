@@ -482,6 +482,7 @@ const english = {
   winRate: 'Win rate',
   nickname: 'Nickname',
   avatar: 'Avatar',
+  changeAvatar: 'Change avatar',
   avatarUpload: 'Upload photo',
   avatarUploadHint:
     'Large photos are compressed automatically, cropped to a square, and shown as a circle.',
@@ -1117,6 +1118,7 @@ const ukrainian: TranslationCatalog = {
   winRate: 'Відсоток перемог',
   nickname: 'Псевдонім',
   avatar: 'Аватар',
+  changeAvatar: 'Змінити аватар',
   avatarUpload: 'Завантажити фото',
   avatarUploadHint:
     'Великі фото стискаються автоматично, обрізаються до квадрата та відображаються колом.',
