@@ -34,13 +34,20 @@ const deleted: DeletedGameSummary = {
   purgeAt: '2026-11-09T10:00:00.000Z',
 };
 
+const handlers = {
+  onCreateGame: vi.fn(),
+  onJoinGame: vi.fn(),
+  onOpenGame: vi.fn(),
+  onOpenProfile: vi.fn(),
+};
+
 function setup(games: GameSummary[], deletedGames: DeletedGameSummary[]) {
   vi.spyOn(monopolyBankApi, 'listGames').mockResolvedValue(games);
   vi.spyOn(monopolyBankApi, 'listDeletedGames').mockResolvedValue(deletedGames);
   render(
     <LanguageProvider>
       <FeedbackProvider>
-        <SavedGamesPage onCreateGame={vi.fn()} onJoinGame={vi.fn()} onOpenGame={vi.fn()} />
+        <SavedGamesPage {...handlers} />
       </FeedbackProvider>
     </LanguageProvider>,
   );
@@ -90,5 +97,16 @@ describe('SavedGamesPage deleted games', () => {
     const user = setup([], [deleted]);
     await user.click(await screen.findByRole('radio', { name: 'Deleted' }));
     expect(screen.getByText('Old Table')).toBeInTheDocument();
+  });
+});
+
+describe('SavedGamesPage navigation', () => {
+  it('opens the create/join sheet from the + action and the profile from the nav', async () => {
+    const user = setup([], []);
+    await user.click(screen.getByRole('button', { name: 'New' }));
+    await user.click(screen.getByRole('button', { name: 'Join game' }));
+    expect(handlers.onJoinGame).toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Profile' }));
+    expect(handlers.onOpenProfile).toHaveBeenCalled();
   });
 });
