@@ -1,4 +1,7 @@
-import type { GameRuleKey } from '../../shared/types/monopoly';
+import { buildGameSettings } from '../../shared/domain/game-rules';
+import { REVERSAL_WINDOW_MS } from '../../shared/domain/reversal';
+import type { Currency, GameRuleKey, GameSettings } from '../../shared/types/monopoly';
+import { formatMoney } from '../utils/money';
 import type { Language } from '../i18n/translations';
 
 /*
@@ -15,6 +18,8 @@ export interface RulesSection {
   /** Shown only while this house rule is enabled. */
   rule?: GameRuleKey;
   title: string;
+  /** One line shown next to the rule's switch when a game is created. */
+  summary?: string;
   paragraphs: string[];
   bullets?: string[];
 }
@@ -55,6 +60,7 @@ const english: RulesSection[] = [
     id: 'doubleRewardOnExactGo',
     rule: 'doubleRewardOnExactGo',
     title: 'Double reward on exact GO',
+    summary: 'Landing exactly on GO pays {doubleGoReward} instead of {passGoReward}.',
     paragraphs: [
       'A token that lands exactly on GO earns twice the usual reward: {doubleGoReward} instead of {passGoReward}.',
     ],
@@ -67,6 +73,7 @@ const english: RulesSection[] = [
     id: 'playerLoans',
     rule: 'playerLoans',
     title: 'Player loans',
+    summary: 'Players lend to each other with no interest; the lender must accept.',
     paragraphs: [
       'A player can borrow money from another player. The borrower asks, and the loan exists only after the lender accepts, in every payment mode.',
     ],
@@ -80,6 +87,7 @@ const english: RulesSection[] = [
     id: 'bankLoans',
     rule: 'bankLoans',
     title: 'Bank loans',
+    summary: 'Borrow up to {bankLoanMax} from the bank; interest grows each round.',
     paragraphs: [
       'A player can borrow up to {bankLoanMax} from the bank. The money is paid out at once. Each player can have one bank loan at a time.',
       'The loan is repaid in full, with interest on the amount borrowed. The interest leaves the game.',
@@ -95,6 +103,7 @@ const english: RulesSection[] = [
     id: 'freeParkingJackpot',
     rule: 'freeParkingJackpot',
     title: 'Free Parking jackpot',
+    summary: 'Taxes ({incomeTax}, {luxuryTax}) feed a pot that Free Parking collects.',
     paragraphs: [
       'Taxes feed a pot instead of the bank. Income tax ({incomeTax}) and luxury tax ({luxuryTax}) go into the pot; the jail fine ({jailFine}) is still paid to the bank.',
       'A player who lands on Free Parking takes the whole pot.',
@@ -109,6 +118,7 @@ const english: RulesSection[] = [
     id: 'auctions',
     rule: 'auctions',
     title: 'Auctions',
+    summary: 'Put a property up for a 30-second auction; the leading bid is reserved.',
     paragraphs: [
       'Any player can put a property up for auction. Only the name of the lot and the money are recorded; the app does not track who owns what.',
       'Bidding lasts 30 seconds. A bid placed in the last 10 seconds extends the auction to 10 seconds from that bid; an earlier bid does not change the end. The minimum bid is {auctionMinBid}, and each bid raises the price by one of these steps: {auctionBidSteps}.',
@@ -157,6 +167,7 @@ const ukrainian: RulesSection[] = [
     id: 'doubleRewardOnExactGo',
     rule: 'doubleRewardOnExactGo',
     title: 'Подвійна винагорода за точне потрапляння на СТАРТ',
+    summary: 'Точне потрапляння на СТАРТ приносить {doubleGoReward} замість {passGoReward}.',
     paragraphs: [
       'Фішка, що зупинилась точно на СТАРТІ, отримує подвійну винагороду: {doubleGoReward} замість {passGoReward}.',
     ],
@@ -169,6 +180,7 @@ const ukrainian: RulesSection[] = [
     id: 'playerLoans',
     rule: 'playerLoans',
     title: 'Позики між гравцями',
+    summary: 'Гравці позичають одне одному без відсотків; позикодавець має підтвердити.',
     paragraphs: [
       'Гравець може позичити гроші в іншого гравця. Позичальник робить запит, і позика з’являється лише після того, як кредитор її прийме, в будь-якому режимі платежів.',
     ],
@@ -182,6 +194,7 @@ const ukrainian: RulesSection[] = [
     id: 'bankLoans',
     rule: 'bankLoans',
     title: 'Позики банку',
+    summary: 'Позика в банку до {bankLoanMax}; відсотки зростають з кожним колом.',
     paragraphs: [
       'Гравець може взяти в банку до {bankLoanMax}. Гроші видаються одразу. Кожен гравець може мати одну позику банку одночасно.',
       'Позику повертають повністю, зі відсотками від позиченої суми. Відсотки виходять із гри.',
@@ -197,6 +210,7 @@ const ukrainian: RulesSection[] = [
     id: 'freeParkingJackpot',
     rule: 'freeParkingJackpot',
     title: 'Джекпот «Безкоштовної стоянки»',
+    summary: 'Податки ({incomeTax}, {luxuryTax}) йдуть у фонд, який забирає «Безкоштовна стоянка».',
     paragraphs: [
       'Податки наповнюють банк-скарбничку замість банку. Прибутковий податок ({incomeTax}) і податок на розкіш ({luxuryTax}) ідуть у скарбничку; штраф за в’язницю ({jailFine}) і далі сплачується банку.',
       'Гравець, що потрапив на «Безкоштовну стоянку», забирає всю скарбничку.',
@@ -211,6 +225,7 @@ const ukrainian: RulesSection[] = [
     id: 'auctions',
     rule: 'auctions',
     title: 'Аукціони',
+    summary: 'Виставте нерухомість на 30-секундний аукціон; найвища ставка резервується.',
     paragraphs: [
       'Будь-який гравець може виставити власність на аукціон. Записуються лише назва лота та гроші; застосунок не відстежує, хто чим володіє.',
       'Торги тривають 30 секунд. Ставка в останні 10 секунд подовжує торги до 10 секунд від цієї ставки; раніша ставка кінець не змінює. Мінімальна ставка — {auctionMinBid}, а кожна ставка підвищує ціну на один із кроків: {auctionBidSteps}.',
@@ -244,6 +259,42 @@ export const rulesContent: Record<Language, RulesSection[]> = {
 };
 
 /** Replaces each `{token}`; an unknown token is left as written so a typo stays visible. */
+/** The house rules' one-line summaries, filled with the game's values, in rulebook order. */
+export function ruleSummaries(
+  language: Language,
+  values: RulesValues,
+): Partial<Record<GameRuleKey, string>> {
+  const summaries: Partial<Record<GameRuleKey, string>> = {};
+  for (const section of rulesContent[language]) {
+    if (section.rule !== undefined && section.summary !== undefined)
+      summaries[section.rule] = fillRulesText(section.summary, values);
+  }
+  return summaries;
+}
+
+/** The values a game's money amounts put into the rules text; settings derive from the starting balance. */
+export function buildRulesValues(
+  startingBalance: number,
+  passGoReward: number,
+  currency: Currency,
+  settings: GameSettings = buildGameSettings(startingBalance),
+): RulesValues {
+  const money = (amount: number) => formatMoney(amount, currency);
+  return {
+    startingBalance: money(startingBalance),
+    passGoReward: money(passGoReward),
+    doubleGoReward: money(passGoReward * 2),
+    unit: money(settings.unit),
+    incomeTax: money(settings.incomeTax),
+    luxuryTax: money(settings.luxuryTax),
+    jailFine: money(settings.jailFine),
+    bankLoanMax: money(settings.bankLoanMax),
+    auctionMinBid: money(settings.auctionMinBid),
+    auctionBidSteps: settings.auctionBidSteps.map(money).join(', '),
+    reversalMinutes: String(REVERSAL_WINDOW_MS / 60_000),
+  };
+}
+
 export function fillRulesText(text: string, values: RulesValues): string {
   return text.replace(/\{(\w+)\}/g, (match, key: string) =>
     key in values ? values[key as keyof RulesValues] : match,
@@ -261,6 +312,7 @@ export function rulesForGame(
     .map((section) => ({
       ...section,
       title: fillRulesText(section.title, values),
+      ...(section.summary === undefined ? {} : { summary: fillRulesText(section.summary, values) }),
       paragraphs: section.paragraphs.map((text) => fillRulesText(text, values)),
       ...(section.bullets === undefined
         ? {}
