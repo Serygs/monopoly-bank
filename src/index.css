@@ -12,6 +12,7 @@
 @import './styles/tailwind-theme.css';
 @import './styles/visual-styles/classic-bank.css';
 @import './styles/visual-styles/liquid-glass.css';
+@import './styles/glass.css';
 
 /*
  * Appearance variants follow the root attributes set by
