@@ -13,7 +13,7 @@ import type {
 import { bankLoanInterest } from './bank-loan.js';
 import { buildGameSettings } from './game-rules.js';
 import { normalizePropertyName, redemptionCost } from './mortgage.js';
-import { isReversibleType } from './reversal.js';
+import { findReversalDependency, isReversibleType } from './reversal.js';
 import { AppError } from '../../worker/services/errors.js';
 
 export interface PlayerToPlayerCommand extends BankingCommand {
@@ -141,6 +141,8 @@ export interface ReversalCommand {
   players: readonly Player[];
   /** The stored transaction to move back, with its participants. */
   original: Transaction;
+  /** Every transaction written after `original`; one that builds on it blocks the reversal. */
+  later?: readonly Transaction[];
   comment?: string | null;
 }
 
@@ -349,6 +351,18 @@ export class TransactionAlreadyReversedError extends BankingDomainError {
       message: 'This transaction has already been reversed.',
       status: 409,
       details: { transactionId, reversalId },
+    });
+  }
+}
+
+export class ReversalBlockedByLaterOperationError extends BankingDomainError {
+  readonly code = 'REVERSAL_BLOCKED_BY_LATER_OPERATION' as const;
+  constructor(transactionId: string, blockedBy: Pick<Transaction, 'id' | 'type'>) {
+    super({
+      code: 'REVERSAL_BLOCKED_BY_LATER_OPERATION',
+      message: 'A later operation builds on this transaction, so it cannot be reversed.',
+      status: 409,
+      details: { transactionId, blockedBy: blockedBy.id, blockedByType: blockedBy.type },
     });
   }
 }
@@ -891,6 +905,8 @@ export function reverseTransaction(command: ReversalCommand): BankingOperationRe
   if (!isReversibleType(original.type)) throw new TransactionNotReversibleError(original.type);
   if (original.reversedByTransactionId != null)
     throw new TransactionAlreadyReversedError(original.id, original.reversedByTransactionId);
+  const dependency = findReversalDependency(original, command.later ?? []);
+  if (dependency !== null) throw new ReversalBlockedByLaterOperationError(original.id, dependency);
 
   const changes = original.participants.map((participant) => {
     const player = findPlayer(players, participant.playerId);

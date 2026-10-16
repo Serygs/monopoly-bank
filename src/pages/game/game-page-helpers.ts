@@ -1,4 +1,3 @@
-import type { MutableRefObject } from 'react';
 import type {
   GameDetails,
   PaymentRequest,
@@ -94,18 +93,12 @@ export function filterTransactionsForPlayer(
     : transactions.filter((transaction) => transactionInvolvesPlayer(transaction, playerId));
 }
 
-/** `historyPlayerId` is the player whose history dialog is open, or null for the whole game. */
 export function applyLiveEvent(
   event: LiveServerEvent,
   setDetails: React.Dispatch<React.SetStateAction<GameDetails | null>>,
-  setHistory: React.Dispatch<React.SetStateAction<Transaction[] | null>>,
-  historyCache: MutableRefObject<Map<string, Transaction[]>>,
-  historyPlayerId: string | null = null,
 ) {
   if (event.type === 'GAME_SNAPSHOT') {
-    historyCache.current.set('all', event.state.transactions);
     setDetails((current) => withClientGameDetails(event.state.details, current));
-    setHistory(filterTransactionsForPlayer(event.state.transactions, historyPlayerId));
     return;
   }
   if (event.type === 'LOBBY_UPDATED') {
@@ -117,7 +110,6 @@ export function applyLiveEvent(
     return;
   }
   if (event.type === 'GAME_COMMITTED') {
-    historyCache.current.clear();
     setDetails((current) =>
       current === null
         ? current
@@ -132,25 +124,6 @@ export function applyLiveEvent(
             ...(event.jackpot === undefined ? {} : { jackpot: event.jackpot }),
           },
     );
-    setHistory((current) => {
-      if (
-        current === null ||
-        (historyPlayerId !== null && !transactionInvolvesPlayer(event.transaction, historyPlayerId))
-      )
-        return current;
-      const reversed = event.transaction.reversesTransactionId;
-      return [
-        event.transaction,
-        // A reversal marks the original it moved back, so the row stops offering "Reverse".
-        ...current
-          .filter((transaction) => transaction.id !== event.transaction.id)
-          .map((transaction) =>
-            transaction.id === reversed
-              ? { ...transaction, reversedByTransactionId: event.transaction.id }
-              : transaction,
-          ),
-      ];
-    });
     return;
   }
   if (event.type === 'AUCTION_UPDATED') {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   InsufficientFundsError,
+  ReversalBlockedByLaterOperationError,
   TransactionAlreadyReversedError,
   TransactionNotFoundError,
 } from '../../shared/domain/banking.js';
@@ -51,7 +52,12 @@ const original: Transaction = {
   ],
 };
 
-function service(options: { stored?: Transaction | null; payee?: number; persist?: () => void }) {
+function service(options: {
+  stored?: Transaction | null;
+  payee?: number;
+  persist?: () => void;
+  later?: Transaction[];
+}) {
   const persist = vi.fn(async () => options.persist?.());
   let persisted = false;
   const banking = new DefaultBankingService({
@@ -60,6 +66,7 @@ function service(options: { stored?: Transaction | null; payee?: number; persist
       listByGameId: async () => [player(payerId, 1400), player(payeeId, options.payee ?? 1600)],
     } as never,
     transactions: {
+      listChronologicalSince: async () => [original, ...(options.later ?? [])],
       getById: vi.fn(async (_gameId: string, id: string) => {
         if (id === originalId) return options.stored === undefined ? original : options.stored;
         return persisted ? ({ id } as never) : null;
@@ -137,6 +144,7 @@ describe('reversing a transaction', () => {
         listByGameId: async () => [player(payerId, 1400), player(payeeId, 1600)],
       } as never,
       transactions: {
+        listChronologicalSince: async () => [original],
         getById: async (_gameId: string, id: string) =>
           id === originalId
             ? { ...original, ...(reversed ? { reversedByTransactionId: 'winner' } : {}) }
@@ -162,5 +170,34 @@ describe('reversing a transaction', () => {
   it('exposes a stored transaction for authorization', async () => {
     const { banking } = service({});
     await expect(banking.getTransaction('game', originalId)).resolves.toEqual(original);
+  });
+
+  it('refuses the reversal while a later mortgage or loan builds on it, without writing', async () => {
+    const mortgage: Transaction = {
+      ...original,
+      id: '44444444-4444-4444-8444-444444444444',
+      type: 'MORTGAGE',
+      createdAt: '2026-01-01 10:05:00',
+      participants: [{ playerId: payeeId, balanceDelta: 200 }],
+    };
+    const { banking, persist } = service({ later: [mortgage] });
+
+    await expect(banking.createTransaction('game', request)).rejects.toBeInstanceOf(
+      ReversalBlockedByLaterOperationError,
+    );
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('still reverses when the later operation involves other players only', async () => {
+    const other: Transaction = {
+      ...original,
+      id: '55555555-5555-4555-8555-555555555555',
+      type: 'LOAN_ISSUE',
+      participants: [{ playerId: 'someone-else', balanceDelta: 50 }],
+    };
+    const { banking, persist } = service({ later: [other] });
+
+    await banking.createTransaction('game', request);
+    expect(persist).toHaveBeenCalledOnce();
   });
 });
