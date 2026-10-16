@@ -52,24 +52,55 @@ function press(user: ReturnType<typeof userEvent.setup>, ...keys: string[]) {
 }
 
 describe('BankingDialog amount entry', () => {
-  it('keeps the typed amount when the unit changes and recalculates it', async () => {
+  it('keeps the typed digits when the unit changes and only changes the multiplier', async () => {
     const { user } = renderDialog([olena, taras]);
     await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
-    await press(user, '8', '5', '0', '0', '0');
+    await user.click(screen.getByRole('button', { name: 'Millions' }));
+    await press(user, '3');
     const amount = screen.getByRole('textbox', { name: 'Amount' });
-    expect(amount).toHaveValue('85 000');
-    expect(screen.getByText('= $85 000')).toBeInTheDocument();
+    expect(amount).toHaveValue('3');
+    expect(screen.getByText('= $3 000 000')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Thousands' }));
-    expect(amount).toHaveValue('85');
-    expect(screen.getByText('= $85 000')).toBeInTheDocument();
+    expect(amount).toHaveValue('3');
+    expect(screen.getByText('= $3 000')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Millions' }));
-    expect(amount).toHaveValue('0.085');
-    expect(screen.getByText('= $85 000')).toBeInTheDocument();
+    expect(amount).toHaveValue('3');
+    expect(screen.getByText('= $3 000 000')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Whole units' }));
-    expect(amount).toHaveValue('85 000');
+    expect(amount).toHaveValue('3');
+    expect(screen.getByText('= $3')).toBeInTheDocument();
+  });
+
+  it('flags a decimal that is not a whole amount in whole units and restores it in millions', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    await user.click(screen.getByRole('button', { name: 'Millions' }));
+    await press(user, '1', ',', '5');
+    const amount = screen.getByRole('textbox', { name: 'Amount' });
+    expect(screen.getByText('= $1 500 000')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    expect(amount).toHaveValue('1.5');
+    expect(amount).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Millions' }));
+    expect(amount).toHaveAttribute('aria-invalid', 'false');
+    expect(screen.getByText('= $1 500 000')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+  });
+
+  it('shows the shortfall and offers bankruptcy when the payer cannot afford the amount', async () => {
+    const { user, props } = renderDialog([olena, taras], { player: taras });
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    await user.type(screen.getByRole('textbox', { name: 'Amount' }), '1500000');
+    expect(screen.getByText('Short by $500 000.')).toBeInTheDocument();
+    const shortfall = screen.getByText('Short by $500 000.').parentElement as HTMLElement;
+    await user.click(within(shortfall).getByRole('button', { name: 'Declare bankrupt' }));
+    expect(props.onBankrupt).toHaveBeenCalledOnce();
   });
 
   it('takes a decimal in millions and shows the whole total in front', async () => {

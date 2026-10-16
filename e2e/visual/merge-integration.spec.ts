@@ -48,7 +48,7 @@ for (const visualStyle of ['classic-bank', 'liquid-glass'] as const) {
           name: translate(language, 'settings'),
           exact: true,
         });
-        await expect(dialog.getByRole('switch')).toHaveCount(2);
+        await expect(dialog.getByRole('switch')).toHaveCount(3);
         await expect(dialog.getByRole('radiogroup')).toHaveCount(2);
         await expect(
           dialog.getByRole('button', {

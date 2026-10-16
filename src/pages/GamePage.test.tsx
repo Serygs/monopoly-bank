@@ -319,6 +319,7 @@ function renderGamePage(offline: boolean): ReactElement {
       colorMode: 'system',
       sound: false,
       vibration: false,
+      keepScreenAwake: false,
     },
   });
 }

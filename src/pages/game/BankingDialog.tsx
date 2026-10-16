@@ -19,6 +19,7 @@ import {
   insufficientMessage,
   isPositiveInteger,
   preflightFundsError,
+  preflightShortfall,
   previewBalances,
   primaryWalletActions,
   type ActionType,
@@ -56,6 +57,9 @@ const advancedClass = cx(
 );
 
 /** Centred, capped-width danger action on its own row (in the single column below `md`). */
+/* What the payer is missing, with the way out when no amount change will help. */
+const shortfallClass =
+  'mt-(--mb-space-2) flex flex-wrap items-center justify-between gap-(--mb-space-3) [&>p]:m-0 [&>p]:font-semibold [&>p]:text-danger';
 const bankruptcyClass = 'col-span-full w-[min(100%,270px)] justify-self-center max-md:col-auto';
 
 /*
@@ -117,6 +121,7 @@ export function BankingDialog({
   const preview = request === null ? [] : previewBalances(request, players, passGoReward);
   const amountRequired = action !== 'PASS_GO';
   const fundsError = preflightFundsError(action, player, players, amountValue, currency, t);
+  const shortfall = preflightShortfall(action, player, players, amountValue);
   const valid =
     request !== null &&
     (!targetRequired || (target !== null && target.id !== player.id)) &&
@@ -311,6 +316,14 @@ export function BankingDialog({
               <FieldError as="p" announce>
                 {fundsError}
               </FieldError>
+            )}
+            {shortfall !== null && (
+              <div className={shortfallClass}>
+                <p>{t('shortBy', { amount: formatMoney(shortfall, currency) })}</p>
+                <Button variant="danger" onClick={onBankrupt}>
+                  {t('declareBankrupt')}
+                </Button>
+              </div>
             )}
             <div className="mt-(--mb-space-2)">{commentField}</div>
           </StepBody>
