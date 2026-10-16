@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import type { BoardMode } from '../../shared/board';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { AmountInput } from '../components/AmountInput';
@@ -25,6 +26,7 @@ import {
   FormSection,
   Notice,
   PageShell,
+  SegmentedControl,
   StepperBar,
   Toggle,
 } from '../components/ui';
@@ -137,6 +139,7 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
   const [currency, setCurrency] = useState<SelectableCurrency>(initial.currency);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>(initial.paymentMode);
   const [rules, setRules] = useState<GameRules>(initial.rules);
+  const [board, setBoard] = useState<BoardMode>(initial.board);
   const [gameAccessPassword, setGameAccessPassword] = useState('');
   const [isPublic, setIsPublic] = useState(initial.isPublic);
   const [players, setPlayers] = useState<PlayerForm[]>(initial.players);
@@ -183,6 +186,7 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
     startingBalance,
     passGoReward,
     rules,
+    board,
     players,
   };
   /* The password is not part of the draft, but it still counts as input worth confirming. */
@@ -191,7 +195,18 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
     writeDraft(draft);
     // `draft` is rebuilt every render from the fields below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, name, currency, paymentMode, isPublic, startingBalance, passGoReward, rules, players]);
+  }, [
+    step,
+    name,
+    currency,
+    paymentMode,
+    isPublic,
+    startingBalance,
+    passGoReward,
+    rules,
+    board,
+    players,
+  ]);
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
@@ -240,6 +255,7 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
         currency,
         paymentMode,
         rules,
+        ...(board === 'none' ? {} : { board }),
         ...(isPublic ? { isPublic } : {}),
         ...(isPublic || gameAccessPassword === '' ? {} : { gameAccessPassword }),
         players: players.map((player) => ({ name: player.name.trim(), color: player.color })),
@@ -341,6 +357,18 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
                   </select>
                 </Field>
               </FieldStack>
+            </FormSection>
+            <FormSection legend={t('boardSection')}>
+              <SegmentedControl
+                label={t('boardPlayChoice')}
+                value={board}
+                onChange={setBoard}
+                options={[
+                  { value: 'none', label: t('boardNone') },
+                  { value: 'monopoly-ru-2012', label: t('boardMonopolyRu2012') },
+                ]}
+              />
+              <FieldHint as="p">{t('boardHint')}</FieldHint>
             </FormSection>
             <FormSection legend={t('bankingRules')}>
               <FieldStack>
@@ -499,6 +527,8 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
                 <dd>{formatMoney(Number(startingBalance), currency)}</dd>
                 <dt>{t('passGoReward')}</dt>
                 <dd>{formatMoney(Number(passGoReward), currency)}</dd>
+                <dt>{t('boardSection')}</dt>
+                <dd>{board === 'none' ? t('boardNone') : t('boardMonopolyRu2012')}</dd>
                 <dt>{t('houseRules')}</dt>
                 <dd>
                   {houseRuleOptions

@@ -141,9 +141,18 @@ export class D1GameRepository implements GameRepository {
               )
               .bind(input.id, ownerPlayerId, input.ownerUserId),
           ];
+    // A game with a board gets one untouched property row per tile, in the same batch.
+    const propertyStatements = (input.settings?.board?.tiles ?? []).map((tile) =>
+      this.database
+        .prepare(
+          'INSERT INTO game_properties (game_id, tile_id, owner_player_id, mortgaged, houses) VALUES (?, ?, NULL, 0, 0)',
+        )
+        .bind(input.id, tile.id),
+    );
     await this.database.batch([
       gameStatement,
       ...playerStatements,
+      ...propertyStatements,
       memberStatement,
       ...controllerStatement,
     ]);

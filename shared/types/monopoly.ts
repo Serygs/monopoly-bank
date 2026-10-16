@@ -1,3 +1,5 @@
+import type { BoardSnapshot } from '../board/types.js';
+
 export const gameStatuses = ['LOBBY', 'ACTIVE', 'FINISHED'] as const;
 
 export type GameStatus = (typeof gameStatuses)[number];
@@ -46,6 +48,8 @@ export interface GameSettings {
   auctionMinBid: number;
   /** The auction bid buttons: 1, 2.5, 5 and 10 units. */
   auctionBidSteps: number[];
+  /** The board catalog copied at creation; absent or null means no board (manual properties). */
+  board?: BoardSnapshot | null;
 }
 
 export const transactionTypes = [
@@ -116,6 +120,17 @@ export interface Mortgage {
   /** What the bank paid out; redeeming costs this plus 10%. */
   mortgageValue: number;
   createdAt: string;
+}
+
+/** One row of the property registry (board games only). */
+export interface GameProperty {
+  gameId: string;
+  /** Stable tile id from the board snapshot. */
+  tileId: string;
+  ownerPlayerId: string | null;
+  mortgaged: boolean;
+  /** 0-4 houses, 5 is a hotel. */
+  houses: number;
 }
 
 export const loanStates = ['ACTIVE', 'REPAID', 'WRITTEN_OFF'] as const;

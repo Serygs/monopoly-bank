@@ -28,6 +28,7 @@ import { D1GameRepository } from './repositories/game-repository.js';
 import { D1GameStatisticsRepository } from './repositories/game-statistics-repository.js';
 import { D1LoanRepository } from './repositories/loan-repository.js';
 import { D1MortgageRepository } from './repositories/mortgage-repository.js';
+import { D1PropertyRepository } from './repositories/property-repository.js';
 import { D1PaymentRequestRepository } from './repositories/payment-request-repository.js';
 import { D1PlayerRepository } from './repositories/player-repository.js';
 import { D1TransactionRepository } from './repositories/transaction-repository.js';
@@ -640,6 +641,7 @@ export class GameSession {
       loans: new D1LoanRepository(database),
       transactions: new D1TransactionRepository(database),
       auctions: new D1AuctionRepository(database),
+      properties: new D1PropertyRepository(database),
       createId: () => crypto.randomUUID(),
     });
   }
