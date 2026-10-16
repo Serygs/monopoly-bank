@@ -194,6 +194,29 @@ describe('banking domain operations', () => {
     });
   });
 
+  it('pays double on an exact landing and records the doubled amount', () => {
+    const result = passGo({
+      game,
+      players: createPlayers(),
+      playerId: 'player-1',
+      exactLanding: true,
+    });
+
+    expect(balances(result)).toEqual([1900]);
+    expect(result.transaction).toMatchObject({ type: 'PASS_GO', amount: 400, totalAmount: 400 });
+  });
+
+  it('refuses a doubled reward that is not a safe integer', () => {
+    expect(() =>
+      passGo({
+        game: { ...game, passGoReward: Number.MAX_SAFE_INTEGER },
+        players: createPlayers(),
+        playerId: 'player-1',
+        exactLanding: true,
+      }),
+    ).toThrow();
+  });
+
   it.each([0, -10])('rejects invalid amount %i', (amount) => {
     expect(() =>
       playerToBank({

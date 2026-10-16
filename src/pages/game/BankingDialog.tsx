@@ -1,5 +1,11 @@
 import { useRef, useState, type ReactNode } from 'react';
-import type { Currency, Player } from '../../../shared/types/monopoly';
+import {
+  defaultGameRules,
+  type Currency,
+  type GameRules,
+  type GameSettings,
+  type Player,
+} from '../../../shared/types/monopoly';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { AmountSelector } from '../../components/AmountSelector';
 import { Dialog } from '../../components/Dialog';
@@ -34,6 +40,10 @@ export interface BankingDialogProps {
   currency: Currency;
   /** Scales the quick amounts; without it they fall back to fixed round amounts. */
   startingBalance?: number;
+  /** The game's house rules; omitted rules are off. */
+  rules?: GameRules;
+  /** Amounts derived at creation (taxes, jail fine); older games have none, so no fixed payments. */
+  settings?: GameSettings | null;
   favoriteAmounts: number[];
   recentAmounts: number[];
   onToggleFavorite: (amount: number) => void;
@@ -85,6 +95,8 @@ export function BankingDialog({
   passGoReward,
   currency,
   startingBalance,
+  rules = defaultGameRules,
+  settings = null,
   favoriteAmounts,
   recentAmounts,
   onToggleFavorite,
@@ -101,6 +113,7 @@ export function BankingDialog({
   const [comment, setComment] = useState('');
   const [commentOpen, setCommentOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [exactLanding, setExactLanding] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown | null>(null);
   const submittingRef = useRef(false);
@@ -117,8 +130,9 @@ export function BankingDialog({
   const request =
     action === null
       ? null
-      : buildRequest(action, player.id, effectiveTargetId, amountValue, comment);
-  const preview = request === null ? [] : previewBalances(request, players, passGoReward);
+      : buildRequest(action, player.id, effectiveTargetId, amountValue, comment, exactLanding);
+  const reward = exactLanding ? passGoReward * 2 : passGoReward;
+  const preview = request === null ? [] : previewBalances(request, players, reward);
   const amountRequired = action !== 'PASS_GO';
   const fundsError = preflightFundsError(action, player, players, amountValue, currency, t);
   const shortfall = preflightShortfall(action, player, players, amountValue);
@@ -128,11 +142,13 @@ export function BankingDialog({
     (!amountRequired || isPositiveInteger(amount)) &&
     fundsError === null;
 
-  const selectAction = (next: ActionType | null) => {
+  const selectAction = (next: ActionType | null, exact = false) => {
     setAction(next);
+    setExactLanding(exact);
     setTargetId('');
     setAmount('');
-    setComment('');
+    // The doubled reward says why in the history; the player can still edit the note.
+    setComment(exact ? t('passGoExactComment') : '');
     setCommentOpen(false);
     // Pass GO has no inputs, so it opens directly on the confirmation.
     setConfirming(next === 'PASS_GO');
@@ -156,6 +172,13 @@ export function BankingDialog({
     setComment(nextComment);
     setError(null);
     commandIdRef.current = null;
+  };
+
+  /** A tax or fine from the game's settings: fill the amount and its name, then review it. */
+  const reviewFixedPayment = (label: string, fixedAmount: number) => {
+    changeAmount(String(fixedAmount));
+    setComment(label);
+    if (player.balance >= fixedAmount) setConfirming(true);
   };
 
   const reviewQuickAmount = (nextAmount: number) => {
@@ -238,7 +261,22 @@ export function BankingDialog({
               <MoneyValue amount={player.balance} currency={currency} />
             </strong>
           </section>
-          <WalletActionGrid actions={primaryWalletActions} onSelect={selectAction} />
+          <WalletActionGrid
+            actions={primaryWalletActions}
+            onSelect={selectAction}
+            extraActions={
+              rules.doubleRewardOnExactGo
+                ? [
+                    {
+                      key: 'PASS_GO_EXACT',
+                      label: t('passGoExact'),
+                      tone: 'income',
+                      onSelect: () => selectAction('PASS_GO', true),
+                    },
+                  ]
+                : []
+            }
+          />
           <details className={advancedClass}>
             <summary>{t('advancedActions')}</summary>
             <WalletActionGrid actions={advancedWalletActions} onSelect={selectAction}>
@@ -261,7 +299,7 @@ export function BankingDialog({
               player={player}
               target={target}
               amount={amountValue}
-              passGoReward={passGoReward}
+              passGoReward={reward}
               currency={currency}
               preview={preview}
               comment={comment}
@@ -311,6 +349,30 @@ export function BankingDialog({
                 onToggleFavorite={onToggleFavorite}
                 onQuickAmountSelect={reviewQuickAmount}
               />
+            )}
+            {action === 'PLAYER_TO_BANK' && settings !== null && (
+              <div className="grid gap-(--mb-space-2)" role="group" aria-label={t('fixedPayments')}>
+                <span className="text-small font-semibold text-secondary">
+                  {t('fixedPayments')}
+                </span>
+                <div className="flex flex-wrap gap-(--mb-space-2)">
+                  {(
+                    [
+                      ['incomeTax', settings.incomeTax],
+                      ['luxuryTax', settings.luxuryTax],
+                      ['jailFine', settings.jailFine],
+                    ] as const
+                  ).map(([key, fixedAmount]) => (
+                    <Button
+                      key={key}
+                      variant="secondary"
+                      onClick={() => reviewFixedPayment(t(key), fixedAmount)}
+                    >
+                      {t(key)} · <MoneyValue amount={fixedAmount} currency={currency} />
+                    </Button>
+                  ))}
+                </div>
+              </div>
             )}
             {fundsError !== null && (
               <FieldError as="p" announce>

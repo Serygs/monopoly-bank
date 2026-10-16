@@ -31,6 +31,8 @@ export interface PassGoCommand {
   game: Game;
   players: readonly Player[];
   playerId: string;
+  /** Landed exactly on GO: pays double. The caller checks that the game enables the rule. */
+  exactLanding?: boolean;
   comment?: string | null;
 }
 
@@ -279,14 +281,10 @@ export function passGo(command: PassGoCommand): BankingOperationResult {
 
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
-  return createResult(
-    command.game.id,
-    'PASS_GO',
-    command.game.passGoReward,
-    command.game.passGoReward,
-    command.comment,
-    [createBalanceChange(player, command.game.passGoReward)],
-  );
+  const reward = multiplyAmounts(command.game.passGoReward, command.exactLanding === true ? 2 : 1);
+  return createResult(command.game.id, 'PASS_GO', reward, reward, command.comment, [
+    createBalanceChange(player, reward),
+  ]);
 }
 
 export function declareBankruptcy(command: BankruptcyCommand): BankingOperationResult {

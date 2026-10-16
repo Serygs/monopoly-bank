@@ -13,6 +13,41 @@ export type Currency = (typeof currencies)[number];
 export const paymentModes = ['FAST', 'CONFIRMATION'] as const;
 export type PaymentMode = (typeof paymentModes)[number];
 
+/** Optional house rules, chosen with the lobby and fixed once it exists. All are off by default. */
+export const gameRuleKeys = [
+  'doubleRewardOnExactGo',
+  'playerLoans',
+  'bankLoans',
+  'freeParkingJackpot',
+  'auctions',
+] as const;
+export type GameRuleKey = (typeof gameRuleKeys)[number];
+export type GameRules = Record<GameRuleKey, boolean>;
+
+export const defaultGameRules: GameRules = {
+  doubleRewardOnExactGo: false,
+  playerLoans: false,
+  bankLoans: false,
+  freeParkingJackpot: false,
+  auctions: false,
+};
+
+/**
+ * Amounts derived once from the starting balance when the game is created, in whole currency
+ * units. Games created before the snapshot existed have none.
+ */
+export interface GameSettings {
+  /** The money unit: the starting balance divided by 150, rounded to a 1-2-5 value (minimum 10). */
+  unit: number;
+  incomeTax: number;
+  luxuryTax: number;
+  jailFine: number;
+  bankLoanMax: number;
+  auctionMinBid: number;
+  /** The auction bid buttons: 1, 2.5, 5 and 10 units. */
+  auctionBidSteps: number[];
+}
+
 export const transactionTypes = [
   'PLAYER_TO_PLAYER',
   'PLAYER_TO_BANK',
@@ -34,6 +69,8 @@ export interface Game {
   currency: Currency;
   /** Set at lobby creation and immutable once the game starts. */
   paymentMode: PaymentMode;
+  rules: GameRules;
+  settings: GameSettings | null;
   status: GameStatus;
   createdAt: string;
   updatedAt: string;
