@@ -7,6 +7,13 @@ import { actionGridClass, cx } from '../ui/class-names';
 export interface WalletActionGridProps {
   actions: readonly ActionType[];
   onSelect: (action: ActionType) => void;
+  /** Extra buttons after the transaction actions, e.g. a rule-specific variant of Pass GO. */
+  extraActions?: readonly {
+    key: string;
+    label: string;
+    tone: ReturnType<typeof walletActionTone>;
+    onSelect: () => void;
+  }[];
   /** Extra classes appended after the grid classes. */
   className?: string;
   /** Rendered after the action buttons, inside the grid. */
@@ -25,6 +32,7 @@ const actionToneClass: Record<ReturnType<typeof walletActionTone>, string> = {
 export function WalletActionGrid({
   actions,
   onSelect,
+  extraActions = [],
   className,
   children,
 }: WalletActionGridProps) {
@@ -38,6 +46,15 @@ export function WalletActionGrid({
           onClick={() => onSelect(item)}
         >
           {actionLabel(item, t)}
+        </Button>
+      ))}
+      {extraActions.map((item) => (
+        <Button
+          className={cx(actionButtonClass, actionToneClass[item.tone])}
+          key={item.key}
+          onClick={item.onSelect}
+        >
+          {item.label}
         </Button>
       ))}
       {children}

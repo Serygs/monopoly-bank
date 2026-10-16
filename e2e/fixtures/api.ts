@@ -14,7 +14,12 @@ import type {
   PaymentRequest,
   UserProfile,
 } from '../../shared/contracts/api.js';
-import type { Game, Player, Transaction } from '../../shared/types/monopoly.js';
+import {
+  defaultGameRules,
+  type Game,
+  type Player,
+  type Transaction,
+} from '../../shared/types/monopoly.js';
 
 const createdAt = '2026-09-20T08:00:00.000Z';
 
@@ -40,6 +45,8 @@ export const fixtureActiveGame: Game = {
   passGoReward: 2_000_000,
   currency: 'USD',
   paymentMode: 'FAST',
+  rules: defaultGameRules,
+  settings: null,
   status: 'ACTIVE',
   createdAt,
   updatedAt: '2026-09-21T10:15:00.000Z',
@@ -54,6 +61,8 @@ const fixtureLobbyGame: Game = {
   passGoReward: 2_000_000,
   currency: 'EUR',
   paymentMode: 'CONFIRMATION',
+  rules: defaultGameRules,
+  settings: null,
   status: 'LOBBY',
   createdAt: '2026-09-19T18:00:00.000Z',
   updatedAt: '2026-09-19T18:00:00.000Z',
@@ -68,6 +77,8 @@ const fixtureFinishedGame: Game = {
   passGoReward: 200,
   currency: 'UAH',
   paymentMode: 'FAST',
+  rules: defaultGameRules,
+  settings: null,
   status: 'FINISHED',
   createdAt: '2026-08-02T12:00:00.000Z',
   updatedAt: '2026-08-02T15:40:00.000Z',

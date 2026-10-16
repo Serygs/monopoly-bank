@@ -95,6 +95,17 @@ export class ConflictError extends AppError {
     super({ code, message, status: 409, details });
   }
 }
+/** An optional house rule that the game did not enable at creation was used. */
+export class RuleDisabledError extends AppError {
+  constructor(rule: string) {
+    super({
+      code: 'RULE_DISABLED',
+      message: 'This rule is not enabled for this game.',
+      status: 409,
+      details: { rule },
+    });
+  }
+}
 export class InvalidGamePasswordError extends AppError {
   constructor() {
     super({ code: 'INVALID_GAME_PASSWORD', message: 'The game password is invalid.', status: 401 });

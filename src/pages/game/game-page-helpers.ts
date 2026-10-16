@@ -116,6 +116,7 @@ export function buildRequest(
   targetId: string,
   amount: number,
   comment: string,
+  exactLanding = false,
 ): CreateTransactionRequest | null {
   const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
   switch (action) {
@@ -142,7 +143,12 @@ export function buildRequest(
         ...optionalComment,
       };
     case 'PASS_GO':
-      return { type: action, playerId, ...optionalComment };
+      return {
+        type: action,
+        playerId,
+        ...(exactLanding ? { exactLanding: true } : {}),
+        ...optionalComment,
+      };
   }
 }
 
