@@ -6,6 +6,7 @@ interface AuctionRow {
   id: string;
   game_id: string;
   lot_name: string;
+  tile_id: string | null;
   initiator_player_id: string;
   state: AuctionState;
   current_bid: number;
@@ -20,6 +21,8 @@ export interface CreateAuctionInput {
   id: string;
   gameId: string;
   lotName: string;
+  /** Board games: the unowned tile being sold. */
+  tileId?: string | null;
   initiatorPlayerId: string;
   startedAt: string;
   endsAt: string;
@@ -54,7 +57,7 @@ export interface AuctionRepository {
 }
 
 const columns =
-  'id, game_id, lot_name, initiator_player_id, state, current_bid, current_bidder_id, version, started_at, ends_at, settled_transaction_id';
+  'id, game_id, lot_name, tile_id, initiator_player_id, state, current_bid, current_bidder_id, version, started_at, ends_at, settled_transaction_id';
 
 export class D1AuctionRepository implements AuctionRepository {
   private readonly database: D1Database;
@@ -97,13 +100,14 @@ export class D1AuctionRepository implements AuctionRepository {
     try {
       await this.database
         .prepare(
-          `INSERT INTO auctions (id, game_id, lot_name, initiator_player_id, started_at, ends_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO auctions (id, game_id, lot_name, tile_id, initiator_player_id, started_at, ends_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           input.id,
           input.gameId,
           input.lotName,
+          input.tileId ?? null,
           input.initiatorPlayerId,
           input.startedAt,
           input.endsAt,
@@ -170,6 +174,7 @@ function mapAuction(row: AuctionRow): Auction {
     id: row.id,
     gameId: row.game_id,
     lotName: row.lot_name,
+    ...(row.tile_id == null ? {} : { tileId: row.tile_id }),
     initiatorPlayerId: row.initiator_player_id,
     state: row.state,
     currentBid: row.current_bid,

@@ -69,6 +69,7 @@ export function calculateFinalGameSummary(
     if (
       transaction.type === 'PLAYER_TO_BANK' ||
       transaction.type === 'MORTGAGE_REDEMPTION' ||
+      transaction.type === 'PROPERTY_PURCHASE' ||
       transaction.type === 'AUCTION_PAYMENT'
     )
       paidToBank += transaction.totalAmount;

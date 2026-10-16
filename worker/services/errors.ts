@@ -108,6 +108,27 @@ export class RuleDisabledError extends AppError {
     });
   }
 }
+/** A tile request reached a game created without a board. */
+export class BoardDisabledError extends AppError {
+  constructor() {
+    super({
+      code: 'BOARD_DISABLED',
+      message: 'This game was created without a board.',
+      status: 409,
+    });
+  }
+}
+/** A free-text property request reached a board game, which names a tile instead. */
+export class TileRequiredError extends AppError {
+  constructor() {
+    super({
+      code: 'TILE_REQUIRED',
+      message: 'This game has a board; choose a tile.',
+      status: 409,
+      details: { field: 'tileId' },
+    });
+  }
+}
 export class InvalidGamePasswordError extends AppError {
   constructor() {
     super({ code: 'INVALID_GAME_PASSWORD', message: 'The game password is invalid.', status: 401 });

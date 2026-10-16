@@ -6,6 +6,7 @@ import type {
   ActivityScope,
   PaymentRequest,
 } from '../../shared/contracts/api';
+import type { BoardSnapshot } from '../../shared/board';
 import type { Currency, Player, Transaction } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { REVERSAL_WINDOW_MS, reversalAvailability } from '../../shared/domain/reversal';
@@ -81,6 +82,7 @@ export function ActivityScreen({
   initialScope = 'ALL',
   reversal,
   refreshKey = 0,
+  board = null,
   onClose,
 }: {
   gameId: string;
@@ -95,6 +97,8 @@ export function ActivityScreen({
   reversal?: ActivityReversal;
   /** Changing it reloads the ledger, e.g. after a reversal was recorded. */
   refreshKey?: number;
+  /** Board games: names the tiles in the ledger rows. */
+  board?: BoardSnapshot | null;
   onClose: () => void;
 }) {
   const { language, locale, t } = useLanguage();
@@ -221,6 +225,7 @@ export function ActivityScreen({
               currency={currency}
               language={language}
               locale={locale}
+              board={board}
               {...reversalProps(item, items.slice(0, index))}
             />
           ),

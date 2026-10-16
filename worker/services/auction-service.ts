@@ -19,21 +19,29 @@ import {
   PlayerNotFoundError,
 } from '../../shared/domain/banking.js';
 import { normalizePropertyName } from '../../shared/domain/mortgage.js';
+import {
+  PropertyAlreadyOwnedError,
+  requireTile,
+  stateOf,
+  type PropertyContext,
+} from '../../shared/domain/property.js';
 import type { Auction, Game } from '../../shared/types/monopoly.js';
 import type { AuctionRepository } from '../repositories/auction-repository.js';
 import type { BankingOperationRepository } from '../repositories/banking-operation-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { PaymentRequestRepository } from '../repositories/payment-request-repository.js';
 import type { PlayerRepository } from '../repositories/player-repository.js';
+import type { PropertyRepository } from '../repositories/property-repository.js';
 import type { TransactionRepository } from '../repositories/transaction-repository.js';
 import {
   DatabaseError,
   PersistenceConsistencyError,
   ResourceNotFoundError,
   RuleDisabledError,
+  TileRequiredError,
   ValidationError,
 } from './errors.js';
-import { assertRuleEnabled } from './rule-guard.js';
+import { assertBoardEnabled, assertRuleEnabled } from './rule-guard.js';
 
 export interface AuctionService {
   /** The running auction, or the one that closed in the last two minutes. */
@@ -59,6 +67,8 @@ export interface AuctionServiceDependencies {
   operations: BankingOperationRepository;
   paymentRequests: PaymentRequestRepository;
   auctions: AuctionRepository;
+  /** Board games: the registry an auctioned tile is checked against and handed over in. */
+  properties?: PropertyRepository;
   /** Milliseconds since the epoch; injectable so tests can move the clock. */
   now?: () => number;
   /** Ids of settlement transactions; random by default. */
@@ -75,6 +85,7 @@ export class DefaultAuctionService implements AuctionService {
   private readonly operations: BankingOperationRepository;
   private readonly paymentRequests: PaymentRequestRepository;
   private readonly auctions: AuctionRepository;
+  private readonly properties: PropertyRepository | undefined;
   private readonly now: () => number;
   private readonly createId: () => string;
 
@@ -85,6 +96,7 @@ export class DefaultAuctionService implements AuctionService {
     this.operations = dependencies.operations;
     this.paymentRequests = dependencies.paymentRequests;
     this.auctions = dependencies.auctions;
+    this.properties = dependencies.properties;
     this.now = dependencies.now ?? Date.now;
     this.createId = dependencies.createId ?? (() => crypto.randomUUID());
   }
@@ -104,7 +116,20 @@ export class DefaultAuctionService implements AuctionService {
     const game = await this.requireActiveAuctionGame(gameId);
     const existing = await this.auctions.getById(gameId, auctionId);
     if (existing !== null) return { auction: existing };
-    const lotName = normalizePropertyName(request.lotName);
+    // A board game sells a tile (named by the snapshot); a free-text lot would bypass the registry.
+    let tileId: string | null = null;
+    let lotName: string | null;
+    if (request.tileId !== undefined) {
+      const property = await this.propertyContext(game);
+      const tile = requireTile(property.board, request.tileId);
+      const owner = stateOf(property.registry, tile.id).ownerPlayerId;
+      if (owner !== null) throw new PropertyAlreadyOwnedError(tile.id, owner);
+      tileId = tile.id;
+      lotName = tile.name;
+    } else {
+      if (game.settings?.board != null) throw new TileRequiredError();
+      lotName = normalizePropertyName(request.lotName);
+    }
     if (lotName === null)
       throw new ValidationError('lotName must be 1 to 60 characters without control characters.', {
         field: 'lotName',
@@ -121,6 +146,7 @@ export class DefaultAuctionService implements AuctionService {
         id: auctionId,
         gameId: game.id,
         lotName,
+        tileId,
         initiatorPlayerId: initiator.id,
         startedAt: new Date(startedAtMs).toISOString(),
         endsAt: new Date(startedAtMs + AUCTION_DURATION_MS).toISOString(),
@@ -204,7 +230,16 @@ export class DefaultAuctionService implements AuctionService {
   /** One attempt. A rolled-back batch just means the auction moved on; the caller re-reads it. */
   private async settleOnce(game: Game, auction: Auction): Promise<void> {
     const players = await this.players.listByGameId(game.id);
-    const plan = planAuctionSettlement({ game, players, auction });
+    const property =
+      auction.tileId != null && game.settings?.board != null && this.properties !== undefined
+        ? await this.propertyContext(game)
+        : undefined;
+    const plan = planAuctionSettlement({
+      game,
+      players,
+      auction,
+      ...(property === undefined ? {} : { property }),
+    });
     if (plan.kind === 'NO_SALE') {
       // False means a bankruptcy or another settlement moved the version; the caller re-reads.
       await this.auctions.closeWithoutSale(game.id, auction.id, auction.version);
@@ -230,6 +265,12 @@ export class DefaultAuctionService implements AuctionService {
       )
         throw error;
     }
+  }
+
+  private async propertyContext(game: Game): Promise<PropertyContext> {
+    const board = assertBoardEnabled(game);
+    if (this.properties === undefined) throw new PersistenceConsistencyError();
+    return { board, registry: await this.properties.listByGame(game.id) };
   }
 
   private async closedResponse(auction: Auction): Promise<AuctionResponse> {

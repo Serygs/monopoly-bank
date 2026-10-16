@@ -4,6 +4,7 @@ import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
 import { propertyGroupColors, tileRent, type TileView } from '../../utils/property-view';
 import { Dialog } from '../Dialog';
+import { Button } from '../ui';
 import { cx } from '../ui/class-names';
 import {
   propertyGroupKeys,
@@ -75,6 +76,8 @@ export interface PropertyTileSheetProps {
   view: TileView;
   players: readonly Player[];
   currency: Currency;
+  /** Quick actions on this tile (buy, mortgage, redeem, auction, pay rent); none when empty. */
+  actions?: readonly { key: string; label: string; onSelect: () => void }[];
   onClose: () => void;
 }
 
@@ -89,6 +92,7 @@ export function PropertyTileSheet({
   view,
   players,
   currency,
+  actions = [],
   onClose,
 }: PropertyTileSheetProps) {
   const { t } = useLanguage();
@@ -188,6 +192,19 @@ export function PropertyTileSheet({
             ))}
           </ul>
         </section>
+        {actions.length > 0 && (
+          <div
+            role="group"
+            aria-label={t('propertyActions')}
+            className="grid grid-cols-2 gap-(--mb-space-2) max-md:grid-cols-1"
+          >
+            {actions.map((action) => (
+              <Button key={action.key} variant="secondary" onClick={action.onSelect}>
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
     </Dialog>
   );

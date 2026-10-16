@@ -6,6 +6,8 @@ export function transactionDescription(
   transaction: Transaction,
   players: Player[],
   language: Language = 'en',
+  /** Board games: the name of the tile the operation concerned, from the game's board snapshot. */
+  tileName?: string,
 ): string {
   const names = new Map(players.map((player) => [player.id, player.name]));
   const negative = transaction.participants.find((participant) => participant.balanceDelta < 0);
@@ -13,11 +15,18 @@ export function transactionDescription(
   const player = translate(language, 'playerFallback');
   const nameOf = (id: string | undefined) =>
     id === undefined ? player : (names.get(id) ?? player);
+  const withTile = (text: string) => (tileName === undefined ? text : `${text} · ${tileName}`);
   switch (transaction.type) {
     case 'PLAYER_TO_PLAYER':
       return `${nameOf(negative?.playerId)} → ${nameOf(positive?.playerId)}`;
     case 'PAY_RENT':
-      return `${nameOf(negative?.playerId)} → ${nameOf(positive?.playerId)} · ${translate(language, 'rent')}`;
+      return withTile(
+        `${nameOf(negative?.playerId)} → ${nameOf(positive?.playerId)} · ${translate(language, 'rent')}`,
+      );
+    case 'PROPERTY_PURCHASE':
+      return withTile(
+        `${nameOf(negative?.playerId)} · ${translate(language, 'propertyPurchaseLabel')}`,
+      );
     case 'PLAYER_TO_BANK':
       return `${nameOf(negative?.playerId)} → ${translate(language, 'transactionBank')}`;
     case 'BANK_TO_PLAYER':
@@ -29,9 +38,9 @@ export function transactionDescription(
     case 'PASS_GO':
       return `${nameOf(positive?.playerId)} · ${translate(language, 'passedGo')}`;
     case 'MORTGAGE':
-      return `${nameOf(positive?.playerId)} · ${translate(language, 'mortgageLabel')}`;
+      return withTile(`${nameOf(positive?.playerId)} · ${translate(language, 'mortgageLabel')}`);
     case 'MORTGAGE_REDEMPTION':
-      return `${nameOf(negative?.playerId)} · ${translate(language, 'redemptionLabel')}`;
+      return withTile(`${nameOf(negative?.playerId)} · ${translate(language, 'redemptionLabel')}`);
     case 'LOAN_ISSUE':
       // A bank loan has no lender participant: the money comes from the bank.
       if (negative === undefined)
@@ -66,6 +75,11 @@ export function transactionDescription(
       });
     case 'AUCTION_PAYMENT':
       // The comment is the lot name.
+      if (tileName !== undefined)
+        return translate(language, 'auctionPaymentDescription', {
+          name: nameOf(negative?.playerId),
+          lot: tileName,
+        });
       return transaction.comment === null || transaction.comment.trim() === ''
         ? translate(language, 'auctionPaymentUnnamedDescription', {
             name: nameOf(negative?.playerId),

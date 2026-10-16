@@ -1,12 +1,16 @@
 import { useRef, useState } from 'react';
 import type { AuctionResponse } from '../../../shared/contracts/api';
-import type { Player } from '../../../shared/types/monopoly';
+import type { BoardSnapshot } from '../../../shared/board';
+import type { Currency, GameProperty, Player } from '../../../shared/types/monopoly';
 import { normalizePropertyName } from '../../../shared/domain/mortgage';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
 import { Button, DialogActions, DialogBody, Field, Notice } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
+import { formatMoney } from '../../utils/money';
+import { freeTiles, tileViews } from '../../utils/property-view';
+import { TilePicker } from './TilePicker';
 
 export interface StartAuctionDialogProps {
   gameId: string;
@@ -14,6 +18,12 @@ export interface StartAuctionDialogProps {
   initiator: Player;
   /** Prefilled lot name, e.g. the note of a payment the player could not afford. */
   initialLotName?: string;
+  /** Board games: the game's board; the lot is then an unowned tile chosen from a list. */
+  board?: BoardSnapshot | null;
+  properties?: readonly GameProperty[];
+  currency?: Currency;
+  /** The tile the quick entry started from. */
+  initialTileId?: string;
   onClose: () => void;
   onStarted: (response: AuctionResponse) => void;
 }
@@ -23,6 +33,10 @@ export function StartAuctionDialog({
   gameId,
   initiator,
   initialLotName = '',
+  board = null,
+  properties = [],
+  currency = 'UAH',
+  initialTileId = '',
   onClose,
   onStarted,
 }: StartAuctionDialogProps) {
@@ -32,7 +46,11 @@ export function StartAuctionDialog({
   const [error, setError] = useState<unknown | null>(null);
   const commandIdRef = useRef<string | null>(null);
   const submittingRef = useRef(false);
-  const normalized = normalizePropertyName(lotName);
+  const [tileId, setTileId] = useState(initialTileId);
+  const tiles = board === null ? [] : freeTiles(tileViews(board, properties));
+  const tile = tiles.find((view) => view.tile.id === tileId) ?? null;
+  const normalized =
+    board === null ? normalizePropertyName(lotName) : (tile?.tile.name.slice(0, 60) ?? null);
   const title = t('auctionStartTitle');
 
   const submit = async () => {
@@ -46,7 +64,11 @@ export function StartAuctionDialog({
       onStarted(
         await monopolyBankApi.startAuction(
           gameId,
-          { initiatorPlayerId: initiator.id, lotName: normalized },
+          {
+            initiatorPlayerId: initiator.id,
+            lotName: normalized,
+            ...(board === null ? {} : { tileId }),
+          },
           commandId,
         ),
       );
@@ -70,19 +92,35 @@ export function StartAuctionDialog({
           void submit();
         }}
       >
-        <Field variant="dialog" label={t('auctionLotName')}>
-          <input
-            value={lotName}
-            maxLength={60}
-            placeholder={t('auctionLotPlaceholder')}
-            autoFocus
-            onChange={(event) => {
-              setLotName(event.target.value);
+        {board === null ? (
+          <Field variant="dialog" label={t('auctionLotName')}>
+            <input
+              value={lotName}
+              maxLength={60}
+              placeholder={t('auctionLotPlaceholder')}
+              autoFocus
+              onChange={(event) => {
+                setLotName(event.target.value);
+                setError(null);
+                commandIdRef.current = null;
+              }}
+            />
+          </Field>
+        ) : (
+          <TilePicker
+            legend={t('tileChooseAuction')}
+            items={tiles.map((view) => ({
+              view,
+              caption: t('tilePickerPrice', { amount: formatMoney(view.tile.price, currency) }),
+            }))}
+            value={tileId}
+            onChange={(view) => {
+              setTileId(view.tile.id);
               setError(null);
               commandIdRef.current = null;
             }}
           />
-        </Field>
+        )}
         <p className="mt-(--mb-space-2) text-small text-secondary">
           {t('auctionOfferedBy', { name: initiator.name })}
         </p>
