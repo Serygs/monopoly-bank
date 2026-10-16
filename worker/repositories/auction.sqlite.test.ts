@@ -342,6 +342,22 @@ describe('auctions (real SQLite)', () => {
       expect(await auctions.settleDue('game', AUCTION)).toBeNull();
     });
 
+    it('moves the end to 10 seconds after a late bid and keeps an earlier end otherwise', async () => {
+      await bid('b');
+      expect((await auctions.getCurrent('game'))?.endsAt).toBe(
+        new Date(START + 30_000).toISOString(),
+      );
+      clock = START + 25_000;
+      await bid('c');
+      expect((await auctions.getCurrent('game'))?.endsAt).toBe(
+        new Date(START + 35_000).toISOString(),
+      );
+      clock = START + 34_999;
+      expect(await auctions.settleDue('game', AUCTION)).toBeNull();
+      clock = START + 35_000;
+      expect((await auctions.settleDue('game', AUCTION))?.auction.state).toBe('SOLD');
+    });
+
     it('sells to the leader exactly once', async () => {
       await bid('b', 50);
       clock = START + 30_000;
@@ -466,6 +482,7 @@ describe('auctions (real SQLite)', () => {
         bid,
         bidderPlayerId: 'b',
         nowIso: new Date(START).toISOString(),
+        minEndsAtIso: new Date(START + 10_000).toISOString(),
       });
     expect(await attempt(100)).toBe(false);
     expect(await attempt(50)).toBe(true);

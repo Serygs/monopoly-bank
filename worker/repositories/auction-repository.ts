@@ -33,6 +33,8 @@ export interface PlaceBidInput {
   bidderPlayerId: string;
   /** ISO time; the bid is refused at or after the end. */
   nowIso: string;
+  /** ISO time the auction must at least run until after this bid; a later end is kept. */
+  minEndsAtIso: string;
 }
 
 export interface AuctionRepository {
@@ -117,7 +119,8 @@ export class D1AuctionRepository implements AuctionRepository {
       const result = await this.database
         .prepare(
           `UPDATE auctions
-           SET current_bid = ?1, current_bidder_id = ?2, version = version + 1
+           SET current_bid = ?1, current_bidder_id = ?2, version = version + 1,
+               ends_at = CASE WHEN ends_at < ?7 THEN ?7 ELSE ends_at END
            WHERE id = ?3 AND game_id = ?4 AND state = 'ACTIVE' AND version = ?5 AND ends_at > ?6
              AND current_bid < ?1
              AND (current_bidder_id IS NULL OR current_bidder_id <> ?2)
@@ -133,6 +136,7 @@ export class D1AuctionRepository implements AuctionRepository {
           input.gameId,
           input.expectedVersion,
           input.nowIso,
+          input.minEndsAtIso,
         )
         .run();
       return (result.meta?.changes ?? 0) === 1;
