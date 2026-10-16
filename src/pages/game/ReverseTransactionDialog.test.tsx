@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Player, Transaction } from '../../../shared/types/monopoly';
 import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
-import { HistoryDialog } from './HistoryDialog';
 import { ReverseTransactionDialog } from './ReverseTransactionDialog';
 
 const player = (id: string, name: string, balance: number): Player => ({
@@ -137,58 +136,5 @@ describe('ReverseTransactionDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onClose).toHaveBeenCalledOnce();
     expect(createTransaction).not.toHaveBeenCalled();
-  });
-});
-
-describe('HistoryDialog reversals', () => {
-  const renderHistory = (history: Transaction[], canReverse: (t: Transaction) => boolean) => {
-    const onReverse = vi.fn();
-    render(
-      <LanguageProvider>
-        <HistoryDialog
-          history={history}
-          player={null}
-          players={[ada, bo]}
-          currency="USD"
-          error={null}
-          language="en"
-          locale="en"
-          onClose={() => undefined}
-          onRetry={() => undefined}
-          canReverse={canReverse}
-          onReverse={onReverse}
-        />
-      </LanguageProvider>,
-    );
-    return { onReverse, user: userEvent.setup() };
-  };
-
-  it('offers Reverse only on rows the viewer may reverse', async () => {
-    const other: Transaction = { ...payment, id: 't2' };
-    const { user, onReverse } = renderHistory([payment, other], (t) => t.id === 't1');
-
-    const buttons = screen.getAllByRole('button', { name: 'Reverse' });
-    expect(buttons).toHaveLength(1);
-    await user.click(buttons[0]!);
-    expect(onReverse).toHaveBeenCalledWith(payment);
-  });
-
-  it('marks a reversed transaction and keeps the reversal as its own row', () => {
-    const reversal: Transaction = {
-      ...payment,
-      id: 'r1',
-      type: 'REVERSAL',
-      reversesTransactionId: 't1',
-      participants: [
-        { playerId: 'p1', balanceDelta: 100 },
-        { playerId: 'p2', balanceDelta: -100 },
-      ],
-    };
-    renderHistory([reversal, { ...payment, reversedByTransactionId: 'r1' }], () => false);
-
-    expect(screen.getByText('Reversed')).toBeInTheDocument();
-    expect(screen.getByText('Reversal · Bo → Ada')).toBeInTheDocument();
-    expect(screen.getByText('Ada → Bo')).toHaveClass('line-through');
-    expect(screen.queryByRole('button', { name: 'Reverse' })).toBeNull();
   });
 });

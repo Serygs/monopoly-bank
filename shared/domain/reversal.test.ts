@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import type { Transaction } from '../types/monopoly.js';
 import {
   canReverseTransaction,
+  findReversalDependency,
   isReversibleType,
   isWithinReversalWindow,
   REVERSAL_WINDOW_MS,
+  reversalAvailability,
   reversalInitiatorPlayerId,
   transactionTimeMs,
 } from './reversal.js';
@@ -137,5 +140,61 @@ describe('canReverseTransaction', () => {
     expect(canReverseTransaction({ ...own, controlledPlayerIds: ['b'], now: start + 1000 })).toBe(
       false,
     );
+  });
+});
+
+describe('reversal dependencies', () => {
+  const tx = (
+    id: string,
+    type: Transaction['type'],
+    list: [string, number][],
+    extra: Partial<Transaction> = {},
+  ): Transaction => ({
+    id,
+    gameId: 'g',
+    type,
+    amount: 1,
+    totalAmount: 1,
+    comment: null,
+    createdAt: '2026-01-01 10:00:00',
+    participants: participants(...list),
+    ...extra,
+  });
+  const payment = tx('pay', 'PLAYER_TO_PLAYER', [
+    ['a', -50],
+    ['b', 50],
+  ]);
+
+  it('finds a later mortgage, loan or auction payment by the same players', () => {
+    const mortgage = tx('m', 'MORTGAGE', [['b', 100]]);
+    expect(findReversalDependency(payment, [mortgage])).toBe(mortgage);
+    for (const type of ['LOAN_ISSUE', 'LOAN_REPAYMENT', 'AUCTION_PAYMENT'] as const)
+      expect(findReversalDependency(payment, [tx('x', type, [['a', -1]])])?.id).toBe('x');
+  });
+
+  it('ignores other players, ordinary payments and operations that were reversed', () => {
+    expect(findReversalDependency(payment, [tx('m', 'MORTGAGE', [['c', 100]])])).toBeNull();
+    expect(findReversalDependency(payment, [tx('p', 'PLAYER_TO_BANK', [['a', -1]])])).toBeNull();
+    expect(
+      findReversalDependency(payment, [
+        tx('r', 'AUCTION_PAYMENT', [['a', -5]], { reversedByTransactionId: 'rev' }),
+      ]),
+    ).toBeNull();
+  });
+
+  it('reports why a viewer who made the payment cannot reverse it', () => {
+    const base = { transaction: payment, isOwner: false, controlledPlayerIds: ['a'] };
+    const now = transactionTimeMs(payment.createdAt) + 1000;
+    expect(reversalAvailability({ ...base, now })).toEqual({ status: 'allowed' });
+    expect(reversalAvailability({ ...base, now: now + REVERSAL_WINDOW_MS })).toMatchObject({
+      status: 'blocked',
+      reason: 'WINDOW_EXPIRED',
+    });
+    expect(
+      reversalAvailability({ ...base, now, later: [tx('m', 'MORTGAGE', [['a', 1]])] }),
+    ).toMatchObject({ status: 'blocked', reason: 'LATER_OPERATION' });
+    expect(reversalAvailability({ ...base, controlledPlayerIds: ['z'], now })).toEqual({
+      status: 'hidden',
+    });
   });
 });

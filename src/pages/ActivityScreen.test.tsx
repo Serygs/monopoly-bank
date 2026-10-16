@@ -1,12 +1,18 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Player, Transaction } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { LanguageContext } from '../i18n/language-context';
 import { languageLocale, translate, type Language } from '../i18n/translations';
 import { ActivityScreen } from './ActivityScreen';
 
-function renderActivity(language: Language, showPending = true) {
+function renderActivity(
+  language: Language,
+  showPending = true,
+  extra: Partial<React.ComponentProps<typeof ActivityScreen>> = {},
+  players: Player[] = [],
+) {
   return render(
     <LanguageContext
       value={{
@@ -18,11 +24,12 @@ function renderActivity(language: Language, showPending = true) {
     >
       <ActivityScreen
         gameId="game-1"
-        players={[]}
+        players={players}
         currency="K"
         liveTransactions={[]}
         showPending={showPending}
         onClose={() => {}}
+        {...extra}
       />
     </LanguageContext>,
   );
@@ -101,5 +108,104 @@ describe('activity accessibility', () => {
     expect(allTab).toHaveFocus();
     expect(screen.getAllByRole('tab', { selected: true })).toEqual([allTab]);
     await screen.findByText(translate('en', 'noActivity'));
+  });
+});
+
+describe('reverting from the activity ledger', () => {
+  const player = (id: string, name: string): Player => ({
+    id,
+    gameId: 'game-1',
+    name,
+    color: '#000',
+    balance: 1000,
+    status: 'ACTIVE',
+    createdAt: '',
+  });
+  const tx = (id: string, extra: Partial<Transaction> = {}): Transaction => ({
+    id,
+    gameId: 'game-1',
+    type: 'PLAYER_TO_PLAYER',
+    amount: 50,
+    totalAmount: 50,
+    comment: null,
+    createdAt: new Date().toISOString(),
+    participants: [
+      { playerId: 'a', balanceDelta: -50 },
+      { playerId: 'b', balanceDelta: 50 },
+    ],
+    ...extra,
+  });
+  const players = [player('a', 'Ada'), player('b', 'Bo')];
+  const reversal = (onReverse = vi.fn()) => ({
+    isOwner: false,
+    controlledPlayerIds: ['a'],
+    onReverse,
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('offers Reverse on the own operation of the viewer in both All and Mine, and nowhere else', async () => {
+    const user = userEvent.setup();
+    const own = tx('own');
+    const other = tx('other', {
+      participants: [
+        { playerId: 'b', balanceDelta: -50 },
+        { playerId: 'a', balanceDelta: 50 },
+      ],
+    });
+    vi.spyOn(monopolyBankApi, 'getActivity').mockResolvedValue({
+      transactions: [own, other],
+      paymentRequests: [],
+      nextCursor: null,
+    });
+    const onReverse = vi.fn();
+    renderActivity('en', false, { reversal: reversal(onReverse) }, players);
+
+    const buttons = await screen.findAllByRole('button', { name: 'Reverse' });
+    expect(buttons).toHaveLength(1);
+    await user.click(buttons[0]!);
+    expect(onReverse).toHaveBeenCalledWith(own);
+
+    await user.click(screen.getByRole('tab', { name: translate('en', 'activityMine') }));
+    expect(await screen.findAllByRole('button', { name: 'Reverse' })).toHaveLength(1);
+  });
+
+  it('explains why an operation cannot be reversed: a later mortgage, or the time window', async () => {
+    const old = tx('old', { createdAt: '2020-01-01T10:00:00.000Z' });
+    const paid = tx('paid');
+    const mortgage = tx('m', {
+      type: 'MORTGAGE',
+      participants: [{ playerId: 'b', balanceDelta: 100 }],
+    });
+    vi.spyOn(monopolyBankApi, 'getActivity').mockResolvedValue({
+      transactions: [mortgage, paid, old],
+      paymentRequests: [],
+      nextCursor: null,
+    });
+    renderActivity('en', false, { reversal: reversal() }, players);
+
+    expect(await screen.findAllByText(/Cannot be reversed/)).toHaveLength(2);
+    expect(screen.getByText(translate('en', 'reversalBlockedLater'))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reverse' })).toBeNull();
+  });
+
+  it('marks the original as reversed when the reversal arrives live', async () => {
+    const own = tx('own');
+    vi.spyOn(monopolyBankApi, 'getActivity').mockResolvedValue({
+      transactions: [own],
+      paymentRequests: [],
+      nextCursor: null,
+    });
+    const live = tx('rev', {
+      type: 'REVERSAL',
+      reversesTransactionId: 'own',
+      participants: [
+        { playerId: 'a', balanceDelta: 50 },
+        { playerId: 'b', balanceDelta: -50 },
+      ],
+    });
+    renderActivity('en', false, { liveTransactions: [live], reversal: reversal() }, players);
+
+    expect(await screen.findByText(translate('en', 'reversedBadge'))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reverse' })).toBeNull();
   });
 });

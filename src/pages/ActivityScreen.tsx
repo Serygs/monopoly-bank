@@ -8,6 +8,7 @@ import type {
 } from '../../shared/contracts/api';
 import type { Currency, Player, Transaction } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { REVERSAL_WINDOW_MS, reversalAvailability } from '../../shared/domain/reversal';
 import { Dialog } from '../components/Dialog';
 import { TransactionRow } from '../components/game/TransactionRow';
 import { useLanguage } from '../i18n/language-context';
@@ -64,12 +65,22 @@ const pendingRowClass = cx(
   '[&>small]:col-span-full [&>small]:text-[0.84rem] [&>small]:font-semibold [&>small]:text-status-text',
 );
 
+/** What the Activity ledger needs to offer a reversal on the viewer's own operations. */
+export interface ActivityReversal {
+  isOwner: boolean;
+  controlledPlayerIds: readonly string[];
+  onReverse: (transaction: Transaction) => void;
+}
+
 export function ActivityScreen({
   gameId,
   players,
   currency,
   liveTransactions,
   showPending = true,
+  initialScope = 'ALL',
+  reversal,
+  refreshKey = 0,
   onClose,
 }: {
   gameId: string;
@@ -78,16 +89,30 @@ export function ActivityScreen({
   liveTransactions: Transaction[];
   /** Pending payment requests exist only when recipients must confirm payments. */
   showPending?: boolean;
+  /** The tab to open on; the wallet's history link opens "Mine". */
+  initialScope?: ActivityScope;
+  /** Omitted when the viewer cannot change the game (finished or offline). */
+  reversal?: ActivityReversal;
+  /** Changing it reloads the ledger, e.g. after a reversal was recorded. */
+  refreshKey?: number;
   onClose: () => void;
 }) {
   const { language, locale, t } = useLanguage();
   const activityScopes = showPending ? allActivityScopes : immediateActivityScopes;
-  const [scope, setScope] = useState<ActivityScope>('ALL');
+  const [scope, setScope] = useState<ActivityScope>(
+    showPending || initialScope !== 'PENDING' ? initialScope : 'ALL',
+  );
   const [page, setPage] = useState<ActivityPage>({
     transactions: [],
     paymentRequests: [],
     nextCursor: null,
   });
+  // The reversal window runs while the ledger is open, so the clock ticks without re-rendering often.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -111,7 +136,7 @@ export function ActivityScreen({
     return () => {
       active = false;
     };
-  }, [gameId, scope]);
+  }, [gameId, scope, refreshKey]);
 
   const loadMore = async (cursor: ActivityCursor) => {
     setLoading(true);
@@ -130,10 +155,19 @@ export function ActivityScreen({
     }
   };
 
-  const transactions =
-    scope === 'PENDING'
-      ? page.transactions
-      : mergeTransactions(liveTransactions, page.transactions);
+  // A reversal that arrived live marks the original it moved back, even on an older loaded page.
+  const reversedByLive = new Map(
+    liveTransactions
+      .filter((item) => item.reversesTransactionId != null)
+      .map((item) => [item.reversesTransactionId, item.id] as const),
+  );
+  const transactions = (
+    scope === 'PENDING' ? page.transactions : mergeTransactions(liveTransactions, page.transactions)
+  ).map((item) =>
+    item.reversedByTransactionId == null && reversedByLive.has(item.id)
+      ? { ...item, reversedByTransactionId: reversedByLive.get(item.id) }
+      : item,
+  );
   const items = scope === 'PENDING' ? page.paymentRequests : transactions;
   const selectScope = (index: number) => {
     const nextScope = activityScopes[index];
@@ -142,11 +176,35 @@ export function ActivityScreen({
     setError(false);
     setScope(nextScope);
   };
+  /** The ledger is newest first, so the rows above one are the operations written after it. */
+  const reversalProps = (
+    transaction: Transaction,
+    newer: readonly (Transaction | PaymentRequest)[],
+  ) => {
+    if (reversal === undefined) return {};
+    const availability = reversalAvailability({
+      transaction,
+      isOwner: reversal.isOwner,
+      controlledPlayerIds: reversal.controlledPlayerIds,
+      now,
+      later: newer.filter((item): item is Transaction => !('state' in item)),
+    });
+    if (availability.status === 'allowed')
+      return { onReverse: () => reversal.onReverse(transaction) };
+    if (availability.status === 'blocked')
+      return {
+        reversalNote:
+          availability.reason === 'WINDOW_EXPIRED'
+            ? t('reversalBlockedWindow', { minutes: REVERSAL_WINDOW_MS / 60_000 })
+            : t('reversalBlockedLater'),
+      };
+    return {};
+  };
   const panel = (
     <>
       {error && <Notice tone="error">{t('unableLoadHistory')}</Notice>}
       <ol className={ledgerClass}>
-        {items.map((item) =>
+        {items.map((item, index) =>
           'state' in item ? (
             <PendingRow
               key={item.id}
@@ -163,6 +221,7 @@ export function ActivityScreen({
               currency={currency}
               language={language}
               locale={locale}
+              {...reversalProps(item, items.slice(0, index))}
             />
           ),
         )}

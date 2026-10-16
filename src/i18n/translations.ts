@@ -184,6 +184,10 @@ const english = {
   unableReverseTransaction: 'Unable to reverse the transaction.',
   errorTransactionNotFound: 'This transaction no longer exists.',
   errorTransactionAlreadyReversed: 'This transaction has already been reversed.',
+  errorReversalBlockedByLaterOperation:
+    'A later mortgage, loan, auction or Free Parking step builds on this operation, so it cannot be reversed.',
+  reversalBlockedLater: 'Cannot be reversed: a later operation builds on it.',
+  reversalBlockedWindow: 'Cannot be reversed: the {minutes}-minute window has passed.',
   errorTransactionNotReversible: 'This kind of transaction cannot be reversed.',
   errorReversalWindowExpired: 'Only the game owner can reverse this transaction now.',
   mortgageProperty: 'Mortgage property',
@@ -817,6 +821,10 @@ const ukrainian: TranslationCatalog = {
   unableReverseTransaction: 'Не вдалося повернути операцію.',
   errorTransactionNotFound: 'Цієї операції більше немає.',
   errorTransactionAlreadyReversed: 'Цю операцію вже повернено.',
+  errorReversalBlockedByLaterOperation:
+    'Пізніша іпотека, позика, аукціон або крок фонду стоянки спирається на цю операцію, тому її не можна повернути.',
+  reversalBlockedLater: 'Не можна повернути: на неї спирається пізніша операція.',
+  reversalBlockedWindow: 'Не можна повернути: минуло {minutes} хв.',
   errorTransactionNotReversible: 'Цей тип операції не можна повернути.',
   errorReversalWindowExpired: 'Тепер повернути цю операцію може лише власник гри.',
   mortgageProperty: 'Заставити майно',
