@@ -26,6 +26,8 @@ export interface ConfirmationProps {
   interest?: number;
   /** The loan being repaid is the bank's, so the money goes to the bank rather than a player. */
   lenderIsBank?: boolean;
+  /** Cash held back for the payer's leading auction bid; it is not available after the payment. */
+  reserved?: number;
 }
 
 /** Summary rows (label left, value right) and the resulting-balances list with colour dots. */
@@ -64,6 +66,7 @@ export function Confirmation({
   propertyName,
   interest = 0,
   lenderIsBank = false,
+  reserved = 0,
 }: ConfirmationProps) {
   const { t } = useLanguage();
   const total =
@@ -76,7 +79,8 @@ export function Confirmation({
   const repeatsAmount = total === shownAmount;
   const isLoanRequest = action === 'LOAN_ISSUE';
   const resultingBalance =
-    preview.find(({ player: affected }) => affected.id === player.id)?.after ?? player.balance;
+    (preview.find(({ player: affected }) => affected.id === player.id)?.after ?? player.balance) -
+    reserved;
   return (
     <section className={confirmationClass}>
       <p className={leadClass}>

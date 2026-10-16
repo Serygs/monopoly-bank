@@ -6,6 +6,8 @@ import type {
   CreateTransactionRequest,
   DuplicateGameRequest,
   FinishGameRequest,
+  PlaceBidRequest,
+  StartAuctionRequest,
   GuestJoinGameRequest,
   JoinGameRequest,
   LoginRequest,
@@ -158,6 +160,28 @@ export async function parseFinishGameRequest(request: Request): Promise<FinishGa
   if (new Set(winnerPlayerIds).size !== winnerPlayerIds.length)
     throw new ApiValidationError('winnerPlayerIds must not contain duplicates.');
   return { winnerPlayerIds };
+}
+
+export async function parseStartAuctionRequest(request: Request): Promise<StartAuctionRequest> {
+  const body = await parseJsonObject(request);
+  const name = typeof body.lotName === 'string' ? normalizePropertyName(body.lotName) : null;
+  if (name === null)
+    throw new ApiValidationError('lotName must be 1 to 60 characters without control characters.');
+  return { initiatorPlayerId: readUuid(body, 'initiatorPlayerId'), lotName: name };
+}
+
+/** The auction id comes from the URL, so the body carries everything else. */
+export async function parsePlaceBidRequest(
+  request: Request,
+  auctionId: string,
+): Promise<PlaceBidRequest> {
+  const body = await parseJsonObject(request);
+  return {
+    bidderPlayerId: readUuid(body, 'bidderPlayerId'),
+    auctionId: parseResourceId(auctionId, 'auctionId'),
+    expectedVersion: readPositiveInteger(body, 'expectedVersion'),
+    step: readPositiveInteger(body, 'step'),
+  };
 }
 
 export async function parseRecordDiceRollRequest(request: Request): Promise<RecordDiceRollRequest> {
@@ -454,17 +478,19 @@ function readPositiveInteger(body: Record<string, unknown>, key: string): number
 
 function readTransactionType(
   body: Record<string, unknown>,
-): Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'> {
+): Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER' | 'AUCTION_PAYMENT'> {
   const value = body.type;
   if (
     typeof value !== 'string' ||
     !transactionTypes.includes(value as TransactionType) ||
     value === 'PAY_RENT' ||
-    value === 'BANKRUPTCY_TRANSFER'
+    value === 'BANKRUPTCY_TRANSFER' ||
+    // Written only when an auction closes; never requested by a client.
+    value === 'AUCTION_PAYMENT'
   ) {
     throw new ApiValidationError('type must be a supported transaction type.');
   }
-  return value as Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'>;
+  return value as Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER' | 'AUCTION_PAYMENT'>;
 }
 
 function readOptionalComment(body: Record<string, unknown>): string | undefined {

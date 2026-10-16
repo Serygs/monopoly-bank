@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { Loan, Player } from '../../../shared/types/monopoly';
+import type { Auction, Loan, Player } from '../../../shared/types/monopoly';
 import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { buildGameSettings } from '../../../shared/domain/game-rules';
 import { defaultGameRules } from '../../../shared/types/monopoly';
@@ -788,5 +788,66 @@ describe('BankingDialog Free Parking jackpot', () => {
   it('hides the jackpot action without the rule', () => {
     renderDialog([olena, taras], { settings, jackpot: 3_000_000 });
     expect(screen.queryByRole('button', { name: 'Collect Free Parking' })).toBeNull();
+  });
+});
+
+describe('BankingDialog auctions', () => {
+  const rules = { ...defaultGameRules, auctions: true };
+  const auction: Auction = {
+    id: 'a1',
+    gameId: 'g1',
+    lotName: 'Park Place',
+    initiatorPlayerId: 'p2',
+    state: 'ACTIVE',
+    currentBid: 4_500_000,
+    currentBidderId: 'p1',
+    version: 3,
+    startedAt: '2026-10-16T12:00:00.000Z',
+    endsAt: '2026-10-16T12:00:30.000Z',
+    serverTime: '2026-10-16T12:00:10.000Z',
+    settledTransactionId: null,
+  };
+
+  it('offers to put a property up for auction only with the rule on', async () => {
+    const onStartAuction = vi.fn();
+    const { user } = renderDialog([olena, taras], { rules, onStartAuction });
+    await user.click(screen.getByRole('button', { name: 'Put up for auction' }));
+    expect(onStartAuction).toHaveBeenCalledWith('');
+  });
+
+  it('hides the action without the rule', () => {
+    renderDialog([olena, taras], { onStartAuction: vi.fn() });
+    expect(screen.queryByRole('button', { name: 'Put up for auction' })).toBeNull();
+  });
+
+  it('disables the action while an auction is running', () => {
+    renderDialog([olena, taras], { rules, onStartAuction: vi.fn(), auction });
+    expect(screen.getByRole('button', { name: 'Put up for auction' })).toBeDisabled();
+  });
+
+  it('counts the leading bid as reserved and reduces the available cash', async () => {
+    const { user } = renderDialog([olena, taras], { rules, auction });
+    expect(screen.getByText('$4 500 000 reserved for your leading bid')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    await user.type(screen.getByRole('textbox', { name: 'Amount' }), '1000000');
+    // Balance $5 000 000 minus the reserved $4 500 000 leaves $500 000.
+    expect(screen.getByText('Short by $500 000.')).toBeInTheDocument();
+  });
+
+  it('offers to auction the property instead when the payer is short', async () => {
+    const onStartAuction = vi.fn();
+    const { user } = renderDialog([olena, taras], {
+      rules,
+      player: taras,
+      onStartAuction,
+    });
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    await user.type(screen.getByRole('textbox', { name: 'Amount' }), '1500000');
+    await user.click(screen.getByRole('button', { name: /Add a comment/ }));
+    await user.type(screen.getByRole('textbox', { name: 'Comment' }), 'Boardwalk');
+    await user.click(screen.getByRole('button', { name: 'Auction it instead' }));
+    expect(onStartAuction).toHaveBeenCalledWith('Boardwalk');
   });
 });

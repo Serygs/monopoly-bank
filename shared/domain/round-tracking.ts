@@ -36,7 +36,7 @@ export function transactionActor(
     case 'JACKPOT_PAYOUT':
       return credited.length === 1 ? (credited[0]?.playerId ?? null) : null;
     default:
-      // Loans, mortgages, reversals and bankruptcies say nothing about whose turn it is.
+      // Loans, mortgages, auction payments, reversals and bankruptcies say nothing about whose turn it is.
       return null;
   }
 }

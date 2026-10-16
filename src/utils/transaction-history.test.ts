@@ -178,3 +178,20 @@ describe('Free Parking jackpot transactions', () => {
     expect(transactionAmount(payment, 'USD')).not.toMatch(/^\+/);
   });
 });
+
+describe('auction payments', () => {
+  const payment: Transaction = {
+    ...rent,
+    type: 'AUCTION_PAYMENT',
+    comment: 'Park Place',
+    participants: [{ playerId: 'alex', balanceDelta: -120 }],
+  };
+
+  it('names the winner and the lot', () => {
+    expect(transactionDescription(payment, players)).toBe('Alex won the auction for Park Place');
+    expect(transactionDescription({ ...payment, comment: null }, players)).toBe(
+      'Alex won an auction',
+    );
+    expect(transactionDescription(payment, players, 'uk')).toContain('Park Place');
+  });
+});

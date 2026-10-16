@@ -64,6 +64,7 @@ export const transactionTypes = [
   'LOAN_REPAYMENT',
   'TO_JACKPOT',
   'JACKPOT_PAYOUT',
+  'AUCTION_PAYMENT',
 ] as const;
 
 export type TransactionType = (typeof transactionTypes)[number];
@@ -167,6 +168,34 @@ export interface BankLoanCooldown {
   playerId: string;
   /** Rounds until a new bank loan no longer needs the warning (1 or 2). */
   roundsLeft: number;
+}
+
+export const auctionStates = ['ACTIVE', 'SOLD', 'NO_SALE'] as const;
+export type AuctionState = (typeof auctionStates)[number];
+
+/**
+ * A live auction for a property named in free text. The app does not know who owns what: the table
+ * hands the property over by hand, the bank only records who pays. While it is ACTIVE the leading
+ * bid is reserved on the leader's wallet (see `auctionReserve`), so they cannot spend it elsewhere.
+ */
+export interface Auction {
+  id: string;
+  gameId: string;
+  lotName: string;
+  initiatorPlayerId: string;
+  state: AuctionState;
+  /** 0 until the first bid. */
+  currentBid: number;
+  currentBidderId: string | null;
+  /** Increments on every change; a bid names the version it was made against. */
+  version: number;
+  startedAt: string;
+  /** Server-set: start + 30 seconds. The auction is settled at (or just after) this moment. */
+  endsAt: string;
+  /** The server's clock when this was sent, so clients can correct for a skewed device clock. */
+  serverTime: string;
+  /** The AUCTION_PAYMENT transaction of a SOLD auction. */
+  settledTransactionId: string | null;
 }
 
 export interface TransactionParticipant {
