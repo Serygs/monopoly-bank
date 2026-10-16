@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { Currency, Loan, Player } from '../../../shared/types/monopoly';
 import { cx, playerSwatchClass } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
-import { playerDebt } from '../../utils/loans';
+import { activeBankLoan, loanOutstanding, playerDebt } from '../../utils/loans';
 import { formatMoney } from '../../utils/money';
 import { playerNameWithGameId } from '../../utils/player-display';
 
@@ -64,6 +64,7 @@ const badgeToneClass = {
     'glass:bg-[color-mix(in_srgb,var(--mb-color-accent-soft)_72%,transparent)] glass:text-accent-hover',
   ),
   bankrupt: 'bg-danger-soft text-danger',
+  overdue: 'bg-danger-soft text-danger',
 };
 const debtClass = 'flex flex-wrap gap-x-(--mb-space-3) text-small font-semibold';
 const balanceClass =
@@ -111,7 +112,12 @@ export function WalletCard({
   const balance = formatMoney(player.balance, currency);
   const cardStyle = { '--wallet-player-color': player.color } as CSSProperties;
   const bankrupt = player.status === 'BANKRUPT';
-  const debt = playerDebt(loans, player.id);
+  // Player loans are summed as owes/owed; the bank loan has its own line with the round.
+  const debt = playerDebt(
+    loans.filter((loan) => loan.lenderKind === 'PLAYER'),
+    player.id,
+  );
+  const bankLoan = activeBankLoan(loans, player.id);
   const content = (
     <>
       <span className={headingClass}>
@@ -130,6 +136,9 @@ export function WalletCard({
           {player.status === 'BANKRUPT' && (
             <WalletBadge tone="bankrupt">{t('bankrupt')}</WalletBadge>
           )}
+          {bankLoan?.rounds?.overdue === true && (
+            <WalletBadge tone="overdue">{t('overdue')}</WalletBadge>
+          )}
         </span>
       </span>
       <strong
@@ -138,6 +147,16 @@ export function WalletCard({
       >
         {balance}
       </strong>
+      {bankLoan !== null && (
+        <span className={debtClass}>
+          <span className="text-danger">
+            {t('bankLoanCard', {
+              amount: formatMoney(loanOutstanding(bankLoan), currency),
+              round: bankLoan.rounds?.round ?? 1,
+            })}
+          </span>
+        </span>
+      )}
       {(debt.owes > 0 || debt.owed > 0) && (
         <span className={debtClass}>
           {debt.owes > 0 && (

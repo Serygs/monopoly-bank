@@ -102,15 +102,17 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
       loanStatements.push(
         this.database
           .prepare(
-            `INSERT INTO loans (id, game_id, lender_kind, lender_player_id, borrower_player_id, principal)
-             VALUES (?, ?, 'PLAYER', ?, ?, ?)`,
+            `INSERT INTO loans (id, game_id, lender_kind, lender_player_id, borrower_player_id, principal, cooldown_acknowledged)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             input.transactionId,
             input.transaction.gameId,
+            newLoan.lenderKind ?? 'PLAYER',
             newLoan.lenderPlayerId,
             newLoan.borrowerPlayerId,
             newLoan.principal,
+            newLoan.cooldownAcknowledged === true ? 1 : 0,
           ),
       );
     if (loanRepayment !== undefined) {
@@ -135,14 +137,17 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
           ),
         this.database
           .prepare(
-            `INSERT INTO loan_repayments (transaction_id, game_id, loan_id, amount)
-             VALUES (?, ?, ?, ?)`,
+            `INSERT INTO loan_repayments (transaction_id, game_id, loan_id, amount, interest_amount, interest_rate_percent, suggested_rate_percent)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             input.transactionId,
             input.transaction.gameId,
             loanRepayment.loanId,
             loanRepayment.amount,
+            loanRepayment.interestAmount ?? 0,
+            loanRepayment.interestRatePercent ?? null,
+            loanRepayment.suggestedRatePercent ?? null,
           ),
       );
     }
@@ -185,6 +190,44 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
     const bankruptLoanStatements: D1PreparedStatement[] = [];
     if (input.bankruptPlayerId !== undefined) {
       const gameId = input.transaction.gameId;
+      // The bank took its share of the wallet first. A loan that is no longer active, or whose
+      // principal does not match how it ended, turns into a CHECK failure and rolls everything back.
+      const settlement = input.transaction.bankLoanSettlement;
+      if (settlement !== undefined && settlement.paidPrincipal > 0)
+        bankruptLoanStatements.push(
+          this.database
+            .prepare(
+              `UPDATE loans
+               SET repaid_amount = repaid_amount + ?1,
+                   state = CASE
+                     WHEN state <> 'ACTIVE' OR lender_kind <> 'BANK' OR borrower_player_id <> ?4 THEN 'NOT_ACTIVE'
+                     WHEN ?5 = 'REPAID' THEN 'REPAID'
+                     ELSE 'WRITTEN_OFF' END,
+                   closed_at = CURRENT_TIMESTAMP
+               WHERE id = ?2 AND game_id = ?3`,
+            )
+            .bind(
+              settlement.paidPrincipal,
+              settlement.loanId,
+              gameId,
+              settlement.borrowerPlayerId,
+              settlement.outcome,
+            ),
+          this.database
+            .prepare(
+              `INSERT INTO loan_repayments (transaction_id, game_id, loan_id, amount, interest_amount, interest_rate_percent, suggested_rate_percent)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .bind(
+              input.transactionId,
+              gameId,
+              settlement.loanId,
+              settlement.paidPrincipal,
+              settlement.paidInterest,
+              settlement.interestRatePercent,
+              settlement.suggestedRatePercent,
+            ),
+        );
       bankruptLoanStatements.push(
         this.database
           .prepare(

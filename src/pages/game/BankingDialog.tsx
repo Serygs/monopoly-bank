@@ -1,15 +1,18 @@
 import { useRef, useState, type ReactNode } from 'react';
 import {
   defaultGameRules,
+  type BankLoanCooldown,
   type Currency,
   type GameRules,
   type GameSettings,
+  type InterestRatePercent,
   type Loan,
   type Mortgage,
   type Player,
 } from '../../../shared/types/monopoly';
+import { buildGameSettings } from '../../../shared/domain/game-rules';
 import { normalizePropertyName, redemptionCost } from '../../../shared/domain/mortgage';
-import { monopolyBankApi } from '../../api/monopoly-bank-api';
+import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { AmountSelector } from '../../components/AmountSelector';
 import { Dialog } from '../../components/Dialog';
 import { WalletActionGrid } from '../../components/game/WalletActionGrid';
@@ -25,7 +28,12 @@ import {
 import { cx } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
-import { activeLoansAsBorrower, loanOutstanding } from '../../utils/loans';
+import {
+  activeBankLoan,
+  activeLoansAsBorrower,
+  loanInterest,
+  loanOutstanding,
+} from '../../utils/loans';
 import { formatMoney } from '../../utils/money';
 import { presetAmounts } from '../../utils/quick-amounts';
 import { Confirmation } from './Confirmation';
@@ -33,6 +41,7 @@ import {
   actionDescription,
   actionLabel,
   advancedWalletActions,
+  bankLoanWalletActions,
   buildRequest,
   insufficientMessage,
   isPositiveInteger,
@@ -43,7 +52,7 @@ import {
   primaryWalletActions,
   type ActionType,
 } from './game-page-helpers';
-import { LoanPicker } from './LoanFields';
+import { InterestRatePicker, LoanPicker } from './LoanFields';
 import { MortgageDetails, RedemptionPicker } from './MortgageFields';
 import { PlayerPicker } from './PlayerPicker';
 
@@ -63,6 +72,10 @@ export interface BankingDialogProps {
   mortgages?: Mortgage[];
   /** The loans still being repaid. */
   loans?: Loan[];
+  /** Players who repaid a bank loan recently (bank-loans rule). */
+  bankLoanCooldowns?: BankLoanCooldown[];
+  /** Open straight on repaying the player's bank loan (the overdue "Settle loan" prompt). */
+  settleOnOpen?: boolean;
   favoriteAmounts: number[];
   recentAmounts: number[];
   onToggleFavorite: (amount: number) => void;
@@ -75,6 +88,7 @@ export interface BankingDialogProps {
     amount: number | null,
     mortgages?: Mortgage[],
     loans?: Loan[],
+    bankLoanCooldowns?: BankLoanCooldown[],
   ) => void;
   /** A payment or loan request was created; a loan request names the lender being asked. */
   onPaymentRequested: (action: ActionType, lenderName?: string) => void;
@@ -125,6 +139,8 @@ export function BankingDialog({
   settings = null,
   mortgages = [],
   loans = [],
+  bankLoanCooldowns = [],
+  settleOnOpen = false,
   favoriteAmounts,
   recentAmounts,
   onToggleFavorite,
@@ -135,9 +151,14 @@ export function BankingDialog({
   onPaymentRequested,
 }: BankingDialogProps) {
   const { t } = useLanguage();
-  const [action, setAction] = useState<ActionType | null>(null);
+  const initialBankLoan = rules.bankLoans && settleOnOpen ? activeBankLoan(loans, player.id) : null;
+  const [action, setAction] = useState<ActionType | null>(
+    initialBankLoan === null ? null : 'LOAN_REPAYMENT',
+  );
   const [targetId, setTargetId] = useState('');
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(
+    initialBankLoan === null ? '' : String(loanOutstanding(initialBankLoan)),
+  );
   const [comment, setComment] = useState('');
   const [commentOpen, setCommentOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -145,7 +166,11 @@ export function BankingDialog({
   const [propertyName, setPropertyName] = useState('');
   const [noBuildings, setNoBuildings] = useState(false);
   const [mortgageId, setMortgageId] = useState('');
-  const [loanId, setLoanId] = useState('');
+  const [loanId, setLoanId] = useState(initialBankLoan?.id ?? '');
+  const [ratePercent, setRatePercent] = useState<InterestRatePercent | null>(null);
+  // Rounds left in the cooldown while its warning is shown; null when there is nothing to warn about.
+  const [cooldownRounds, setCooldownRounds] = useState<number | null>(null);
+  const [cooldownAcknowledged, setCooldownAcknowledged] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown | null>(null);
   const submittingRef = useRef(false);
@@ -161,8 +186,17 @@ export function BankingDialog({
   // With one possible recipient there is nothing to choose, so it is selected for the player.
   const soleRecipient = targetRequired && recipients.length === 1 ? recipients[0] : undefined;
   const amountValue = Number(amount);
-  const playerLoans = activeLoansAsBorrower(loans, player.id);
-  const selectedLoan = playerLoans.find((item) => item.id === loanId) ?? null;
+  const playerLoans = rules.playerLoans ? activeLoansAsBorrower(loans, player.id) : [];
+  const bankLoan = rules.bankLoans ? activeBankLoan(loans, player.id) : null;
+  const repayableLoans = bankLoan === null ? playerLoans : [...playerLoans, bankLoan];
+  const selectedLoan = repayableLoans.find((item) => item.id === loanId) ?? null;
+  const isBankRepayment = action === 'LOAN_REPAYMENT' && selectedLoan?.lenderKind === 'BANK';
+  const effectiveRate: InterestRatePercent =
+    ratePercent ?? selectedLoan?.rounds?.suggestedRatePercent ?? 0;
+  const bankLoanMax =
+    (settings ?? (startingBalance === undefined ? null : buildGameSettings(startingBalance)))
+      ?.bankLoanMax ?? null;
+  const cooldown = bankLoanCooldowns.find((item) => item.playerId === player.id) ?? null;
   const effectiveTargetId =
     action === 'LOAN_REPAYMENT'
       ? (selectedLoan?.lenderPlayerId ?? '')
@@ -171,6 +205,7 @@ export function BankingDialog({
         : (soleRecipient?.id ?? '');
   const target = players.find((candidate) => candidate.id === effectiveTargetId) ?? null;
   const loanOwed = selectedLoan === null ? 0 : loanOutstanding(selectedLoan);
+  const interest = isBankRepayment ? loanInterest(loanOwed, effectiveRate) : 0;
   const overRepayment = action === 'LOAN_REPAYMENT' && amountValue > loanOwed && loanOwed > 0;
   // The name is sent and shown as the server will store it: trimmed, spaces collapsed.
   const tidyName = normalizePropertyName(propertyName) ?? propertyName.trim();
@@ -188,15 +223,24 @@ export function BankingDialog({
           propertyName: tidyName,
           mortgageId,
           loanId,
+          ...(isBankRepayment ? { interestRatePercent: effectiveRate } : {}),
+          acknowledgeCooldown: cooldownAcknowledged,
         });
   const reward = exactLanding ? passGoReward * 2 : passGoReward;
   const preview =
-    request === null ? [] : previewBalances(request, players, reward, redemptionAmount, loans);
+    request === null
+      ? []
+      : previewBalances(request, players, reward, redemptionAmount, loans, interest);
   const amountRequired = action !== 'PASS_GO';
   const isMortgageAction = action === 'MORTGAGE' || action === 'MORTGAGE_REDEMPTION';
-  const isLoanAction = action === 'LOAN_ISSUE' || action === 'LOAN_REPAYMENT';
-  const fundsError = preflightFundsError(action, player, players, amountValue, currency, t);
-  const shortfall = preflightShortfall(action, player, players, amountValue);
+  const isLoanAction =
+    action === 'LOAN_ISSUE' || action === 'LOAN_REPAYMENT' || action === 'BANK_LOAN';
+  const exceedsBankLoanMax =
+    action === 'BANK_LOAN' && bankLoanMax !== null && amountValue > bankLoanMax;
+  // What leaves the wallet: for a bank loan the interest comes on top of the principal.
+  const payAmount = amountValue + interest;
+  const fundsError = preflightFundsError(action, player, players, payAmount, currency, t);
+  const shortfall = preflightShortfall(action, player, players, payAmount);
   const valid =
     request !== null &&
     (!targetRequired || (target !== null && target.id !== player.id)) &&
@@ -204,6 +248,7 @@ export function BankingDialog({
     (action !== 'MORTGAGE' || (normalizePropertyName(propertyName) !== null && noBuildings)) &&
     (action !== 'MORTGAGE_REDEMPTION' || selectedMortgage !== null) &&
     (action !== 'LOAN_REPAYMENT' || (selectedLoan !== null && !overRepayment)) &&
+    (action !== 'BANK_LOAN' || (bankLoan === null && !exceedsBankLoanMax)) &&
     fundsError === null;
 
   const selectAction = (next: ActionType | null, exact = false) => {
@@ -213,6 +258,9 @@ export function BankingDialog({
     setNoBuildings(false);
     setMortgageId('');
     setLoanId('');
+    setRatePercent(null);
+    setCooldownRounds(null);
+    setCooldownAcknowledged(false);
     setTargetId('');
     setAmount('');
     // The doubled reward says why in the history; the player can still edit the note.
@@ -251,7 +299,34 @@ export function BankingDialog({
   /** Picking a loan proposes repaying all of it; the amount can be lowered for a partial repayment. */
   const chooseLoan = (loan: Loan) => {
     setLoanId(loan.id);
+    setRatePercent(null);
     changeAmount(String(loanOutstanding(loan)));
+  };
+
+  const chooseRate = (rate: InterestRatePercent) => {
+    setRatePercent(rate);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  /** Borrowing during the cooldown needs the warning confirmed first. */
+  const review = () => {
+    if (action === 'BANK_LOAN' && cooldown !== null && !cooldownAcknowledged)
+      setCooldownRounds(cooldown.roundsLeft);
+    else setConfirming(true);
+  };
+
+  const borrowAnyway = () => {
+    setCooldownAcknowledged(true);
+    setCooldownRounds(null);
+    setConfirming(true);
+    commandIdRef.current = null;
+  };
+
+  /** The overdue prompt: repay the bank loan right away. */
+  const settleBankLoan = (loan: Loan) => {
+    selectAction('LOAN_REPAYMENT');
+    chooseLoan(loan);
   };
 
   /** A tax or fine from the game's settings: fill the amount and its name, then review it. */
@@ -289,9 +364,17 @@ export function BankingDialog({
           action === 'PASS_GO' || isMortgageAction ? null : result.transaction.amount,
           result.mortgages,
           result.loans,
+          result.bankLoanCooldowns,
         );
     } catch (caught) {
-      setError(caught);
+      if (caught instanceof MonopolyBankApiError && caught.code === 'BANK_LOAN_COOLDOWN') {
+        // The Worker found a cooldown the client did not know about: warn, then retry acknowledged.
+        const left = caught.details?.roundsLeft;
+        setCooldownRounds(typeof left === 'number' ? left : 1);
+        setCooldownAcknowledged(false);
+        setConfirming(false);
+        commandIdRef.current = null;
+      } else setError(caught);
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -343,6 +426,23 @@ export function BankingDialog({
               <MoneyValue amount={player.balance} currency={currency} />
             </strong>
           </section>
+          {bankLoan?.rounds?.overdue === true && (
+            <Notice tone="error" className="mb-(--mb-space-3)">
+              <span className="block">
+                {t('settleLoanPrompt', {
+                  amount: formatMoney(loanOutstanding(bankLoan), currency),
+                  round: bankLoan.rounds.round,
+                })}
+              </span>
+              <Button
+                variant="danger"
+                className="mt-(--mb-space-2)"
+                onClick={() => settleBankLoan(bankLoan)}
+              >
+                {t('settleLoan')}
+              </Button>
+            </Notice>
+          )}
           <WalletActionGrid
             actions={primaryWalletActions}
             onSelect={selectAction}
@@ -366,11 +466,9 @@ export function BankingDialog({
                 ...advancedWalletActions.filter(
                   (item) => item !== 'MORTGAGE_REDEMPTION' || playerMortgages.length > 0,
                 ),
-                ...(rules.playerLoans
-                  ? loanWalletActions.filter(
-                      (item) => item !== 'LOAN_REPAYMENT' || playerLoans.length > 0,
-                    )
-                  : []),
+                ...(rules.playerLoans ? loanWalletActions.slice(0, 1) : []),
+                ...(rules.bankLoans ? bankLoanWalletActions : []),
+                ...(repayableLoans.length > 0 ? ['LOAN_REPAYMENT' as const] : []),
               ]}
               onSelect={selectAction}
             >
@@ -382,6 +480,20 @@ export function BankingDialog({
               {t('viewPlayerHistory', { name: player.name })}
             </Button>
           </details>
+        </>
+      ) : cooldownRounds !== null ? (
+        <>
+          <StepBody>
+            <Notice tone="info">{t('bankLoanCooldownWarning', { rounds: cooldownRounds })}</Notice>
+          </StepBody>
+          <DialogActions className={stepFooterClass}>
+            <Button variant="secondary" onClick={() => setCooldownRounds(null)}>
+              {t('back')}
+            </Button>
+            <Button variant="primary" onClick={borrowAnyway}>
+              {t('borrowAnyway')}
+            </Button>
+          </DialogActions>
         </>
       ) : confirming ? (
         <>
@@ -398,6 +510,8 @@ export function BankingDialog({
               preview={preview}
               comment={comment}
               propertyName={action === 'MORTGAGE' ? tidyName : selectedMortgage?.propertyName}
+              interest={interest}
+              lenderIsBank={isBankRepayment}
             />
             {action === 'PASS_GO' && <div className="mt-(--mb-space-3)">{commentField}</div>}
           </StepBody>
@@ -463,17 +577,42 @@ export function BankingDialog({
             )}
             {action === 'LOAN_REPAYMENT' && (
               <LoanPicker
-                loans={playerLoans}
+                loans={repayableLoans}
                 players={players}
                 currency={currency}
                 value={loanId}
                 onChange={chooseLoan}
               />
             )}
+            {isBankRepayment && selectedLoan !== null && (
+              <>
+                <InterestRatePicker
+                  value={effectiveRate}
+                  suggested={selectedLoan.rounds?.suggestedRatePercent ?? 0}
+                  round={selectedLoan.rounds?.round ?? 1}
+                  onChange={chooseRate}
+                />
+                <FieldHint>
+                  {t('bankLoanRepayHint', {
+                    principal: formatMoney(loanOwed, currency),
+                    interest: formatMoney(interest, currency),
+                    total: formatMoney(loanOwed + interest, currency),
+                  })}
+                </FieldHint>
+              </>
+            )}
+            {action === 'BANK_LOAN' && bankLoan !== null && (
+              <Notice tone="info">{t('bankLoanAlreadyActive')}</Notice>
+            )}
+            {action === 'BANK_LOAN' && bankLoanMax !== null && (
+              <FieldHint>
+                {t('bankLoanMaxHint', { max: formatMoney(bankLoanMax, currency) })}
+              </FieldHint>
+            )}
             {action === 'MORTGAGE' && <FieldHint>{t('mortgageValueHint')}</FieldHint>}
             {amountRequired &&
               action !== 'MORTGAGE_REDEMPTION' &&
-              (action !== 'LOAN_REPAYMENT' || selectedLoan !== null) && (
+              (action !== 'LOAN_REPAYMENT' || (selectedLoan !== null && !isBankRepayment)) && (
                 <AmountSelector
                   value={amount}
                   onChange={changeAmount}
@@ -509,6 +648,11 @@ export function BankingDialog({
                 </div>
               </div>
             )}
+            {exceedsBankLoanMax && bankLoanMax !== null && (
+              <FieldError as="p" announce>
+                {t('bankLoanExceedsMax', { max: formatMoney(bankLoanMax, currency) })}
+              </FieldError>
+            )}
             {overRepayment && (
               <FieldError as="p" announce>
                 {t('loanRepayExceeds', { amount: formatMoney(loanOwed, currency) })}
@@ -522,9 +666,21 @@ export function BankingDialog({
             {shortfall !== null && (
               <div className={shortfallClass}>
                 <p>{t('shortBy', { amount: formatMoney(shortfall, currency) })}</p>
-                <Button variant="danger" onClick={onBankrupt}>
-                  {t('declareBankrupt')}
-                </Button>
+                <div className="flex flex-wrap gap-(--mb-space-2)">
+                  {isBankRepayment && (
+                    <>
+                      <Button variant="secondary" onClick={() => selectAction('MORTGAGE')}>
+                        {t('mortgageProperty')}
+                      </Button>
+                      <Button variant="secondary" onClick={() => selectAction('BANK_TO_PLAYER')}>
+                        {t('sellBuildingsToBank')}
+                      </Button>
+                    </>
+                  )}
+                  <Button variant="danger" onClick={onBankrupt}>
+                    {t('declareBankrupt')}
+                  </Button>
+                </div>
               </div>
             )}
             {!isMortgageAction && !isLoanAction && (
@@ -535,7 +691,7 @@ export function BankingDialog({
             <Button variant="secondary" onClick={() => selectAction(null)}>
               {t('back')}
             </Button>
-            <Button variant="primary" disabled={!valid} onClick={() => setConfirming(true)}>
+            <Button variant="primary" disabled={!valid} onClick={review}>
               {t('reviewTransaction')}
             </Button>
           </DialogActions>

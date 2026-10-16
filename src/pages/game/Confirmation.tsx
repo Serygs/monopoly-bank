@@ -22,6 +22,10 @@ export interface ConfirmationProps {
   comment: string;
   /** The mortgaged property, shown for a mortgage or a redemption. */
   propertyName?: string;
+  /** Interest paid to the bank on top of the amount when a bank loan is repaid. */
+  interest?: number;
+  /** The loan being repaid is the bank's, so the money goes to the bank rather than a player. */
+  lenderIsBank?: boolean;
 }
 
 /** Summary rows (label left, value right) and the resulting-balances list with colour dots. */
@@ -58,6 +62,8 @@ export function Confirmation({
   preview,
   comment,
   propertyName,
+  interest = 0,
+  lenderIsBank = false,
 }: ConfirmationProps) {
   const { t } = useLanguage();
   const total =
@@ -65,8 +71,8 @@ export function Confirmation({
       ? amount * (preview.length - 1)
       : action === 'PASS_GO'
         ? passGoReward
-        : amount;
-  const shownAmount = action === 'PASS_GO' ? passGoReward : amount;
+        : amount + interest;
+  const shownAmount = action === 'PASS_GO' ? passGoReward : amount + interest;
   const repeatsAmount = total === shownAmount;
   const isLoanRequest = action === 'LOAN_ISSUE';
   const resultingBalance =
@@ -79,7 +85,8 @@ export function Confirmation({
           {action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? ` ${t('perPlayer')}` : ''}
         </strong>
         <span>
-          {sourceFor(action, player, t, target)} → {destinationFor(action, player, target, t)}
+          {sourceFor(action, player, t, target)} →{' '}
+          {destinationFor(action, player, target, t, lenderIsBank)}
         </span>
       </p>
       {isLoanRequest && (
@@ -94,7 +101,7 @@ export function Confirmation({
         </div>
         <div className={compactHidden}>
           <dt>{t('operation')}</dt>
-          <dd>{transactionLabel(action, t)}</dd>
+          <dd>{transactionLabel(action === 'BANK_LOAN' ? 'LOAN_ISSUE' : action, t)}</dd>
         </div>
         <div className={compactHidden}>
           <dt>{t('source')}</dt>
@@ -102,7 +109,7 @@ export function Confirmation({
         </div>
         <div className={compactHidden}>
           <dt>{t('destination')}</dt>
-          <dd>{destinationFor(action, player, target, t)}</dd>
+          <dd>{destinationFor(action, player, target, t, lenderIsBank)}</dd>
         </div>
         {propertyName !== undefined && propertyName !== '' && (
           <div>
@@ -117,6 +124,12 @@ export function Confirmation({
             {action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? ` ${t('perPlayer')}` : ''}
           </dd>
         </div>
+        {interest > 0 && (
+          <div>
+            <dt>{t('interest')}</dt>
+            <dd>{formatMoney(interest, currency)}</dd>
+          </div>
+        )}
         <div className={repeatsAmount ? compactHidden : undefined}>
           <dt>{t('total')}</dt>
           <dd>{formatMoney(total, currency)}</dd>

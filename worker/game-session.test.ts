@@ -493,3 +493,65 @@ describe('GameSession mortgage events', () => {
     expect(JSON.parse(sent[0] ?? '{}')).toMatchObject({ type: 'GAME_COMMITTED', mortgages });
   });
 });
+
+describe('GameSession bank loan events', () => {
+  it('sends the loans and cooldowns with every committed transaction', async () => {
+    const sent: string[] = [];
+    const storage = new Map<string, unknown>();
+    const context = {
+      storage: {
+        get: async <T>(key: string) => storage.get(key) as T | undefined,
+        put: async (key: string, value: unknown) => {
+          storage.set(key, value);
+        },
+      },
+      getWebSockets: () => [{ send: (message: string) => sent.push(message) }],
+    };
+    const session = new GameSession(context as never, {} as Env) as unknown as {
+      mutate(gameId: string, userId: string, request: Request): Promise<Response>;
+      banking(command: string): unknown;
+      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
+      commandLedger(): ReturnType<typeof fakeLedger>;
+    };
+    const loans = [{ id: 'l1', lenderKind: 'BANK', rounds: { round: 2 } }];
+    const bankLoanCooldowns = [{ playerId: 'p1', roundsLeft: 1 }];
+    session.banking = () => ({
+      createTransaction: async () => ({
+        transaction: {
+          id: commandId,
+          gameId,
+          type: 'PASS_GO',
+          amount: 200,
+          totalAmount: 200,
+          comment: null,
+          createdAt: '',
+          participants: [],
+        },
+        players: [],
+        loans,
+        bankLoanCooldowns,
+      }),
+    });
+    session.commandLedger = () => fakeLedger();
+    session.authorizeMutation = async () => undefined;
+
+    await session.mutate(
+      gameId,
+      'actor',
+      new Request('https://game-session/mutation', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'CREATE_TRANSACTION',
+          commandId,
+          request: { type: 'PASS_GO', playerId: '00000000-0000-4000-8000-000000000003' },
+        }),
+      }),
+    );
+
+    expect(JSON.parse(sent[0] ?? '{}')).toMatchObject({
+      type: 'GAME_COMMITTED',
+      loans,
+      bankLoanCooldowns,
+    });
+  });
+});

@@ -17,6 +17,7 @@ import {
   insufficientMessage,
   preflightFundsError,
   previewBalances,
+  splitPaymentRequests,
   walletActionTone,
   withClientGameDetails,
 } from './game-page-helpers';
@@ -486,5 +487,98 @@ describe('mortgage requests and previews', () => {
     const { detailsCell, apply } = liveHarness(details({ mortgages }), []);
     apply({ type: 'GAME_COMMITTED', stateVersion: 9, transaction: transaction('t9'), players });
     expect(detailsCell.value?.mortgages).toEqual(mortgages);
+  });
+});
+
+describe('bank loan requests and previews', () => {
+  it('builds an immediate bank loan, acknowledging the cooldown only when confirmed', () => {
+    expect(buildRequest('BANK_LOAN', 'p1', '', 250, 'ignored')).toEqual({
+      type: 'LOAN_ISSUE',
+      lenderKind: 'BANK',
+      playerId: 'p1',
+      amount: 250,
+    });
+    expect(buildRequest('BANK_LOAN', 'p1', '', 250, '', { acknowledgeCooldown: true })).toEqual({
+      type: 'LOAN_ISSUE',
+      lenderKind: 'BANK',
+      playerId: 'p1',
+      amount: 250,
+      acknowledgeCooldown: true,
+    });
+  });
+
+  it('sends the confirmed rate with a bank repayment only', () => {
+    expect(
+      buildRequest('LOAN_REPAYMENT', 'p1', '', 400, '', { loanId: 'l1', interestRatePercent: 10 }),
+    ).toEqual({
+      type: 'LOAN_REPAYMENT',
+      playerId: 'p1',
+      loanId: 'l1',
+      amount: 400,
+      interestRatePercent: 10,
+    });
+    expect(buildRequest('LOAN_REPAYMENT', 'p1', '', 400, '', { loanId: 'l1' })).toEqual({
+      type: 'LOAN_REPAYMENT',
+      playerId: 'p1',
+      loanId: 'l1',
+      amount: 400,
+    });
+  });
+
+  it('previews the bank loan as money in and the repayment as principal plus interest out', () => {
+    const borrowed = previewBalances(
+      { type: 'LOAN_ISSUE', lenderKind: 'BANK', playerId: 'p1', amount: 250 },
+      players,
+      0,
+    );
+    expect(borrowed.map((entry) => entry.delta)).toEqual([250, 0, 0]);
+    const repaid = previewBalances(
+      {
+        type: 'LOAN_REPAYMENT',
+        playerId: 'p1',
+        loanId: 'l1',
+        amount: 400,
+        interestRatePercent: 10,
+      },
+      players,
+      0,
+      0,
+      [],
+      40,
+    );
+    expect(repaid.map((entry) => entry.delta)).toEqual([-440, 0, 0]);
+  });
+
+  it('adopts the loans and cooldowns of a committed transaction', () => {
+    const { detailsCell, apply } = liveHarness(details(), null);
+    apply({
+      type: 'GAME_COMMITTED',
+      stateVersion: 4,
+      transaction: transaction('t9'),
+      players,
+      loans: [],
+      bankLoanCooldowns: [{ playerId: 'p1', roundsLeft: 2 }],
+    });
+    expect(detailsCell.value?.loans).toEqual([]);
+    expect(detailsCell.value?.bankLoanCooldowns).toEqual([{ playerId: 'p1', roundsLeft: 2 }]);
+  });
+});
+
+describe('splitPaymentRequests', () => {
+  const request = (id: string, kind: 'PAYMENT' | 'LOAN', creator: string, approver: string) =>
+    ({ id, kind, creatorPlayerId: creator, approverPlayerId: approver }) as never;
+  const incomingLoan = request('r1', 'LOAN', 'p2', 'p1');
+  const outgoingLoan = request('r2', 'LOAN', 'p1', 'p2');
+  const outgoingPayment = request('r3', 'PAYMENT', 'p1', 'p2');
+
+  it("keeps only requests to answer in the inbox and lists the viewer's own loan requests", () => {
+    expect(splitPaymentRequests([incomingLoan, outgoingLoan, outgoingPayment], ['p1'])).toEqual({
+      incoming: [incomingLoan],
+      outgoingLoans: [outgoingLoan],
+    });
+  });
+
+  it('treats everything as incoming when no wallet is known', () => {
+    expect(splitPaymentRequests([incomingLoan, outgoingLoan], []).incoming).toHaveLength(2);
   });
 });

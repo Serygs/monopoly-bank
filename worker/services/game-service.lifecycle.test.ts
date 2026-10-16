@@ -151,3 +151,69 @@ describe('DefaultGameService lifecycle', () => {
     });
   });
 });
+
+describe('DefaultGameService bank loans', () => {
+  const bankLoan = {
+    id: 'loan-1',
+    gameId: 'game',
+    lenderKind: 'BANK' as const,
+    lenderPlayerId: null,
+    borrowerPlayerId: 'player-1',
+    principal: 100,
+    repaidAmount: 0,
+    state: 'ACTIVE' as const,
+    createdAt: '',
+    closedAt: null,
+  };
+  const repositories = (rules: typeof defaultGameRules) => ({
+    games: {
+      getById: async () => ({ ...game, rules }),
+      listFavoriteAmounts: async () => [],
+      listRecentAmounts: async () => [],
+    } as never,
+    players: { listByGameId: async () => players } as never,
+    loans: {
+      listActive: async () => [bankLoan],
+      listBankLoanRepayments: async () => [],
+    } as never,
+    transactions: {
+      listChronologicalSince: async () => [
+        { id: 'loan-1', type: 'LOAN_ISSUE', participants: [] },
+        {
+          id: 't2',
+          type: 'PLAYER_TO_BANK',
+          participants: [{ playerId: 'player-1', balanceDelta: -1 }],
+        },
+        {
+          id: 't3',
+          type: 'PLAYER_TO_BANK',
+          participants: [{ playerId: 'player-2', balanceDelta: -1 }],
+        },
+        {
+          id: 't4',
+          type: 'PLAYER_TO_BANK',
+          participants: [{ playerId: 'player-1', balanceDelta: -1 }],
+        },
+      ],
+    } as never,
+    createId: () => 'unused',
+  });
+
+  it('reports the rounds of active bank loans and the cooldowns with a game that enabled them', async () => {
+    const details = await new DefaultGameService(
+      repositories({ ...defaultGameRules, bankLoans: true }),
+    ).getGame('game');
+
+    expect(details.bankLoanCooldowns).toEqual([]);
+    expect(details.loans).toEqual([
+      { ...bankLoan, rounds: { round: 2, suggestedRatePercent: 10, overdue: false } },
+    ]);
+  });
+
+  it('leaves the loans plain and reports no cooldowns without the rule', async () => {
+    const details = await new DefaultGameService(repositories(defaultGameRules)).getGame('game');
+
+    expect(details.bankLoanCooldowns).toBeUndefined();
+    expect(details.loans).toEqual([bankLoan]);
+  });
+});

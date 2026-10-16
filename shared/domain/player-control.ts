@@ -20,7 +20,7 @@ export function controlledPlayerIdForBankingCommand(
     case 'LOAN_REPAYMENT':
       return request.playerId;
     case 'LOAN_ISSUE':
-      return request.borrowerPlayerId;
+      return request.lenderKind === 'BANK' ? request.playerId : request.borrowerPlayerId;
     case 'PLAYER_TO_ALL':
       return request.payerPlayerId;
     case 'ALL_TO_PLAYER':

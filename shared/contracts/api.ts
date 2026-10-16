@@ -1,6 +1,8 @@
 import type {
   Game,
   GameRules,
+  BankLoanCooldown,
+  InterestRatePercent,
   Loan,
   Mortgage,
   PaymentMode,
@@ -51,6 +53,8 @@ export interface GameDetails {
   mortgages?: Mortgage[];
   /** Loans that are still being repaid (player loans; the bank's later). */
   loans?: Loan[];
+  /** Players still in the cooldown after repaying a bank loan (bank-loans rule only). */
+  bankLoanCooldowns?: BankLoanCooldown[];
   favoriteAmounts?: number[];
   recentAmounts?: number[];
   /** Wallets the current actor can operate. All other wallets are read-only. */
@@ -243,6 +247,8 @@ export interface RedeemMortgageTransactionRequest extends Omit<TransactionReques
  */
 export interface LoanIssueTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
   type: 'LOAN_ISSUE';
+  /** Absent or PLAYER; a bank loan is a BankLoanTransactionRequest. */
+  lenderKind?: 'PLAYER';
   /** The player asking for the money (the wallet whose controller sends this). */
   borrowerPlayerId: string;
   lenderPlayerId: string;
@@ -255,8 +261,27 @@ export interface LoanRepaymentTransactionRequest extends Omit<TransactionRequest
   /** The borrower. */
   playerId: string;
   loanId: string;
-  /** At most the outstanding amount. */
+  /** At most the outstanding amount. A bank loan is repaid in full: this must equal its principal. */
   amount: number;
+  /**
+   * Bank loans only (required there, rejected for player loans): the rate the player confirmed,
+   * normally the suggested one. Interest = principal * rate, rounded half up, and leaves the game.
+   */
+  interestRatePercent?: InterestRatePercent;
+}
+
+/**
+ * Borrows from the bank (bank-loans rule): paid out at once as a LOAN_ISSUE transaction, at most
+ * `settings.bankLoanMax`, one active bank loan per player.
+ */
+export interface BankLoanTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
+  type: 'LOAN_ISSUE';
+  lenderKind: 'BANK';
+  /** The borrower. */
+  playerId: string;
+  amount: number;
+  /** Required (true) when the player is in a bank-loan cooldown; stored on the loan. */
+  acknowledgeCooldown?: boolean;
 }
 
 /** Corrects a mistaken transaction with a new REVERSAL record; the original is never edited. */
@@ -346,6 +371,7 @@ export type CreateTransactionRequest =
   | RedeemMortgageTransactionRequest
   | LoanIssueTransactionRequest
   | LoanRepaymentTransactionRequest
+  | BankLoanTransactionRequest
   | ReversalTransactionRequest;
 
 /** Every request that names its own wallet; a reversal is authorized from the stored record instead. */
@@ -361,6 +387,8 @@ export interface CreateTransactionResponse {
   mortgages?: Mortgage[];
   /** The loans still being repaid after a repayment or a bankruptcy; absent for every other operation. */
   loans?: Loan[];
+  /** With the bank-loans rule every response carries these, since every operation can advance a round. */
+  bankLoanCooldowns?: BankLoanCooldown[];
 }
 
 export const paymentRequestStates = [
@@ -400,6 +428,8 @@ export interface PaymentRequestActionResponse {
   transaction?: Transaction;
   /** The loans still being repaid after accepting a loan request. */
   loans?: Loan[];
+  /** With the bank-loans rule every response carries these, since every operation can advance a round. */
+  bankLoanCooldowns?: BankLoanCooldown[];
 }
 
 /** One roll of the two table dice by one player; kept only while the game is active. */

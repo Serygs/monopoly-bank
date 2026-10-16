@@ -5,7 +5,7 @@ import type {
   GameDetails,
   PaymentRequestActionResponse,
 } from './api.js';
-import type { Loan, Mortgage, Player, Transaction } from '../types/monopoly.js';
+import type { BankLoanCooldown, Loan, Mortgage, Player, Transaction } from '../types/monopoly.js';
 
 /** Commands are accepted only by the game coordinator, never peer-to-peer. */
 export type LiveMutationCommand =
@@ -43,6 +43,8 @@ export type LiveServerEvent =
       mortgages?: Mortgage[];
       /** The loans still being repaid after a loan is issued or repaid, or a bankruptcy. */
       loans?: Loan[];
+      /** With the bank-loans rule, every commit carries the loans and cooldowns (rounds may advance). */
+      bankLoanCooldowns?: BankLoanCooldown[];
     }
   | { type: 'GAME_FINISHED'; stateVersion: number; details: GameDetails }
   | { type: 'LOBBY_UPDATED'; stateVersion: number; details: Pick<GameDetails, 'game' | 'players'> }
