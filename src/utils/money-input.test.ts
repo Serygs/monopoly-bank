@@ -3,10 +3,10 @@ import {
   AMOUNT_UNIT_FACTOR,
   appendDecimalSeparator,
   appendMoneyDigit,
-  canonicalToDigits,
   changeAmountUnit,
   formatDigitsDisplay,
   fromCanonicalAmount,
+  isUnrepresentableAmount,
   maxDigitsFor,
   maxFractionDigits,
   removeMoneyDigit,
@@ -62,39 +62,44 @@ describe('amount input state', () => {
     expect(Number(canonical)).toBeLessThanOrEqual(9_999_999_999);
     expect(Number.isSafeInteger(Number(canonical))).toBe(true);
   });
-  it('keeps the amount when the unit changes and re-expresses it', () => {
-    expect(changeAmountUnit({ digits: '85000', unit: 'ONES' }, 'THOUSANDS')).toEqual({
-      digits: '85',
-      unit: 'THOUSANDS',
-    });
-    expect(changeAmountUnit({ digits: '85', unit: 'THOUSANDS' }, 'MILLIONS')).toEqual({
-      digits: '0.085',
-      unit: 'MILLIONS',
-    });
-    expect(changeAmountUnit({ digits: '3.2', unit: 'MILLIONS' }, 'ONES')).toEqual({
-      digits: '3200000',
-      unit: 'ONES',
-    });
-    expect(changeAmountUnit({ digits: '123', unit: 'THOUSANDS' }, 'MILLIONS')).toEqual({
-      digits: '0.123',
-      unit: 'MILLIONS',
-    });
+  it('changes only the multiplier when the unit changes: 3 → M → K → M', () => {
+    const millions: AmountInputState = { digits: '3', unit: 'MILLIONS' };
+    expect(toCanonicalAmount(millions)).toBe('3000000');
+    const thousands = changeAmountUnit(millions, 'THOUSANDS');
+    expect(thousands).toEqual({ digits: '3', unit: 'THOUSANDS' });
+    expect(toCanonicalAmount(thousands)).toBe('3000');
+    const back = changeAmountUnit(thousands, 'MILLIONS');
+    expect(back).toEqual({ digits: '3', unit: 'MILLIONS' });
+    expect(toCanonicalAmount(back)).toBe('3000000');
   });
-  it('keeps the canonical amount through any unit round trip', () => {
-    const start: AmountInputState = { digits: '1234567', unit: 'ONES' };
-    const there = changeAmountUnit(changeAmountUnit(start, 'THOUSANDS'), 'MILLIONS');
-    expect(toCanonicalAmount(there)).toBe('1234567');
-    expect(toCanonicalAmount(changeAmountUnit(there, 'ONES'))).toBe('1234567');
+  it('multiplies decimals and whole numbers by the chosen unit', () => {
+    expect(toCanonicalAmount({ digits: '1.5', unit: 'MILLIONS' })).toBe('1500000');
+    expect(toCanonicalAmount({ digits: '0.5', unit: 'THOUSANDS' })).toBe('500');
+    expect(toCanonicalAmount({ digits: '250', unit: 'THOUSANDS' })).toBe('250000');
   });
-  it('starts empty or zero amounts empty in the new unit', () => {
-    expect(changeAmountUnit({ digits: '', unit: 'ONES' }, 'MILLIONS')).toEqual({
-      digits: '',
-      unit: 'MILLIONS',
-    });
-    expect(changeAmountUnit({ digits: '0', unit: 'ONES' }, 'MILLIONS')).toEqual({
-      digits: '',
-      unit: 'MILLIONS',
-    });
+  it('applies a unit chosen before typing to the digits typed afterwards', () => {
+    const chosen = changeAmountUnit({ digits: '', unit: 'ONES' }, 'THOUSANDS');
+    expect(chosen).toEqual({ digits: '', unit: 'THOUSANDS' });
+    expect(toCanonicalAmount(chosen)).toBe('');
+    const typed = { ...chosen, digits: appendMoneyDigit(chosen.digits, '7', chosen.unit) };
+    expect(toCanonicalAmount(typed)).toBe('7000');
+  });
+  it('clears to an empty amount and keeps the unit', () => {
+    const cleared: AmountInputState = { digits: removeMoneyDigit('5'), unit: 'MILLIONS' };
+    expect(cleared).toEqual({ digits: '', unit: 'MILLIONS' });
+    expect(toCanonicalAmount(cleared)).toBe('');
+  });
+  it('keeps digits that are not an amount in the new unit and restores them when switching back', () => {
+    const ones = changeAmountUnit({ digits: '1.5', unit: 'MILLIONS' }, 'ONES');
+    expect(ones).toEqual({ digits: '1.5', unit: 'ONES' });
+    expect(toCanonicalAmount(ones)).toBe('');
+    expect(isUnrepresentableAmount(ones)).toBe(true);
+    expect(toCanonicalAmount(changeAmountUnit(ones, 'MILLIONS'))).toBe('1500000');
+    const overLimit = changeAmountUnit({ digits: '50000', unit: 'THOUSANDS' }, 'MILLIONS');
+    expect(toCanonicalAmount(overLimit)).toBe('');
+    expect(isUnrepresentableAmount(overLimit)).toBe(true);
+    expect(isUnrepresentableAmount({ digits: '', unit: 'ONES' })).toBe(false);
+    expect(isUnrepresentableAmount({ digits: '3', unit: 'MILLIONS' })).toBe(false);
   });
   it('keeps the same state when the unit is unchanged', () => {
     const state: AmountInputState = { digits: '123', unit: 'THOUSANDS' };
@@ -168,13 +173,6 @@ describe('decimal amounts', () => {
     expect(sanitizeMoneyInput(',5', 'MILLIONS')).toBe('0.5');
     expect(sanitizeMoneyInput('3,2', 'ONES')).toBe('3');
     expect(sanitizeMoneyInput('1 234,5678', 'THOUSANDS')).toBe('1234.567');
-  });
-  it('writes a canonical amount in a unit with its fraction', () => {
-    expect(canonicalToDigits(3_200_000, 'MILLIONS')).toBe('3.2');
-    expect(canonicalToDigits(85_000, 'MILLIONS')).toBe('0.085');
-    expect(canonicalToDigits(85_000, 'THOUSANDS')).toBe('85');
-    expect(canonicalToDigits(1, 'MILLIONS')).toBe('0.000001');
-    expect(canonicalToDigits(12, 'ONES')).toBe('12');
   });
   it('formats typed digits with grouping and the locale separator', () => {
     expect(formatDigitsDisplay('', ',')).toBe('');
