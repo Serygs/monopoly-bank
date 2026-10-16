@@ -51,7 +51,7 @@ describe('AppBottomNav', () => {
 
   it('always opens the Games list from the Games tab', async () => {
     const user = userEvent.setup();
-    render(<Shell start="/games/new" />);
+    render(<Shell start="/games/join" />);
     await user.click(screen.getByRole('button', { name: 'Games' }));
     expect(route()).toBe('/');
   });
@@ -66,6 +66,11 @@ describe('AppBottomNav', () => {
 
   it('is hidden inside a game, which has its own navigation', () => {
     render(<Shell start="/games/abc-123" />);
+    expect(screen.queryByRole('navigation')).toBeNull();
+  });
+
+  it('gives way to the stepper footer while a lobby is created', () => {
+    render(<Shell start="/games/new" />);
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 });

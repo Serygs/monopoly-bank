@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import type { UserProfile } from '../shared/contracts/api';
 import { monopolyBankApi } from './api/monopoly-bank-api';
 import { loadAccountSession } from './api/account-session';
@@ -18,10 +25,13 @@ import { mountAppearance } from './appearance/appearance-controller';
 import { AppearanceSettings, SettingsGroup } from './components/AppearanceSettings';
 import { AppBottomNav } from './components/AppBottomNav';
 import { appTabForPath } from './utils/app-tab';
+import { clearDraft } from './pages/create-game-draft';
 import { Dialog } from './components/Dialog';
 import {
   BankSeal,
   Button,
+  DialogActions,
+  DialogBody,
   FeedbackProvider,
   Notice,
   PageShell,
@@ -145,6 +155,11 @@ function AppRoutes() {
   const accountRequestVersion = useRef(0);
   const pathRef = useRef(path);
   const scrollPositions = useRef<Record<string, number>>({});
+  const createDirty = useRef(false);
+  const [leaveTarget, setLeaveTarget] = useState<string | null>(null);
+  const setCreateDirty = useCallback((dirty: boolean) => {
+    createDirty.current = dirty;
+  }, []);
 
   const { visualStyle, colorMode } = preferences;
   useLayoutEffect(() => mountAppearance({ visualStyle, colorMode }), [visualStyle, colorMode]);
@@ -179,6 +194,17 @@ function AppRoutes() {
   }, []);
   useEffect(() => {
     const onPopState = () => {
+      if (
+        pathRef.current === '/games/new' &&
+        createDirty.current &&
+        window.location.pathname !== '/games/new'
+      ) {
+        /* Put the new-lobby entry back and ask before the typed input is lost. */
+        const target = window.location.pathname;
+        window.history.pushState({}, '', '/games/new');
+        setLeaveTarget(target);
+        return;
+      }
       scrollPositions.current[pathRef.current] = window.scrollY;
       setPath(window.location.pathname);
     };
@@ -227,6 +253,15 @@ function AppRoutes() {
   }, []);
 
   const navigate = (target: string) => {
+    if (
+      pathRef.current === '/games/new' &&
+      createDirty.current &&
+      routePath(target) !== '/games/new'
+    ) {
+      setSettingsOpen(false);
+      setLeaveTarget(target);
+      return;
+    }
     scrollPositions.current[pathRef.current] = window.scrollY;
     setSettingsOpen(false);
     window.history.pushState({}, '', target);
@@ -242,6 +277,8 @@ function AppRoutes() {
       setAccountError(null);
       setSettingsOpen(false);
       setPaymentFlowOpen(false);
+      clearDraft();
+      createDirty.current = false;
       window.history.replaceState({}, '', '/');
       setPath('/');
       setProfile(null);
@@ -464,7 +501,8 @@ function AppRoutes() {
       ) : path === '/games/new' ? (
         <CreateGamePage
           profile={profile}
-          onCancel={() => navigate('/')}
+          onClose={() => navigate('/')}
+          onDirtyChange={setCreateDirty}
           onCreated={(id) => navigate(`/games/${encodeURIComponent(id)}`)}
         />
       ) : path === '/games/join' ? (
@@ -492,6 +530,32 @@ function AppRoutes() {
         />
       )}
       <AppBottomNav path={path} navigate={navigate} />
+      {leaveTarget !== null && (
+        <Dialog
+          title={t('discardDraftTitle')}
+          closeLabel={t('closeDialog', { title: t('discardDraftTitle') })}
+          onClose={() => setLeaveTarget(null)}
+        >
+          <DialogBody>{t('discardDraftBody')}</DialogBody>
+          <DialogActions>
+            <Button variant="secondary" onClick={() => setLeaveTarget(null)}>
+              {t('keepEditing')}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                const target = leaveTarget;
+                clearDraft();
+                createDirty.current = false;
+                setLeaveTarget(null);
+                navigate(target);
+              }}
+            >
+              {t('discardDraft')}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </div>
   );
 }
