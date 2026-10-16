@@ -1,4 +1,8 @@
-import type { CreateInvitationResponse, PlayerController } from '../../shared/contracts/api.js';
+import {
+  MAX_LOBBY_PLAYERS,
+  type CreateInvitationResponse,
+  type PlayerController,
+} from '../../shared/contracts/api.js';
 import {
   isWithinReversalWindow,
   REVERSAL_WINDOW_MS,
@@ -9,7 +13,7 @@ import type {
   GameMemberRole,
   GameAccessRepository,
 } from '../repositories/game-access-repository.js';
-import { ConflictError, ForbiddenError, ResourceNotFoundError } from './errors.js';
+import { ConflictError, ForbiddenError, LobbyFullError, ResourceNotFoundError } from './errors.js';
 import { randomToken, tokenHash, verifyPassword } from './password-security.js';
 
 export class GameAccessService {
@@ -72,6 +76,21 @@ export class GameAccessService {
     if (await this.access.joinLobby(input)) return;
     if ((await this.access.getRole(input.gameId, input.userId)) !== null) return;
     throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
+  }
+  /** A full lobby turns new people away; someone already seated is never counted out. */
+  async requireLobbySeat(gameId: string, userId: string, playerCount: number): Promise<void> {
+    if (playerCount < MAX_LOBBY_PLAYERS) return;
+    if ((await this.access.getRole(gameId, userId)) !== null) return;
+    throw new LobbyFullError();
+  }
+  /** Only the owner removes a player, only while the game is a lobby, and never the owner's own. */
+  async removeLobbyPlayer(gameId: string, ownerUserId: string, playerId: string): Promise<void> {
+    await this.requireOwner(gameId, ownerUserId);
+    if (!(await this.access.removeLobbyPlayer(gameId, playerId)))
+      throw new ConflictError(
+        'PLAYER_NOT_REMOVABLE',
+        'Only another player can be removed, and only while the game is a lobby.',
+      );
   }
   async getJoinCredentials(joinCode: string): Promise<{
     gameId: string;

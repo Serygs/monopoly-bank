@@ -68,6 +68,7 @@ export interface MonopolyBankApi {
   upgradeGuest(input: UpgradeGuestRequest): Promise<UserProfile>;
   addEmailToLegacyAccount(input: AddAccountEmailRequest): Promise<UserProfile>;
   createInvitation(gameId: string): Promise<CreateInvitationResponse>;
+  removeLobbyPlayer(gameId: string, playerId: string): Promise<GameDetails>;
   revokeInvitations(gameId: string): Promise<RevokeInvitationResponse>;
   getGame(gameId: string): Promise<GameDetails>;
   deleteGame(gameId: string): Promise<DeleteGameResponse>;
@@ -188,6 +189,12 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   }
   async addEmailToLegacyAccount(input: AddAccountEmailRequest): Promise<UserProfile> {
     return request<UserProfile>('/api/auth/email', { method: 'POST', body: JSON.stringify(input) });
+  }
+  async removeLobbyPlayer(gameId: string, playerId: string): Promise<GameDetails> {
+    return request<GameDetails>(
+      `/api/games/${encodeURIComponent(gameId)}/players/${encodeURIComponent(playerId)}`,
+      commandInit({ method: 'DELETE' }),
+    );
   }
   async createInvitation(gameId: string): Promise<CreateInvitationResponse> {
     return request<CreateInvitationResponse>(

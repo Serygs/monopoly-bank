@@ -9,6 +9,7 @@ import { AuthPage } from './pages/AuthPage';
 import { PasswordRecoveryPage, PasswordResetPage, VerifyEmailPage } from './pages/EmailTokenPage';
 import { CreateGamePage } from './pages/CreateGamePage';
 import { GamePage } from './pages/GamePage';
+import { JoinEntryPage } from './pages/JoinEntryPage';
 import { JoinGamePage } from './pages/JoinGamePage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SavedGamesPage } from './pages/SavedGamesPage';
@@ -134,6 +135,9 @@ function AppRoutes() {
   const [paymentFlowOpen, setPaymentFlowOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<unknown | null>(null);
+  const [joinChoice, setJoinChoice] = useState<'choice' | 'signIn' | 'register' | 'guest'>(
+    'choice',
+  );
   const [settingsPopoverPosition, setSettingsPopoverPosition] = useState<{
     top: number;
     right: number;
@@ -224,6 +228,7 @@ function AppRoutes() {
       window.history.replaceState({}, '', '/');
       setPath('/');
       setProfile(null);
+      setJoinChoice('choice');
     } catch (caught) {
       setSignOutError(caught);
     } finally {
@@ -273,7 +278,15 @@ function AppRoutes() {
     };
     if (EMAIL_FEATURES_ENABLED && path === '/forgot-password')
       return <PasswordRecoveryPage onBack={() => navigatePublic('/')} />;
-    if (path === '/games/join') {
+    if (path === '/games/join' && joinChoice === 'choice')
+      return (
+        <JoinEntryPage
+          onSignIn={() => setJoinChoice('signIn')}
+          onRegister={() => setJoinChoice('register')}
+          onGuest={() => setJoinChoice('guest')}
+        />
+      );
+    if (path === '/games/join' && joinChoice === 'guest') {
       const guestJoinCode = new URLSearchParams(window.location.search).get('code') ?? '';
       const guestInvitationToken = invitationFromLocation();
       return (
@@ -286,10 +299,7 @@ function AppRoutes() {
             window.history.pushState({}, '', `/games/${encodeURIComponent(gameId)}`);
             setPath(`/games/${encodeURIComponent(gameId)}`);
           }}
-          onBack={() => {
-            window.history.pushState({}, '', '/');
-            setPath('/');
-          }}
+          onBack={() => setJoinChoice('choice')}
         />
       );
     }
@@ -300,8 +310,10 @@ function AppRoutes() {
     );
     return (
       <AuthPage
+        initialRegistering={path === '/games/join' && joinChoice === 'register'}
         onAuthenticated={(user) => {
           authenticated(user);
+          setJoinChoice('choice');
           navigate(returnRoute);
         }}
       />
@@ -442,6 +454,7 @@ function AppRoutes() {
         <JoinGamePage
           initialJoinCode={joinCode}
           invitationToken={invitationToken}
+          autoJoin
           onJoined={(id) => navigate(`/games/${encodeURIComponent(id)}`)}
           onBack={() => navigate('/')}
         />

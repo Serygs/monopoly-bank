@@ -50,6 +50,7 @@ export interface GameHeaderProps {
   onBack: () => void;
   onOpenActivity: () => void;
   onOpenStatistics: () => void;
+  onOpenRules: () => void;
   onInvite: () => void;
   onFinish: () => void;
 }
@@ -64,11 +65,13 @@ export function GameHeader({
   onBack,
   onOpenActivity,
   onOpenStatistics,
+  onOpenRules,
   onInvite,
   onFinish,
 }: GameHeaderProps) {
   const { t } = useLanguage();
-  const managerItems: OverflowMenuItem[] = [];
+  // Rules read offline, so they stay available whatever the connection.
+  const managerItems: OverflowMenuItem[] = [{ label: t('gameRules'), onSelect: onOpenRules }];
   if (canManage && game.status === 'LOBBY')
     managerItems.push({ label: t('invitePlayers'), disabled: offline, onSelect: onInvite });
   if (canManage && game.status === 'ACTIVE')
@@ -130,6 +133,9 @@ export function GameHeader({
             onClick={onOpenStatistics}
           >
             {t('statistics')}
+          </Button>
+          <Button variant="secondary" className={compactHiddenClass} onClick={onOpenRules}>
+            {t('gameRules')}
           </Button>
           {canManage && game.status === 'LOBBY' && (
             <Button
