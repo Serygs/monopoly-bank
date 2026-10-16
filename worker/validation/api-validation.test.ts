@@ -66,6 +66,37 @@ describe('lobby request validation', () => {
     ).resolves.toMatchObject({ currency: 'UAH' });
   });
 
+  it('normalizes a four-character join code and rejects a shorter or malformed one', async () => {
+    await expect(parseJoinGameRequest(jsonRequest({ joinCode: '  k7p2 ' }))).resolves.toEqual({
+      joinCode: 'K7P2',
+    });
+    for (const joinCode of ['K7P', 'K7 P2', 'K7-P2', ''])
+      await expect(parseJoinGameRequest(jsonRequest({ joinCode }))).rejects.toBeInstanceOf(
+        ApiValidationError,
+      );
+  });
+
+  it('accepts a public lobby without a password and rejects one with a password', async () => {
+    const request = {
+      name: 'Friday table',
+      startingBalance: 1500,
+      passGoReward: 200,
+      currency: 'USD',
+      players: [{ name: 'Owner', color: '#e05263' }],
+    };
+    await expect(
+      parseCreateGameRequest(jsonRequest({ ...request, isPublic: true })),
+    ).resolves.toMatchObject({ isPublic: true });
+    await expect(
+      parseCreateGameRequest(
+        jsonRequest({ ...request, isPublic: true, gameAccessPassword: 'abcd' }),
+      ),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+    await expect(
+      parseCreateGameRequest(jsonRequest({ ...request, isPublic: 'yes' })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+
   it('accepts joining a public lobby without a password', async () => {
     await expect(parseJoinGameRequest(jsonRequest({ joinCode: 'TABLE42' }))).resolves.toEqual({
       joinCode: 'TABLE42',

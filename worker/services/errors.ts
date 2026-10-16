@@ -1,3 +1,5 @@
+import { MAX_LOBBY_PLAYERS } from '../../shared/contracts/api.js';
+
 /** Errors crossing a Worker boundary. `message` is deliberately safe for clients. */
 export abstract class AppError extends Error {
   readonly code: string;
@@ -114,6 +116,13 @@ export class InvalidGamePasswordError extends AppError {
 export class InvalidJoinCodeError extends NotFoundError {
   constructor() {
     super('INVALID_JOIN_CODE', 'Game not found.');
+  }
+}
+export class LobbyFullError extends ConflictError {
+  constructor() {
+    super('LOBBY_FULL', 'This lobby already has the maximum number of players.', {
+      maxPlayers: MAX_LOBBY_PLAYERS,
+    });
   }
 }
 export class DuplicateCommandError extends ConflictError {

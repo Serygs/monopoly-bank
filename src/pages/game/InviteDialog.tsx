@@ -1,60 +1,30 @@
-import { useState } from 'react';
-import type { CreateInvitationResponse } from '../../../shared/contracts/api';
-import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
-import {
-  Button,
-  DialogActions,
-  DialogBody,
-  Notice,
-  StatPill,
-  useFeedback,
-} from '../../components/ui';
-import { apiErrorMessage } from '../../i18n/api-errors';
+import { Button, DialogActions, DialogBody, StatPill, useFeedback } from '../../components/ui';
 import { useLanguage } from '../../i18n/language-context';
 import { createLocalQr } from '../../utils/local-qr';
 import { LocalQr } from './LocalQr';
 
 export interface InviteDialogProps {
-  gameId: string;
+  /** The game's one join code: what the link and QR open, and what the manual form accepts. */
+  joinCode: string | undefined;
   onClose: () => void;
 }
 
-/** Invitation ticket: code and expiry beside the QR code, stacked below `md`. */
+/** Invitation ticket: code beside the QR code, stacked below `md`. */
 const ticketClass =
   'mt-[18px] grid grid-cols-[minmax(0,1fr)_136px] items-center gap-[20px] rounded-lg border border-s-[3px] border-border border-s-highlight bg-(--mb-background-invitation) p-[18px] max-md:grid-cols-1';
-const ticketCopyClass =
-  'min-w-0 [&>p:last-child]:m-0 [&>p:last-child]:text-small [&>p:last-child]:text-secondary';
+const ticketCopyClass = 'min-w-0';
 const shortCodeClass =
   'mx-0 mt-[12px] mb-[4px] font-money text-[length:clamp(1.5rem,6vw,2.35rem)] leading-none font-bold tracking-[0.1em] text-primary';
 
-export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
-  const { locale, t } = useLanguage();
-  const [invite, setInvite] = useState<CreateInvitationResponse | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const [creating, setCreating] = useState(false);
-  const [revoked, setRevoked] = useState(false);
+function inviteLink(origin: string, joinCode: string): string {
+  return `${origin}/games/join?code=${encodeURIComponent(joinCode)}`;
+}
+
+export function InviteDialog({ joinCode, onClose }: InviteDialogProps) {
+  const { t } = useLanguage();
   const notify = useFeedback();
-  const create = async () => {
-    if (window.location.protocol !== 'https:') {
-      setError(new Error('HTTPS_REQUIRED'));
-      return;
-    }
-    setCreating(true);
-    setError(null);
-    setRevoked(false);
-    try {
-      setInvite(await monopolyBankApi.createInvitation(gameId));
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setCreating(false);
-    }
-  };
-  const link =
-    invite === null
-      ? null
-      : `${window.location.origin}/games/join#invite=${encodeURIComponent(invite.invitationToken)}`;
+  const link = joinCode === undefined ? null : inviteLink(window.location.origin, joinCode);
   const copy = async () => {
     if (link === null) return;
     if (navigator.clipboard !== undefined) await navigator.clipboard.writeText(link);
@@ -65,20 +35,6 @@ export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
     if (link !== null && typeof navigator.share === 'function')
       await navigator.share({ title: t('invitePlayers'), text: t('inviteShareText'), url: link });
   };
-  const revoke = async () => {
-    setCreating(true);
-    setError(null);
-    try {
-      await monopolyBankApi.revokeInvitations(gameId);
-      setInvite(null);
-      setRevoked(true);
-      notify({ tone: 'success', message: t('inviteRevoked') });
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setCreating(false);
-    }
-  };
   const qr = link === null ? null : createLocalQr(link);
   return (
     <Dialog
@@ -87,24 +43,11 @@ export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
       onClose={onClose}
     >
       <DialogBody>{t('inviteDescription')}</DialogBody>
-      {invite === null ? (
-        <Button variant="primary" disabled={creating} onClick={() => void create()}>
-          {creating ? t('pleaseWait') : revoked ? t('createNewInvite') : t('createInviteLink')}
-        </Button>
-      ) : (
+      {link !== null && (
         <section className={ticketClass}>
           <div className={ticketCopyClass}>
-            <StatPill variant="pill">{t('inviteUnlisted')}</StatPill>
-            <p className={shortCodeClass}>{invite.shortCode}</p>
-            <p>
-              {t('inviteExpiresAt', {
-                time: new Intl.DateTimeFormat(locale, {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                  hourCycle: 'h23',
-                }).format(new Date(invite.expiresAt)),
-              })}
-            </p>
+            <StatPill variant="pill">{t('inviteCodeLabel')}</StatPill>
+            <p className={shortCodeClass}>{joinCode}</p>
           </div>
           {qr !== null && <LocalQr matrix={qr} label={t('inviteQrLabel')} />}
           <DialogActions>
@@ -116,21 +59,8 @@ export function InviteDialog({ gameId, onClose }: InviteDialogProps) {
                 {t('shareInvite')}
               </Button>
             )}
-            <Button variant="secondary" disabled={creating} onClick={() => void create()}>
-              {t('rotateInvite')}
-            </Button>
-            <Button variant="danger" disabled={creating} onClick={() => void revoke()}>
-              {t('revokeInvite')}
-            </Button>
           </DialogActions>
         </section>
-      )}
-      {error !== null && (
-        <Notice tone="error">
-          {error instanceof Error && error.message === 'HTTPS_REQUIRED'
-            ? t('inviteRequiresHttps')
-            : apiErrorMessage(error, t, 'unableJoinGame')}
-        </Notice>
       )}
     </Dialog>
   );

@@ -14,6 +14,7 @@ import {
 } from './banking.js';
 
 export {
+  AUCTION_BID_EXTENSION_MS,
   AUCTION_DURATION_MS,
   AUCTION_RESULT_VISIBLE_MS,
   auctionReserve,

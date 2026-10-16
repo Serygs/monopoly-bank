@@ -17,6 +17,7 @@ export interface GameAccessRepository {
     color: string;
     startingBalance: number;
   }): Promise<boolean>;
+  removeLobbyPlayer(gameId: string, playerId: string): Promise<boolean>;
   getGameAccessCredentials(joinCode: string): Promise<{
     gameId: string;
     passwordHash: string | null;
@@ -114,6 +115,24 @@ export class D1GameAccessRepository implements GameAccessRepository {
     const result = await this.database.batch([insertPlayer, insertMember, insertController]);
     return result[0].meta.changes === 1;
   }
+  async removeLobbyPlayer(gameId: string, playerId: string): Promise<boolean> {
+    const lobby = "EXISTS (SELECT 1 FROM games WHERE id = ? AND status = 'LOBBY')";
+    const notOwner =
+      "NOT EXISTS (SELECT 1 FROM game_members WHERE game_id = ? AND player_id = ? AND role = 'OWNER')";
+    const guard = `${lobby} AND ${notOwner}`;
+    const result = await this.database.batch([
+      this.database
+        .prepare(`DELETE FROM player_controllers WHERE game_id = ? AND player_id = ? AND ${guard}`)
+        .bind(gameId, playerId, gameId, gameId, playerId),
+      this.database
+        .prepare(`DELETE FROM game_members WHERE game_id = ? AND player_id = ? AND ${guard}`)
+        .bind(gameId, playerId, gameId, gameId, playerId),
+      this.database
+        .prepare(`DELETE FROM players WHERE game_id = ? AND id = ? AND ${guard}`)
+        .bind(gameId, playerId, gameId, gameId, playerId),
+    ]);
+    return result[2].meta.changes === 1;
+  }
   async getGameAccessCredentials(joinCode: string): Promise<{
     gameId: string;
     passwordHash: string | null;
@@ -124,7 +143,7 @@ export class D1GameAccessRepository implements GameAccessRepository {
       .prepare(
         'SELECT id, game_access_password_hash, game_access_password_salt, status FROM games WHERE join_code = ? AND owner_user_id IS NOT NULL AND deleted_at IS NULL',
       )
-      .bind(joinCode)
+      .bind(joinCode.trim().toUpperCase())
       .first<{
         id: string;
         game_access_password_hash: string | null;

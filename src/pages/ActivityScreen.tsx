@@ -24,7 +24,7 @@ const immediateActivityScopes: readonly ActivityScope[] = ['ALL', 'MINE'];
  */
 const dialogClass = cx(
   'grid h-[min(720px,calc(100dvh_-_48px))] grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden!',
-  'max-md:h-[calc(100dvh_-_var(--mb-app-safe-top)_-_8px)]',
+  'max-md:h-[calc(100dvh_-_var(--mb-app-safe-top)_-_8px_-_var(--mb-dialog-nav-offset))]',
   wideDialogClass,
   'glass:max-w-full glass:min-w-0',
 );
