@@ -5,8 +5,10 @@ import type { Auction, GameSettings } from '../types/monopoly.js';
  * validation and errors live in `auction.ts`, which re-exports everything here.
  */
 
-/** The server sets `endsAt` this long after the start; bids never extend it. */
+/** The server sets `endsAt` this long after the start. */
 export const AUCTION_DURATION_MS = 30_000;
+/** A bid never leaves less than this much time: a later `endsAt` is kept, an earlier one is moved. */
+export const AUCTION_BID_EXTENSION_MS = 10_000;
 /** A closed auction stays in the game details this long, so every device sees the result. */
 export const AUCTION_RESULT_VISIBLE_MS = 2 * 60 * 1000;
 

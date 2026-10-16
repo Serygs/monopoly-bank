@@ -48,7 +48,7 @@ const english: RulesSection[] = [
       'History is never edited. A mistake is fixed with a reversal, which moves exactly the same money back. The game owner can reverse any transaction; a player can reverse their own within {reversalMinutes} minutes.',
       'A reversal, a bankruptcy transfer, a mortgage step, a loan step and a Free Parking payment cannot be reversed.',
       'Going bankrupt hands the wallet to the creditor or to the bank. A bankrupt player no longer takes part in payments.',
-      'The game owner finishes the game, and the player with the most cash wins.',
+      'The game owner finishes the game. Every player who is not bankrupt wins; the statistics also rank the players by cash.',
     ],
   },
   {
@@ -85,7 +85,7 @@ const english: RulesSection[] = [
       'The loan is repaid in full, with interest on the amount borrowed. The interest leaves the game.',
     ],
     bullets: [
-      'Interest is 0%, 10% or 20%, depending on how many rounds have passed since the loan. The app suggests the rate from the order of operations in the history. It is a hint, not a turn order, and you confirm the rate when repaying.',
+      'Interest depends on the round: 0% in the first round, 10% in the second and 20% in the third. The third round is the last one to repay on time. The app works out the round from the order of operations in the history. It is a hint, not a turn order, and you confirm the rate when repaying.',
       'From the fourth round the loan is shown as overdue.',
       'After repaying, borrowing again within 2 rounds needs an explicit acknowledgement.',
       'If a borrower goes bankrupt, the bank is paid first from their wallet (the amount borrowed, then interest). The creditor gets the rest.',
@@ -111,7 +111,7 @@ const english: RulesSection[] = [
     title: 'Auctions',
     paragraphs: [
       'Any player can put a property up for auction. Only the name of the lot and the money are recorded; the app does not track who owns what.',
-      'Bidding lasts 30 seconds, and bids never extend it. The minimum bid is {auctionMinBid}, and each bid raises the price by one of these steps: {auctionBidSteps}.',
+      'Bidding lasts 30 seconds. A bid placed in the last 10 seconds extends the auction to 10 seconds from that bid; an earlier bid does not change the end. The minimum bid is {auctionMinBid}, and each bid raises the price by one of these steps: {auctionBidSteps}.',
     ],
     bullets: [
       'The leading bid is reserved on the leader’s wallet: they cannot spend that money elsewhere while they lead. Being outbid releases it.',
@@ -150,7 +150,7 @@ const ukrainian: RulesSection[] = [
       'Історію не редагують. Помилку виправляє сторно, яке повертає рівно ті самі гроші. Власник гри може сторнувати будь-яку операцію, а гравець — свою протягом {reversalMinutes} хв.',
       'Сторно, передачу при банкрутстві, кроки іпотеки й позик та платежі «Безкоштовної стоянки» сторнувати не можна.',
       'Банкрутство передає гаманець кредитору або банку. Банкрут більше не бере участі в платежах.',
-      'Гру завершує власник гри, а перемагає гравець із найбільшою готівкою.',
+      'Гру завершує власник гри. Перемагають усі гравці, які не збанкрутіли; у статистиці гравців також упорядковано за готівкою.',
     ],
   },
   {
@@ -187,7 +187,7 @@ const ukrainian: RulesSection[] = [
       'Позику повертають повністю, зі відсотками від позиченої суми. Відсотки виходять із гри.',
     ],
     bullets: [
-      'Відсотки — 0%, 10% або 20% залежно від того, скільки кіл минуло після позики. Застосунок пропонує ставку за порядком операцій в історії. Це підказка, а не черга ходів; ставку ви підтверджуєте під час повернення.',
+      'Відсотки залежать від кола: 0% у першому, 10% у другому й 20% у третьому. Третє коло — останнє, щоб повернути позику вчасно. Застосунок визначає коло за порядком операцій в історії. Це підказка, а не черга ходів; ставку ви підтверджуєте під час повернення.',
       'З четвертого кола позика позначається як прострочена.',
       'Якщо після повернення брати позику знову протягом 2 кіл, потрібне явне підтвердження.',
       'Якщо позичальник збанкрутує, банк отримує гроші першим із гаманця (позичена сума, потім відсотки). Решту отримує кредитор.',
@@ -213,7 +213,7 @@ const ukrainian: RulesSection[] = [
     title: 'Аукціони',
     paragraphs: [
       'Будь-який гравець може виставити власність на аукціон. Записуються лише назва лота та гроші; застосунок не відстежує, хто чим володіє.',
-      'Торги тривають 30 секунд, і ставки їх не подовжують. Мінімальна ставка — {auctionMinBid}, а кожна ставка підвищує ціну на один із кроків: {auctionBidSteps}.',
+      'Торги тривають 30 секунд. Ставка в останні 10 секунд подовжує торги до 10 секунд від цієї ставки; раніша ставка кінець не змінює. Мінімальна ставка — {auctionMinBid}, а кожна ставка підвищує ціну на один із кроків: {auctionBidSteps}.',
     ],
     bullets: [
       'Найвища ставка резервується в гаманці лідера: поки він лідирує, цих грошей він витратити не може. Коли ставку перебили, резерв знімається.',

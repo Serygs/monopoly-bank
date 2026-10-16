@@ -4,6 +4,7 @@ import type {
   StartAuctionRequest,
 } from '../../shared/contracts/api.js';
 import {
+  AUCTION_BID_EXTENSION_MS,
   AUCTION_DURATION_MS,
   AuctionAlreadyActiveError,
   AuctionBidStaleError,
@@ -161,6 +162,7 @@ export class DefaultAuctionService implements AuctionService {
       bid,
       bidderPlayerId: bidder.id,
       nowIso: new Date(nowMs).toISOString(),
+      minEndsAtIso: new Date(nowMs + AUCTION_BID_EXTENSION_MS).toISOString(),
     });
     if (!written) {
       // Lost a race (or the bidder spent the money meanwhile): say why from what is stored now.

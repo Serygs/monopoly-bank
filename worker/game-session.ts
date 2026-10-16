@@ -387,8 +387,12 @@ export class GameSession {
       if (data.auction?.state === 'ACTIVE') await this.armAuction(gameId, data.auction);
       return { status: 201, data };
     }
-    if (command.type === 'PLACE_BID')
-      return { status: 200, data: await this.auctions().placeBid(gameId, command.request) };
+    if (command.type === 'PLACE_BID') {
+      const data = await this.auctions().placeBid(gameId, command.request);
+      // A late bid moves the end (at least 10 seconds), so the alarm moves with it.
+      if (data.auction?.state === 'ACTIVE') await this.armAuction(gameId, data.auction);
+      return { status: 200, data };
+    }
     const banking = this.banking(command.commandId);
     if (command.type === 'CREATE_TRANSACTION')
       return { status: 201, data: await banking.createTransaction(gameId, command.request) };
