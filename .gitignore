@@ -31,3 +31,4 @@ test-results
 !.dev.vars.example
 .env*
 !.env.example
+/.mcp.json
