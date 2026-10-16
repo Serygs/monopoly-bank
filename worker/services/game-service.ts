@@ -16,7 +16,7 @@ import type { CreatePlayerInput, PlayerRepository } from '../repositories/player
 import type { TransactionRepository } from '../repositories/transaction-repository.js';
 import { loadBankLoanView } from './bank-loan-view.js';
 import { ConflictError, ResourceNotFoundError } from './errors.js';
-import { hashPassword, randomToken } from './password-security.js';
+import { hashPassword } from './password-security.js';
 
 /** The API only lets a new game pick a selectable currency; duplicating keeps the source game's stored currency, including the legacy `K`. */
 export type CreateGameInput = Omit<CreateGameRequest, 'currency'> & { currency: Currency };
@@ -90,10 +90,7 @@ export class DefaultGameService implements GameService {
         : await hashPassword(request.gameAccessPassword);
     return this.createGameInternal(request, {
       userId,
-      joinCode: randomToken(5)
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/gu, 'X')
-        .slice(0, 8),
+      isPublic: request.isPublic === true,
       ...gameAccessCredentials,
       hasPassword: request.gameAccessPassword !== undefined,
     });
@@ -101,7 +98,7 @@ export class DefaultGameService implements GameService {
 
   private async createGameInternal(
     request: CreateGameInput,
-    owner: { userId: string; joinCode: string; hash: string; salt: string; hasPassword: boolean },
+    owner: { userId: string; isPublic: boolean; hash: string; salt: string; hasPassword: boolean },
   ): Promise<GameDetails> {
     const gameId = this.createId();
     const playerInputs: CreatePlayerInput[] = request.players.map((player) => ({
@@ -112,7 +109,27 @@ export class DefaultGameService implements GameService {
       balance: request.startingBalance,
     }));
 
-    await this.games.createWithPlayers(
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await this.createWithJoinCode(gameId, request, owner, playerInputs, generateJoinCode());
+        break;
+      } catch (error) {
+        // The join code is unique across games; a collision just means drawing another one.
+        if (attempt >= JOIN_CODE_ATTEMPTS || !isJoinCodeCollision(error)) throw error;
+      }
+    }
+
+    return this.getGame(gameId);
+  }
+
+  private createWithJoinCode(
+    gameId: string,
+    request: CreateGameInput,
+    owner: { userId: string; isPublic: boolean; hash: string; salt: string; hasPassword: boolean },
+    playerInputs: CreatePlayerInput[],
+    joinCode: string,
+  ): Promise<void> {
+    return this.games.createWithPlayers(
       {
         id: gameId,
         name: request.name,
@@ -124,14 +141,13 @@ export class DefaultGameService implements GameService {
         rules: request.rules ?? defaultGameRules,
         settings: buildGameSettings(request.startingBalance),
         ownerUserId: owner.userId,
-        joinCode: owner.joinCode,
+        isPublic: owner.isPublic,
+        joinCode,
         gameAccessPasswordHash: owner.hasPassword ? owner.hash : null,
         gameAccessPasswordSalt: owner.hasPassword ? owner.salt : null,
       },
       playerInputs,
     );
-
-    return this.getGame(gameId);
   }
 
   async getGame(gameId: string): Promise<GameDetails> {
@@ -229,4 +245,21 @@ export class DefaultGameService implements GameService {
     if ((await this.games.getById(gameId)) === null) throw new ResourceNotFoundError('Game');
     return this.games.toggleFavoriteAmount(gameId, amount);
   }
+}
+
+/** No 0/O/1/I, so a code read aloud or typed by hand is not mistaken. 32 symbols, 4 characters. */
+const JOIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const JOIN_CODE_LENGTH = 4;
+const JOIN_CODE_ATTEMPTS = 10;
+
+export function generateJoinCode(): string {
+  const bytes = new Uint8Array(JOIN_CODE_LENGTH);
+  crypto.getRandomValues(bytes);
+  // 256 is a multiple of 32, so masking the low five bits is unbiased.
+  return Array.from(bytes, (byte) => JOIN_CODE_ALPHABET[byte & 31]).join('');
+}
+
+function isJoinCodeCollision(error: unknown): boolean {
+  const message = error instanceof Error ? `${error.message} ${String(error.cause ?? '')}` : '';
+  return /UNIQUE/iu.test(message) && /join_code/iu.test(message);
 }

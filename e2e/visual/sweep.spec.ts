@@ -142,10 +142,14 @@ async function expectOverlayPresentation(
     .poll(async () => {
       const box = await panel.boundingBox();
       if (box === null) return 'no panel';
+      // Inside a game the sheet stops above the game navigation that stays visible.
+      const navLocator = page.getByRole('dialog').locator('nav').first();
+      const nav = (await navLocator.count()) === 0 ? null : await navLocator.boundingBox();
+      const navHeight = nav === null ? 0 : nav.height;
       const right = width - (box.x + box.width);
       const bottom = height - (box.y + box.height);
       if (width < 768)
-        return Math.abs(box.x) <= 1 && Math.abs(right) <= 1 && Math.abs(bottom) <= 1
+        return Math.abs(box.x) <= 1 && Math.abs(right) <= 1 && Math.abs(bottom - navHeight) <= 1
           ? 'sheet'
           : `not a sheet: x=${box.x} right=${right} bottom=${bottom}`;
       if (overlay === 'settings')

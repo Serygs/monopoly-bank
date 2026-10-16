@@ -64,6 +64,12 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     });
   }
 
+  if (body.isPublic !== undefined && typeof body.isPublic !== 'boolean')
+    throw new ApiValidationError('isPublic must be a boolean.');
+  const isPublic = body.isPublic === true;
+  if (isPublic && body.gameAccessPassword !== undefined)
+    throw new ApiValidationError('A public lobby cannot have a table password.');
+
   return {
     name: readRequiredString(body, 'name', 'name'),
     startingBalance: readPositiveInteger(body, 'startingBalance'),
@@ -71,6 +77,7 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     currency: readCurrency(body),
     ...(body.paymentMode === undefined ? {} : { paymentMode: readPaymentMode(body) }),
     ...(body.rules === undefined ? {} : { rules: readGameRules(body.rules) }),
+    ...(isPublic ? { isPublic } : {}),
     ...(body.gameAccessPassword === undefined
       ? {}
       : { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }),
@@ -438,9 +445,9 @@ function readGamePassword(body: Record<string, unknown>, field: string): string 
   return value;
 }
 function readJoinCode(body: Record<string, unknown>): string {
-  const value = readRequiredString(body, 'joinCode', 'joinCode').toUpperCase();
-  if (!/^[A-Z0-9]{6,12}$/u.test(value))
-    throw new ApiValidationError('joinCode must contain 6 to 12 letters or digits.');
+  const value = readRequiredString(body, 'joinCode', 'joinCode').trim().toUpperCase();
+  if (!/^[A-Z0-9]{4,12}$/u.test(value))
+    throw new ApiValidationError('joinCode must contain 4 to 12 letters or digits.');
   return value;
 }
 function readInvitationToken(body: Record<string, unknown>): string {

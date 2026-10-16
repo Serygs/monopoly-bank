@@ -24,7 +24,8 @@ describe('API error messages', () => {
       'INVALID_JOIN_CODE',
       'Код запрошення або пароль столу неправильний, прострочений чи відкликаний.',
     ],
-    ['LOBBY_CLOSED', 'Це лобі закрите, гра вже почалася або всі місця зайняті.'],
+    ['LOBBY_CLOSED', 'Це лобі закрите або гра вже почалася.'],
+    ['LOBBY_FULL', 'Це лобі заповнене (6 гравців).'],
     ['RATE_LIMITED', 'Забагато спроб. Зачекайте та спробуйте ще раз.'],
   ])('explains %s instead of showing a generic join error', (code, expected) => {
     const error = new MonopolyBankApiError({ code, message: 'Server message' });

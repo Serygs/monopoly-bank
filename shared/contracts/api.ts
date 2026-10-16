@@ -33,7 +33,7 @@ export interface GameSummary {
   playerCount: number;
   /** Public lobbies can be joined without a table password. */
   isPublicLobby?: boolean;
-  /** Exposed only for public lobbies; private invitation codes remain owner-only. */
+  /** Exposed only for public lobbies; the code of a private game stays owner-only. */
   joinCode?: string;
 }
 
@@ -93,6 +93,8 @@ export interface CreateGameRequest {
   paymentMode?: PaymentMode;
   /** Optional house rules; omitted rules are off. Fixed once the game is created. */
   rules?: GameRules;
+  /** A public lobby is listed for every signed-in user and has no password. Default: private. */
+  isPublic?: boolean;
   gameAccessPassword?: string;
   players: CreateGamePlayerRequest[];
 }
@@ -132,6 +134,8 @@ export interface UpdateProfileRequest {
   nickname: string;
   avatar: string;
 }
+/** A lobby seats at most this many players. */
+export const MAX_LOBBY_PLAYERS = 6;
 export type JoinGameRequest =
   { joinCode: string; gameAccessPassword?: string } | { invitationToken: string };
 export type InvitationVisibility = 'UNLISTED';

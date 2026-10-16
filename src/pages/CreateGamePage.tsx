@@ -126,6 +126,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('FAST');
   const [rules, setRules] = useState<GameRules>(defaultGameRules);
   const [gameAccessPassword, setGameAccessPassword] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
   const [players, setPlayers] = useState<PlayerForm[]>([
     { key: 1, name: profile.nickname, color: colors[0].value },
   ]);
@@ -171,7 +172,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextErrors = validate(name, startingBalance, passGoReward, players, t);
-    if (gameAccessPassword !== '' && gameAccessPassword.length < 4)
+    if (!isPublic && gameAccessPassword !== '' && gameAccessPassword.length < 4)
       nextErrors.gameAccessPassword = t('gamePasswordMinLength');
     setErrors(nextErrors);
     setSubmitError(null);
@@ -185,7 +186,8 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
         currency,
         paymentMode,
         rules,
-        ...(gameAccessPassword === '' ? {} : { gameAccessPassword }),
+        ...(isPublic ? { isPublic } : {}),
+        ...(isPublic || gameAccessPassword === '' ? {} : { gameAccessPassword }),
         players: players.map((player) => ({ name: player.name.trim(), color: player.color })),
       });
       onCreated(details.game.id);
@@ -296,18 +298,32 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
               </select>
             </Field>
             <Field
-              label={t('optionalPassword')}
-              hint={t('optionalPasswordHint')}
-              error={errors.gameAccessPassword}
+              label={t('lobbyAccess')}
+              hint={isPublic ? t('lobbyAccessPublicHint') : undefined}
             >
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={gameAccessPassword}
-                onChange={(event) => setGameAccessPassword(event.target.value)}
-                aria-invalid={errors.gameAccessPassword !== undefined}
-              />
+              <select
+                value={isPublic ? 'public' : 'private'}
+                onChange={(event) => setIsPublic(event.target.value === 'public')}
+              >
+                <option value="private">{t('lobbyAccessPrivate')}</option>
+                <option value="public">{t('lobbyAccessPublic')}</option>
+              </select>
             </Field>
+            {!isPublic && (
+              <Field
+                label={t('optionalPassword')}
+                hint={t('optionalPasswordHint')}
+                error={errors.gameAccessPassword}
+              >
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={gameAccessPassword}
+                  onChange={(event) => setGameAccessPassword(event.target.value)}
+                  aria-invalid={errors.gameAccessPassword !== undefined}
+                />
+              </Field>
+            )}
             <div className="field-grid">
               <MoneyField
                 label={t('startingBalance')}
