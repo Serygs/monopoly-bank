@@ -214,6 +214,12 @@ export interface PassGoTransactionRequest extends TransactionRequestBase {
   exactLanding?: boolean;
 }
 
+/** Corrects a mistaken transaction with a new REVERSAL record; the original is never edited. */
+export interface ReversalTransactionRequest extends TransactionRequestBase {
+  type: 'REVERSAL';
+  transactionId: string;
+}
+
 export interface BankruptcyRequest {
   playerId: string;
   creditorPlayerId?: string;
@@ -290,7 +296,14 @@ export type CreateTransactionRequest =
   | BankToPlayerTransactionRequest
   | PlayerToAllTransactionRequest
   | AllToPlayerTransactionRequest
-  | PassGoTransactionRequest;
+  | PassGoTransactionRequest
+  | ReversalTransactionRequest;
+
+/** Every request that names its own wallet; a reversal is authorized from the stored record instead. */
+export type PlayerTransactionRequest = Exclude<
+  CreateTransactionRequest,
+  ReversalTransactionRequest
+>;
 
 export interface CreateTransactionResponse {
   transaction: Transaction;

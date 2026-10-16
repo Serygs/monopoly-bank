@@ -121,6 +121,26 @@ describe('withClientGameDetails', () => {
   });
 });
 
+describe('applyLiveEvent reversals', () => {
+  it('marks the reversed original in the open history and adds the reversal on top', () => {
+    const { historyCell, apply } = liveHarness(details(), [transaction('t1'), transaction('t2')]);
+    const reversal: Transaction = {
+      ...transaction('r1'),
+      type: 'REVERSAL',
+      reversesTransactionId: 't1',
+      participants: [{ playerId: 'p1', balanceDelta: 50 }],
+    };
+
+    apply({ type: 'GAME_COMMITTED', stateVersion: 5, transaction: reversal, players });
+
+    expect(historyCell.value?.map((item) => item.id)).toEqual(['r1', 't1', 't2']);
+    expect(historyCell.value?.find((item) => item.id === 't1')?.reversedByTransactionId).toBe('r1');
+    expect(historyCell.value?.find((item) => item.id === 't2')?.reversedByTransactionId).toBe(
+      undefined,
+    );
+  });
+});
+
 describe('applyLiveEvent', () => {
   it('replaces details, history and the "all" cache from a snapshot', () => {
     const snapshotTransactions = [transaction('t1')];

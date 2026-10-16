@@ -242,6 +242,12 @@ export async function parseCreateTransactionRequest(
         amountPerPlayer: readPositiveInteger(body, 'amountPerPlayer'),
         ...(comment === undefined ? {} : { comment }),
       };
+    case 'REVERSAL':
+      return {
+        type,
+        transactionId: readUuid(body, 'transactionId'),
+        ...(comment === undefined ? {} : { comment }),
+      };
     case 'PASS_GO': {
       if (body.exactLanding !== undefined && typeof body.exactLanding !== 'boolean')
         throw new ApiValidationError('exactLanding must be true or false.');

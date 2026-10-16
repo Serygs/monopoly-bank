@@ -5,6 +5,8 @@ import type {
   CreatePaymentRequestResponse,
   CreateTransactionResponse,
   PaymentRequest,
+  PlayerTransactionRequest,
+  ReversalTransactionRequest,
   PaymentRequestActionResponse,
 } from '../../shared/contracts/api.js';
 import {
@@ -16,14 +18,22 @@ import {
   playerToPlayer,
   type BankingOperationResult,
   declareBankruptcy,
+  reverseTransaction,
+  TransactionAlreadyReversedError,
+  TransactionNotFoundError,
 } from '../../shared/domain/banking.js';
-import type { Transaction } from '../../shared/types/monopoly.js';
+import type { Game, Player, Transaction } from '../../shared/types/monopoly.js';
 import type { BankingOperationRepository } from '../repositories/banking-operation-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { PlayerRepository } from '../repositories/player-repository.js';
 import type { TransactionRepository } from '../repositories/transaction-repository.js';
 import type { PaymentRequestRepository } from '../repositories/payment-request-repository.js';
-import { ConflictError, PersistenceConsistencyError, ResourceNotFoundError } from './errors.js';
+import {
+  ConflictError,
+  DatabaseError,
+  PersistenceConsistencyError,
+  ResourceNotFoundError,
+} from './errors.js';
 import { assertRuleEnabled } from './rule-guard.js';
 
 export interface BankingService {
@@ -36,6 +46,7 @@ export interface BankingService {
   declinePaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse>;
   cancelPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse>;
   getPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequest | null>;
+  getTransaction(gameId: string, transactionId: string): Promise<Transaction | null>;
   listTransactions(gameId: string, limit: number): Promise<Transaction[]>;
   listPlayerTransactions(gameId: string, playerId: string, limit: number): Promise<Transaction[]>;
   declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<CreateTransactionResponse>;
@@ -88,13 +99,28 @@ export class DefaultBankingService implements BankingService {
     }
     if (request.type === 'PASS_GO' && request.exactLanding === true)
       assertRuleEnabled(game, 'doubleRewardOnExactGo');
-    const result = executeOperation(game, players, request);
-    await this.operations.persist({
-      transactionId,
-      transaction: result.transaction,
-      balanceChanges: result.affectedPlayers,
-      ...(request.type === 'PASS_GO' ? {} : { recentAmount: result.transaction.amount }),
-    });
+    const result =
+      request.type === 'REVERSAL'
+        ? await this.reverse(game, players, request)
+        : executeOperation(game, players, request);
+    try {
+      await this.operations.persist({
+        transactionId,
+        transaction: result.transaction,
+        balanceChanges: result.affectedPlayers,
+        ...(request.type === 'PASS_GO' || request.type === 'REVERSAL'
+          ? {}
+          : { recentAmount: result.transaction.amount }),
+      });
+    } catch (error) {
+      // Two reversals of one transaction race on its UNIQUE link; the loser reports it plainly.
+      if (request.type === 'REVERSAL' && error instanceof DatabaseError) {
+        const original = await this.transactions.getById(gameId, request.transactionId);
+        if (original?.reversedByTransactionId != null)
+          throw new TransactionAlreadyReversedError(original.id, original.reversedByTransactionId);
+      }
+      throw error;
+    }
 
     const transaction = await this.transactions.getById(gameId, transactionId);
     if (transaction === null) {
@@ -105,6 +131,20 @@ export class DefaultBankingService implements BankingService {
       transaction,
       players: await this.players.listByGameId(gameId),
     };
+  }
+
+  private async reverse(
+    game: Game,
+    players: Player[],
+    request: ReversalTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    const original = await this.transactions.getById(game.id, request.transactionId);
+    if (original === null) throw new TransactionNotFoundError(request.transactionId);
+    return reverseTransaction({ game, players, original, comment: request.comment ?? null });
+  }
+
+  async getTransaction(gameId: string, transactionId: string): Promise<Transaction | null> {
+    return this.transactions.getById(gameId, transactionId);
   }
 
   async listPaymentRequests(
@@ -309,7 +349,7 @@ function commandScopedId(commandId: string, index: number): string {
 function executeOperation(
   game: Parameters<typeof playerToPlayer>[0]['game'],
   players: Parameters<typeof playerToPlayer>[0]['players'],
-  request: CreateTransactionRequest,
+  request: PlayerTransactionRequest,
 ): BankingOperationResult {
   switch (request.type) {
     case 'PLAYER_TO_PLAYER':

@@ -24,7 +24,7 @@ description: Develop the Monopoly Bank repository efficiently and safely. Use wh
 - Validate API input at the Worker boundary. Do not expose implementation errors. Keep secrets in Cloudflare bindings/secrets, never source.
 - Treat persisted D1 data as the source of truth. Add schema changes as migrations and update Wrangler bindings deliberately.
 - Make every multi-balance operation plus its transaction record all-or-nothing. Failed validation must leave every balance unchanged. Never store a bank balance.
-- Persist explicit transaction records and support global and player-filtered history; never derive history from balances or add undo/editing of past transactions.
+- Persist explicit transaction records and support global and player-filtered history; never derive history from balances. Past transactions are never edited or deleted; a mistake is corrected only by a new linked `REVERSAL` transaction (`reverseTransaction` in `shared/domain/banking.ts`), once per transaction, never of a reversal or a bankruptcy transfer.
 
 ## Product rules
 

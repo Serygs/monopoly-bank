@@ -11,7 +11,7 @@ Start with `git diff --stat` for the range you were given (default: the working 
 
 ## Check against
 
-- **Money:** positive safe integers; multi-wallet changes and their transaction record are one atomic D1 batch; any failure leaves balances unchanged; player→all is per recipient and all→player is per payer, with every wallet validated before any write; no stored bank balance; no undo or edit of past transactions; history is never derived from balances.
+- **Money:** positive safe integers; multi-wallet changes and their transaction record are one atomic D1 batch; any failure leaves balances unchanged; player→all is per recipient and all→player is per payer, with every wallet validated before any write; no stored bank balance; stored transactions are never edited or deleted, and a correction is only a new linked `REVERSAL` (once per transaction, never of a reversal or bankruptcy transfer, authorized from the stored record: owner or the initiating wallet within the window); history is never derived from balances.
 - **Scope:** no board, property-ownership, turn-order, or other game-engine state.
 - **Boundaries:** request input validated in `worker/validation/api-validation.ts` before repositories; SQL only in `worker/repositories/`; money rules in `shared/domain/`; no UI state in Worker; contracts in `shared/contracts/`.
 - **Security:** authorization checked for owner/player/guest roles (see `docs/security-threat-model.md`); errors use the standard envelope; no credentials or avatar data logged; avatar data URLs JPEG/PNG/WebP only and ≤100 KB; no SVG or external avatar URLs.
