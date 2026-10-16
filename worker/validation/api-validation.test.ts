@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ApiValidationError,
   parseCreateGameRequest,
+  parseCreateTransactionRequest,
   parseJoinGameRequest,
   parseRegisterRequest,
   parseUpdateProfileRequest,
@@ -102,3 +103,69 @@ function jsonRequest(body: object): Request {
     body: JSON.stringify(body),
   });
 }
+
+describe('game rules validation', () => {
+  const lobby = {
+    name: 'Friday table',
+    startingBalance: 1500,
+    passGoReward: 200,
+    currency: 'USD',
+    players: [{ name: 'Owner', color: '#e05263' }],
+  };
+
+  it('leaves rules out when the client sends none, so every rule is off', async () => {
+    await expect(parseCreateGameRequest(jsonRequest(lobby))).resolves.not.toHaveProperty('rules');
+  });
+
+  it('fills missing rules as off and keeps the chosen ones', async () => {
+    const parsed = await parseCreateGameRequest(
+      jsonRequest({ ...lobby, rules: { playerLoans: true, auctions: true } }),
+    );
+    expect(parsed.rules).toEqual({
+      doubleRewardOnExactGo: false,
+      playerLoans: true,
+      bankLoans: false,
+      freeParkingJackpot: false,
+      auctions: true,
+    });
+  });
+
+  it.each([
+    ['an unknown rule', { houseRule: true }],
+    ['a non-boolean flag', { playerLoans: 'yes' }],
+    ['a numeric flag', { auctions: 1 }],
+  ])('rejects %s', async (_name, rules) => {
+    await expect(parseCreateGameRequest(jsonRequest({ ...lobby, rules }))).rejects.toBeInstanceOf(
+      ApiValidationError,
+    );
+  });
+
+  it.each([null, [], 'all', 3])('rejects rules that are not an object: %j', async (rules) => {
+    await expect(parseCreateGameRequest(jsonRequest({ ...lobby, rules }))).rejects.toBeInstanceOf(
+      ApiValidationError,
+    );
+  });
+});
+
+describe('Pass GO validation', () => {
+  const playerId = '11111111-1111-4111-8111-111111111111';
+
+  it('accepts the exact-landing flag and drops it when false', async () => {
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'PASS_GO', playerId, exactLanding: true })),
+    ).resolves.toEqual({ type: 'PASS_GO', playerId, exactLanding: true });
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'PASS_GO', playerId, exactLanding: false }),
+      ),
+    ).resolves.toEqual({ type: 'PASS_GO', playerId });
+  });
+
+  it('rejects a flag that is not a boolean', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'PASS_GO', playerId, exactLanding: 'true' }),
+      ),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+});

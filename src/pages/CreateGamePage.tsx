@@ -15,15 +15,27 @@ import { useLanguage } from '../i18n/language-context';
 import { AmountInput } from '../components/AmountInput';
 import { useAmountInput } from '../components/amount-input-state';
 import { PageHeader } from '../components/PageHeader';
-import { Button, Field, FieldError, FieldHint, Notice, PageShell, Toolbar } from '../components/ui';
+import {
+  Button,
+  Field,
+  FieldError,
+  FieldHint,
+  Notice,
+  PageShell,
+  Toggle,
+  Toolbar,
+} from '../components/ui';
 import { cx } from '../components/ui/class-names';
 import { keepEnterInRadio } from '../components/ui/radio-keys';
-import type { Translate } from '../i18n/translations';
+import type { Translate, TranslationKey } from '../i18n/translations';
 import { formatMoney } from '../utils/money';
 import { getGameNameSuggestions, randomSuggestionStart } from '../utils/game-name-suggestions';
 import {
+  defaultGameRules,
   selectableCurrencies,
   type Currency,
+  type GameRuleKey,
+  type GameRules,
   type PaymentMode,
   type SelectableCurrency,
 } from '../../shared/types/monopoly';
@@ -77,6 +89,14 @@ const colorOptionStateClass = {
   ),
   idle: '[box-shadow:0_0_0_1px_var(--mb-color-border-strong),var(--mb-shadow-player-inset)]',
 };
+/** The optional rules offered with a new game, in the order they are listed. */
+const houseRuleOptions: { key: GameRuleKey; label: TranslationKey }[] = [
+  { key: 'doubleRewardOnExactGo', label: 'ruleDoubleGo' },
+  { key: 'playerLoans', label: 'rulePlayerLoans' },
+  { key: 'bankLoans', label: 'ruleBankLoans' },
+  { key: 'freeParkingJackpot', label: 'ruleFreeParkingJackpot' },
+  { key: 'auctions', label: 'ruleAuctions' },
+];
 const defaultStartingBalance = 15_000_000;
 const defaultPassGoReward = 2_000_000;
 interface PlayerForm {
@@ -104,6 +124,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
   const [passGoReward, setPassGoReward] = useState(String(defaultPassGoReward));
   const [currency, setCurrency] = useState<SelectableCurrency>('USD');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('FAST');
+  const [rules, setRules] = useState<GameRules>(defaultGameRules);
   const [gameAccessPassword, setGameAccessPassword] = useState('');
   const [players, setPlayers] = useState<PlayerForm[]>([
     { key: 1, name: profile.nickname, color: colors[0].value },
@@ -163,6 +184,7 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
         passGoReward: Number(passGoReward),
         currency,
         paymentMode,
+        rules,
         ...(gameAccessPassword === '' ? {} : { gameAccessPassword }),
         players: players.map((player) => ({ name: player.name.trim(), color: player.color })),
       });
@@ -302,6 +324,21 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
                 error={errors.passGoReward}
               />
             </div>
+          </FieldStack>
+        </fieldset>
+        <fieldset>
+          <legend>{t('houseRules')}</legend>
+          <FieldStack>
+            <FieldHint>{t('houseRulesHint')}</FieldHint>
+            {houseRuleOptions.map(({ key, label }) => (
+              <Toggle
+                key={key}
+                variant="inline"
+                label={t(label)}
+                checked={rules[key]}
+                onChange={(checked) => setRules((current) => ({ ...current, [key]: checked }))}
+              />
+            ))}
           </FieldStack>
         </fieldset>
         <PlayersFieldset column={1} legend={t('ownerPlayer')}>

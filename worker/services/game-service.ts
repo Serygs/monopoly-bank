@@ -6,7 +6,8 @@ import type {
   GameSummary,
   RestoreGameResponse,
 } from '../../shared/contracts/api.js';
-import type { Currency } from '../../shared/types/monopoly.js';
+import { buildGameSettings } from '../../shared/domain/game-rules.js';
+import { defaultGameRules, type Currency } from '../../shared/types/monopoly.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { CreatePlayerInput, PlayerRepository } from '../repositories/player-repository.js';
 import { ConflictError, ResourceNotFoundError } from './errors.js';
@@ -99,6 +100,8 @@ export class DefaultGameService implements GameService {
         currency: request.currency,
         status: 'LOBBY',
         paymentMode: request.paymentMode ?? 'FAST',
+        rules: request.rules ?? defaultGameRules,
+        settings: buildGameSettings(request.startingBalance),
         ownerUserId: owner.userId,
         joinCode: owner.joinCode,
         gameAccessPasswordHash: owner.hasPassword ? owner.hash : null,
@@ -152,6 +155,7 @@ export class DefaultGameService implements GameService {
       passGoReward: source.game.passGoReward,
       currency: source.game.currency,
       paymentMode: source.game.paymentMode,
+      rules: source.game.rules,
       gameAccessPassword,
       players: source.players.map((player) => ({ name: player.name, color: player.color })),
     });

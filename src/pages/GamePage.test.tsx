@@ -2,7 +2,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GameDetails } from '../../shared/contracts/api';
 import type { LiveServerEvent } from '../../shared/contracts/live';
-import type { GameStatus, Player } from '../../shared/types/monopoly';
+import { defaultGameRules, type GameStatus, type Player } from '../../shared/types/monopoly';
 
 const hooks = vi.hoisted(() => {
   interface EffectSlot {
@@ -333,6 +333,8 @@ function gameDetails(status: GameStatus, players: Player[]): GameDetails {
       passGoReward: 200,
       currency: 'USD',
       paymentMode: 'FAST',
+      rules: defaultGameRules,
+      settings: null,
       status,
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',

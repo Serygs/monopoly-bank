@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeletedGameSummary, GameSummary } from '../../shared/contracts/api';
-import type { Game } from '../../shared/types/monopoly';
+import { defaultGameRules, type Game } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { FeedbackProvider } from '../components/ui';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -16,6 +16,8 @@ function game(id: string, name: string, status: Game['status'] = 'ACTIVE'): Game
     passGoReward: 200,
     currency: 'USD',
     paymentMode: 'FAST',
+    rules: defaultGameRules,
+    settings: null,
     status,
     createdAt: '2026-10-01T10:00:00.000Z',
     updatedAt: '2026-10-02T10:00:00.000Z',

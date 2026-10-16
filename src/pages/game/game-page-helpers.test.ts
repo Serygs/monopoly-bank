@@ -2,7 +2,12 @@ import type { MutableRefObject, SetStateAction } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { GameDetails } from '../../../shared/contracts/api';
 import type { LiveServerEvent } from '../../../shared/contracts/live';
-import type { Game, Player, Transaction } from '../../../shared/types/monopoly';
+import {
+  defaultGameRules,
+  type Game,
+  type Player,
+  type Transaction,
+} from '../../../shared/types/monopoly';
 import { MonopolyBankApiError } from '../../api/monopoly-bank-api';
 import { translate, type Translate } from '../../i18n/translations';
 import { formatMoney } from '../../utils/money';
@@ -24,6 +29,8 @@ const game: Game = {
   passGoReward: 200,
   currency: 'USD',
   paymentMode: 'FAST',
+  rules: defaultGameRules,
+  settings: null,
   status: 'ACTIVE',
   createdAt: '2026-09-28T10:00:00.000Z',
   updatedAt: '2026-09-28T10:00:00.000Z',
