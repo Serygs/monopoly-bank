@@ -17,6 +17,9 @@ export interface HistoryDialogProps {
   locale: string;
   onClose: () => void;
   onRetry: () => void;
+  /** Whether the viewer may reverse this transaction right now; rows offer "Reverse" only if so. */
+  canReverse?: (transaction: Transaction) => boolean;
+  onReverse?: (transaction: Transaction) => void;
 }
 
 /** Divided rows; amount, time and comment in quieter, smaller type. */
@@ -33,6 +36,8 @@ export function HistoryDialog({
   locale,
   onClose,
   onRetry,
+  canReverse,
+  onReverse,
 }: HistoryDialogProps) {
   const { t } = useLanguage();
   const title = player === null ? t('gameHistory') : t('playerHistory', { name: player.name });
@@ -63,6 +68,9 @@ export function HistoryDialog({
               language={language}
               locale={locale}
               playerId={player?.id}
+              {...(onReverse !== undefined && canReverse?.(transaction) === true
+                ? { onReverse: () => onReverse(transaction) }
+                : {})}
             />
           ))}
         </ol>

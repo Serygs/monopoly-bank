@@ -57,6 +57,7 @@ export const transactionTypes = [
   'PAY_RENT',
   'PASS_GO',
   'BANKRUPTCY_TRANSFER',
+  'REVERSAL',
 ] as const;
 
 export type TransactionType = (typeof transactionTypes)[number];
@@ -109,4 +110,8 @@ export interface Transaction {
   comment: string | null;
   createdAt: string;
   participants: TransactionParticipant[];
+  /** Set on a REVERSAL: the transaction it moved back. */
+  reversesTransactionId?: string | null;
+  /** Set on a reversed transaction: the REVERSAL that moved it back. */
+  reversedByTransactionId?: string | null;
 }

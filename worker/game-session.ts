@@ -5,6 +5,7 @@ import {
   type LiveMutationCommand,
   type LiveServerEvent,
 } from '../shared/contracts/live.js';
+import { TransactionNotFoundError } from '../shared/domain/banking.js';
 import { controlledPlayerIdForBankingCommand } from '../shared/domain/player-control.js';
 import type { Player, Transaction } from '../shared/types/monopoly.js';
 import { D1BankingOperationRepository } from './repositories/banking-operation-repository.js';
@@ -262,10 +263,19 @@ export class GameSession {
       return access.requirePlayerController(gameId, userId, paymentRequest.creatorPlayerId);
     }
     await access.requireMember(gameId, userId);
+    const { request } = command;
+    if ('type' in request && request.type === 'REVERSAL') {
+      const original = await this.banking(command.commandId).getTransaction(
+        gameId,
+        request.transactionId,
+      );
+      if (original === null) throw new TransactionNotFoundError(request.transactionId);
+      return access.requireReversalAuthority(gameId, userId, original);
+    }
     await access.requirePlayerController(
       gameId,
       userId,
-      controlledPlayerIdForBankingCommand(command.request),
+      controlledPlayerIdForBankingCommand(request),
     );
   }
 

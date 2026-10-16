@@ -24,8 +24,8 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
     const balanceStatement = createBalanceUpdateStatement(this.database, input.balanceChanges);
     const transactionStatement = this.database
       .prepare(
-        `INSERT INTO transactions (id, game_id, type, amount, total_amount, comment)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO transactions (id, game_id, type, amount, total_amount, comment, reverses_transaction_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         input.transactionId,
@@ -34,6 +34,7 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
         input.transaction.amount,
         input.transaction.totalAmount,
         input.transaction.comment,
+        input.transaction.reversesTransactionId ?? null,
       );
     const participantStatements = input.transaction.participants.map((participant) =>
       this.database

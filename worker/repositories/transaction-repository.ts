@@ -12,6 +12,8 @@ interface TransactionRow {
   total_amount: number;
   comment: string | null;
   created_at: string;
+  reverses_transaction_id: string | null;
+  reversed_by_transaction_id: string | null;
   player_id: string | null;
   balance_delta: number | null;
 }
@@ -137,9 +139,12 @@ const transactionSelect = `SELECT
   transactions.total_amount,
   transactions.comment,
   transactions.created_at,
+  transactions.reverses_transaction_id,
+  reversal.id AS reversed_by_transaction_id,
   transaction_participants.player_id,
   transaction_participants.balance_delta
 FROM transactions
+LEFT JOIN transactions AS reversal ON reversal.reverses_transaction_id = transactions.id
 LEFT JOIN transaction_participants ON transaction_participants.transaction_id = transactions.id`;
 
 function mapTransactions(rows: TransactionRow[]): Transaction[] {
@@ -157,6 +162,8 @@ function mapTransactions(rows: TransactionRow[]): Transaction[] {
         comment: row.comment,
         createdAt: row.created_at,
         participants: [],
+        reversesTransactionId: row.reverses_transaction_id ?? null,
+        reversedByTransactionId: row.reversed_by_transaction_id ?? null,
       };
       transactions.set(row.id, transaction);
     }

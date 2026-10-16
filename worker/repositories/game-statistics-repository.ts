@@ -117,13 +117,13 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
   async calculate(game: Game, players: readonly Player[]): Promise<LedgerStatistics> {
     const totals = await this.database
       .prepare(
-        `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS moved, COALESCE(MAX(total_amount), 0) AS largest, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_PLAYER','PAY_RENT','BANKRUPTCY_TRANSFER') THEN total_amount ELSE 0 END), 0) AS p2p, COALESCE(SUM(CASE WHEN type = 'PLAYER_TO_BANK' THEN total_amount ELSE 0 END), 0) AS paid_bank, COALESCE(SUM(CASE WHEN type IN ('BANK_TO_PLAYER','PASS_GO') THEN total_amount ELSE 0 END), 0) AS received_bank FROM transactions WHERE game_id = ?`,
+        `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS moved, COALESCE(MAX(total_amount), 0) AS largest, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_PLAYER','PAY_RENT','BANKRUPTCY_TRANSFER') THEN total_amount ELSE 0 END), 0) AS p2p, COALESCE(SUM(CASE WHEN type = 'PLAYER_TO_BANK' THEN total_amount ELSE 0 END), 0) AS paid_bank, COALESCE(SUM(CASE WHEN type IN ('BANK_TO_PLAYER','PASS_GO') THEN total_amount ELSE 0 END), 0) AS received_bank FROM transactions WHERE game_id = ? AND ${countedTransaction('transactions')}`,
       )
       .bind(game.id)
       .first<TotalsRow>();
     const metrics = await this.database
       .prepare(
-        `SELECT p.id AS player_id, COALESCE(SUM(CASE WHEN tp.balance_delta < 0 THEN -tp.balance_delta ELSE 0 END),0) AS sent, COALESCE(SUM(CASE WHEN tp.balance_delta > 0 THEN tp.balance_delta ELSE 0 END),0) AS received, COUNT(tp.transaction_id) AS transaction_count, COALESCE(SUM(CASE WHEN t.type = 'PASS_GO' THEN 1 ELSE 0 END),0) AS pass_go_count FROM players p LEFT JOIN transaction_participants tp ON tp.game_id = p.game_id AND tp.player_id = p.id LEFT JOIN transactions t ON t.id = tp.transaction_id WHERE p.game_id = ? GROUP BY p.id`,
+        `SELECT p.id AS player_id, COALESCE(SUM(CASE WHEN tp.balance_delta < 0 THEN -tp.balance_delta ELSE 0 END),0) AS sent, COALESCE(SUM(CASE WHEN tp.balance_delta > 0 THEN tp.balance_delta ELSE 0 END),0) AS received, COUNT(tp.transaction_id) AS transaction_count, COALESCE(SUM(CASE WHEN t.type = 'PASS_GO' THEN 1 ELSE 0 END),0) AS pass_go_count FROM players p LEFT JOIN transaction_participants tp ON tp.game_id = p.game_id AND tp.player_id = p.id AND tp.transaction_id IN (SELECT counted.id FROM transactions counted WHERE counted.game_id = p.game_id AND ${countedTransaction('counted')}) LEFT JOIN transactions t ON t.id = tp.transaction_id WHERE p.game_id = ? GROUP BY p.id`,
       )
       .bind(game.id)
       .all<PlayerMetricRow>();
@@ -267,4 +267,12 @@ function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
     resolvedAt: row.resolved_at,
     transactionId: row.transaction_id,
   };
+}
+
+/**
+ * Statistics count what the game actually moved: a reversed transaction and the reversal that
+ * undid it cancel out, so neither is counted. Both stay in the activity history.
+ */
+function countedTransaction(alias: string): string {
+  return `${alias}.type <> 'REVERSAL' AND NOT EXISTS (SELECT 1 FROM transactions reversal WHERE reversal.reverses_transaction_id = ${alias}.id)`;
 }

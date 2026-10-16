@@ -43,3 +43,45 @@ describe('transaction history formatting', () => {
     expect(playerTransactionAmount(rent, 'alex', 'K')).toBe('+120k');
   });
 });
+
+describe('reversal formatting', () => {
+  const reversal = (participants: Transaction['participants']): Transaction => ({
+    ...rent,
+    id: 'reversal',
+    type: 'REVERSAL',
+    reversesTransactionId: 'transaction',
+    participants,
+  });
+
+  it('names who pays whom in the correction', () => {
+    expect(
+      transactionDescription(
+        reversal([
+          { playerId: 'alex', balanceDelta: -120 },
+          { playerId: 'john', balanceDelta: 120 },
+        ]),
+        players,
+      ),
+    ).toBe('Reversal · Alex → John');
+  });
+
+  it('reads one-sided and many-sided reversals as the bank and everyone', () => {
+    expect(
+      transactionDescription(reversal([{ playerId: 'john', balanceDelta: -200 }]), players),
+    ).toBe('Reversal · John → Bank');
+    expect(
+      transactionDescription(
+        reversal([
+          { playerId: 'john', balanceDelta: 200 },
+          { playerId: 'alex', balanceDelta: -100 },
+          { playerId: 'sam', balanceDelta: -100 },
+        ]),
+        players,
+      ),
+    ).toBe('Reversal · Everyone → John');
+  });
+
+  it('shows the amount moved back', () => {
+    expect(transactionAmount({ ...reversal([]), totalAmount: 120 }, 'USD')).toBe('$120');
+  });
+});
