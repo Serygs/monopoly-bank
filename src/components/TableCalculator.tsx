@@ -121,6 +121,18 @@ export function TableCalculator() {
           {digit('0')}
           {key({ type: 'decimal' }, t('keypadDecimal'), separator)}
           {key({ type: 'equals' }, t('calculatorEquals'), '=', equalsKeyClass)}
+          {key(
+            { type: 'mortgage', kind: 'half' },
+            t('calculatorMortgageHalf'),
+            '½',
+            cx(keyClass, 'col-span-2'),
+          )}
+          {key(
+            { type: 'mortgage', kind: 'redeem' },
+            t('calculatorMortgageRedeem'),
+            `×1${separator}1`,
+            cx(keyClass, 'col-span-2'),
+          )}
         </div>
         {state.history.length > 0 && (
           <section aria-label={t('calculatorHistory')}>
