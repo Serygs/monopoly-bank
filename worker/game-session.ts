@@ -10,6 +10,7 @@ import { TransactionNotFoundError } from '../shared/domain/banking.js';
 import { controlledPlayerIdForBankingCommand } from '../shared/domain/player-control.js';
 import type {
   BankLoanCooldown,
+  GameProperty,
   Loan,
   Mortgage,
   Player,
@@ -244,6 +245,7 @@ export class GameSession {
             }
           : {}),
         ...(details.jackpot === undefined ? {} : { jackpot: details.jackpot }),
+        ...(details.properties === undefined ? {} : { properties: details.properties }),
       });
     }
     await this.clearAuctionDeadline(auctionId);
@@ -521,6 +523,7 @@ export class GameSession {
       loans?: Loan[];
       bankLoanCooldowns?: BankLoanCooldown[];
       jackpot?: number;
+      properties?: GameProperty[];
     };
     if (result.transaction !== undefined && result.players !== undefined)
       await this.broadcast({
@@ -534,6 +537,7 @@ export class GameSession {
           ? {}
           : { bankLoanCooldowns: result.bankLoanCooldowns }),
         ...(result.jackpot === undefined ? {} : { jackpot: result.jackpot }),
+        ...(result.properties === undefined ? {} : { properties: result.properties }),
         ...(command.type === 'DECLARE_BANKRUPTCY'
           ? { bankruptPlayerId: command.request.playerId }
           : {}),
@@ -654,6 +658,7 @@ export class GameSession {
       operations: new D1BankingOperationRepository(database),
       paymentRequests: new D1PaymentRequestRepository(database),
       auctions: new D1AuctionRepository(database),
+      properties: new D1PropertyRepository(database),
     });
   }
   private access() {
@@ -670,6 +675,7 @@ export class GameSession {
       mortgages: new D1MortgageRepository(database),
       loans: new D1LoanRepository(database),
       auctions: new D1AuctionRepository(database),
+      properties: new D1PropertyRepository(database),
       createId: () => commandId,
     });
   }

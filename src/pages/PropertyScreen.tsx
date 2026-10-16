@@ -14,11 +14,21 @@ import {
   groupProgress,
   propertyGroupColors,
   tileRent,
+  tileIntents,
   tileViews,
+  type TileIntent,
   type TileView,
 } from '../utils/property-view';
 
 type PropertyView = 'MINE' | 'ALL';
+
+const intentLabelKeys = {
+  PROPERTY_PURCHASE: 'propertyActionBuy',
+  MORTGAGE: 'propertyActionMortgage',
+  MORTGAGE_REDEMPTION: 'propertyActionRedeem',
+  AUCTION: 'propertyActionAuction',
+  PAY_RENT: 'propertyActionRent',
+} as const;
 
 export interface PropertyScreenProps {
   board: BoardSnapshot;
@@ -27,6 +37,12 @@ export interface PropertyScreenProps {
   currency: Currency;
   /** The wallets the viewer controls; "Mine" lists their cards. */
   controlledPlayerIds: readonly string[];
+  /** The wallet that buys, bids and pays rent from the tile sheet; none hides those actions. */
+  actorPlayerId?: string | null;
+  /** The auctions rule is on and no auction is running. */
+  auctionsAvailable?: boolean;
+  /** Starts a wallet action on a tile (the same flows as the wallet menu); omitted = read-only. */
+  onIntent?: (intent: TileIntent) => void;
   onClose: () => void;
 }
 
@@ -42,6 +58,9 @@ export function PropertyScreen({
   players,
   currency,
   controlledPlayerIds,
+  actorPlayerId = null,
+  auctionsAvailable = false,
+  onIntent,
   onClose,
 }: PropertyScreenProps) {
   const { t } = useLanguage();
@@ -212,6 +231,19 @@ export function PropertyScreen({
           view={openTile}
           players={players}
           currency={currency}
+          actions={
+            onIntent === undefined
+              ? []
+              : tileIntents(views, openTile, {
+                  controlledPlayerIds,
+                  actorPlayerId,
+                  auctionsAvailable,
+                }).map((intent) => ({
+                  key: intent.kind,
+                  label: t(intentLabelKeys[intent.kind]),
+                  onSelect: () => onIntent(intent),
+                }))
+          }
           onClose={() => setOpenTileId(null)}
         />
       )}

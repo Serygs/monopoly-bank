@@ -173,10 +173,21 @@ export async function parseFinishGameRequest(request: Request): Promise<FinishGa
 
 export async function parseStartAuctionRequest(request: Request): Promise<StartAuctionRequest> {
   const body = await parseJsonObject(request);
-  const name = typeof body.lotName === 'string' ? normalizePropertyName(body.lotName) : null;
+  const tileId = body.tileId === undefined ? undefined : readTileId(body);
+  // A board auction takes its lot name from the tile on the server; a free-text one needs it.
+  const name =
+    tileId !== undefined && body.lotName === undefined
+      ? tileId
+      : typeof body.lotName === 'string'
+        ? normalizePropertyName(body.lotName)
+        : null;
   if (name === null)
     throw new ApiValidationError('lotName must be 1 to 60 characters without control characters.');
-  return { initiatorPlayerId: readUuid(body, 'initiatorPlayerId'), lotName: name };
+  return {
+    initiatorPlayerId: readUuid(body, 'initiatorPlayerId'),
+    lotName: name,
+    ...(tileId === undefined ? {} : { tileId }),
+  };
 }
 
 /** The auction id comes from the URL, so the body carries everything else. */
@@ -237,6 +248,13 @@ function readGameRules(value: unknown): GameRules {
     rules[key] = flag === true;
   }
   return rules;
+}
+
+export function readTileId(body: Record<string, unknown>): string {
+  const value = body.tileId;
+  if (typeof value !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/u.test(value))
+    throw new ApiValidationError('tileId must be a board tile id.');
+  return value;
 }
 
 function readPropertyName(body: Record<string, unknown>): string {
@@ -302,11 +320,23 @@ export async function parseCreateTransactionRequest(
         ...(comment === undefined ? {} : { comment }),
       };
     case 'MORTGAGE':
+      // A board game names the tile; the server reads its name and mortgage value from the snapshot.
+      if (body.tileId !== undefined)
+        return { type, playerId: readUuid(body, 'playerId'), tileId: readTileId(body) };
       return {
         type,
         playerId: readUuid(body, 'playerId'),
         propertyName: readPropertyName(body),
         amount: readPositiveInteger(body, 'amount'),
+      };
+    case 'PROPERTY_PURCHASE':
+      return { type, playerId: readUuid(body, 'playerId'), tileId: readTileId(body) };
+    case 'PAY_RENT':
+      return {
+        type,
+        payerPlayerId: readUuid(body, 'payerPlayerId'),
+        tileId: readTileId(body),
+        ...(body.diceSum === undefined ? {} : { diceSum: readPositiveInteger(body, 'diceSum') }),
       };
     case 'MORTGAGE_REDEMPTION':
       return {
@@ -493,19 +523,18 @@ function readPositiveInteger(body: Record<string, unknown>, key: string): number
 
 function readTransactionType(
   body: Record<string, unknown>,
-): Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER' | 'AUCTION_PAYMENT'> {
+): Exclude<TransactionType, 'BANKRUPTCY_TRANSFER' | 'AUCTION_PAYMENT'> {
   const value = body.type;
   if (
     typeof value !== 'string' ||
     !transactionTypes.includes(value as TransactionType) ||
-    value === 'PAY_RENT' ||
     value === 'BANKRUPTCY_TRANSFER' ||
     // Written only when an auction closes; never requested by a client.
     value === 'AUCTION_PAYMENT'
   ) {
     throw new ApiValidationError('type must be a supported transaction type.');
   }
-  return value as Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER' | 'AUCTION_PAYMENT'>;
+  return value as Exclude<TransactionType, 'BANKRUPTCY_TRANSFER' | 'AUCTION_PAYMENT'>;
 }
 
 function readOptionalComment(body: Record<string, unknown>): string | undefined {

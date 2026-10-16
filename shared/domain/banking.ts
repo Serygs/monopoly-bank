@@ -6,6 +6,7 @@ import type {
   LoanLenderKind,
   Mortgage,
   Player,
+  PropertyChange,
   Transaction,
   TransactionParticipant,
   TransactionType,
@@ -13,6 +14,21 @@ import type {
 import { bankLoanInterest } from './bank-loan.js';
 import { buildGameSettings } from './game-rules.js';
 import { normalizePropertyName, redemptionCost } from './mortgage.js';
+import {
+  assertCanMortgage,
+  DiceSumError,
+  invertChanges,
+  mortgageChange,
+  ownerChange,
+  PropertyAlreadyOwnedError,
+  PropertyMortgagedError,
+  PropertyNotOwnedError,
+  purchasePrice,
+  rentFor,
+  requireTile,
+  stateOf,
+  type PropertyContext,
+} from './property.js';
 import { findReversalDependency, isReversibleType } from './reversal.js';
 import { AppError } from '../../worker/services/errors.js';
 
@@ -75,6 +91,29 @@ export interface AuctionPaymentCommand {
   amount: number;
   /** The lot name, kept as the transaction's comment. */
   lotName: string;
+  /** Board games: the tile sold; it must still be unowned and passes to the winner. */
+  tileId?: string | null;
+  property?: PropertyContext;
+}
+
+export interface MortgageTileCommand extends BankingCommand {
+  playerId: string;
+  tileId: string;
+  property: PropertyContext;
+}
+
+export interface PropertyPurchaseCommand extends BankingCommand {
+  playerId: string;
+  tileId: string;
+  property: PropertyContext;
+}
+
+export interface PayRentCommand extends BankingCommand {
+  payerPlayerId: string;
+  tileId: string;
+  /** Required for a utility, rejected for any other tile. */
+  diceSum?: number;
+  property: PropertyContext;
 }
 
 export interface MortgagePropertyCommand extends BankingCommand {
@@ -88,6 +127,8 @@ export interface RedeemMortgageCommand extends BankingCommand {
   playerId: string;
   /** The active mortgage being redeemed. */
   mortgage: Mortgage;
+  /** Required when the mortgage is on a board tile. */
+  property?: PropertyContext;
 }
 
 export interface IssueLoanCommand {
@@ -143,6 +184,8 @@ export interface ReversalCommand {
   original: Transaction;
   /** Every transaction written after `original`; one that builds on it blocks the reversal. */
   later?: readonly Transaction[];
+  /** The registry changes stored with `original` (read from property_changes), if any. */
+  originalRegistryChanges?: readonly PropertyChange[];
   comment?: string | null;
 }
 
@@ -154,6 +197,8 @@ export interface BankruptcyCommand extends BankingCommand {
    * tracking suggests right now, before anything goes to a player creditor.
    */
   bankLoan?: { loan: Loan; suggestedRatePercent: InterestRatePercent };
+  /** Board games: the registry, so the bankrupt player's tiles go to the creditor or the bank. */
+  property?: PropertyContext;
 }
 
 interface BankingCommand {
@@ -184,8 +229,15 @@ export interface PendingTransaction {
   jackpot?: { kind: 'DEPOSIT'; amount: number } | { kind: 'COLLECT'; expected: number };
   /** Set only on an AUCTION_PAYMENT: the auction it closes, written in the same batch. */
   settlesAuction?: { auctionId: string; expectedVersion: number };
+  /** The board tile this operation concerned (purchase, mortgage, redemption, auction, rent). */
+  tileId?: string;
+  /**
+   * Board games: how the property registry changes, written in the same batch. Each change is
+   * guarded by its `before` state, so a registry that moved in between rolls everything back.
+   */
+  registryChanges?: PropertyChange[];
   /** Set only on a MORTGAGE: the mortgage record stored with it (its id is the transaction's). */
-  newMortgage?: { playerId: string; propertyName: string; mortgageValue: number };
+  newMortgage?: { playerId: string; propertyName: string; mortgageValue: number; tileId?: string };
   /** Set only on a MORTGAGE_REDEMPTION: the mortgage it closes. */
   redeemedMortgageId?: string;
   /** Set only on a LOAN_ISSUE: the loan record stored with it (its id is the transaction's). */
@@ -597,7 +649,7 @@ export function auctionPayment(command: AuctionPaymentCommand): BankingOperation
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
   ensureSufficientFunds(player, command.amount);
-  return createResult(
+  const result = createResult(
     command.game.id,
     'AUCTION_PAYMENT',
     command.amount,
@@ -605,6 +657,89 @@ export function auctionPayment(command: AuctionPaymentCommand): BankingOperation
     command.lotName,
     [createBalanceChange(player, -command.amount)],
   );
+  if (command.tileId == null) return result;
+  if (command.property === undefined)
+    throw new InvalidGameStateError('a board auction needs the property registry');
+  requireTile(command.property.board, command.tileId);
+  const state = stateOf(command.property.registry, command.tileId);
+  if (state.ownerPlayerId !== null)
+    throw new PropertyAlreadyOwnedError(command.tileId, state.ownerPlayerId);
+  return withProperty(result, command.tileId, [ownerChange(command.tileId, state, player.id)]);
+}
+
+/** Attaches the tile and the registry changes of an operation to its pending transaction. */
+function withProperty(
+  result: BankingOperationResult,
+  tileId: string,
+  registryChanges: PropertyChange[],
+): BankingOperationResult {
+  return { ...result, transaction: { ...result.transaction, tileId, registryChanges } };
+}
+
+/** A board tile is mortgaged for the snapshot's mortgage value; the registry flag turns on. */
+export function mortgageTile(command: MortgageTileCommand): BankingOperationResult {
+  const tile = requireTile(command.property.board, command.tileId);
+  if (command.game.status !== 'ACTIVE')
+    throw new InvalidGameStateError(`game status is ${command.game.status}`);
+  assertCanMortgage(command.property, command.tileId, command.playerId);
+  const result = mortgageProperty({
+    game: command.game,
+    players: command.players,
+    playerId: command.playerId,
+    propertyName: tile.name,
+    amount: tile.mortgage,
+  });
+  const state = stateOf(command.property.registry, command.tileId);
+  const newMortgage = result.transaction.newMortgage;
+  const withTile = withProperty(result, tile.id, [mortgageChange(tile.id, state, true)]);
+  return newMortgage === undefined
+    ? withTile
+    : {
+        ...withTile,
+        transaction: { ...withTile.transaction, newMortgage: { ...newMortgage, tileId: tile.id } },
+      };
+}
+
+/** The player buys an unowned tile from the bank at the snapshot price. */
+export function propertyPurchase(command: PropertyPurchaseCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const price = purchasePrice(command.property.board, command.tileId);
+  validateAmount(price);
+  const state = stateOf(command.property.registry, command.tileId);
+  if (state.ownerPlayerId !== null)
+    throw new PropertyAlreadyOwnedError(command.tileId, state.ownerPlayerId);
+  const player = findPlayer(players, command.playerId);
+  ensureActive(player);
+  ensureSufficientFunds(player, price);
+  const result = createResult(command.game.id, 'PROPERTY_PURCHASE', price, price, command.comment, [
+    createBalanceChange(player, -price),
+  ]);
+  return withProperty(result, command.tileId, [ownerChange(command.tileId, state, player.id)]);
+}
+
+/** The payer pays the tile's owner the rent the registry and the snapshot give. */
+export function payRent(command: PayRentCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const { board, registry } = command.property;
+  const tile = requireTile(board, command.tileId);
+  if (tile.type !== 'utility' && command.diceSum !== undefined) throw new DiceSumError(false);
+  const state = stateOf(registry, command.tileId);
+  if (state.ownerPlayerId === null) throw new PropertyNotOwnedError(command.tileId);
+  if (state.mortgaged) throw new PropertyMortgagedError(command.tileId);
+  const payer = findPlayer(players, command.payerPlayerId);
+  const owner = findPlayer(players, state.ownerPlayerId);
+  ensureActive(payer);
+  ensureActive(owner);
+  ensureDifferentPlayers(payer, owner);
+  if (command.diceSum !== undefined) validateAmount(command.diceSum);
+  const rent = rentFor(board, registry, command.tileId, command.diceSum);
+  validateAmount(rent);
+  ensureSufficientFunds(payer, rent);
+  const result = createResult(command.game.id, 'PAY_RENT', rent, rent, command.comment, [
+    createBalanceChange(payer, -rent),
+    createBalanceChange(owner, rent),
+  ]);
+  return { ...result, transaction: { ...result.transaction, tileId: command.tileId } };
 }
 
 /** The bank pays the mortgage value; the property name becomes the transaction's comment. */
@@ -655,10 +790,17 @@ export function redeemMortgage(command: RedeemMortgageCommand): BankingOperation
     mortgage.propertyName,
     [createBalanceChange(player, -cost)],
   );
-  return {
+  const redeemed: BankingOperationResult = {
     ...result,
     transaction: { ...result.transaction, redeemedMortgageId: mortgage.id },
   };
+  if (mortgage.tileId == null) return redeemed;
+  if (command.property === undefined)
+    throw new InvalidGameStateError('a board mortgage needs the property registry');
+  const state = stateOf(command.property.registry, mortgage.tileId);
+  if (state.ownerPlayerId !== player.id || !state.mortgaged)
+    throw new PropertyNotOwnedError(mortgage.tileId);
+  return withProperty(redeemed, mortgage.tileId, [mortgageChange(mortgage.tileId, state, false)]);
 }
 
 /** The lender hands the borrower the amount; the loan record travels with the transaction. */
@@ -908,6 +1050,15 @@ export function reverseTransaction(command: ReversalCommand): BankingOperationRe
   const dependency = findReversalDependency(original, command.later ?? []);
   if (dependency !== null) throw new ReversalBlockedByLaterOperationError(original.id, dependency);
 
+  // A registry-backed original moves its tiles back too; one that lost its changes cannot be undone.
+  const registryChanges = invertChanges(command.originalRegistryChanges ?? []);
+  if (
+    registryChanges.length === 0 &&
+    (original.type === 'PROPERTY_PURCHASE' ||
+      (original.tileId != null && original.type === 'AUCTION_PAYMENT'))
+  )
+    throw new TransactionNotReversibleError(original.type);
+
   const changes = original.participants.map((participant) => {
     const player = findPlayer(players, participant.playerId);
     ensureActive(player);
@@ -923,7 +1074,19 @@ export function reverseTransaction(command: ReversalCommand): BankingOperationRe
     command.comment,
     changes,
   );
-  return { ...result, transaction: { ...result.transaction, reversesTransactionId: original.id } };
+  return {
+    ...result,
+    transaction: {
+      ...result.transaction,
+      reversesTransactionId: original.id,
+      ...(registryChanges.length === 0
+        ? {}
+        : {
+            registryChanges,
+            ...(original.tileId == null ? {} : { tileId: original.tileId }),
+          }),
+    },
+  };
 }
 
 export function declareBankruptcy(command: BankruptcyCommand): BankingOperationResult {
@@ -938,24 +1101,61 @@ export function declareBankruptcy(command: BankruptcyCommand): BankingOperationR
   }
   const cash = bankruptPlayer.balance;
   const settlement = settleBankLoan(command, bankruptPlayer);
+  const registryChanges = bankruptcyRegistryChanges(command, bankruptPlayer, creditor);
   if (cash === 0) {
-    return withBankLoanSettlement(
-      createResult(command.game.id, 'BANKRUPTCY_TRANSFER', 1, 1, null, []),
-      settlement,
+    return withRegistryChanges(
+      withBankLoanSettlement(
+        createResult(command.game.id, 'BANKRUPTCY_TRANSFER', 1, 1, null, []),
+        settlement,
+      ),
+      registryChanges,
     );
   }
   // The bank is owed first; a player creditor only receives what is left of the wallet.
   const bankTake = settlement === null ? 0 : settlement.paidPrincipal + settlement.paidInterest;
   const creditorShare = cash - bankTake;
-  return withBankLoanSettlement(
-    createResult(command.game.id, 'BANKRUPTCY_TRANSFER', cash, cash, null, [
-      createBalanceChange(bankruptPlayer, -cash),
-      ...(creditor === null || creditorShare === 0
-        ? []
-        : [createBalanceChange(creditor, creditorShare)]),
-    ]),
-    settlement,
+  return withRegistryChanges(
+    withBankLoanSettlement(
+      createResult(command.game.id, 'BANKRUPTCY_TRANSFER', cash, cash, null, [
+        createBalanceChange(bankruptPlayer, -cash),
+        ...(creditor === null || creditorShare === 0
+          ? []
+          : [createBalanceChange(creditor, creditorShare)]),
+      ]),
+      settlement,
+    ),
+    registryChanges,
   );
+}
+
+/**
+ * Board games: every tile of the bankrupt player passes to the creditor (mortgage flag kept, so the
+ * creditor can redeem it), or goes back to the bank unmortgaged. Buildings are not handled yet.
+ */
+function bankruptcyRegistryChanges(
+  command: BankruptcyCommand,
+  bankruptPlayer: Player,
+  creditor: Player | null,
+): PropertyChange[] {
+  if (command.property === undefined) return [];
+  return command.property.registry
+    .filter((row) => row.ownerPlayerId === bankruptPlayer.id)
+    .map((row) =>
+      ownerChange(
+        row.tileId,
+        { ownerPlayerId: row.ownerPlayerId, mortgaged: row.mortgaged, houses: row.houses },
+        creditor?.id ?? null,
+      ),
+    );
+}
+
+function withRegistryChanges(
+  result: BankingOperationResult,
+  registryChanges: PropertyChange[],
+): BankingOperationResult {
+  return registryChanges.length === 0
+    ? result
+    : { ...result, transaction: { ...result.transaction, registryChanges } };
 }
 
 type BankLoanSettlement = NonNullable<PendingTransaction['bankLoanSettlement']>;

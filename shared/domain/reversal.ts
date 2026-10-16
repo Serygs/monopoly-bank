@@ -37,6 +37,7 @@ export function reversalInitiatorPlayerId(
     case 'PAY_RENT':
     case 'PLAYER_TO_BANK':
     case 'AUCTION_PAYMENT':
+    case 'PROPERTY_PURCHASE':
     case 'PLAYER_TO_ALL':
       return debited.length === 1 ? (debited[0]?.playerId ?? null) : null;
     case 'BANK_TO_PLAYER':
@@ -82,12 +83,21 @@ const dependentTypes: readonly TransactionType[] = [
   'BANKRUPTCY_TRANSFER',
 ];
 
+/** Types that change the property registry: a later one on the same tile builds on the earlier. */
+const registryTypes: readonly TransactionType[] = [
+  'PROPERTY_PURCHASE',
+  'MORTGAGE',
+  'MORTGAGE_REDEMPTION',
+  'AUCTION_PAYMENT',
+];
+
 /**
  * The first later transaction that depends on `original`, or null. `later` is every transaction
- * written after it; one that was itself reversed no longer counts.
+ * written after it; one that was itself reversed no longer counts. A later registry operation on
+ * the same tile also blocks, whoever made it.
  */
 export function findReversalDependency(
-  original: Pick<Transaction, 'id' | 'participants'>,
+  original: Pick<Transaction, 'id' | 'participants'> & { tileId?: string | null },
   later: readonly Transaction[],
 ): Transaction | null {
   const playerIds = new Set(original.participants.map((participant) => participant.playerId));
@@ -95,9 +105,12 @@ export function findReversalDependency(
     later.find(
       (candidate) =>
         candidate.id !== original.id &&
-        dependentTypes.includes(candidate.type) &&
         candidate.reversedByTransactionId == null &&
-        candidate.participants.some((participant) => playerIds.has(participant.playerId)),
+        ((dependentTypes.includes(candidate.type) &&
+          candidate.participants.some((participant) => playerIds.has(participant.playerId))) ||
+          (original.tileId != null &&
+            candidate.tileId === original.tileId &&
+            registryTypes.includes(candidate.type))),
     ) ?? null
   );
 }

@@ -9,6 +9,7 @@ import type {
   PaymentRequestActionResponse,
 } from './api.js';
 import type {
+  GameProperty,
   Auction,
   BankLoanCooldown,
   Loan,
@@ -60,6 +61,8 @@ export type LiveServerEvent =
       bankLoanCooldowns?: BankLoanCooldown[];
       /** The Free Parking pot after the commit; present whenever the game has the jackpot rule. */
       jackpot?: number;
+      /** Board games: the registry rows this commit changed (merge by tileId). */
+      properties?: GameProperty[];
     }
   | { type: 'GAME_FINISHED'; stateVersion: number; details: GameDetails }
   | { type: 'LOBBY_UPDATED'; stateVersion: number; details: Pick<GameDetails, 'game' | 'players'> }
@@ -144,7 +147,8 @@ function isStartAuctionRequest(value: unknown): boolean {
   return (
     isRecord(value) &&
     typeof value.initiatorPlayerId === 'string' &&
-    typeof value.lotName === 'string'
+    (value.tileId === undefined || typeof value.tileId === 'string') &&
+    (typeof value.lotName === 'string' || typeof value.tileId === 'string')
   );
 }
 function isPlaceBidRequest(value: unknown): boolean {
