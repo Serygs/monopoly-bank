@@ -8,7 +8,10 @@ import { Button, ToolPanel } from './ui';
 import { cx, playerSwatchClass } from './ui/class-names';
 
 const initialRoll: DiceRoll = { first: 1, second: 1, total: 2, isDouble: true };
-const historySize = 10;
+/** Rolls shown at first, how many each "Show more" adds, and the most the server keeps. */
+const initialVisible = 3;
+const pageSize = 10;
+const maxHistory = 100;
 
 const dieClass =
   'relative grid size-11 grid-cols-[repeat(3,1fr)] grid-rows-[repeat(3,1fr)] gap-[3px] rounded-sm border border-border-strong bg-surface-elevated p-[7px] shadow-sm';
@@ -62,6 +65,8 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
   const [failedPlayerId, setFailedPlayerId] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [visible, setVisible] = useState(initialVisible);
+  const [limit, setLimit] = useState(pageSize);
   const timer = useRef<number | null>(null);
   const viewPlayerId = chosenPlayerId ?? rollerPlayerId ?? players[0]?.id ?? null;
 
@@ -74,7 +79,7 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
   useEffect(() => {
     if (viewPlayerId === null) return;
     let active = true;
-    void monopolyBankApi.listDiceRolls(gameId, viewPlayerId, historySize).then(
+    void monopolyBankApi.listDiceRolls(gameId, viewPlayerId, limit).then(
       (rolls) => {
         if (!active) return;
         setHistory({ playerId: viewPlayerId, rolls });
@@ -87,7 +92,7 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
     return () => {
       active = false;
     };
-  }, [gameId, viewPlayerId, refresh]);
+  }, [gameId, viewPlayerId, limit, refresh]);
 
   const record = (next: DiceRoll, playerId: string) => {
     setSaveFailed(false);
@@ -105,7 +110,7 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
                   playerId: saved.playerId,
                   rolls: [saved, ...current.rolls.filter((item) => item.id !== saved.id)].slice(
                     0,
-                    historySize,
+                    limit,
                   ),
                 }
               : (setRefresh((count) => count + 1), current),
@@ -130,7 +135,19 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
   };
 
   const rolls = history?.playerId === viewPlayerId ? history.rolls : null;
-  const time = new Intl.DateTimeFormat(locale, { timeStyle: 'medium', hourCycle: 'h23' });
+  const time = new Intl.DateTimeFormat(locale, {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+    hourCycle: 'h23',
+  });
+  /* More may exist on the server while the loaded page is full and under the cap. */
+  const canShowMore =
+    rolls !== null && (rolls.length > visible || (rolls.length >= limit && limit < maxHistory));
+  const showMore = () => {
+    const next = Math.min(visible + pageSize, maxHistory);
+    setVisible(next);
+    if (next > limit) setLimit(next);
+  };
   return (
     <ToolPanel
       label={t('diceRoller')}
@@ -163,7 +180,11 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
                 type="button"
                 className={playerChipClass}
                 aria-pressed={viewPlayerId === player.id}
-                onClick={() => setChosenPlayerId(player.id)}
+                onClick={() => {
+                  setChosenPlayerId(player.id);
+                  setVisible(initialVisible);
+                  setLimit(pageSize);
+                }}
               >
                 <span
                   className={playerSwatchClass}
@@ -184,7 +205,7 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
             <p className="m-0 text-small text-secondary">{t('diceNoRolls')}</p>
           ) : (
             <ol className="m-0 list-none p-0">
-              {rolls.map((item) => (
+              {rolls.slice(0, visible).map((item) => (
                 <li key={item.id} className={historyRowClass}>
                   <span
                     className="flex items-center gap-[6px]"
@@ -206,6 +227,11 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
                 </li>
               ))}
             </ol>
+          )}
+          {canShowMore && (
+            <Button variant="secondary" className="justify-self-start" onClick={showMore}>
+              {t('diceShowMore')}
+            </Button>
           )}
         </section>
       )}
