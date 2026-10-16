@@ -1,4 +1,5 @@
 import type { Currency, Player } from '../../../shared/types/monopoly';
+import { Notice } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney, formatMoneyDelta } from '../../utils/money';
@@ -67,6 +68,7 @@ export function Confirmation({
         : amount;
   const shownAmount = action === 'PASS_GO' ? passGoReward : amount;
   const repeatsAmount = total === shownAmount;
+  const isLoanRequest = action === 'LOAN_ISSUE';
   const resultingBalance =
     preview.find(({ player: affected }) => affected.id === player.id)?.after ?? player.balance;
   return (
@@ -77,9 +79,14 @@ export function Confirmation({
           {action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? ` ${t('perPlayer')}` : ''}
         </strong>
         <span>
-          {sourceFor(action, player, t)} → {destinationFor(action, player, target, t)}
+          {sourceFor(action, player, t, target)} → {destinationFor(action, player, target, t)}
         </span>
       </p>
+      {isLoanRequest && (
+        <Notice tone="info">
+          {t('loanRequestNotice', { name: target?.name ?? t('selectedPlayer') })}
+        </Notice>
+      )}
       <dl>
         <div className={compactHidden}>
           <dt>{t('actor')}</dt>
@@ -91,7 +98,7 @@ export function Confirmation({
         </div>
         <div className={compactHidden}>
           <dt>{t('source')}</dt>
-          <dd>{sourceFor(action, player, t)}</dd>
+          <dd>{sourceFor(action, player, t, target)}</dd>
         </div>
         <div className={compactHidden}>
           <dt>{t('destination')}</dt>
@@ -114,10 +121,12 @@ export function Confirmation({
           <dt>{t('total')}</dt>
           <dd>{formatMoney(total, currency)}</dd>
         </div>
-        <div className={availableClass}>
-          <dt>{t('resultingAvailableBalance')}</dt>
-          <dd>{formatMoney(resultingBalance, currency)}</dd>
-        </div>
+        {!isLoanRequest && (
+          <div className={availableClass}>
+            <dt>{t('resultingAvailableBalance')}</dt>
+            <dd>{formatMoney(resultingBalance, currency)}</dd>
+          </div>
+        )}
         {comment.trim() !== '' && (
           <div>
             <dt>{t('comment')}</dt>
@@ -125,23 +134,26 @@ export function Confirmation({
           </div>
         )}
       </dl>
-      <details className={balancesClass}>
-        <summary>{t('resultingBalances')}</summary>
-        <h3>{t('resultingBalances')}</h3>
-        <ul>
-          {preview.map(({ player: affected, after, delta }) => (
-            <li key={affected.id}>
-              <span>
-                <i style={{ backgroundColor: affected.color }} />
-                {affected.name}
-              </span>
-              <strong>
-                {formatMoney(after, currency)} <small>({formatMoneyDelta(delta, currency)})</small>
-              </strong>
-            </li>
-          ))}
-        </ul>
-      </details>
+      {!isLoanRequest && (
+        <details className={balancesClass}>
+          <summary>{t('resultingBalances')}</summary>
+          <h3>{t('resultingBalances')}</h3>
+          <ul>
+            {preview.map(({ player: affected, after, delta }) => (
+              <li key={affected.id}>
+                <span>
+                  <i style={{ backgroundColor: affected.color }} />
+                  {affected.name}
+                </span>
+                <strong>
+                  {formatMoney(after, currency)}{' '}
+                  <small>({formatMoneyDelta(delta, currency)})</small>
+                </strong>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </section>
   );
 }

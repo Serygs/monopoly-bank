@@ -12,6 +12,12 @@ export interface PersistBankingOperationInput {
    * Without one the mortgages are released, as the properties went back to the bank.
    */
   mortgageHeirPlayerId?: string | null;
+  /**
+   * With a bankruptcy: the player who takes over the loans the bankrupt player made (the
+   * creditor). Without one every such loan is written off. Loans the bankrupt player owes are
+   * always written off.
+   */
+  loanHeirPlayerId?: string | null;
   recentAmount?: number;
 }
 
@@ -88,6 +94,59 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
           .bind(input.transactionId, redeemedMortgageId, input.transaction.gameId),
       );
 
+    // A repayment lowers the debt in the same batch. Repaying a loan that is no longer active, that
+    // changed lender, or by more than is owed turns into a CHECK failure and rolls everything back.
+    const loanStatements: D1PreparedStatement[] = [];
+    const { newLoan, loanRepayment } = input.transaction;
+    if (newLoan !== undefined)
+      loanStatements.push(
+        this.database
+          .prepare(
+            `INSERT INTO loans (id, game_id, lender_kind, lender_player_id, borrower_player_id, principal)
+             VALUES (?, ?, 'PLAYER', ?, ?, ?)`,
+          )
+          .bind(
+            input.transactionId,
+            input.transaction.gameId,
+            newLoan.lenderPlayerId,
+            newLoan.borrowerPlayerId,
+            newLoan.principal,
+          ),
+      );
+    if (loanRepayment !== undefined) {
+      loanStatements.push(
+        this.database
+          .prepare(
+            `UPDATE loans
+             SET repaid_amount = repaid_amount + ?1,
+                 state = CASE
+                   WHEN state <> 'ACTIVE' OR lender_player_id IS NOT ?4 OR borrower_player_id IS NOT ?5 THEN 'NOT_ACTIVE'
+                   WHEN repaid_amount + ?1 = principal THEN 'REPAID'
+                   ELSE 'ACTIVE' END,
+                 closed_at = CASE WHEN state = 'ACTIVE' AND repaid_amount + ?1 = principal THEN CURRENT_TIMESTAMP ELSE closed_at END
+             WHERE id = ?2 AND game_id = ?3`,
+          )
+          .bind(
+            loanRepayment.amount,
+            loanRepayment.loanId,
+            input.transaction.gameId,
+            loanRepayment.lenderPlayerId,
+            loanRepayment.borrowerPlayerId,
+          ),
+        this.database
+          .prepare(
+            `INSERT INTO loan_repayments (transaction_id, game_id, loan_id, amount)
+             VALUES (?, ?, ?, ?)`,
+          )
+          .bind(
+            input.transactionId,
+            input.transaction.gameId,
+            loanRepayment.loanId,
+            loanRepayment.amount,
+          ),
+      );
+    }
+
     const statusStatement =
       input.bankruptPlayerId === undefined
         ? []
@@ -121,6 +180,37 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
           .bind(input.transaction.gameId, input.bankruptPlayerId),
       );
     }
+    // A bankrupt player's debts are forgiven; the loans they made go to the creditor, unless the
+    // creditor is the borrower (nobody lends to themselves) or the bankruptcy is to the bank.
+    const bankruptLoanStatements: D1PreparedStatement[] = [];
+    if (input.bankruptPlayerId !== undefined) {
+      const gameId = input.transaction.gameId;
+      bankruptLoanStatements.push(
+        this.database
+          .prepare(
+            `UPDATE loans SET state = 'WRITTEN_OFF', closed_at = CURRENT_TIMESTAMP
+             WHERE game_id = ? AND borrower_player_id = ? AND state = 'ACTIVE'`,
+          )
+          .bind(gameId, input.bankruptPlayerId),
+      );
+      if (input.loanHeirPlayerId != null)
+        bankruptLoanStatements.push(
+          this.database
+            .prepare(
+              `UPDATE loans SET lender_player_id = ?
+               WHERE game_id = ? AND lender_player_id = ? AND borrower_player_id <> ? AND state = 'ACTIVE'`,
+            )
+            .bind(input.loanHeirPlayerId, gameId, input.bankruptPlayerId, input.loanHeirPlayerId),
+        );
+      bankruptLoanStatements.push(
+        this.database
+          .prepare(
+            `UPDATE loans SET state = 'WRITTEN_OFF', closed_at = CURRENT_TIMESTAMP
+             WHERE game_id = ? AND lender_player_id = ? AND state = 'ACTIVE'`,
+          )
+          .bind(gameId, input.bankruptPlayerId),
+      );
+    }
     try {
       const recentStatements =
         input.recentAmount === undefined
@@ -131,8 +221,10 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
         transactionStatement,
         ...participantStatements,
         ...mortgageStatements,
+        ...loanStatements,
         ...statusStatement,
         ...bankruptMortgageStatements,
+        ...bankruptLoanStatements,
         ...recentStatements,
       ]);
     } catch (cause) {

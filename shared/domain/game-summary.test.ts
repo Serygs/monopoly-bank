@@ -43,3 +43,28 @@ describe('calculateFinalGameSummary', () =>
       amount: 50,
     });
   }));
+
+describe('loans in the final summary', () => {
+  it('count toward the volume but are neither sent nor received money', () => {
+    const summary = calculateFinalGameSummary(players, [
+      transaction('LOAN_ISSUE', 100, [
+        { playerId: 'a', balanceDelta: -100 },
+        { playerId: 'b', balanceDelta: 100 },
+      ]),
+      transaction('LOAN_REPAYMENT', 40, [
+        { playerId: 'b', balanceDelta: -40 },
+        { playerId: 'a', balanceDelta: 40 },
+      ]),
+    ]);
+    expect(summary.totalMoneyTransferred).toBe(140);
+    expect(summary.playerToPlayerTotal).toBe(0);
+    expect(summary.paidToBank).toBe(0);
+    expect(summary.receivedFromBank).toBe(0);
+    expect(summary.biggestPayerRecipient).toBeNull();
+    for (const metric of summary.players) {
+      expect(metric.sent).toBe(0);
+      expect(metric.received).toBe(0);
+    }
+    expect(summary.players.find((metric) => metric.playerId === 'a')?.transactionCount).toBe(2);
+  });
+});

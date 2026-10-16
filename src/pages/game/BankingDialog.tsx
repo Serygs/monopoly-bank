@@ -4,6 +4,7 @@ import {
   type Currency,
   type GameRules,
   type GameSettings,
+  type Loan,
   type Mortgage,
   type Player,
 } from '../../../shared/types/monopoly';
@@ -24,6 +25,7 @@ import {
 import { cx } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
+import { activeLoansAsBorrower, loanOutstanding } from '../../utils/loans';
 import { formatMoney } from '../../utils/money';
 import { presetAmounts } from '../../utils/quick-amounts';
 import { Confirmation } from './Confirmation';
@@ -34,12 +36,14 @@ import {
   buildRequest,
   insufficientMessage,
   isPositiveInteger,
+  loanWalletActions,
   preflightFundsError,
   preflightShortfall,
   previewBalances,
   primaryWalletActions,
   type ActionType,
 } from './game-page-helpers';
+import { LoanPicker } from './LoanFields';
 import { MortgageDetails, RedemptionPicker } from './MortgageFields';
 import { PlayerPicker } from './PlayerPicker';
 
@@ -57,6 +61,8 @@ export interface BankingDialogProps {
   settings?: GameSettings | null;
   /** Every property currently mortgaged in the game. */
   mortgages?: Mortgage[];
+  /** The loans still being repaid. */
+  loans?: Loan[];
   favoriteAmounts: number[];
   recentAmounts: number[];
   onToggleFavorite: (amount: number) => void;
@@ -68,8 +74,10 @@ export interface BankingDialogProps {
     action: ActionType,
     amount: number | null,
     mortgages?: Mortgage[],
+    loans?: Loan[],
   ) => void;
-  onPaymentRequested: () => void;
+  /** A payment or loan request was created; a loan request names the lender being asked. */
+  onPaymentRequested: (action: ActionType, lenderName?: string) => void;
 }
 
 /** Inverse balance plate: the label in the highlight colour over the balance figure. */
@@ -116,6 +124,7 @@ export function BankingDialog({
   rules = defaultGameRules,
   settings = null,
   mortgages = [],
+  loans = [],
   favoriteAmounts,
   recentAmounts,
   onToggleFavorite,
@@ -136,19 +145,33 @@ export function BankingDialog({
   const [propertyName, setPropertyName] = useState('');
   const [noBuildings, setNoBuildings] = useState(false);
   const [mortgageId, setMortgageId] = useState('');
+  const [loanId, setLoanId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown | null>(null);
   const submittingRef = useRef(false);
   const commandIdRef = useRef<string | null>(null);
   const balancePresets = startingBalance === undefined ? [] : presetAmounts(startingBalance);
   const presets = balancePresets.length > 0 ? balancePresets : undefined;
-  const targetRequired = action === 'PLAYER_TO_PLAYER';
-  const recipients = players.filter((candidate) => candidate.id !== player.id);
+  const targetRequired = action === 'PLAYER_TO_PLAYER' || action === 'LOAN_ISSUE';
+  // A lender must still be playing; payments to anyone else are left to the Worker's checks.
+  const recipients = players.filter(
+    (candidate) =>
+      candidate.id !== player.id && (action !== 'LOAN_ISSUE' || candidate.status !== 'BANKRUPT'),
+  );
   // With one possible recipient there is nothing to choose, so it is selected for the player.
   const soleRecipient = targetRequired && recipients.length === 1 ? recipients[0] : undefined;
-  const effectiveTargetId = targetId !== '' ? targetId : (soleRecipient?.id ?? '');
-  const target = players.find((candidate) => candidate.id === effectiveTargetId) ?? null;
   const amountValue = Number(amount);
+  const playerLoans = activeLoansAsBorrower(loans, player.id);
+  const selectedLoan = playerLoans.find((item) => item.id === loanId) ?? null;
+  const effectiveTargetId =
+    action === 'LOAN_REPAYMENT'
+      ? (selectedLoan?.lenderPlayerId ?? '')
+      : targetId !== ''
+        ? targetId
+        : (soleRecipient?.id ?? '');
+  const target = players.find((candidate) => candidate.id === effectiveTargetId) ?? null;
+  const loanOwed = selectedLoan === null ? 0 : loanOutstanding(selectedLoan);
+  const overRepayment = action === 'LOAN_REPAYMENT' && amountValue > loanOwed && loanOwed > 0;
   // The name is sent and shown as the server will store it: trimmed, spaces collapsed.
   const tidyName = normalizePropertyName(propertyName) ?? propertyName.trim();
   const playerMortgages = mortgages.filter((item) => item.playerId === player.id);
@@ -164,12 +187,14 @@ export function BankingDialog({
           exactLanding,
           propertyName: tidyName,
           mortgageId,
+          loanId,
         });
   const reward = exactLanding ? passGoReward * 2 : passGoReward;
   const preview =
-    request === null ? [] : previewBalances(request, players, reward, redemptionAmount);
+    request === null ? [] : previewBalances(request, players, reward, redemptionAmount, loans);
   const amountRequired = action !== 'PASS_GO';
   const isMortgageAction = action === 'MORTGAGE' || action === 'MORTGAGE_REDEMPTION';
+  const isLoanAction = action === 'LOAN_ISSUE' || action === 'LOAN_REPAYMENT';
   const fundsError = preflightFundsError(action, player, players, amountValue, currency, t);
   const shortfall = preflightShortfall(action, player, players, amountValue);
   const valid =
@@ -178,6 +203,7 @@ export function BankingDialog({
     (!amountRequired || isPositiveInteger(amount)) &&
     (action !== 'MORTGAGE' || (normalizePropertyName(propertyName) !== null && noBuildings)) &&
     (action !== 'MORTGAGE_REDEMPTION' || selectedMortgage !== null) &&
+    (action !== 'LOAN_REPAYMENT' || (selectedLoan !== null && !overRepayment)) &&
     fundsError === null;
 
   const selectAction = (next: ActionType | null, exact = false) => {
@@ -186,6 +212,7 @@ export function BankingDialog({
     setPropertyName('');
     setNoBuildings(false);
     setMortgageId('');
+    setLoanId('');
     setTargetId('');
     setAmount('');
     // The doubled reward says why in the history; the player can still edit the note.
@@ -221,6 +248,12 @@ export function BankingDialog({
     changeAmount(String(redemptionCost(mortgage.mortgageValue)));
   };
 
+  /** Picking a loan proposes repaying all of it; the amount can be lowered for a partial repayment. */
+  const chooseLoan = (loan: Loan) => {
+    setLoanId(loan.id);
+    changeAmount(String(loanOutstanding(loan)));
+  };
+
   /** A tax or fine from the game's settings: fill the amount and its name, then review it. */
   const reviewFixedPayment = (label: string, fixedAmount: number) => {
     changeAmount(String(fixedAmount));
@@ -248,13 +281,14 @@ export function BankingDialog({
       const commandId = commandIdRef.current ?? crypto.randomUUID();
       commandIdRef.current = commandId;
       const result = await monopolyBankApi.createTransaction(gameId, request, commandId);
-      if ('paymentRequests' in result) onPaymentRequested();
+      if ('paymentRequests' in result) onPaymentRequested(action, target?.name);
       else
         onCompleted(
           result.players,
           action,
           action === 'PASS_GO' || isMortgageAction ? null : result.transaction.amount,
           result.mortgages,
+          result.loans,
         );
     } catch (caught) {
       setError(caught);
@@ -328,9 +362,16 @@ export function BankingDialog({
           <details className={advancedClass}>
             <summary>{t('advancedActions')}</summary>
             <WalletActionGrid
-              actions={advancedWalletActions.filter(
-                (item) => item !== 'MORTGAGE_REDEMPTION' || playerMortgages.length > 0,
-              )}
+              actions={[
+                ...advancedWalletActions.filter(
+                  (item) => item !== 'MORTGAGE_REDEMPTION' || playerMortgages.length > 0,
+                ),
+                ...(rules.playerLoans
+                  ? loanWalletActions.filter(
+                      (item) => item !== 'LOAN_REPAYMENT' || playerLoans.length > 0,
+                    )
+                  : []),
+              ]}
               onSelect={selectAction}
             >
               <Button variant="danger" className={bankruptcyClass} onClick={onBankrupt}>
@@ -420,19 +461,30 @@ export function BankingDialog({
                 onChange={chooseMortgage}
               />
             )}
-            {action === 'MORTGAGE' && <FieldHint>{t('mortgageValueHint')}</FieldHint>}
-            {amountRequired && action !== 'MORTGAGE_REDEMPTION' && (
-              <AmountSelector
-                value={amount}
-                onChange={changeAmount}
+            {action === 'LOAN_REPAYMENT' && (
+              <LoanPicker
+                loans={playerLoans}
+                players={players}
                 currency={currency}
-                favorites={favoriteAmounts}
-                recent={recentAmounts}
-                presets={presets}
-                onToggleFavorite={onToggleFavorite}
-                onQuickAmountSelect={reviewQuickAmount}
+                value={loanId}
+                onChange={chooseLoan}
               />
             )}
+            {action === 'MORTGAGE' && <FieldHint>{t('mortgageValueHint')}</FieldHint>}
+            {amountRequired &&
+              action !== 'MORTGAGE_REDEMPTION' &&
+              (action !== 'LOAN_REPAYMENT' || selectedLoan !== null) && (
+                <AmountSelector
+                  value={amount}
+                  onChange={changeAmount}
+                  currency={currency}
+                  favorites={favoriteAmounts}
+                  recent={recentAmounts}
+                  presets={presets}
+                  onToggleFavorite={onToggleFavorite}
+                  onQuickAmountSelect={reviewQuickAmount}
+                />
+              )}
             {action === 'PLAYER_TO_BANK' && settings !== null && (
               <div className="grid gap-(--mb-space-2)" role="group" aria-label={t('fixedPayments')}>
                 <span className="text-small font-semibold text-secondary">
@@ -457,6 +509,11 @@ export function BankingDialog({
                 </div>
               </div>
             )}
+            {overRepayment && (
+              <FieldError as="p" announce>
+                {t('loanRepayExceeds', { amount: formatMoney(loanOwed, currency) })}
+              </FieldError>
+            )}
             {fundsError !== null && (
               <FieldError as="p" announce>
                 {fundsError}
@@ -470,7 +527,9 @@ export function BankingDialog({
                 </Button>
               </div>
             )}
-            {!isMortgageAction && <div className="mt-(--mb-space-2)">{commentField}</div>}
+            {!isMortgageAction && !isLoanAction && (
+              <div className="mt-(--mb-space-2)">{commentField}</div>
+            )}
           </StepBody>
           <DialogActions className={stepFooterClass}>
             <Button variant="secondary" onClick={() => selectAction(null)}>

@@ -1,6 +1,7 @@
 import type {
   Game,
   GameRules,
+  Loan,
   Mortgage,
   PaymentMode,
   Player,
@@ -48,6 +49,8 @@ export interface GameDetails {
   players: Player[];
   /** Properties currently mortgaged to the bank. */
   mortgages?: Mortgage[];
+  /** Loans that are still being repaid (player loans; the bank's later). */
+  loans?: Loan[];
   favoriteAmounts?: number[];
   recentAmounts?: number[];
   /** Wallets the current actor can operate. All other wallets are read-only. */
@@ -233,6 +236,29 @@ export interface RedeemMortgageTransactionRequest extends Omit<TransactionReques
   mortgageId: string;
 }
 
+/**
+ * Asks another player for a loan. It never moves money by itself: it creates a pending payment
+ * request (kind LOAN) that the lender must accept, whatever the game's payment mode. Requires the
+ * player-loans rule.
+ */
+export interface LoanIssueTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
+  type: 'LOAN_ISSUE';
+  /** The player asking for the money (the wallet whose controller sends this). */
+  borrowerPlayerId: string;
+  lenderPlayerId: string;
+  amount: number;
+}
+
+/** The borrower repays part or all of what is still owed on one loan; the lender receives it. */
+export interface LoanRepaymentTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
+  type: 'LOAN_REPAYMENT';
+  /** The borrower. */
+  playerId: string;
+  loanId: string;
+  /** At most the outstanding amount. */
+  amount: number;
+}
+
 /** Corrects a mistaken transaction with a new REVERSAL record; the original is never edited. */
 export interface ReversalTransactionRequest extends TransactionRequestBase {
   type: 'REVERSAL';
@@ -318,6 +344,8 @@ export type CreateTransactionRequest =
   | PassGoTransactionRequest
   | MortgageTransactionRequest
   | RedeemMortgageTransactionRequest
+  | LoanIssueTransactionRequest
+  | LoanRepaymentTransactionRequest
   | ReversalTransactionRequest;
 
 /** Every request that names its own wallet; a reversal is authorized from the stored record instead. */
@@ -331,6 +359,8 @@ export interface CreateTransactionResponse {
   players: Player[];
   /** The active mortgages after a mortgage, a redemption or a bankruptcy; absent for every other operation. */
   mortgages?: Mortgage[];
+  /** The loans still being repaid after a repayment or a bankruptcy; absent for every other operation. */
+  loans?: Loan[];
 }
 
 export const paymentRequestStates = [
@@ -341,8 +371,11 @@ export const paymentRequestStates = [
   'EXPIRED',
 ] as const;
 export type PaymentRequestState = (typeof paymentRequestStates)[number];
+export type PaymentRequestKind = 'PAYMENT' | 'LOAN';
 export interface PaymentRequest {
   id: string;
+  /** A LOAN request, once accepted, issues a loan instead of an ordinary payment. */
+  kind: PaymentRequestKind;
   gameId: string;
   payerPlayerId: string;
   recipientPlayerId: string;
@@ -365,6 +398,8 @@ export interface PaymentRequestActionResponse {
   paymentRequest: PaymentRequest;
   players: Player[];
   transaction?: Transaction;
+  /** The loans still being repaid after accepting a loan request. */
+  loans?: Loan[];
 }
 
 /** One roll of the two table dice by one player; kept only while the game is active. */

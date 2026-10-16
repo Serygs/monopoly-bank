@@ -7,6 +7,7 @@ import type {
 import type { LiveServerEvent } from '../../../shared/contracts/live';
 import type {
   Currency,
+  Loan,
   Player,
   Transaction,
   TransactionType,
@@ -37,12 +38,15 @@ export const advancedWalletActions: ActionType[] = [
   'MORTGAGE',
   'MORTGAGE_REDEMPTION',
 ];
+/** Player-loan actions; offered only when the game enables the player-loans rule. */
+export const loanWalletActions: ActionType[] = ['LOAN_ISSUE', 'LOAN_REPAYMENT'];
 
 export function walletActionTone(action: ActionType): 'income' | 'expense' {
   return action === 'BANK_TO_PLAYER' ||
     action === 'ALL_TO_PLAYER' ||
     action === 'PASS_GO' ||
-    action === 'MORTGAGE'
+    action === 'MORTGAGE' ||
+    action === 'LOAN_ISSUE'
     ? 'income'
     : 'expense';
 }
@@ -91,6 +95,7 @@ export function applyLiveEvent(
             ...current,
             players: event.players,
             ...(event.mortgages === undefined ? {} : { mortgages: event.mortgages }),
+            ...(event.loans === undefined ? {} : { loans: event.loans }),
           },
     );
     setHistory((current) => {
@@ -149,6 +154,8 @@ export function buildRequest(
     propertyName?: string;
     /** The mortgage being redeemed (MORTGAGE_REDEMPTION) */
     mortgageId?: string;
+    /** The loan being repaid (LOAN_REPAYMENT) */
+    loanId?: string;
   } = {},
 ): PlayerTransactionRequest | null {
   const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
@@ -189,6 +196,14 @@ export function buildRequest(
       return options.mortgageId === undefined || options.mortgageId === ''
         ? null
         : { type: action, playerId, mortgageId: options.mortgageId };
+    case 'LOAN_ISSUE':
+      return targetId === ''
+        ? null
+        : { type: action, borrowerPlayerId: playerId, lenderPlayerId: targetId, amount };
+    case 'LOAN_REPAYMENT':
+      return options.loanId === undefined || options.loanId === ''
+        ? null
+        : { type: action, playerId, loanId: options.loanId, amount };
   }
 }
 
@@ -198,6 +213,8 @@ export function previewBalances(
   passGoReward: number,
   /** What redeeming the chosen mortgage will cost (mortgage value plus 10%). */
   redemptionAmount = 0,
+  /** The active loans, to find who receives a repayment. */
+  loans: Loan[] = [],
 ): BalancePreview[] {
   return players.map((player) => {
     let delta = 0;
@@ -231,6 +248,14 @@ export function previewBalances(
       case 'MORTGAGE_REDEMPTION':
         if (player.id === request.playerId) delta = -redemptionAmount;
         break;
+      case 'LOAN_ISSUE':
+        // Only a request: no money moves until the lender accepts.
+        break;
+      case 'LOAN_REPAYMENT':
+        if (player.id === request.playerId) delta = -request.amount;
+        if (player.id === loans.find((loan) => loan.id === request.loanId)?.lenderPlayerId)
+          delta = request.amount;
+        break;
     }
     return { player, delta, after: player.balance + delta };
   });
@@ -246,6 +271,8 @@ export function actionLabel(type: ActionType, t: Translate): string {
     PASS_GO: t('passGo'),
     MORTGAGE: t('mortgageProperty'),
     MORTGAGE_REDEMPTION: t('redeemMortgage'),
+    LOAN_ISSUE: t('loanBorrow'),
+    LOAN_REPAYMENT: t('loanRepay'),
   }[type];
 }
 
@@ -260,12 +287,20 @@ export function actionDescription(action: ActionType, name: string, t: Translate
       PASS_GO: 'actionPassGo',
       MORTGAGE: 'actionMortgage',
       MORTGAGE_REDEMPTION: 'actionRedeemMortgage',
+      LOAN_ISSUE: 'actionLoanIssue',
+      LOAN_REPAYMENT: 'actionLoanRepay',
     } as const
   )[action];
   return t(key, { name });
 }
 
-export function sourceFor(action: ActionType, player: Player, t: Translate): string {
+export function sourceFor(
+  action: ActionType,
+  player: Player,
+  t: Translate,
+  target: Player | null = null,
+): string {
+  if (action === 'LOAN_ISSUE') return target?.name ?? t('selectedPlayer');
   if (action === 'BANK_TO_PLAYER' || action === 'PASS_GO' || action === 'MORTGAGE')
     return t('bank');
   if (action === 'ALL_TO_PLAYER') return t('allOtherPlayers');
@@ -280,7 +315,8 @@ export function destinationFor(
 ): string {
   if (action === 'PLAYER_TO_BANK' || action === 'MORTGAGE_REDEMPTION') return t('bank');
   if (action === 'PLAYER_TO_ALL') return t('allOtherPlayers');
-  if (action === 'PLAYER_TO_PLAYER') return target?.name ?? t('selectedPlayer');
+  if (action === 'PLAYER_TO_PLAYER' || action === 'LOAN_REPAYMENT')
+    return target?.name ?? t('selectedPlayer');
   return player.name;
 }
 
@@ -297,6 +333,8 @@ export function transactionLabel(type: TransactionType, t: Translate): string {
     REVERSAL: t('reversal'),
     MORTGAGE: t('mortgageLabel'),
     MORTGAGE_REDEMPTION: t('redemptionLabel'),
+    LOAN_ISSUE: t('loanIssueLabel'),
+    LOAN_REPAYMENT: t('loanRepaymentLabel'),
   }[type];
 }
 
@@ -333,7 +371,8 @@ export function preflightFundsError(
   if (
     action === 'PLAYER_TO_PLAYER' ||
     action === 'PLAYER_TO_BANK' ||
-    action === 'MORTGAGE_REDEMPTION'
+    action === 'MORTGAGE_REDEMPTION' ||
+    action === 'LOAN_REPAYMENT'
   ) {
     return player.balance < amount
       ? `${t('insufficientFunds')} ${t('balanceRequirement', { current: formatMoney(player.balance, currency), required: formatMoney(amount, currency) })}`
@@ -355,7 +394,8 @@ export function preflightShortfall(
       ? amount * (players.length - 1)
       : action === 'PLAYER_TO_PLAYER' ||
           action === 'PLAYER_TO_BANK' ||
-          action === 'MORTGAGE_REDEMPTION'
+          action === 'MORTGAGE_REDEMPTION' ||
+          action === 'LOAN_REPAYMENT'
         ? amount
         : null;
   return required !== null && player.balance < required ? required - player.balance : null;

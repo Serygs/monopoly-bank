@@ -7,7 +7,7 @@ import {
 } from '../shared/contracts/live.js';
 import { TransactionNotFoundError } from '../shared/domain/banking.js';
 import { controlledPlayerIdForBankingCommand } from '../shared/domain/player-control.js';
-import type { Mortgage, Player, Transaction } from '../shared/types/monopoly.js';
+import type { Loan, Mortgage, Player, Transaction } from '../shared/types/monopoly.js';
 import { D1BankingOperationRepository } from './repositories/banking-operation-repository.js';
 import {
   D1CommandLedgerRepository,
@@ -18,6 +18,7 @@ import { D1GameAccessRepository } from './repositories/game-access-repository.js
 import { D1GameCompletionRepository } from './repositories/game-completion-repository.js';
 import { D1GameRepository } from './repositories/game-repository.js';
 import { D1GameStatisticsRepository } from './repositories/game-statistics-repository.js';
+import { D1LoanRepository } from './repositories/loan-repository.js';
 import { D1MortgageRepository } from './repositories/mortgage-repository.js';
 import { D1PaymentRequestRepository } from './repositories/payment-request-repository.js';
 import { D1PlayerRepository } from './repositories/player-repository.js';
@@ -306,6 +307,7 @@ export class GameSession {
       transaction?: Transaction;
       players?: Player[];
       mortgages?: Mortgage[];
+      loans?: Loan[];
     };
     if (result.transaction !== undefined && result.players !== undefined)
       await this.broadcast({
@@ -314,6 +316,7 @@ export class GameSession {
         transaction: result.transaction,
         players: result.players,
         ...(result.mortgages === undefined ? {} : { mortgages: result.mortgages }),
+        ...(result.loans === undefined ? {} : { loans: result.loans }),
         ...(command.type === 'DECLARE_BANKRUPTCY'
           ? { bankruptPlayerId: command.request.playerId }
           : {}),
@@ -399,6 +402,7 @@ export class GameSession {
       games: new D1GameRepository(database),
       players: new D1PlayerRepository(database),
       mortgages: new D1MortgageRepository(database),
+      loans: new D1LoanRepository(database),
       createId: () => crypto.randomUUID(),
     });
   }
@@ -414,6 +418,7 @@ export class GameSession {
       operations: new D1BankingOperationRepository(database),
       paymentRequests: new D1PaymentRequestRepository(database),
       mortgages: new D1MortgageRepository(database),
+      loans: new D1LoanRepository(database),
       createId: () => commandId,
     });
   }

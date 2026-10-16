@@ -32,6 +32,16 @@ export function transactionDescription(
       return `${nameOf(positive?.playerId)} · ${translate(language, 'mortgageLabel')}`;
     case 'MORTGAGE_REDEMPTION':
       return `${nameOf(negative?.playerId)} · ${translate(language, 'redemptionLabel')}`;
+    case 'LOAN_ISSUE':
+      return translate(language, 'loanIssueDescription', {
+        lender: nameOf(negative?.playerId),
+        borrower: nameOf(positive?.playerId),
+      });
+    case 'LOAN_REPAYMENT':
+      return translate(language, 'loanRepaymentDescription', {
+        borrower: nameOf(negative?.playerId),
+        lender: nameOf(positive?.playerId),
+      });
     case 'BANKRUPTCY_TRANSFER':
       return translate(language, 'bankruptcyTransactionDescription', {
         source: nameOf(negative?.playerId),

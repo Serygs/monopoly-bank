@@ -83,6 +83,8 @@ describe('reversal window', () => {
     expect(isReversibleType('BANKRUPTCY_TRANSFER')).toBe(false);
     expect(isReversibleType('MORTGAGE')).toBe(false);
     expect(isReversibleType('MORTGAGE_REDEMPTION')).toBe(false);
+    expect(isReversibleType('LOAN_ISSUE')).toBe(false);
+    expect(isReversibleType('LOAN_REPAYMENT')).toBe(false);
   });
 });
 

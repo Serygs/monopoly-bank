@@ -1,5 +1,5 @@
 import type { PlayerController } from '../../../shared/contracts/api';
-import type { Currency, Player } from '../../../shared/types/monopoly';
+import type { Currency, Loan, Player } from '../../../shared/types/monopoly';
 import { Button } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
@@ -14,6 +14,8 @@ export interface WalletsSectionProps {
   activeWallet: Player | null;
   otherPlayers: Player[];
   canMutate: boolean;
+  /** Active player loans, shown on each wallet card. */
+  loans?: Loan[];
   onSelectWallet: (playerId: string) => void;
   onOpenWallet: (player: Player) => void;
 }
@@ -51,6 +53,7 @@ export function WalletsSection({
   activeWallet,
   otherPlayers,
   canMutate,
+  loans = [],
   onSelectWallet,
   onOpenWallet,
 }: WalletsSectionProps) {
@@ -105,6 +108,8 @@ export function WalletsSection({
               active
               gameActive={canMutate}
               prominent
+
+              loans={loans}
               onOpen={() => onOpenWallet(activeWallet)}
             />
           </section>
@@ -119,6 +124,7 @@ export function WalletsSection({
                 players={players}
                 currency={currency}
                 active={false}
+                loans={loans}
                 gameActive={canMutate}
                 onOpen={() => onOpenWallet(player)}
               />
