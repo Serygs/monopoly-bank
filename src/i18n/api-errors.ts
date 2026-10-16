@@ -28,6 +28,7 @@ const errorKeys: Record<string, TranslationKey> = {
   TRANSACTION_ALREADY_REVERSED: 'errorTransactionAlreadyReversed',
   TRANSACTION_NOT_REVERSIBLE: 'errorTransactionNotReversible',
   REVERSAL_WINDOW_EXPIRED: 'errorReversalWindowExpired',
+  REVERSAL_BLOCKED_BY_LATER_OPERATION: 'errorReversalBlockedByLaterOperation',
   MORTGAGE_ALREADY_ACTIVE: 'errorMortgageAlreadyActive',
   MORTGAGE_NOT_FOUND: 'errorMortgageNotFound',
   INVALID_PROPERTY_NAME: 'errorInvalidPropertyName',

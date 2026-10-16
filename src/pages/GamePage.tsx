@@ -23,7 +23,6 @@ import { playPaymentFeedback, vibrate } from '../utils/feedback';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { isLiveServerEvent } from '../../shared/contracts/live';
-import { canReverseTransaction } from '../../shared/domain/reversal';
 import { newerAuction } from '../utils/auction';
 import { acceptsLiveVersion } from '../utils/live-version';
 import { AuctionDialog } from './game/AuctionDialog';
@@ -31,7 +30,6 @@ import { BankingDialog } from './game/BankingDialog';
 import { BankruptcyDialog } from './game/BankruptcyDialog';
 import { FinishGameDialog } from './game/FinishGameDialog';
 import { GameHeader, type LiveStatus } from './game/GameHeader';
-import { HistoryDialog } from './game/HistoryDialog';
 import { ReverseTransactionDialog } from './game/ReverseTransactionDialog';
 import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
@@ -39,7 +37,6 @@ import { StartAuctionDialog } from './game/StartAuctionDialog';
 import { WalletsSection } from './game/WalletsSection';
 import {
   applyLiveEvent,
-  filterTransactionsForPlayer,
   splitPaymentRequests,
   withClientGameDetails,
 } from './game/game-page-helpers';
@@ -63,17 +60,14 @@ interface Props {
 }
 
 export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowChange }: Props) {
-  const { language, locale, t } = useLanguage();
+  const { language, t } = useLanguage();
   const [details, setDetails] = useState<GameDetails | null>(null);
   const [error, setError] = useState<unknown | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
-  const [history, setHistory] = useState<Transaction[] | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [reversing, setReversing] = useState<Transaction | null>(null);
-  const [historyPlayer, setHistoryPlayer] = useState<Player | null>(null);
-  const [historyError, setHistoryError] = useState<unknown | null>(null);
-  const historyCache = useRef(new Map<string, Transaction[]>());
-  const historyPlayerId = useRef<string | null>(null);
+  const [activityScope, setActivityScope] = useState<'ALL' | 'MINE'>('ALL');
+  // Bumped after a reversal so the open Activity ledger reloads.
+  const [activityVersion, setActivityVersion] = useState(0);
   const notify = useFeedback();
   const [summary, setSummary] = useState<
     ({ game: Game; winners: Player[] } & LedgerStatistics) | null
@@ -140,7 +134,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   /** Applies an auction answer: the newest auction, and the balances when it settled a sale. */
   const applyAuctionResponse = useCallback((response: AuctionResponse) => {
     if (response.transaction !== undefined) {
-      historyCache.current.clear();
       const settled = response.transaction;
       setLiveTransactions((current) =>
         [settled, ...current.filter((item) => item.id !== settled.id)].slice(0, 50),
@@ -206,7 +199,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           if (!isLiveServerEvent(event)) return;
           if (event.type === 'GAME_SNAPSHOT') {
             lastAppliedVersion.current = event.state.stateVersion;
-            applyLiveEvent(event, setDetails, setHistory, historyCache, historyPlayerId.current);
+            applyLiveEvent(event, setDetails);
             return;
           }
           if (!acceptsLiveVersion(lastAppliedVersion.current, event.stateVersion)) {
@@ -215,7 +208,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           }
           if (event.stateVersion > lastAppliedVersion.current)
             lastAppliedVersion.current = event.stateVersion;
-          applyLiveEvent(event, setDetails, setHistory, historyCache, historyPlayerId.current);
+          applyLiveEvent(event, setDetails);
           if (event.type === 'GAME_COMMITTED')
             setLiveTransactions((current) =>
               [
@@ -251,37 +244,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
       socket?.close();
     };
   }, [gameId, loadPaymentRequests, shouldConnectLive]);
-
-  const loadHistory = async (player: Player | null = null) => {
-    const scope = player === null ? 'all' : `player:${player.id}`;
-    historyPlayerId.current = player?.id ?? null;
-    setHistoryOpen(true);
-    setHistoryPlayer(player);
-    setHistoryError(null);
-    const cached = historyCache.current.get(scope);
-    if (cached !== undefined) {
-      setHistory(cached);
-      return;
-    }
-    const allTransactions = historyCache.current.get('all');
-    if (player !== null && allTransactions !== undefined) {
-      const playerTransactions = filterTransactionsForPlayer(allTransactions, player.id);
-      historyCache.current.set(scope, playerTransactions);
-      setHistory(playerTransactions);
-      return;
-    }
-    setHistory(null);
-    try {
-      const transactions =
-        player === null
-          ? await monopolyBankApi.listTransactions(gameId)
-          : await monopolyBankApi.listPlayerTransactions(gameId, player.id);
-      historyCache.current.set(scope, transactions);
-      setHistory(transactions);
-    } catch (caught) {
-      setHistoryError(caught);
-    }
-  };
 
   /** Closes the sheet behind the bottom navigation, so choosing another item replaces it. */
   const closeNavSheets = () => {
@@ -346,16 +308,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const visibleLoans = (details.loans ?? []).filter((loan) =>
     loan.lenderKind === 'BANK' ? rules.bankLoans : rules.playerLoans,
   );
-  /** The owner may reverse anything; a player only their own recent transactions (the Worker checks too). */
-  const canReverse = (transaction: Transaction): boolean =>
-    canMutate &&
-    canReverseTransaction({
-      transaction,
-      isOwner: details.canManage === true,
-      controlledPlayerIds: details.controlledPlayerIds ?? [],
-      now: Date.now(),
-    });
-
   const activeNav: GameNavDestination | null = toolsOpen
     ? 'tools'
     : activityOpen
@@ -479,7 +431,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                       : await monopolyBankApi.declinePaymentRequest(gameId, request.id, commandId);
                 setPaymentRequests((current) => current.filter((item) => item.id !== request.id));
                 if (result.transaction !== undefined) {
-                  historyCache.current.clear();
                   playPaymentFeedback(preferences.sound);
                   vibrate(35, preferences.vibration);
                   setDetails((current) =>
@@ -534,6 +485,17 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             currency={details.game.currency}
             liveTransactions={liveTransactions}
             showPending={confirmationMode}
+            initialScope={activityScope}
+            refreshKey={activityVersion}
+            reversal={
+              canMutate
+                ? {
+                    isOwner: details.canManage === true,
+                    controlledPlayerIds: details.controlledPlayerIds ?? [],
+                    onReverse: setReversing,
+                  }
+                : undefined
+            }
             onClose={() => setActivityOpen(false)}
           />
         )}
@@ -583,8 +545,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               setSelectedPlayer(null);
             }}
             onViewHistory={(player) => {
+              // The history now lives in the Activity ledger: "Mine" for a wallet the viewer controls.
               setSelectedPlayer(null);
-              void loadHistory(player);
+              setActivityScope(details.controlledPlayerIds?.includes(player.id) ? 'MINE' : 'ALL');
+              setActivityOpen(true);
             }}
             onCompleted={(
               players,
@@ -595,7 +559,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               bankLoanCooldowns,
               jackpot,
             ) => {
-              historyCache.current.clear();
               playPaymentFeedback(preferences.sound);
               vibrate(35, preferences.vibration);
               setDetails({
@@ -660,7 +623,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             }
             onClose={() => setBankruptPlayer(null)}
             onCompleted={(players, mortgages, loans, bankLoanCooldowns, jackpot) => {
-              historyCache.current.clear();
               setDetails({
                 ...details,
                 players,
@@ -734,26 +696,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             onClose={() => setFinishing(false)}
           />
         )}
-        {historyOpen && (
-          <HistoryDialog
-            history={history}
-            player={historyPlayer}
-            players={details.players}
-            currency={details.game.currency}
-            error={historyError}
-            language={language}
-            locale={locale}
-            onClose={() => {
-              historyPlayerId.current = null;
-              setHistoryOpen(false);
-              setHistory(null);
-              setHistoryError(null);
-            }}
-            onRetry={() => void loadHistory(historyPlayer)}
-            canReverse={canReverse}
-            onReverse={setReversing}
-          />
-        )}
         {reversing !== null && (
           <ReverseTransactionDialog
             gameId={gameId}
@@ -763,10 +705,9 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             language={language}
             onClose={() => setReversing(null)}
             onReversed={(players) => {
-              historyCache.current.clear();
               setDetails({ ...details, players });
               setReversing(null);
-              void loadHistory(historyPlayer);
+              setActivityVersion((version) => version + 1);
               notify({ tone: 'success', message: t('reversalRecorded') });
             }}
           />

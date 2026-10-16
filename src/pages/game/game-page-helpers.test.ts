@@ -1,4 +1,4 @@
-import type { MutableRefObject, SetStateAction } from 'react';
+import type { SetStateAction } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { GameDetails } from '../../../shared/contracts/api';
 import type { LiveServerEvent } from '../../../shared/contracts/live';
@@ -76,13 +76,10 @@ function stateCell<T>(initial: T) {
   return cell;
 }
 
-function liveHarness(initialDetails: GameDetails | null, initialHistory: Transaction[] | null) {
+function liveHarness(initialDetails: GameDetails | null) {
   const detailsCell = stateCell<GameDetails | null>(initialDetails);
-  const historyCell = stateCell<Transaction[] | null>(initialHistory);
-  const historyCache: MutableRefObject<Map<string, Transaction[]>> = { current: new Map() };
-  const apply = (event: LiveServerEvent, historyPlayerId: string | null = null) =>
-    applyLiveEvent(event, detailsCell.set, historyCell.set, historyCache, historyPlayerId);
-  return { detailsCell, historyCell, historyCache, apply };
+  const apply = (event: LiveServerEvent) => applyLiveEvent(event, detailsCell.set);
+  return { detailsCell, apply };
 }
 
 describe('withClientGameDetails', () => {
@@ -123,33 +120,10 @@ describe('withClientGameDetails', () => {
   });
 });
 
-describe('applyLiveEvent reversals', () => {
-  it('marks the reversed original in the open history and adds the reversal on top', () => {
-    const { historyCell, apply } = liveHarness(details(), [transaction('t1'), transaction('t2')]);
-    const reversal: Transaction = {
-      ...transaction('r1'),
-      type: 'REVERSAL',
-      reversesTransactionId: 't1',
-      participants: [{ playerId: 'p1', balanceDelta: 50 }],
-    };
-
-    apply({ type: 'GAME_COMMITTED', stateVersion: 5, transaction: reversal, players });
-
-    expect(historyCell.value?.map((item) => item.id)).toEqual(['r1', 't1', 't2']);
-    expect(historyCell.value?.find((item) => item.id === 't1')?.reversedByTransactionId).toBe('r1');
-    expect(historyCell.value?.find((item) => item.id === 't2')?.reversedByTransactionId).toBe(
-      undefined,
-    );
-  });
-});
-
 describe('applyLiveEvent', () => {
-  it('replaces details, history and the "all" cache from a snapshot', () => {
+  it('replaces details from a snapshot', () => {
     const snapshotTransactions = [transaction('t1')];
-    const { detailsCell, historyCell, historyCache, apply } = liveHarness(
-      details({ canManage: true, joinCode: 'JOIN' }),
-      null,
-    );
+    const { detailsCell, apply } = liveHarness(details({ canManage: true, joinCode: 'JOIN' }));
     apply({
       type: 'GAME_SNAPSHOT',
       state: {
@@ -161,12 +135,10 @@ describe('applyLiveEvent', () => {
     expect(detailsCell.value?.players).toEqual([alice]);
     expect(detailsCell.value?.canManage).toBe(true);
     expect(detailsCell.value?.joinCode).toBe('JOIN');
-    expect(historyCell.value).toBe(snapshotTransactions);
-    expect(historyCache.current.get('all')).toBe(snapshotTransactions);
   });
 
   it('updates only game and players on a lobby update', () => {
-    const { detailsCell, apply } = liveHarness(details({ favoriteAmounts: [100] }), null);
+    const { detailsCell, apply } = liveHarness(details({ favoriteAmounts: [100] }));
     const lobbyGame = { ...game, status: 'LOBBY' as const };
     apply({
       type: 'LOBBY_UPDATED',
@@ -179,7 +151,7 @@ describe('applyLiveEvent', () => {
   });
 
   it('ignores lobby and commit updates before the game has loaded', () => {
-    const { detailsCell, apply } = liveHarness(null, null);
+    const { detailsCell, apply } = liveHarness(null);
     apply({ type: 'LOBBY_UPDATED', stateVersion: 2, details: { game, players } });
     apply({
       type: 'GAME_COMMITTED',
@@ -190,69 +162,20 @@ describe('applyLiveEvent', () => {
     expect(detailsCell.value).toBeNull();
   });
 
-  it('applies committed balances, clears the cache and prepends the transaction once', () => {
-    const existing = transaction('t1');
-    const committed = { ...transaction('t2'), amount: 75 };
-    const { detailsCell, historyCell, historyCache, apply } = liveHarness(details(), [
-      transaction('t2'),
-      existing,
-    ]);
-    historyCache.current.set('all', [existing]);
-    historyCache.current.set('player:p1', [existing]);
+  it('applies committed balances', () => {
+    const { detailsCell, apply } = liveHarness(details());
     const nextPlayers = [player('p1', 'Alice', 925), bob, carol];
     apply({
       type: 'GAME_COMMITTED',
       stateVersion: 4,
-      transaction: committed,
+      transaction: transaction('t2'),
       players: nextPlayers,
     });
     expect(detailsCell.value?.players).toBe(nextPlayers);
-    expect(historyCache.current.size).toBe(0);
-    expect(historyCell.value).toEqual([committed, existing]);
-  });
-
-  it('leaves unloaded history untouched on commit', () => {
-    const { historyCell, apply } = liveHarness(details(), null);
-    apply({ type: 'GAME_COMMITTED', stateVersion: 4, transaction: transaction('t1'), players });
-    expect(historyCell.value).toBeNull();
-  });
-
-  it('keeps a player-scoped history filtered when a snapshot arrives', () => {
-    const own = transaction('t1');
-    const others = {
-      ...transaction('t2'),
-      participants: [{ playerId: 'p2', balanceDelta: -50 }],
-    };
-    const { historyCell, historyCache, apply } = liveHarness(details(), [own]);
-    apply(
-      {
-        type: 'GAME_SNAPSHOT',
-        state: { stateVersion: 3, details: details(), transactions: [others, own] },
-      },
-      'p1',
-    );
-    expect(historyCell.value).toEqual([own]);
-    expect(historyCache.current.get('all')).toEqual([others, own]);
-  });
-
-  it('ignores committed transactions that do not involve the scoped player', () => {
-    const own = transaction('t1');
-    const others = {
-      ...transaction('t2'),
-      participants: [{ playerId: 'p2', balanceDelta: -50 }],
-    };
-    const { historyCell, apply } = liveHarness(details(), [own]);
-    apply({ type: 'GAME_COMMITTED', stateVersion: 4, transaction: others, players }, 'p1');
-    expect(historyCell.value).toEqual([own]);
-    apply(
-      { type: 'GAME_COMMITTED', stateVersion: 5, transaction: transaction('t3'), players },
-      'p1',
-    );
-    expect(historyCell.value?.map((item) => item.id)).toEqual(['t3', 't1']);
   });
 
   it('merges finished-game details with client-only fields', () => {
-    const { detailsCell, apply } = liveHarness(details({ canManage: true }), null);
+    const { detailsCell, apply } = liveHarness(details({ canManage: true }));
     const finished = details({ game: { ...game, status: 'FINISHED' } });
     apply({ type: 'GAME_FINISHED', stateVersion: 5, details: finished });
     expect(detailsCell.value?.game.status).toBe('FINISHED');
@@ -265,13 +188,9 @@ describe('applyLiveEvent', () => {
     { type: 'HEARTBEAT', stateVersion: 6 },
   ] satisfies LiveServerEvent[])('does not touch state for $type', (event) => {
     const initial = details();
-    const history = [transaction('t1')];
-    const { detailsCell, historyCell, historyCache, apply } = liveHarness(initial, history);
-    historyCache.current.set('all', history);
+    const { detailsCell, apply } = liveHarness(initial);
     apply(event);
     expect(detailsCell.value).toBe(initial);
-    expect(historyCell.value).toBe(history);
-    expect(historyCache.current.get('all')).toBe(history);
   });
 });
 
@@ -452,7 +371,7 @@ describe('mortgage requests and previews', () => {
   });
 
   it('takes the mortgage list from a committed event', () => {
-    const { detailsCell, apply } = liveHarness(details(), []);
+    const { detailsCell, apply } = liveHarness(details());
     const mortgages = [
       {
         id: 'm1',
@@ -484,7 +403,7 @@ describe('mortgage requests and previews', () => {
         createdAt: '',
       },
     ];
-    const { detailsCell, apply } = liveHarness(details({ mortgages }), []);
+    const { detailsCell, apply } = liveHarness(details({ mortgages }));
     apply({ type: 'GAME_COMMITTED', stateVersion: 9, transaction: transaction('t9'), players });
     expect(detailsCell.value?.mortgages).toEqual(mortgages);
   });
@@ -550,7 +469,7 @@ describe('bank loan requests and previews', () => {
   });
 
   it('adopts the loans and cooldowns of a committed transaction', () => {
-    const { detailsCell, apply } = liveHarness(details(), null);
+    const { detailsCell, apply } = liveHarness(details());
     apply({
       type: 'GAME_COMMITTED',
       stateVersion: 4,
@@ -619,7 +538,7 @@ describe('Free Parking jackpot', () => {
   });
 
   it('replaces the pot from a commit and leaves it alone when the event carries none', () => {
-    const { detailsCell, apply } = liveHarness(details({ jackpot: 100 }), null);
+    const { detailsCell, apply } = liveHarness(details({ jackpot: 100 }));
     apply({ type: 'GAME_COMMITTED', stateVersion: 2, transaction: transaction('t1'), players });
     expect(detailsCell.value?.jackpot).toBe(100);
     apply({
@@ -650,7 +569,7 @@ describe('applyLiveEvent auctions', () => {
   };
 
   it('stores the auction of an update and ignores an older version', () => {
-    const { detailsCell, apply } = liveHarness(details(), null);
+    const { detailsCell, apply } = liveHarness(details());
     apply({ type: 'AUCTION_UPDATED', stateVersion: 4, auction });
     expect(detailsCell.value?.auction).toBe(auction);
     apply({ type: 'AUCTION_UPDATED', stateVersion: 5, auction: { ...auction, version: 1 } });

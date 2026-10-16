@@ -483,7 +483,11 @@ export class DefaultBankingService implements BankingService {
   ): Promise<BankingOperationResult> {
     const original = await this.transactions.getById(game.id, request.transactionId);
     if (original === null) throw new TransactionNotFoundError(request.transactionId);
-    return reverseTransaction({ game, players, original, comment: request.comment ?? null });
+    // The anchor itself comes back first; only what was written after it can depend on it.
+    const later = (await this.transactions.listChronologicalSince(game.id, [original.id])).filter(
+      (candidate) => candidate.id !== original.id,
+    );
+    return reverseTransaction({ game, players, original, later, comment: request.comment ?? null });
   }
 
   async getTransaction(gameId: string, transactionId: string): Promise<Transaction | null> {
