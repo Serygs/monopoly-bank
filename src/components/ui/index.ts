@@ -34,6 +34,8 @@ export { Eyebrow, Lede, MutedText } from './Text';
 export { Toast, type ToastProps } from './Toast';
 export { FeedbackProvider } from './ToastRegion';
 export { BottomNav, NavIcon, type BottomNavItem, type BottomNavProps } from './BottomNav';
+export { AnchoredPopover, type AnchoredPopoverProps } from './AnchoredPopover';
+export { FormSection, type FormSectionProps } from './FormSection';
 export { Toggle, type ToggleProps } from './Toggle';
 export { ToolPanel, type ToolPanelProps } from './ToolPanel';
 export { useFeedback, type FeedbackMessage, type Notify } from './useFeedback';
