@@ -37,3 +37,6 @@ if (typeof window !== 'undefined' && typeof window.ResizeObserver !== 'function'
 afterEach(() => {
   cleanup();
 });
+
+// jsdom logs "not implemented" for `window.scrollTo`; the shell restores scroll per screen.
+if (typeof window !== 'undefined') window.scrollTo = () => {};
