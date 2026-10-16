@@ -1,12 +1,14 @@
 import type { MutableRefObject } from 'react';
 import type {
   GameDetails,
+  PaymentRequest,
   PlayerControllerKind,
   PlayerTransactionRequest,
 } from '../../../shared/contracts/api';
 import type { LiveServerEvent } from '../../../shared/contracts/live';
 import type {
   Currency,
+  InterestRatePercent,
   Loan,
   Player,
   Transaction,
@@ -17,7 +19,7 @@ import type { Translate } from '../../i18n/translations';
 import { formatMoney } from '../../utils/money';
 
 /** A wallet action the banking dialog can start; a reversal is started from the history instead. */
-export type ActionType = PlayerTransactionRequest['type'];
+export type ActionType = PlayerTransactionRequest['type'] | 'BANK_LOAN';
 
 /** One player's balance before and after a previewed transaction. */
 export interface BalancePreview {
@@ -40,15 +42,41 @@ export const advancedWalletActions: ActionType[] = [
 ];
 /** Player-loan actions; offered only when the game enables the player-loans rule. */
 export const loanWalletActions: ActionType[] = ['LOAN_ISSUE', 'LOAN_REPAYMENT'];
+/** Borrowing from the bank; offered only when the game enables the bank-loans rule. */
+export const bankLoanWalletActions: ActionType[] = ['BANK_LOAN'];
 
 export function walletActionTone(action: ActionType): 'income' | 'expense' {
   return action === 'BANK_TO_PLAYER' ||
     action === 'ALL_TO_PLAYER' ||
     action === 'PASS_GO' ||
     action === 'MORTGAGE' ||
+    action === 'BANK_LOAN' ||
     action === 'LOAN_ISSUE'
     ? 'income'
     : 'expense';
+}
+
+/**
+ * Splits the pending requests into those a wallet of the viewer must answer and the viewer's own
+ * loan requests still waiting for a lender. Without any known wallet everything counts as incoming.
+ */
+export function splitPaymentRequests(
+  requests: PaymentRequest[],
+  controlledPlayerIds: string[],
+): { incoming: PaymentRequest[]; outgoingLoans: PaymentRequest[] } {
+  const controlled = new Set(controlledPlayerIds);
+  return {
+    incoming:
+      controlled.size === 0
+        ? requests
+        : requests.filter((request) => controlled.has(request.approverPlayerId)),
+    outgoingLoans: requests.filter(
+      (request) =>
+        request.kind === 'LOAN' &&
+        controlled.has(request.creatorPlayerId) &&
+        !controlled.has(request.approverPlayerId),
+    ),
+  };
 }
 
 export function transactionInvolvesPlayer(transaction: Transaction, playerId: string): boolean {
@@ -96,6 +124,9 @@ export function applyLiveEvent(
             players: event.players,
             ...(event.mortgages === undefined ? {} : { mortgages: event.mortgages }),
             ...(event.loans === undefined ? {} : { loans: event.loans }),
+            ...(event.bankLoanCooldowns === undefined
+              ? {}
+              : { bankLoanCooldowns: event.bankLoanCooldowns }),
           },
     );
     setHistory((current) => {
@@ -156,6 +187,10 @@ export function buildRequest(
     mortgageId?: string;
     /** The loan being repaid (LOAN_REPAYMENT) */
     loanId?: string;
+    /** The rate confirmed for a bank-loan repayment; omitted for a player loan. */
+    interestRatePercent?: InterestRatePercent;
+    /** The player confirmed the warning about borrowing again during the cooldown (BANK_LOAN). */
+    acknowledgeCooldown?: boolean;
   } = {},
 ): PlayerTransactionRequest | null {
   const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
@@ -203,7 +238,23 @@ export function buildRequest(
     case 'LOAN_REPAYMENT':
       return options.loanId === undefined || options.loanId === ''
         ? null
-        : { type: action, playerId, loanId: options.loanId, amount };
+        : {
+            type: action,
+            playerId,
+            loanId: options.loanId,
+            amount,
+            ...(options.interestRatePercent === undefined
+              ? {}
+              : { interestRatePercent: options.interestRatePercent }),
+          };
+    case 'BANK_LOAN':
+      return {
+        type: 'LOAN_ISSUE',
+        lenderKind: 'BANK',
+        playerId,
+        amount,
+        ...(options.acknowledgeCooldown === true ? { acknowledgeCooldown: true } : {}),
+      };
   }
 }
 
@@ -215,6 +266,8 @@ export function previewBalances(
   redemptionAmount = 0,
   /** The active loans, to find who receives a repayment. */
   loans: Loan[] = [],
+  /** Interest leaving the game with a bank-loan repayment, on top of the principal. */
+  interest = 0,
 ): BalancePreview[] {
   return players.map((player) => {
     let delta = 0;
@@ -249,13 +302,16 @@ export function previewBalances(
         if (player.id === request.playerId) delta = -redemptionAmount;
         break;
       case 'LOAN_ISSUE':
-        // Only a request: no money moves until the lender accepts.
+        // A player loan is only a request: no money moves until the lender accepts. The bank pays at once.
+        if (request.lenderKind === 'BANK' && player.id === request.playerId) delta = request.amount;
         break;
-      case 'LOAN_REPAYMENT':
-        if (player.id === request.playerId) delta = -request.amount;
-        if (player.id === loans.find((loan) => loan.id === request.loanId)?.lenderPlayerId)
+      case 'LOAN_REPAYMENT': {
+        const lenderId = loans.find((loan) => loan.id === request.loanId)?.lenderPlayerId;
+        if (player.id === request.playerId) delta = -(request.amount + interest);
+        if (lenderId !== null && lenderId !== undefined && player.id === lenderId)
           delta = request.amount;
         break;
+      }
     }
     return { player, delta, after: player.balance + delta };
   });
@@ -273,6 +329,7 @@ export function actionLabel(type: ActionType, t: Translate): string {
     MORTGAGE_REDEMPTION: t('redeemMortgage'),
     LOAN_ISSUE: t('loanBorrow'),
     LOAN_REPAYMENT: t('loanRepay'),
+    BANK_LOAN: t('loanBorrowBank'),
   }[type];
 }
 
@@ -289,6 +346,7 @@ export function actionDescription(action: ActionType, name: string, t: Translate
       MORTGAGE_REDEMPTION: 'actionRedeemMortgage',
       LOAN_ISSUE: 'actionLoanIssue',
       LOAN_REPAYMENT: 'actionLoanRepay',
+      BANK_LOAN: 'actionBankLoan',
     } as const
   )[action];
   return t(key, { name });
@@ -301,7 +359,12 @@ export function sourceFor(
   target: Player | null = null,
 ): string {
   if (action === 'LOAN_ISSUE') return target?.name ?? t('selectedPlayer');
-  if (action === 'BANK_TO_PLAYER' || action === 'PASS_GO' || action === 'MORTGAGE')
+  if (
+    action === 'BANK_TO_PLAYER' ||
+    action === 'PASS_GO' ||
+    action === 'MORTGAGE' ||
+    action === 'BANK_LOAN'
+  )
     return t('bank');
   if (action === 'ALL_TO_PLAYER') return t('allOtherPlayers');
   return player.name;
@@ -312,8 +375,15 @@ export function destinationFor(
   player: Player,
   target: Player | null,
   t: Translate,
+  /** The loan being repaid belongs to the bank, so there is no lender to name. */
+  lenderIsBank = false,
 ): string {
-  if (action === 'PLAYER_TO_BANK' || action === 'MORTGAGE_REDEMPTION') return t('bank');
+  if (
+    action === 'PLAYER_TO_BANK' ||
+    action === 'MORTGAGE_REDEMPTION' ||
+    (action === 'LOAN_REPAYMENT' && lenderIsBank)
+  )
+    return t('bank');
   if (action === 'PLAYER_TO_ALL') return t('allOtherPlayers');
   if (action === 'PLAYER_TO_PLAYER' || action === 'LOAN_REPAYMENT')
     return target?.name ?? t('selectedPlayer');

@@ -24,6 +24,7 @@ describe('controlledPlayerIdForBankingCommand', () => {
       { type: 'LOAN_ISSUE', borrowerPlayerId: 'borrower', lenderPlayerId: 'lender', amount: 10 },
       'borrower',
     ],
+    [{ type: 'LOAN_ISSUE', lenderKind: 'BANK', playerId: 'borrower', amount: 10 }, 'borrower'],
     [{ type: 'LOAN_REPAYMENT', playerId: 'borrower', loanId: 'loan', amount: 10 }, 'borrower'],
     [{ playerId: 'bankrupt-player' }, 'bankrupt-player'],
   ] as const)('requires the actor to control %o', (request, expectedPlayerId) => {

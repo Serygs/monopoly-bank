@@ -22,10 +22,12 @@ import {
   selectableCurrencies,
   transactionTypes,
   type GameRules,
+  type InterestRatePercent,
   type PaymentMode,
   type SelectableCurrency,
   type TransactionType,
 } from '../../shared/types/monopoly.js';
+import { isInterestRatePercent } from '../../shared/domain/bank-loan.js';
 import { normalizePropertyName } from '../../shared/domain/mortgage.js';
 import { ValidationError } from '../services/errors.js';
 
@@ -208,6 +210,13 @@ function readPropertyName(body: Record<string, unknown>): string {
   return name;
 }
 
+function readInterestRatePercent(body: Record<string, unknown>): InterestRatePercent {
+  const value = body.interestRatePercent;
+  if (!isInterestRatePercent(value))
+    throw new ApiValidationError('interestRatePercent must be 0, 10 or 20.');
+  return value;
+}
+
 function readPaymentMode(body: Record<string, unknown>): PaymentMode {
   const value = body.paymentMode;
   if (typeof value !== 'string' || !paymentModes.includes(value as PaymentMode))
@@ -267,6 +276,23 @@ export async function parseCreateTransactionRequest(
         mortgageId: readUuid(body, 'mortgageId'),
       };
     case 'LOAN_ISSUE':
+      if (
+        body.lenderKind !== undefined &&
+        body.lenderKind !== 'PLAYER' &&
+        body.lenderKind !== 'BANK'
+      )
+        throw new ApiValidationError('lenderKind must be PLAYER or BANK.');
+      if (body.lenderKind === 'BANK') {
+        if (body.acknowledgeCooldown !== undefined && typeof body.acknowledgeCooldown !== 'boolean')
+          throw new ApiValidationError('acknowledgeCooldown must be true or false.');
+        return {
+          type,
+          lenderKind: 'BANK',
+          playerId: readUuid(body, 'playerId'),
+          amount: readPositiveInteger(body, 'amount'),
+          ...(body.acknowledgeCooldown === true ? { acknowledgeCooldown: true } : {}),
+        };
+      }
       return {
         type,
         borrowerPlayerId: readUuid(body, 'borrowerPlayerId'),
@@ -279,6 +305,9 @@ export async function parseCreateTransactionRequest(
         playerId: readUuid(body, 'playerId'),
         loanId: readUuid(body, 'loanId'),
         amount: readPositiveInteger(body, 'amount'),
+        ...(body.interestRatePercent === undefined
+          ? {}
+          : { interestRatePercent: readInterestRatePercent(body) }),
       };
     case 'REVERSAL':
       return {

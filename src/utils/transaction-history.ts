@@ -33,11 +33,21 @@ export function transactionDescription(
     case 'MORTGAGE_REDEMPTION':
       return `${nameOf(negative?.playerId)} · ${translate(language, 'redemptionLabel')}`;
     case 'LOAN_ISSUE':
+      // A bank loan has no lender participant: the money comes from the bank.
+      if (negative === undefined)
+        return translate(language, 'loanIssueBankDescription', {
+          borrower: nameOf(positive?.playerId),
+        });
       return translate(language, 'loanIssueDescription', {
         lender: nameOf(negative?.playerId),
         borrower: nameOf(positive?.playerId),
       });
     case 'LOAN_REPAYMENT':
+      // A bank loan repayment has no player on the receiving side; the interest is not stored.
+      if (positive === undefined)
+        return translate(language, 'loanRepaymentBankDescription', {
+          borrower: nameOf(negative?.playerId),
+        });
       return translate(language, 'loanRepaymentDescription', {
         borrower: nameOf(negative?.playerId),
         lender: nameOf(positive?.playerId),

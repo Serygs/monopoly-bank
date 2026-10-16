@@ -26,6 +26,10 @@ interface PaymentRequestRow {
 export interface PaymentRequestRepository {
   create(input: Omit<PaymentRequest, 'createdAt' | 'resolvedAt' | 'transactionId'>): Promise<void>;
   getById(gameId: string, id: string): Promise<PaymentRequest | null>;
+  /**
+   * The PENDING requests an actor's wallets either have to answer (approver) or started and may
+   * still cancel (creator), oldest first.
+   */
   listForPayers(gameId: string, payerPlayerIds: readonly string[]): Promise<PaymentRequest[]>;
   pendingReservedAmount(gameId: string, payerPlayerId: string): Promise<number>;
   expirePending(gameId: string): Promise<void>;
@@ -88,13 +92,16 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
   ): Promise<PaymentRequest[]> {
     if (payerPlayerIds.length === 0) return [];
     await this.expirePending(gameId);
+    const placeholders = payerPlayerIds.map(() => '?').join(', ');
     const result = await this.database
       .prepare(
         `SELECT id, kind, game_id, payer_player_id, recipient_player_id, creator_player_id, approver_player_id, amount, comment, state, expires_at, created_at, resolved_at, transaction_id
-      FROM payment_requests WHERE game_id = ? AND approver_player_id IN (${payerPlayerIds.map(() => '?').join(', ')}) AND state = 'PENDING'
+      FROM payment_requests WHERE game_id = ?
+        AND (approver_player_id IN (${placeholders}) OR creator_player_id IN (${placeholders}))
+        AND state = 'PENDING'
       ORDER BY created_at ASC, id ASC`,
       )
-      .bind(gameId, ...payerPlayerIds)
+      .bind(gameId, ...payerPlayerIds, ...payerPlayerIds)
       .all<PaymentRequestRow>();
     return result.results.map(mapPaymentRequest);
   }

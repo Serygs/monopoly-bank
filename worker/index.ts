@@ -50,6 +50,7 @@ export default {
         players,
         mortgages: new D1MortgageRepository(env.MONOPOLY_BANK_DB),
         loans: new D1LoanRepository(env.MONOPOLY_BANK_DB),
+        transactions,
         createId,
       }),
       auth: new AuthService(

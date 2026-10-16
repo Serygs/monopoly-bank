@@ -132,3 +132,20 @@ describe('loan transactions', () => {
     );
   });
 });
+
+describe('bank loan transactions', () => {
+  it('words a loan from the bank and its repayment without a counterpart', () => {
+    const issue: Transaction = {
+      ...rent,
+      type: 'LOAN_ISSUE',
+      participants: [{ playerId: 'alex', balanceDelta: 120 }],
+    };
+    const repayment: Transaction = {
+      ...rent,
+      type: 'LOAN_REPAYMENT',
+      participants: [{ playerId: 'alex', balanceDelta: -132 }],
+    };
+    expect(transactionDescription(issue, players)).toBe('Alex borrowed from the bank');
+    expect(transactionDescription(repayment, players)).toBe('Alex repaid the bank loan');
+  });
+});
