@@ -17,9 +17,11 @@ import type {
   RecordDiceRollRequest,
 } from '../../shared/contracts/api.js';
 import {
+  gameRuleKeys,
   paymentModes,
   selectableCurrencies,
   transactionTypes,
+  type GameRules,
   type PaymentMode,
   type SelectableCurrency,
   type TransactionType,
@@ -63,6 +65,7 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     passGoReward: readPositiveInteger(body, 'passGoReward'),
     currency: readCurrency(body),
     ...(body.paymentMode === undefined ? {} : { paymentMode: readPaymentMode(body) }),
+    ...(body.rules === undefined ? {} : { rules: readGameRules(body.rules) }),
     ...(body.gameAccessPassword === undefined
       ? {}
       : { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }),
@@ -178,6 +181,22 @@ function readCurrency(body: Record<string, unknown>): SelectableCurrency {
   return value as SelectableCurrency;
 }
 
+function readGameRules(value: unknown): GameRules {
+  const object = readObject(value, 'rules');
+  const unknownKey = Object.keys(object).find(
+    (key) => !(gameRuleKeys as readonly string[]).includes(key),
+  );
+  if (unknownKey !== undefined) throw new ApiValidationError(`rules.${unknownKey} is not a rule.`);
+  const rules = {} as GameRules;
+  for (const key of gameRuleKeys) {
+    const flag = object[key];
+    if (flag !== undefined && typeof flag !== 'boolean')
+      throw new ApiValidationError(`rules.${key} must be true or false.`);
+    rules[key] = flag === true;
+  }
+  return rules;
+}
+
 function readPaymentMode(body: Record<string, unknown>): PaymentMode {
   const value = body.paymentMode;
   if (typeof value !== 'string' || !paymentModes.includes(value as PaymentMode))
@@ -223,12 +242,16 @@ export async function parseCreateTransactionRequest(
         amountPerPlayer: readPositiveInteger(body, 'amountPerPlayer'),
         ...(comment === undefined ? {} : { comment }),
       };
-    case 'PASS_GO':
+    case 'PASS_GO': {
+      if (body.exactLanding !== undefined && typeof body.exactLanding !== 'boolean')
+        throw new ApiValidationError('exactLanding must be true or false.');
       return {
         type,
         playerId: readUuid(body, 'playerId'),
+        ...(body.exactLanding === true ? { exactLanding: true } : {}),
         ...(comment === undefined ? {} : { comment }),
       };
+    }
   }
 }
 

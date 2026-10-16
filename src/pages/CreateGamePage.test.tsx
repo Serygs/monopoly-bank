@@ -107,3 +107,56 @@ describe('game name suggestions in the refactored form', () => {
     });
   }
 });
+
+describe('house rules', () => {
+  const rules = [
+    'Double reward on exact GO',
+    'Player loans',
+    'Bank loans',
+    'Free Parking jackpot',
+    'Auctions',
+  ];
+  const renderPage = () =>
+    render(
+      <LanguageContext
+        value={{
+          language: 'en',
+          locale: languageLocale('en'),
+          setLanguage: () => {},
+          t: (key, values) => translate('en', key, values),
+        }}
+      >
+        <CreateGamePage profile={profile} onCancel={() => {}} onCreated={() => {}} />
+      </LanguageContext>,
+    );
+
+  it('lists every rule unchecked by default', () => {
+    renderPage();
+    for (const name of rules) expect(screen.getByRole('checkbox', { name })).not.toBeChecked();
+  });
+
+  it('sends exactly the rules that were switched on, in any combination', async () => {
+    const user = userEvent.setup();
+    const createGame = vi.spyOn(monopolyBankApi, 'createGame').mockResolvedValue({
+      game: { id: 'game-1' },
+    } as never);
+    renderPage();
+    await user.type(screen.getByRole('textbox', { name: /Game name/i }), 'Friday table');
+    await user.click(screen.getByRole('checkbox', { name: 'Auctions' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Bank loans' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Bank loans' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Player loans' }));
+    await user.click(screen.getByRole('button', { name: /Create/i }));
+    expect(createGame).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rules: {
+          doubleRewardOnExactGo: false,
+          playerLoans: true,
+          bankLoans: false,
+          freeParkingJackpot: false,
+          auctions: true,
+        },
+      }),
+    );
+  });
+});

@@ -2,6 +2,9 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Player } from '../../../shared/types/monopoly';
+import { monopolyBankApi } from '../../api/monopoly-bank-api';
+import { buildGameSettings } from '../../../shared/domain/game-rules';
+import { defaultGameRules } from '../../../shared/types/monopoly';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
 import { BankingDialog, type BankingDialogProps } from './BankingDialog';
 
@@ -194,5 +197,83 @@ describe('BankingDialog compact flow', () => {
     const { user } = renderDialog([olena, taras]);
     await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
     expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveAttribute('inputmode', 'none');
+  });
+});
+
+describe('BankingDialog house rules', () => {
+  const settings = buildGameSettings(15_000_000);
+
+  it('offers the exact-landing action only when the game enables the rule', async () => {
+    const off = renderDialog([olena, taras]);
+    expect(screen.queryByRole('button', { name: /Landed exactly on GO/ })).toBeNull();
+    off.props.onClose();
+  });
+
+  it('pays double from the exact-landing action and sends the flag', async () => {
+    const createTransaction = vi.spyOn(monopolyBankApi, 'createTransaction').mockResolvedValue({
+      transaction: { amount: 400_000 },
+      players: [],
+    } as never);
+    const { user, props } = renderDialog([olena, taras], {
+      rules: { ...defaultGameRules, doubleRewardOnExactGo: true },
+      passGoReward: 200_000,
+    });
+    await user.click(screen.getByRole('button', { name: 'Landed exactly on GO (double)' }));
+    expect(screen.getAllByText('$400 000').length).toBeGreaterThan(0);
+    expect(screen.getByRole('textbox', { name: 'Comment' })).toHaveValue(
+      'Landed exactly on GO: double reward',
+    );
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      expect.objectContaining({ type: 'PASS_GO', playerId: 'p1', exactLanding: true }),
+      expect.any(String),
+    );
+    expect(props.onCompleted).toHaveBeenCalled();
+    createTransaction.mockRestore();
+  });
+
+  it('keeps the plain Pass GO at the normal reward without the flag', async () => {
+    const createTransaction = vi.spyOn(monopolyBankApi, 'createTransaction').mockResolvedValue({
+      transaction: { amount: 200_000 },
+      players: [],
+    } as never);
+    const { user } = renderDialog([olena, taras], {
+      rules: { ...defaultGameRules, doubleRewardOnExactGo: true },
+      passGoReward: 200_000,
+    });
+    await user.click(screen.getByRole('button', { name: 'Pass GO' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    const request = createTransaction.mock.calls[0]?.[1];
+    expect(request).toEqual({ type: 'PASS_GO', playerId: 'p1' });
+    createTransaction.mockRestore();
+  });
+
+  it('shows the taxes and jail fine from the game settings and reviews the chosen one', async () => {
+    const { user } = renderDialog([olena, taras], { settings });
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    const group = screen.getByRole('group', { name: 'Taxes and fines' });
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .map((chip) => chip.textContent),
+    ).toEqual(['Income tax · $2 000 000', 'Luxury tax · $1 000 000', 'Jail fine · $500 000']);
+    await user.click(within(group).getByRole('button', { name: /Luxury tax/ }));
+    expect(screen.getByRole('button', { name: 'Confirm transaction' })).toBeEnabled();
+    expect(screen.getByText('Luxury tax')).toBeInTheDocument();
+  });
+
+  it('fills the amount but stays on the form when the payer cannot afford the fixed payment', async () => {
+    const { user } = renderDialog([olena, taras], { player: taras, settings });
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    await user.click(screen.getByRole('button', { name: /Income tax/ }));
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+    expect(screen.getByText('Short by $1 000 000.')).toBeInTheDocument();
+  });
+
+  it('hides the fixed payments for games created before the settings snapshot', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    expect(screen.queryByRole('group', { name: 'Taxes and fines' })).toBeNull();
   });
 });

@@ -1,5 +1,6 @@
 import type {
   Game,
+  GameRules,
   PaymentMode,
   Player,
   SelectableCurrency,
@@ -72,6 +73,8 @@ export interface CreateGameRequest {
   passGoReward: number;
   currency: SelectableCurrency;
   paymentMode?: PaymentMode;
+  /** Optional house rules; omitted rules are off. Fixed once the game is created. */
+  rules?: GameRules;
   gameAccessPassword?: string;
   players: CreateGamePlayerRequest[];
 }
@@ -207,6 +210,8 @@ export interface AllToPlayerTransactionRequest extends TransactionRequestBase {
 export interface PassGoTransactionRequest extends TransactionRequestBase {
   type: 'PASS_GO';
   playerId: string;
+  /** The player landed exactly on GO; pays double when the game enables that rule. */
+  exactLanding?: boolean;
 }
 
 export interface BankruptcyRequest {

@@ -36,6 +36,7 @@ A banking companion for an in-person Monopoly table — it keeps money honest, t
 - Game status `LOBBY` → `ACTIVE` → `FINISHED`; player status `ACTIVE` | `BANKRUPT`. Deleted games are soft-deleted and restorable for 30 days.
 - Transfers: player↔player, player↔bank, player→all (amount is per recipient), all→player (amount is per payer). Validate every affected wallet before any write; insufficient funds is rejected with no writes.
 - Every balance change goes through the review/confirmation flow (source, destination, amount, total, resulting balances) and writes an explicit transaction record. History is never derived from balances; there is no undo or editing of past transactions.
+- Optional house rules (`Game.rules`: double reward on exact GO, player loans, bank loans, Free Parking jackpot, auctions) are chosen at game creation, all off by default, and never change afterwards. Every service method behind a rule calls `assertRuleEnabled` (`worker/services/rule-guard.ts`), which rejects with `RULE_DISABLED`; the UI only hides controls. `Game.settings` is a snapshot of amounts derived from the starting balance (`shared/domain/game-rules.ts`: money unit = S/150 rounded to a 1-2-5 value, taxes, jail fine, loan and auction limits); games created before it have `settings: null`.
 - Payment requests, dice rolls (bounded dice/jail contract), and statistics are persisted features alongside the ledger.
 - Banking tests cover success, insufficient funds, negative-balance prevention, transaction creation, and atomic multi-player failure. Dice tests stay deterministic.
 
@@ -49,7 +50,7 @@ Three TypeScript layers with enforced import boundaries (see `eslint.config.js`)
 
 Tests are colocated (`*.test.ts`); `*.sqlite.test.ts` repository tests run against real SQLite. Vitest uses jsdom for `src/**` and Node for everything else (jsdom breaks `new URL(..., import.meta.url)` in migration tests). In test mode the Cloudflare Vite plugin is disabled, so tests use mocked Worker/D1 boundaries.
 
-Migrations are numbered sequentially (`0001`…`0019`; next is `0020`). Never edit an applied migration. Constraint tests sit next to the SQL (`migrations/NNNN_*.test.ts`), and `npm run test:d1` must pass after any schema change.
+Migrations are numbered sequentially (`0001`…`0020`; next is `0021`). Never edit an applied migration. Constraint tests sit next to the SQL (`migrations/NNNN_*.test.ts`), and `npm run test:d1` must pass after any schema change.
 
 Further detail: `docs/architecture.md`, `docs/realtime-durable-objects.md`, `docs/api-errors.md`, `docs/security-threat-model.md`, `docs/local-development.md`.
 

@@ -24,6 +24,7 @@ import type { PlayerRepository } from '../repositories/player-repository.js';
 import type { TransactionRepository } from '../repositories/transaction-repository.js';
 import type { PaymentRequestRepository } from '../repositories/payment-request-repository.js';
 import { ConflictError, PersistenceConsistencyError, ResourceNotFoundError } from './errors.js';
+import { assertRuleEnabled } from './rule-guard.js';
 
 export interface BankingService {
   createTransaction(
@@ -85,6 +86,8 @@ export class DefaultBankingService implements BankingService {
     ) {
       return this.createConfirmationRequests(gameId, request, players, transactionId);
     }
+    if (request.type === 'PASS_GO' && request.exactLanding === true)
+      assertRuleEnabled(game, 'doubleRewardOnExactGo');
     const result = executeOperation(game, players, request);
     await this.operations.persist({
       transactionId,

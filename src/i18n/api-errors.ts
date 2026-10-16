@@ -19,6 +19,7 @@ const errorKeys: Record<string, TranslationKey> = {
   GAME_NOT_MEMBER: 'errorGameAccessDenied',
   INSUFFICIENT_PLAYERS: 'errorInsufficientPlayers',
   INVALID_GAME_STATE: 'errorInvalidGameState',
+  RULE_DISABLED: 'errorRuleDisabled',
 };
 
 export function apiErrorMessage(error: unknown, t: Translate, fallback: TranslationKey): string {
