@@ -5,7 +5,7 @@ import type {
   GameDetails,
   PaymentRequestActionResponse,
 } from './api.js';
-import type { Mortgage, Player, Transaction } from '../types/monopoly.js';
+import type { Loan, Mortgage, Player, Transaction } from '../types/monopoly.js';
 
 /** Commands are accepted only by the game coordinator, never peer-to-peer. */
 export type LiveMutationCommand =
@@ -41,6 +41,8 @@ export type LiveServerEvent =
       bankruptPlayerId?: string;
       /** The active mortgages after a mortgage, a redemption or a bankruptcy. */
       mortgages?: Mortgage[];
+      /** The loans still being repaid after a loan is issued or repaid, or a bankruptcy. */
+      loans?: Loan[];
     }
   | { type: 'GAME_FINISHED'; stateVersion: number; details: GameDetails }
   | { type: 'LOBBY_UPDATED'; stateVersion: number; details: Pick<GameDetails, 'game' | 'players'> }

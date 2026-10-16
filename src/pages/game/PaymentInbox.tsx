@@ -64,11 +64,12 @@ export function PaymentInbox({ requests, players, currency, onAction }: PaymentI
         <ol>
           {requests.map((request) => {
             const creator = players.find((player) => player.id === request.creatorPlayerId);
+            const isLoan = request.kind === 'LOAN';
             return (
               <li key={request.id}>
                 <div>
                   <strong>
-                    {t('paymentRequestFrom', {
+                    {t(isLoan ? 'loanRequestFrom' : 'paymentRequestFrom', {
                       name: creator?.name ?? t('playerFallback'),
                       amount: formatMoney(request.amount, currency),
                     })}
@@ -88,14 +89,14 @@ export function PaymentInbox({ requests, players, currency, onAction }: PaymentI
                     disabled={busyId !== null}
                     onClick={() => void act(request, 'accept')}
                   >
-                    {t('acceptPayment')}
+                    {t(isLoan ? 'acceptLoan' : 'acceptPayment')}
                   </Button>
                   <Button
                     variant="secondary"
                     disabled={busyId !== null}
                     onClick={() => void act(request, 'decline')}
                   >
-                    {t('declinePayment')}
+                    {t(isLoan ? 'declineLoan' : 'declinePayment')}
                   </Button>
                 </DialogActions>
               </li>

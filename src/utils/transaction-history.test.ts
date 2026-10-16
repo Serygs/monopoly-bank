@@ -115,3 +115,20 @@ describe('mortgage formatting', () => {
     expect(transactionAmount(mortgage, 'USD')).toBe('+$400');
   });
 });
+
+describe('loan transactions', () => {
+  const issue: Transaction = {
+    ...rent,
+    type: 'LOAN_ISSUE',
+    participants: [
+      { playerId: 'john', balanceDelta: -120 },
+      { playerId: 'alex', balanceDelta: 120 },
+    ],
+  };
+  it('names the lender and the borrower', () => {
+    expect(transactionDescription(issue, players)).toBe('John lent to Alex');
+    expect(transactionDescription({ ...issue, type: 'LOAN_REPAYMENT' }, players)).toBe(
+      'John repaid Alex',
+    );
+  });
+});

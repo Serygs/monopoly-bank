@@ -60,6 +60,8 @@ export const transactionTypes = [
   'REVERSAL',
   'MORTGAGE',
   'MORTGAGE_REDEMPTION',
+  'LOAN_ISSUE',
+  'LOAN_REPAYMENT',
 ] as const;
 
 export type TransactionType = (typeof transactionTypes)[number];
@@ -111,6 +113,30 @@ export interface Mortgage {
   /** What the bank paid out; redeeming costs this plus 10%. */
   mortgageValue: number;
   createdAt: string;
+}
+
+export const loanStates = ['ACTIVE', 'REPAID', 'WRITTEN_OFF'] as const;
+export type LoanState = (typeof loanStates)[number];
+export type LoanLenderKind = 'PLAYER' | 'BANK';
+
+/**
+ * Money one player lent another (or, later, the bank lent a player). It records only the debt;
+ * the cash moved by explicit LOAN_ISSUE / LOAN_REPAYMENT transactions.
+ */
+export interface Loan {
+  /** The id of the LOAN_ISSUE transaction that created it. */
+  id: string;
+  gameId: string;
+  lenderKind: LoanLenderKind;
+  /** Null when the bank is the lender. */
+  lenderPlayerId: string | null;
+  borrowerPlayerId: string;
+  principal: number;
+  /** Repaid so far; outstanding = principal - repaidAmount. */
+  repaidAmount: number;
+  state: LoanState;
+  createdAt: string;
+  closedAt: string | null;
 }
 
 export interface TransactionParticipant {

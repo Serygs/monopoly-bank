@@ -52,10 +52,14 @@ export function calculateFinalGameSummary(
       continue;
     totalMoneyTransferred += transaction.totalAmount;
     largestTransaction = Math.max(largestTransaction, transaction.totalAmount);
+    // Borrowed and repaid money is a debt, not spending or income, so loan transactions count
+    // toward the totals and each player's transaction count but not toward sent/received.
+    const isLoan = transaction.type === 'LOAN_ISSUE' || transaction.type === 'LOAN_REPAYMENT';
     for (const participant of transaction.participants) {
       const metric = metrics.get(participant.playerId);
       if (metric !== undefined) {
         metric.transactionCount += 1;
+        if (isLoan) continue;
         if (participant.balanceDelta < 0) metric.sent -= participant.balanceDelta;
         else metric.received += participant.balanceDelta;
       }

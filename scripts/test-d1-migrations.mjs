@@ -171,8 +171,9 @@ try {
   await legacySql(
     "INSERT INTO transactions (id, game_id, type, amount, total_amount, reverses_transaction_id) VALUES ('reversal-upgrade-1', 'game-upgrade-1', 'REVERSAL', 10, 10, 'transaction-upgrade-1'); INSERT INTO transaction_participants (transaction_id, game_id, player_id, balance_delta) VALUES ('reversal-upgrade-1', 'game-upgrade-1', 'player-upgrade-1', 10), ('reversal-upgrade-1', 'game-upgrade-1', 'player-upgrade-2', -10);",
   );
+  const loansMigration = '0023_player_loans.sql';
   for (const migration of migrationFiles) {
-    if (migration > rebuildMigration)
+    if (migration > rebuildMigration && migration < loansMigration)
       await cp(join('migrations', migration), join(legacyMigrations, migration));
   }
   await applyLegacy();
@@ -190,6 +191,25 @@ try {
     rebuiltRow.mortgages !== 0
   )
     throw new Error(`The transactions rebuilds lost or changed rows: ${rebuilt}`);
+  // Migration 0023 adds payment_requests.kind and the loan tables on top of the existing rows.
+  for (const migration of migrationFiles) {
+    if (migration >= loansMigration)
+      await cp(join('migrations', migration), join(legacyMigrations, migration));
+  }
+  await applyLegacy();
+  const loansStage = await legacySql(
+    "SELECT (SELECT kind FROM payment_requests WHERE id = 'request-upgrade-1') AS kind, (SELECT COUNT(*) FROM transactions) AS transactions, (SELECT COUNT(*) FROM loans) AS loans, (SELECT COUNT(*) FROM loan_repayments) AS repayments",
+  );
+  const loansRow = JSON.parse(
+    loansStage.slice(loansStage.indexOf('['), loansStage.lastIndexOf(']') + 1),
+  )[0]?.results?.[0];
+  if (
+    loansRow?.kind !== 'PAYMENT' ||
+    loansRow.transactions !== 2 ||
+    loansRow.loans !== 0 ||
+    loansRow.repayments !== 0
+  )
+    throw new Error(`The loans migration lost or changed rows: ${loansStage}`);
   const upgradedFixture = await legacySql(
     "SELECT pc.player_id, pc.user_id FROM player_controllers pc JOIN users u ON u.id = pc.user_id WHERE pc.game_id = 'game-upgrade-1' AND pc.player_id = 'player-upgrade-1' AND pc.controller_kind = 'PRIMARY'",
   );
