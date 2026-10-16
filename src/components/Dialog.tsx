@@ -53,13 +53,13 @@ const panelMotion = cx(
  * inert, so the bar must live in it to stay tappable); the sheet then stops above the bar.
  */
 const backdropClass = cx(
-  'dialog-backdrop fixed inset-0 z-100 grid place-items-center bg-overlay p-(--mb-space-6)',
+  'dialog-backdrop glass-scrim fixed inset-0 z-100 grid place-items-center bg-overlay p-(--mb-space-6)',
   'max-md:[place-items:end_center] max-md:px-0 max-md:pt-[max(var(--mb-space-2),var(--mb-app-safe-top))] max-md:pb-(--mb-dialog-nav-offset)',
 );
 /* Liquid Glass blurs what sits behind the modal scrim; the settings scrim only below `md`. */
 const backdropPresentationClass = {
-  modal: 'glass:backdrop-blur-[8px] glass:backdrop-saturate-[0.9]',
-  popover: 'glass:max-md:backdrop-blur-[6px] glass:max-md:backdrop-saturate-[0.92]',
+  modal: '',
+  popover: '',
 };
 /*
  * Below `md` the panel is the sheet: full width, rounded top only, no side or bottom border, a
@@ -82,10 +82,7 @@ const presentationClass = {
   modal: cx(
     'w-[min(100%,640px)] [&>header]:gap-(--mb-space-5)',
     '[&_h2]:m-0 [&_h2]:text-heading-lg [&_h2]:leading-[1.2] [&_h2]:tracking-[-0.025em]',
-    'glass:border-[rgb(255_255_255/0.72)] glass:bg-[rgb(255_255_255/0.76)] glass:dark:border-[rgb(255_255_255/0.2)] glass:dark:bg-[rgb(32_40_52/0.9)]',
-    'glass:shadow-[0_24px_64px_rgb(35_52_78/0.2),inset_0_1px_0_rgb(255_255_255/0.8)]',
-    'glass:backdrop-blur-[26px] glass:backdrop-saturate-[1.3] glass:max-md:backdrop-blur-[24px] glass:max-md:backdrop-saturate-[1.24]',
-    'glass:forced-colors:backdrop-filter-none',
+    'glass-panel',
   ),
   // The settings panel; its Liquid Glass surface is in `App.tsx`.
   popover:
