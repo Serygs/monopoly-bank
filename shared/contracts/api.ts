@@ -3,6 +3,7 @@ import type {
   GameRules,
   BankLoanCooldown,
   InterestRatePercent,
+  Auction,
   Loan,
   Mortgage,
   PaymentMode,
@@ -57,6 +58,11 @@ export interface GameDetails {
   bankLoanCooldowns?: BankLoanCooldown[];
   /** The Free Parking pot; present only when the game has the jackpot rule. */
   jackpot?: number;
+  /**
+   * With the auctions rule: the active auction, or the one that closed most recently (so every
+   * device sees the result), or null.
+   */
+  auction?: Auction | null;
   favoriteAmounts?: number[];
   recentAmounts?: number[];
   /** Wallets the current actor can operate. All other wallets are read-only. */
@@ -306,6 +312,35 @@ export interface JackpotPayoutTransactionRequest extends Omit<TransactionRequest
    * amount they did not confirm.
    */
   expectedAmount: number;
+}
+
+/** Puts a property up for auction (auctions rule). Only one auction can run at a time. */
+export interface StartAuctionRequest {
+  /** The player who offered the property (a wallet the actor controls). */
+  initiatorPlayerId: string;
+  /** Free-text name, up to 60 characters. */
+  lotName: string;
+}
+
+/**
+ * A bid is made with a button: the new bid is the current bid plus `step` units (first bid: that
+ * many units, at least the minimum bid). Valid steps are in `game.settings.auctionBidSteps`.
+ */
+export interface PlaceBidRequest {
+  /** The wallet that bids (a wallet the actor controls). */
+  bidderPlayerId: string;
+  auctionId: string;
+  /** The auction version the bidder saw; a stale bid is refused with AUCTION_BID_STALE. */
+  expectedVersion: number;
+  /** One of the game's `auctionBidSteps` amounts (money, not units). */
+  step: number;
+}
+
+export interface AuctionResponse {
+  auction: Auction | null;
+  /** Present when this call settled an auction into an AUCTION_PAYMENT. */
+  transaction?: Transaction;
+  players?: Player[];
 }
 
 /** Corrects a mistaken transaction with a new REVERSAL record; the original is never edited. */

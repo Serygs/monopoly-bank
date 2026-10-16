@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import {
   defaultGameRules,
+  type Auction,
   type BankLoanCooldown,
   type Currency,
   type GameRules,
@@ -34,6 +35,7 @@ import {
   loanInterest,
   loanOutstanding,
 } from '../../utils/loans';
+import { auctionReserveFor } from '../../utils/auction';
 import { formatMoney } from '../../utils/money';
 import { presetAmounts } from '../../utils/quick-amounts';
 import { Confirmation } from './Confirmation';
@@ -78,6 +80,10 @@ export interface BankingDialogProps {
   jackpot?: number;
   /** Open straight on repaying the player's bank loan (the overdue "Settle loan" prompt). */
   settleOnOpen?: boolean;
+  /** The running or just-closed auction (auctions rule): its leading bid is reserved cash. */
+  auction?: Auction | null;
+  /** Opens the start-auction prompt for this wallet, with a suggested property name. */
+  onStartAuction?: (lotName: string) => void;
   favoriteAmounts: number[];
   recentAmounts: number[];
   onToggleFavorite: (amount: number) => void;
@@ -145,6 +151,8 @@ export function BankingDialog({
   bankLoanCooldowns = [],
   jackpot = 0,
   settleOnOpen = false,
+  auction = null,
+  onStartAuction,
   favoriteAmounts,
   recentAmounts,
   onToggleFavorite,
@@ -249,8 +257,15 @@ export function BankingDialog({
     action === 'BANK_LOAN' && bankLoanMax !== null && amountValue > bankLoanMax;
   // What leaves the wallet: for a bank loan the interest comes on top of the principal.
   const payAmount = amountValue + interest;
-  const fundsError = preflightFundsError(action, player, players, payAmount, currency, t);
-  const shortfall = preflightShortfall(action, player, players, payAmount);
+  // Cash held back for a leading auction bid cannot be spent elsewhere.
+  const reserved = auctionReserveFor(auction, player.id);
+  const available = player.balance - reserved;
+  const spender = reserved === 0 ? player : { ...player, balance: available };
+  const fundsError = preflightFundsError(action, spender, players, payAmount, currency, t);
+  const shortfall = preflightShortfall(action, spender, players, payAmount);
+  const auctionBusy = auction?.state === 'ACTIVE';
+  const canAuction = rules.auctions && onStartAuction !== undefined;
+  const auctionLotSuggestion = comment.trim().slice(0, 60);
   const valid =
     request !== null &&
     (!targetRequired || (target !== null && target.id !== player.id)) &&
@@ -348,7 +363,7 @@ export function BankingDialog({
     // Set after changeAmount, which clears it: only the tax chips pay the pot.
     setPayToPot(toPot);
     setComment(label);
-    if (player.balance >= fixedAmount) setConfirming(true);
+    if (available >= fixedAmount) setConfirming(true);
   };
 
   const reviewQuickAmount = (nextAmount: number) => {
@@ -439,14 +454,19 @@ export function BankingDialog({
             className={balanceClass}
             aria-label={t('walletBalanceAria', {
               name: player.name,
-              balance: formatMoney(player.balance, currency),
+              balance: formatMoney(available, currency),
             })}
           >
             <span>{t('availableBalance')}</span>
             <strong>
-              <MoneyValue amount={player.balance} currency={currency} />
+              <MoneyValue amount={available} currency={currency} />
             </strong>
           </section>
+          {reserved > 0 && (
+            <FieldHint>
+              {t('auctionReservedYours', { amount: formatMoney(reserved, currency) })}
+            </FieldHint>
+          )}
           {bankLoan?.rounds?.overdue === true && (
             <Notice tone="error" className="mb-(--mb-space-3)">
               <span className="block">
@@ -478,6 +498,17 @@ export function BankingDialog({
                     },
                   ]
                 : []),
+              ...(canAuction
+                ? [
+                    {
+                      key: 'AUCTION',
+                      label: t('auctionPutUp'),
+                      tone: 'expense' as const,
+                      disabled: auctionBusy,
+                      onSelect: () => onStartAuction(''),
+                    },
+                  ]
+                : []),
               ...(rules.freeParkingJackpot
                 ? [
                     {
@@ -491,6 +522,7 @@ export function BankingDialog({
                 : []),
             ]}
           />
+          {canAuction && auctionBusy && <FieldHint>{t('auctionActionBusy')}</FieldHint>}
           {rules.freeParkingJackpot && (
             <FieldHint>
               {jackpot > 0
@@ -551,6 +583,7 @@ export function BankingDialog({
               propertyName={action === 'MORTGAGE' ? tidyName : selectedMortgage?.propertyName}
               interest={interest}
               lenderIsBank={isBankRepayment}
+              reserved={reserved}
             />
             {action === 'PASS_GO' && <div className="mt-(--mb-space-3)">{commentField}</div>}
           </StepBody>
@@ -723,6 +756,16 @@ export function BankingDialog({
                       </Button>
                     </>
                   )}
+                  {canAuction &&
+                    !auctionBusy &&
+                    (action === 'PLAYER_TO_BANK' || action === 'PLAYER_TO_PLAYER') && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => onStartAuction(auctionLotSuggestion)}
+                      >
+                        {t('auctionInstead')}
+                      </Button>
+                    )}
                   <Button variant="danger" onClick={onBankrupt}>
                     {t('declareBankrupt')}
                   </Button>

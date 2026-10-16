@@ -632,3 +632,42 @@ describe('Free Parking jackpot', () => {
     expect(detailsCell.value?.jackpot).toBe(350);
   });
 });
+
+describe('applyLiveEvent auctions', () => {
+  const auction = {
+    id: 'a1',
+    gameId: 'g1',
+    lotName: 'Park Place',
+    initiatorPlayerId: 'p1',
+    state: 'ACTIVE' as const,
+    currentBid: 10,
+    currentBidderId: 'p2',
+    version: 2,
+    startedAt: '2026-10-16T12:00:00.000Z',
+    endsAt: '2026-10-16T12:00:30.000Z',
+    serverTime: '2026-10-16T12:00:10.000Z',
+    settledTransactionId: null,
+  };
+
+  it('stores the auction of an update and ignores an older version', () => {
+    const { detailsCell, apply } = liveHarness(details(), null);
+    apply({ type: 'AUCTION_UPDATED', stateVersion: 4, auction });
+    expect(detailsCell.value?.auction).toBe(auction);
+    apply({ type: 'AUCTION_UPDATED', stateVersion: 5, auction: { ...auction, version: 1 } });
+    expect(detailsCell.value?.auction).toBe(auction);
+    const closed = { ...auction, version: 3, state: 'NO_SALE' as const };
+    apply({ type: 'AUCTION_UPDATED', stateVersion: 6, auction: closed });
+    expect(detailsCell.value?.auction).toBe(closed);
+  });
+
+  it('names the shortage of reserved cash with the available amount', () => {
+    const error = new MonopolyBankApiError({
+      code: 'INSUFFICIENT_AVAILABLE_FUNDS',
+      message: 'x',
+      details: { playerId: 'p1', available: 100, required: 300 },
+    });
+    expect(insufficientMessage(error, players, 'USD', t)).toBe(
+      `Alice has insufficient funds. Current balance: ${formatMoney(100, 'USD')}. Required: ${formatMoney(300, 'USD')}.`,
+    );
+  });
+});

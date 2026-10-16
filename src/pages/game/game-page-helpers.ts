@@ -16,6 +16,7 @@ import type {
 } from '../../../shared/types/monopoly';
 import { MonopolyBankApiError } from '../../api/monopoly-bank-api';
 import type { Translate } from '../../i18n/translations';
+import { newerAuction } from '../../utils/auction';
 import { formatMoney } from '../../utils/money';
 
 /** A wallet action the banking dialog can start; a reversal is started from the history instead. */
@@ -150,6 +151,14 @@ export function applyLiveEvent(
           ),
       ];
     });
+    return;
+  }
+  if (event.type === 'AUCTION_UPDATED') {
+    setDetails((current) =>
+      current === null
+        ? current
+        : { ...current, auction: newerAuction(current.auction ?? null, event.auction) },
+    );
     return;
   }
   if (event.type === 'GAME_FINISHED')
@@ -427,6 +436,7 @@ export function transactionLabel(type: TransactionType, t: Translate): string {
     LOAN_REPAYMENT: t('loanRepaymentLabel'),
     TO_JACKPOT: t('paidFreeParking'),
     JACKPOT_PAYOUT: t('collectedFreeParking'),
+    AUCTION_PAYMENT: t('auctionPaymentLabel'),
   }[type];
 }
 
@@ -499,9 +509,15 @@ export function insufficientMessage(
   currency: Currency,
   t: Translate,
 ) {
-  if (!(error instanceof MonopolyBankApiError) || error.code !== 'INSUFFICIENT_FUNDS') return null;
-  const current = error.details?.currentBalance;
-  const required = error.details?.requiredAmount;
+  if (
+    !(error instanceof MonopolyBankApiError) ||
+    (error.code !== 'INSUFFICIENT_FUNDS' && error.code !== 'INSUFFICIENT_AVAILABLE_FUNDS')
+  )
+    return null;
+  // Spending cash reserved for a leading auction bid reports `available` and `required`.
+  const reserved = error.code === 'INSUFFICIENT_AVAILABLE_FUNDS';
+  const current = reserved ? error.details?.available : error.details?.currentBalance;
+  const required = reserved ? error.details?.required : error.details?.requiredAmount;
   const playerId = error.details?.playerId;
   const player =
     typeof playerId === 'string'

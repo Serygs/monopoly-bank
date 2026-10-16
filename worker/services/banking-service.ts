@@ -16,6 +16,11 @@ import type {
   PaymentRequestActionResponse,
 } from '../../shared/contracts/api.js';
 import {
+  assertReserveRespected,
+  auctionReserve,
+  InsufficientAvailableFundsError,
+} from '../../shared/domain/auction.js';
+import {
   allToPlayer,
   bankToPlayer,
   passGo,
@@ -43,12 +48,14 @@ import {
 } from '../../shared/domain/banking.js';
 import type {
   BankLoanCooldown,
+  Auction,
   Game,
   Loan,
   Mortgage,
   Player,
   Transaction,
 } from '../../shared/types/monopoly.js';
+import type { AuctionRepository } from '../repositories/auction-repository.js';
 import type { BankingOperationRepository } from '../repositories/banking-operation-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
 import type { LoanRepository } from '../repositories/loan-repository.js';
@@ -92,6 +99,8 @@ export interface BankingServiceDependencies {
   paymentRequests: PaymentRequestRepository;
   mortgages: MortgageRepository;
   loans: LoanRepository;
+  /** Needed by games with the auctions rule: the leading bid is reserved on the leader's wallet. */
+  auctions?: AuctionRepository;
   createId: () => string;
 }
 
@@ -103,6 +112,7 @@ export class DefaultBankingService implements BankingService {
   private readonly paymentRequests: PaymentRequestRepository;
   private readonly mortgages: MortgageRepository;
   private readonly loans: LoanRepository;
+  private readonly auctions: AuctionRepository | undefined;
   private readonly createId: () => string;
 
   constructor(dependencies: BankingServiceDependencies) {
@@ -113,6 +123,7 @@ export class DefaultBankingService implements BankingService {
     this.paymentRequests = dependencies.paymentRequests;
     this.mortgages = dependencies.mortgages;
     this.loans = dependencies.loans;
+    this.auctions = dependencies.auctions;
     this.createId = dependencies.createId;
   }
 
@@ -152,7 +163,7 @@ export class DefaultBankingService implements BankingService {
       game.paymentMode === 'CONFIRMATION' &&
       (request.type === 'PLAYER_TO_PLAYER' || request.type === 'ALL_TO_PLAYER')
     ) {
-      return this.createConfirmationRequests(gameId, request, players, transactionId);
+      return this.createConfirmationRequests(game, gameId, request, players, transactionId);
     }
     if (request.type === 'PASS_GO' && request.exactLanding === true)
       assertRuleEnabled(game, 'doubleRewardOnExactGo');
@@ -170,6 +181,7 @@ export class DefaultBankingService implements BankingService {
                 : request.type === 'JACKPOT_PAYOUT'
                   ? await this.collectJackpot(game, players, request)
                   : executeOperation(game, players, request);
+    await this.assertAuctionReserveRespected(game, result);
     try {
       await this.operations.persist({
         transactionId,
@@ -216,6 +228,25 @@ export class DefaultBankingService implements BankingService {
       ...(await this.loansFor(game, updatedPlayers, transaction.type)),
       ...(await this.jackpotFor(game)),
     };
+  }
+
+  /** The running auction of a game with the rule, else null: zero cost for every other game. */
+  private async runningAuction(game: Game): Promise<Auction | null> {
+    return game.rules.auctions && this.auctions !== undefined
+      ? this.auctions.getActive(game.id)
+      : null;
+  }
+
+  /**
+   * Every debit must leave the leading bidder of a running auction their reserved bid. The
+   * balances the operation read (balanceBefore) are untouched; this only refuses the operation.
+   */
+  private async assertAuctionReserveRespected(
+    game: Game,
+    result: BankingOperationResult,
+  ): Promise<void> {
+    if (result.transaction.type === 'AUCTION_PAYMENT') return;
+    assertReserveRespected(result.affectedPlayers, await this.runningAuction(game));
   }
 
   /** The Free Parking pot, carried by every response of a game with the jackpot rule. */
@@ -362,15 +393,15 @@ export class DefaultBankingService implements BankingService {
       borrowerPlayerId: request.borrowerPlayerId,
       amount: request.amount,
     });
-    const reserved = await this.paymentRequests.pendingReservedAmount(
-      game.id,
-      request.lenderPlayerId,
-    );
+    const reserved =
+      (await this.paymentRequests.pendingReservedAmount(game.id, request.lenderPlayerId)) +
+      auctionReserve(await this.runningAuction(game), request.lenderPlayerId);
     const lender = players.find((player) => player.id === request.lenderPlayerId);
     if (lender === undefined || lender.balance - reserved < request.amount)
-      throw new ConflictError(
-        'INSUFFICIENT_AVAILABLE_FUNDS',
-        'Player does not have enough available funds.',
+      throw new InsufficientAvailableFundsError(
+        request.lenderPlayerId,
+        (lender?.balance ?? 0) - reserved,
+        request.amount,
       );
     const id = commandScopedId(commandId, 0);
     await this.paymentRequests.create({
@@ -518,6 +549,7 @@ export class DefaultBankingService implements BankingService {
           amount: paymentRequest.amount,
           ...(paymentRequest.comment === null ? {} : { comment: paymentRequest.comment }),
         });
+    await this.assertAuctionReserveRespected(game, result);
     const transactionId = this.createId();
     await this.paymentRequests.settle({
       requestId,
@@ -620,6 +652,7 @@ export class DefaultBankingService implements BankingService {
       transaction: result.transaction,
       balanceChanges: result.affectedPlayers,
       bankruptPlayerId: request.playerId,
+      ...(game.rules.auctions ? { withdrawAuctionBid: true } : {}),
       mortgageHeirPlayerId: request.creditorPlayerId ?? null,
       loanHeirPlayerId: request.creditorPlayerId ?? null,
     });
@@ -647,6 +680,7 @@ export class DefaultBankingService implements BankingService {
   }
 
   private async createConfirmationRequests(
+    game: Game,
     gameId: string,
     request: Extract<CreateTransactionRequest, { type: 'PLAYER_TO_PLAYER' | 'ALL_TO_PLAYER' }>,
     players: Awaited<ReturnType<PlayerRepository['listByGameId']>>,
@@ -674,6 +708,7 @@ export class DefaultBankingService implements BankingService {
               amount: request.amountPerPlayer,
               comment: request.comment ?? null,
             }));
+    const auction = await this.runningAuction(game);
     for (const pair of pairs) {
       const payer = players.find((player) => player.id === pair.payerPlayerId);
       if (payer === undefined || pair.payerPlayerId === pair.recipientPlayerId)
@@ -681,12 +716,11 @@ export class DefaultBankingService implements BankingService {
           'INVALID_PAYMENT_REQUEST',
           'Payment request participants are invalid.',
         );
-      const reserved = await this.paymentRequests.pendingReservedAmount(gameId, payer.id);
+      const reserved =
+        (await this.paymentRequests.pendingReservedAmount(gameId, payer.id)) +
+        auctionReserve(auction, payer.id);
       if (payer.balance - reserved < pair.amount)
-        throw new ConflictError(
-          'INSUFFICIENT_AVAILABLE_FUNDS',
-          'Player does not have enough available funds.',
-        );
+        throw new InsufficientAvailableFundsError(payer.id, payer.balance - reserved, pair.amount);
     }
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const paymentRequests = await Promise.all(

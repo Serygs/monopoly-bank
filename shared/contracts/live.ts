@@ -1,11 +1,21 @@
 import type {
   BankruptcyRequest,
+  AuctionResponse,
   CreateBankingCommandResponse,
+  PlaceBidRequest,
+  StartAuctionRequest,
   CreateTransactionRequest,
   GameDetails,
   PaymentRequestActionResponse,
 } from './api.js';
-import type { BankLoanCooldown, Loan, Mortgage, Player, Transaction } from '../types/monopoly.js';
+import type {
+  Auction,
+  BankLoanCooldown,
+  Loan,
+  Mortgage,
+  Player,
+  Transaction,
+} from '../types/monopoly.js';
 
 /** Commands are accepted only by the game coordinator, never peer-to-peer. */
 export type LiveMutationCommand =
@@ -14,6 +24,8 @@ export type LiveMutationCommand =
   | { type: 'DECLINE_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
   | { type: 'CANCEL_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
   | { type: 'DECLARE_BANKRUPTCY'; commandId: string; request: BankruptcyRequest }
+  | { type: 'START_AUCTION'; commandId: string; request: StartAuctionRequest }
+  | { type: 'PLACE_BID'; commandId: string; request: PlaceBidRequest }
   | { type: 'START_GAME'; commandId: string }
   | {
       type: 'JOIN_LOBBY';
@@ -51,11 +63,13 @@ export type LiveServerEvent =
   | { type: 'GAME_FINISHED'; stateVersion: number; details: GameDetails }
   | { type: 'LOBBY_UPDATED'; stateVersion: number; details: Pick<GameDetails, 'game' | 'players'> }
   | { type: 'PAYMENT_REQUESTS_UPDATED'; stateVersion: number }
+  /** The auction started, got a bid or closed (a closed sale also sends GAME_COMMITTED). */
+  | { type: 'AUCTION_UPDATED'; stateVersion: number; auction: Auction | null }
   | { type: 'PRESENCE_UPDATED'; stateVersion: number; connectedActors: number }
   | { type: 'HEARTBEAT'; stateVersion: number };
 
 export type LiveMutationResponse =
-  CreateBankingCommandResponse | PaymentRequestActionResponse | GameDetails;
+  CreateBankingCommandResponse | PaymentRequestActionResponse | AuctionResponse | GameDetails;
 
 export function isLiveMutationCommand(value: unknown): value is LiveMutationCommand {
   if (value === null || typeof value !== 'object' || !('type' in value) || !('commandId' in value))
@@ -73,22 +87,28 @@ export function isLiveMutationCommand(value: unknown): value is LiveMutationComm
       command.type === 'DECLINE_PAYMENT_REQUEST' ||
       command.type === 'CANCEL_PAYMENT_REQUEST' ||
       command.type === 'START_GAME' ||
-      command.type === 'JOIN_LOBBY') &&
+      command.type === 'JOIN_LOBBY' ||
+      command.type === 'START_AUCTION' ||
+      command.type === 'PLACE_BID') &&
     (command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY'
       ? 'request' in value
-      : command.type === 'FINISH_GAME'
-        ? Array.isArray((value as { winnerPlayerIds?: unknown }).winnerPlayerIds) &&
-          ((value as { winnerPlayerIds?: unknown[] }).winnerPlayerIds ?? []).every(
-            (id) => typeof id === 'string',
-          )
-        : command.type === 'START_GAME'
-          ? true
-          : command.type === 'JOIN_LOBBY'
-            ? typeof (value as { playerId?: unknown }).playerId === 'string' &&
-              typeof (value as { nickname?: unknown }).nickname === 'string' &&
-              typeof (value as { color?: unknown }).color === 'string' &&
-              typeof (value as { startingBalance?: unknown }).startingBalance === 'number'
-            : typeof (value as { paymentRequestId?: unknown }).paymentRequestId === 'string')
+      : command.type === 'START_AUCTION'
+        ? isStartAuctionRequest((value as { request?: unknown }).request)
+        : command.type === 'PLACE_BID'
+          ? isPlaceBidRequest((value as { request?: unknown }).request)
+          : command.type === 'FINISH_GAME'
+            ? Array.isArray((value as { winnerPlayerIds?: unknown }).winnerPlayerIds) &&
+              ((value as { winnerPlayerIds?: unknown[] }).winnerPlayerIds ?? []).every(
+                (id) => typeof id === 'string',
+              )
+            : command.type === 'START_GAME'
+              ? true
+              : command.type === 'JOIN_LOBBY'
+                ? typeof (value as { playerId?: unknown }).playerId === 'string' &&
+                  typeof (value as { nickname?: unknown }).nickname === 'string' &&
+                  typeof (value as { color?: unknown }).color === 'string' &&
+                  typeof (value as { startingBalance?: unknown }).startingBalance === 'number'
+                : typeof (value as { paymentRequestId?: unknown }).paymentRequestId === 'string')
   );
 }
 
@@ -111,10 +131,29 @@ export function isLiveServerEvent(value: unknown): value is LiveServerEvent {
       isRecord(value.details.game) &&
       Array.isArray(value.details.players)
     );
+  if (value.type === 'AUCTION_UPDATED') return value.auction === null || isRecord(value.auction);
   if (value.type === 'PRESENCE_UPDATED') return isNonNegativeInteger(value.connectedActors);
   return value.type === 'PAYMENT_REQUESTS_UPDATED' || value.type === 'HEARTBEAT';
 }
 
+function isStartAuctionRequest(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.initiatorPlayerId === 'string' &&
+    typeof value.lotName === 'string'
+  );
+}
+function isPlaceBidRequest(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.bidderPlayerId === 'string' &&
+    typeof value.auctionId === 'string' &&
+    typeof value.step === 'number' &&
+    Number.isSafeInteger(value.step) &&
+    typeof value.expectedVersion === 'number' &&
+    Number.isSafeInteger(value.expectedVersion)
+  );
+}
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }

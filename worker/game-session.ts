@@ -1,10 +1,11 @@
-import type { GameDetails } from '../shared/contracts/api.js';
+import type { AuctionResponse, GameDetails } from '../shared/contracts/api.js';
 import {
   isLiveMutationCommand,
   type LiveGameState,
   type LiveMutationCommand,
   type LiveServerEvent,
 } from '../shared/contracts/live.js';
+import { AuctionNotFoundError } from '../shared/domain/auction.js';
 import { TransactionNotFoundError } from '../shared/domain/banking.js';
 import { controlledPlayerIdForBankingCommand } from '../shared/domain/player-control.js';
 import type {
@@ -14,6 +15,7 @@ import type {
   Player,
   Transaction,
 } from '../shared/types/monopoly.js';
+import { D1AuctionRepository } from './repositories/auction-repository.js';
 import { D1BankingOperationRepository } from './repositories/banking-operation-repository.js';
 import {
   D1CommandLedgerRepository,
@@ -29,12 +31,22 @@ import { D1MortgageRepository } from './repositories/mortgage-repository.js';
 import { D1PaymentRequestRepository } from './repositories/payment-request-repository.js';
 import { D1PlayerRepository } from './repositories/player-repository.js';
 import { D1TransactionRepository } from './repositories/transaction-repository.js';
+import { DefaultAuctionService } from './services/auction-service.js';
 import { DefaultBankingService } from './services/banking-service.js';
-import { ConflictError, ValidationError } from './services/errors.js';
+import { ConflictError, ResourceNotFoundError, ValidationError } from './services/errors.js';
 import { handleError } from './services/error-handler.js';
 import { GameAccessService } from './services/game-access-service.js';
 import { DefaultGameService } from './services/game-service.js';
 import { ProfileStatisticsService } from './services/profile-statistics-service.js';
+
+/** DO storage key: the running auction's end, so the alarm and lazy settlement know what to do. */
+const AUCTION_DEADLINE_KEY = 'auctionDeadline';
+interface AuctionDeadline {
+  gameId: string;
+  auctionId: string;
+  /** Milliseconds since the epoch. */
+  endsAt: number;
+}
 
 /** One coordinator per game. All state-changing game commands enter here. */
 export class GameSession {
@@ -42,6 +54,11 @@ export class GameSession {
     string,
     { actorId: string; payloadHash: string; response: Promise<ResponsePayload> }
   >();
+  private settling: Promise<AuctionResponse | null> | null = null;
+  /** The single FIFO queue every mutation and settlement runs through (see `serialize`). */
+  private queue: Promise<unknown> = Promise.resolve();
+  /** Whether this instance already looked for a running auction without a stored deadline. */
+  private deadlineChecked = false;
   private readonly ctx: DurableObjectState;
   private readonly env: Env;
   constructor(ctx: DurableObjectState, env: Env) {
@@ -57,6 +74,8 @@ export class GameSession {
     const path = new URL(request.url).pathname;
     if (path === '/connect') return this.acceptConnection(gameId, userId, request);
     if (path === '/mutation') return this.mutate(gameId, userId, request);
+    if (path === '/auction' && request.method === 'GET')
+      return this.readAuction(gameId, userId, request);
     return Response.json(
       { error: { code: 'NOT_FOUND', message: 'Endpoint not found.', requestId } },
       { status: 404, headers: { 'x-request-id': requestId } },
@@ -74,6 +93,7 @@ export class GameSession {
         { error: { code: 'VALIDATION_ERROR', message: 'WebSocket upgrade required.', requestId } },
         { status: 426, headers: { 'x-request-id': requestId } },
       );
+    await this.settleQuietly(gameId);
     const details = await this.gameService().getGame(gameId);
     if (details.game.status === 'FINISHED')
       return Response.json(
@@ -112,6 +132,152 @@ export class GameSession {
     await this.broadcastPresence();
   }
 
+  /**
+   * The polling fallback for the auction. A due auction is settled first, so a missed alarm cannot
+   * leave it stuck; the settlement's payment and players come back only to the call that did it.
+   */
+  private async readAuction(gameId: string, userId: string, request: Request): Promise<Response> {
+    try {
+      await this.access().requireMember(gameId, userId);
+      const settled = await this.settleQuietly(gameId);
+      const auction = settled?.auction ?? (await this.auctions().getCurrent(gameId));
+      return Response.json(
+        { data: { ...(settled ?? {}), auction } satisfies AuctionResponse },
+        { headers: { 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() } },
+      );
+    } catch (error) {
+      return handleError(error, { ...context(request, gameId, userId), path: '/auction' });
+    }
+  }
+
+  /**
+   * Settles the running auction if it is due. Used by the alarm and, lazily, before every command
+   * and snapshot. One settlement at a time; the system command ID `auction-settle:<auctionId>`
+   * goes through the same ledger as client commands, so the state version bumps and the
+   * broadcast happen once however many triggers race. Resolves with the closed auction when this
+   * call settled it, else null.
+   */
+  private settleDueAuction(gameId?: string): Promise<AuctionResponse | null> {
+    this.settling ??= this.serialize(() => this.runSettlement(gameId)).finally(() => {
+      this.settling = null;
+    });
+    return this.settling;
+  }
+
+  /**
+   * Runs work strictly one after another (a promise-chain mutex). D1 awaits would otherwise let
+   * commands interleave: a debit could pass the auction-reserve check, a bid make its payer the
+   * leader, and the debit still commit below the new reserve. A failing task does not poison the
+   * queue; the caller still sees its error.
+   */
+  private serialize<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(task);
+    this.queue = result.catch(() => undefined);
+    return result;
+  }
+
+  /** The lazy triggers must not turn a settlement hiccup into a failed command; the alarm retries. */
+  private settleQuietly(gameId?: string): Promise<AuctionResponse | null> {
+    return this.settleDueAuction(gameId).catch(() => null);
+  }
+
+  private async runSettlement(knownGameId?: string): Promise<AuctionResponse | null> {
+    let deadline = await this.ctx.storage.get<AuctionDeadline>(AUCTION_DEADLINE_KEY);
+    // A crash between the D1 insert and the storage write leaves a running auction nobody will
+    // settle: once per wake, look for one and arm it from its `ends_at`.
+    if (deadline === undefined && knownGameId !== undefined && !this.deadlineChecked) {
+      const current = await this.auctions().getCurrent(knownGameId);
+      this.deadlineChecked = true;
+      if (current?.state === 'ACTIVE') {
+        await this.armAuction(knownGameId, current);
+        deadline = await this.ctx.storage.get<AuctionDeadline>(AUCTION_DEADLINE_KEY);
+      }
+    }
+    if (deadline === undefined || Date.now() < deadline.endsAt) return null;
+    const { gameId, auctionId } = deadline;
+    const commandId = `auction-settle:${auctionId}`;
+    const ledger = this.commandLedger();
+    const entry = await ledger.claim({
+      gameId,
+      commandId,
+      actorId: 'system',
+      commandType: 'AUCTION_SETTLE',
+      payloadHash: auctionId,
+    });
+    if (entry.status === 'COMPLETED') {
+      await this.clearAuctionDeadline(auctionId);
+      return null;
+    }
+    let response: AuctionResponse | null;
+    try {
+      response = await this.auctions().settleDue(gameId, auctionId);
+    } catch (error) {
+      // The game or auction is gone (purged): nothing is left to settle.
+      if (error instanceof AuctionNotFoundError || error instanceof ResourceNotFoundError)
+        await this.clearAuctionDeadline(auctionId);
+      throw error;
+    }
+    if (response === null) return null;
+    const stateVersion = await this.incrementStateVersion();
+    await ledger.complete({
+      gameId,
+      commandId,
+      status: 200,
+      result: response,
+      transactionId: response.transaction?.id ?? null,
+    });
+    await this.broadcast({ type: 'AUCTION_UPDATED', stateVersion, auction: response.auction });
+    if (response.transaction !== undefined && response.players !== undefined) {
+      const details = await this.gameService().getGame(gameId);
+      await this.broadcast({
+        type: 'GAME_COMMITTED',
+        stateVersion,
+        transaction: response.transaction,
+        players: response.players,
+        ...(details.game.rules.bankLoans
+          ? {
+              loans: details.loans ?? [],
+              ...(details.bankLoanCooldowns === undefined
+                ? {}
+                : { bankLoanCooldowns: details.bankLoanCooldowns }),
+            }
+          : {}),
+        ...(details.jackpot === undefined ? {} : { jackpot: details.jackpot }),
+      });
+    }
+    await this.clearAuctionDeadline(auctionId);
+    return response;
+  }
+
+  /** Remembers when the running auction ends and sets the alarm for it. */
+  private async armAuction(gameId: string, auction: { id: string; endsAt: string }): Promise<void> {
+    this.deadlineChecked = true;
+    const endsAt = Date.parse(auction.endsAt);
+    await this.ctx.storage.put<AuctionDeadline>(AUCTION_DEADLINE_KEY, {
+      gameId,
+      auctionId: auction.id,
+      endsAt,
+    });
+    await this.ctx.storage.setAlarm(endsAt);
+  }
+
+  /** Clears the deadline only if it still belongs to the auction just settled. */
+  private async clearAuctionDeadline(auctionId: string): Promise<void> {
+    const stored = await this.ctx.storage.get<AuctionDeadline>(AUCTION_DEADLINE_KEY);
+    if (stored !== undefined && stored.auctionId !== auctionId) return;
+    await this.ctx.storage.delete(AUCTION_DEADLINE_KEY);
+    await this.ctx.storage.deleteAlarm();
+  }
+
+  /** Durable Object alarm: the auction ended. Errors propagate so the platform retries. */
+  async alarm(): Promise<void> {
+    await this.settleDueAuction();
+    const deadline = await this.ctx.storage.get<AuctionDeadline>(AUCTION_DEADLINE_KEY);
+    // Still pending (not due by this clock, or nothing settled): look again shortly.
+    if (deadline !== undefined)
+      await this.ctx.storage.setAlarm(Math.max(deadline.endsAt, Date.now() + 1000));
+  }
+
   private async mutate(gameId: string, userId: string, request: Request): Promise<Response> {
     const command: unknown = await request.json().catch(() => null);
     if (!isLiveMutationCommand(command))
@@ -119,6 +285,7 @@ export class GameSession {
         new ValidationError('Invalid live mutation command.'),
         context(request, gameId, userId),
       );
+    await this.settleQuietly(gameId);
     try {
       const payloadHash = await commandPayloadHash(command);
       const existing = this.inFlightCommands.get(command.commandId);
@@ -150,7 +317,9 @@ export class GameSession {
     command: LiveMutationCommand,
     payloadHash: string,
   ): Promise<ResponsePayload> {
-    const pending = (async () => {
+    const pending = this.serialize(async () => {
+      // A due auction is settled first, inside the same slot, so this command sees its result.
+      await this.runSettlement(gameId).catch(() => null);
       const ledger = this.commandLedger();
       const entry = await ledger.claim({
         gameId,
@@ -176,7 +345,7 @@ export class GameSession {
       await this.publish(command, response.data, stateVersion);
       await this.afterCommit('published');
       return response;
-    })();
+    });
     this.inFlightCommands.set(command.commandId, {
       actorId: userId,
       payloadHash,
@@ -209,6 +378,13 @@ export class GameSession {
       });
       return { status: 201, data: await this.gameService().getGame(gameId) };
     }
+    if (command.type === 'START_AUCTION') {
+      const data = await this.auctions().startAuction(gameId, command.request, command.commandId);
+      if (data.auction?.state === 'ACTIVE') await this.armAuction(gameId, data.auction);
+      return { status: 201, data };
+    }
+    if (command.type === 'PLACE_BID')
+      return { status: 200, data: await this.auctions().placeBid(gameId, command.request) };
     const banking = this.banking(command.commandId);
     if (command.type === 'CREATE_TRANSACTION')
       return { status: 201, data: await banking.createTransaction(gameId, command.request) };
@@ -271,6 +447,10 @@ export class GameSession {
       return access.requirePlayerController(gameId, userId, paymentRequest.creatorPlayerId);
     }
     await access.requireMember(gameId, userId);
+    if (command.type === 'START_AUCTION')
+      return access.requirePlayerController(gameId, userId, command.request.initiatorPlayerId);
+    if (command.type === 'PLACE_BID')
+      return access.requirePlayerController(gameId, userId, command.request.bidderPlayerId);
     const { request } = command;
     if ('type' in request && request.type === 'REVERSAL') {
       const original = await this.banking(command.commandId).getTransaction(
@@ -303,6 +483,14 @@ export class GameSession {
     }
     if (command.type === 'FINISH_GAME') {
       await this.broadcast({ type: 'GAME_FINISHED', stateVersion, details: data as GameDetails });
+      return;
+    }
+    if (command.type === 'START_AUCTION' || command.type === 'PLACE_BID') {
+      await this.broadcast({
+        type: 'AUCTION_UPDATED',
+        stateVersion,
+        auction: (data as AuctionResponse).auction,
+      });
       return;
     }
     if (command.type === 'CREATE_TRANSACTION' && 'paymentRequests' in (data as object)) {
@@ -339,6 +527,16 @@ export class GameSession {
       command.type === 'CANCEL_PAYMENT_REQUEST'
     )
       await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion });
+    // A bankrupt leading bidder withdraws the bid, which changes the running auction.
+    if (command.type === 'DECLARE_BANKRUPTCY') {
+      const deadline = await this.ctx.storage.get<AuctionDeadline>(AUCTION_DEADLINE_KEY);
+      if (deadline !== undefined)
+        await this.broadcast({
+          type: 'AUCTION_UPDATED',
+          stateVersion,
+          auction: await this.auctions().getCurrent(deadline.gameId),
+        });
+    }
   }
 
   private async state(
@@ -346,11 +544,20 @@ export class GameSession {
     userId: string,
     details?: GameDetails,
   ): Promise<LiveGameState> {
+    await this.settleQuietly(gameId);
     const controlledWallets = await this.access().controlledWallets(gameId, userId);
+    const loaded = details ?? (await this.gameService().getGame(gameId));
+    // A running auction without a remembered deadline (lost storage, a crash between the D1 write
+    // and the storage write) is picked up again here, so it can never be stuck.
+    if (
+      loaded.auction?.state === 'ACTIVE' &&
+      (await this.ctx.storage.get<AuctionDeadline>(AUCTION_DEADLINE_KEY)) === undefined
+    )
+      await this.armAuction(gameId, loaded.auction);
     return {
       stateVersion: await this.stateVersion(),
       details: {
-        ...(details ?? (await this.gameService().getGame(gameId))),
+        ...loaded,
         controlledWallets,
         controlledPlayerIds: controlledWallets.map((wallet) => wallet.playerId),
       },
@@ -416,7 +623,19 @@ export class GameSession {
       mortgages: new D1MortgageRepository(database),
       loans: new D1LoanRepository(database),
       transactions: new D1TransactionRepository(database),
+      auctions: new D1AuctionRepository(database),
       createId: () => crypto.randomUUID(),
+    });
+  }
+  private auctions() {
+    const database = this.env.MONOPOLY_BANK_DB;
+    return new DefaultAuctionService({
+      games: new D1GameRepository(database),
+      players: new D1PlayerRepository(database),
+      transactions: new D1TransactionRepository(database),
+      operations: new D1BankingOperationRepository(database),
+      paymentRequests: new D1PaymentRequestRepository(database),
+      auctions: new D1AuctionRepository(database),
     });
   }
   private access() {
@@ -432,6 +651,7 @@ export class GameSession {
       paymentRequests: new D1PaymentRequestRepository(database),
       mortgages: new D1MortgageRepository(database),
       loans: new D1LoanRepository(database),
+      auctions: new D1AuctionRepository(database),
       createId: () => commandId,
     });
   }
