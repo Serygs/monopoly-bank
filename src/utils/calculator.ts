@@ -27,6 +27,8 @@ export type CalculatorAction =
   | { type: 'equals' }
   | { type: 'percent' }
   | { type: 'negate' }
+  /** Mortgage shortcuts on the shown number: half the price, or the redemption cost (×1.1). */
+  | { type: 'mortgage'; kind: 'half' | 'redeem' }
   | { type: 'backspace' }
   | { type: 'clear' }
   | { type: 'recall'; value: string };
@@ -161,6 +163,28 @@ export function calculatorReducer(
             : entered / 100
           : entered / 100;
       return { ...state, display: formatCalculatorNumber(value), fresh: false };
+    }
+    case 'mortgage': {
+      const entered = Number(state.display);
+      // Whole amounts stay whole: redemption rounds half up in integers, (v × 11 + 5) / 10.
+      const result =
+        action.kind === 'half'
+          ? entered / 2
+          : Number.isInteger(entered)
+            ? Math.floor((entered * 11 + 5) / 10)
+            : entered * 1.1;
+      const text = formatCalculatorNumber(result);
+      const expression = `${formatCalculatorNumber(entered)} ${action.kind === 'half' ? '÷ 2' : '× 1.1'} =`;
+      return {
+        ...state,
+        display: text,
+        accumulator: null,
+        operator: null,
+        fresh: true,
+        repeat: null,
+        expression,
+        history: record(state.history, { expression, result: text }),
+      };
     }
     case 'negate': {
       if (state.display === '0') return state;

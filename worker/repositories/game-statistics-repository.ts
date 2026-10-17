@@ -3,9 +3,16 @@ import type {
   ActivityPage,
   LedgerStatistics,
   PaymentRequest,
+  PaymentRequestKind,
   PaymentRequestState,
 } from '../../shared/contracts/api.js';
-import type { Game, Player, Transaction } from '../../shared/types/monopoly.js';
+import { D1TradeRequestRepository } from './trade-request-repository.js';
+import {
+  calculateBalanceSeries,
+  calculateGameAwards,
+  type LedgerEntry,
+} from '../../shared/domain/game-awards.js';
+import type { Game, Player, Transaction, TransactionType } from '../../shared/types/monopoly.js';
 import { D1TransactionRepository } from './transaction-repository.js';
 
 export interface GameStatisticsRepository {
@@ -107,6 +114,15 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
     return {
       transactions: [],
       paymentRequests: requests,
+      // Pending trades are few and short-lived, so they ride along on the first page only.
+      ...(cursor === null
+        ? {
+            tradeRequests: await new D1TradeRequestRepository(this.database).listPendingForPlayers(
+              gameId,
+              playerIds,
+            ),
+          }
+        : {}),
       nextCursor:
         rows.results.length > limit && tail !== undefined
           ? { createdAt: tail.createdAt, id: tail.id }
@@ -115,18 +131,34 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
   }
 
   async calculate(game: Game, players: readonly Player[]): Promise<LedgerStatistics> {
+    // TO_JACKPOT counts as money the player sent and JACKPOT_PAYOUT as money received; neither is
+    // paid to / received from the bank, nor player-to-player, so the totals below list them by type.
     const totals = await this.database
       .prepare(
-        `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS moved, COALESCE(MAX(total_amount), 0) AS largest, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_PLAYER','PAY_RENT','BANKRUPTCY_TRANSFER') THEN total_amount ELSE 0 END), 0) AS p2p, COALESCE(SUM(CASE WHEN type = 'PLAYER_TO_BANK' THEN total_amount ELSE 0 END), 0) AS paid_bank, COALESCE(SUM(CASE WHEN type IN ('BANK_TO_PLAYER','PASS_GO') THEN total_amount ELSE 0 END), 0) AS received_bank FROM transactions WHERE game_id = ?`,
+        `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS moved, COALESCE(MAX(total_amount), 0) AS largest, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_PLAYER','PAY_RENT','BANKRUPTCY_TRANSFER','PROPERTY_TRANSFER') THEN total_amount ELSE 0 END), 0) AS p2p, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_BANK','MORTGAGE_REDEMPTION','AUCTION_PAYMENT','PROPERTY_PURCHASE','PROPERTY_BUILD') THEN total_amount ELSE 0 END), 0) AS paid_bank, COALESCE(SUM(CASE WHEN type IN ('BANK_TO_PLAYER','PASS_GO','MORTGAGE','PROPERTY_SELL_BUILDING') THEN total_amount ELSE 0 END), 0) AS received_bank FROM transactions WHERE game_id = ? AND ${countedTransaction('transactions')}`,
       )
       .bind(game.id)
       .first<TotalsRow>();
     const metrics = await this.database
       .prepare(
-        `SELECT p.id AS player_id, COALESCE(SUM(CASE WHEN tp.balance_delta < 0 THEN -tp.balance_delta ELSE 0 END),0) AS sent, COALESCE(SUM(CASE WHEN tp.balance_delta > 0 THEN tp.balance_delta ELSE 0 END),0) AS received, COUNT(tp.transaction_id) AS transaction_count, COALESCE(SUM(CASE WHEN t.type = 'PASS_GO' THEN 1 ELSE 0 END),0) AS pass_go_count FROM players p LEFT JOIN transaction_participants tp ON tp.game_id = p.game_id AND tp.player_id = p.id LEFT JOIN transactions t ON t.id = tp.transaction_id WHERE p.game_id = ? GROUP BY p.id`,
+        `SELECT p.id AS player_id, COALESCE(SUM(CASE WHEN tp.balance_delta < 0 AND t.type NOT IN ('LOAN_ISSUE','LOAN_REPAYMENT') THEN -tp.balance_delta ELSE 0 END),0) AS sent, COALESCE(SUM(CASE WHEN tp.balance_delta > 0 AND t.type NOT IN ('LOAN_ISSUE','LOAN_REPAYMENT') THEN tp.balance_delta ELSE 0 END),0) AS received, COUNT(tp.transaction_id) AS transaction_count, COALESCE(SUM(CASE WHEN t.type = 'PASS_GO' THEN 1 ELSE 0 END),0) AS pass_go_count FROM players p LEFT JOIN transaction_participants tp ON tp.game_id = p.game_id AND tp.player_id = p.id AND tp.transaction_id IN (SELECT counted.id FROM transactions counted WHERE counted.game_id = p.game_id AND ${countedTransaction('counted')}) LEFT JOIN transactions t ON t.id = tp.transaction_id WHERE p.game_id = ? GROUP BY p.id`,
       )
       .bind(game.id)
       .all<PlayerMetricRow>();
+    const ledger = await this.database
+      .prepare(
+        `SELECT t.id AS transaction_id, t.type, t.total_amount, t.comment, tp.player_id, tp.balance_delta FROM transactions t JOIN transaction_participants tp ON tp.transaction_id = t.id AND tp.game_id = t.game_id WHERE t.game_id = ? AND ${countedTransaction('t')} ORDER BY t.created_at, t.rowid, tp.rowid`,
+      )
+      .bind(game.id)
+      .all<LedgerRow>();
+    const entries: LedgerEntry[] = ledger.results.map((row) => ({
+      transactionId: row.transaction_id,
+      type: row.type,
+      totalAmount: row.total_amount,
+      comment: row.comment,
+      playerId: row.player_id,
+      balanceDelta: row.balance_delta,
+    }));
     const metricById = new Map(metrics.results.map((row) => [row.player_id, row]));
     const ordered = players.map((player) => ({
       player,
@@ -185,6 +217,12 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
       leastSenderId: bySent.at(-1)?.player.id ?? null,
       biggestPayerRecipient: null,
       cashLeaderboard,
+      awards: calculateGameAwards(entries),
+      balanceSeries: calculateBalanceSeries(
+        entries,
+        players.map((player) => player.id),
+        game.startingBalance,
+      ),
     };
   }
 
@@ -226,6 +264,14 @@ interface TotalsRow {
   paid_bank: number;
   received_bank: number;
 }
+interface LedgerRow {
+  transaction_id: string;
+  type: TransactionType;
+  total_amount: number;
+  comment: string | null;
+  player_id: string;
+  balance_delta: number;
+}
 interface PlayerMetricRow {
   player_id: string;
   sent: number;
@@ -238,6 +284,7 @@ function emptyMetric(player_id: string): PlayerMetricRow {
 }
 interface PaymentRequestRow {
   id: string;
+  kind: PaymentRequestKind;
   game_id: string;
   payer_player_id: string;
   recipient_player_id: string;
@@ -254,6 +301,7 @@ interface PaymentRequestRow {
 function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
   return {
     id: row.id,
+    kind: row.kind,
     gameId: row.game_id,
     payerPlayerId: row.payer_player_id,
     recipientPlayerId: row.recipient_player_id,
@@ -267,4 +315,12 @@ function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
     resolvedAt: row.resolved_at,
     transactionId: row.transaction_id,
   };
+}
+
+/**
+ * Statistics count what the game actually moved: a reversed transaction and the reversal that
+ * undid it cancel out, so neither is counted. Both stay in the activity history.
+ */
+function countedTransaction(alias: string): string {
+  return `${alias}.type <> 'REVERSAL' AND NOT EXISTS (SELECT 1 FROM transactions reversal WHERE reversal.reverses_transaction_id = ${alias}.id)`;
 }

@@ -226,7 +226,7 @@ markup:
   auth-card parts `AuthHeading` and `AuthForm`, and the text roles `Eyebrow`,
   `Lede`, and `MutedText`;
 - dialog parts, used inside `src/components/Dialog.tsx`: `DialogBody` and
-  `DialogActions`;
+  `SheetActions`;
 - feedback: `FeedbackProvider` (`ToastRegion.tsx`), `Toast`, and the
   `useFeedback()` hook;
 - `class-names.ts`: shared class recipes (`cx`, button cores and tones, notice
@@ -400,6 +400,73 @@ These definitions are implemented by the UI kit in `src/components/ui/` and by
 `src/components/Dialog.tsx`, `OverflowMenu.tsx`, and `AppearanceSettings.tsx`.
 Pages may compose them but must not create a second visual language.
 
+### Glass surface tokens (Liquid Glass)
+
+Shared surfaces are defined once in `src/styles/visual-styles/liquid-glass.css` (tokens) and `src/styles/glass.css` (classes). Components use the classes; they do not hard-code blur or tint.
+
+| Class               | Used for                                                | Tokens                                                                                                                                              |
+| ------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.glass-panel`      | cards, modal panels and sheets, bottom nav, tool panels | `--mb-glass-blur` 28px, `--mb-glass-saturate` 170%, `--mb-glass-tint` (~58% white), `--mb-glass-border`, `--mb-glass-specular`, `--mb-glass-shadow` |
+| `.glass-popover`    | menus, dropdowns, selects, the settings popover         | `--mb-popover-tint` (~90%), `--mb-popover-blur`, `--mb-popover-border`, `--mb-popover-shadow`                                                       |
+| `.glass-scrim`      | the dimming layer under sheets                          | `--mb-scrim-tint` (12% light, 34% dark), `--mb-scrim-blur`                                                                                          |
+| `glassControlClass` | secondary buttons, chips                                | `--mb-glass-control-tint`, `--mb-glass-control-shadow`                                                                                              |
+
+Fallbacks: without `backdrop-filter`, and under `prefers-reduced-transparency` or `forced-colors`, panels and popovers use the `*-solid` tints and the scrim uses `--mb-color-overlay`. The faint board/house/dice pattern (`--mb-background-pattern-opacity`, 5% light / 7% dark) sits behind the content; the ambient drift stops under `prefers-reduced-motion`.
+
+#### Liquid Glass primitives and rules
+
+Added tokens (light and dark, `visual-styles/liquid-glass.css`): `--mb-glass-rim` (inset 1px top
+highlight and 1px bottom highlight, used by every glass shadow), `--mb-glass-card-*` (tint 58% light,
+border, shadow, optional 12px blur), `--mb-glass-tint-layer` (thin tint under text-heavy content),
+`--mb-glass-button-primary-*` (tinted ~82-90% accent with an inner top highlight, not a flat
+gradient; secondary buttons keep `--mb-glass-control-*`), `--mb-color-qr-modules` (black).
+
+| Class / component                                                     | Use                                                                                          |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `.glass-card`, `GlassSurface card`                                    | Cards and rows **inside** a sheet or panel. Tint and rim only, never blur.                   |
+| `.glass-card-blur` (`blur` prop)                                      | A card that is not inside another glass layer. Opt in; never nest.                           |
+| `.glass-tint-layer` (`tinted` prop)                                   | Text- or number-heavy areas so page content never shows through as smudges.                  |
+| `GlassButton`                                                         | `primary` (tinted accent), `secondary` (glass), `ghost`, `danger`; always pill radius.       |
+| `GroupHeader`, `SelectableRow`, `ToggleRow`, `CountBadge`, `StatTile` | Shared list and settings pieces; selection always shows a check or radio, never colour only. |
+
+Radius vocabulary: `rounded-pill` (buttons, chips, badges), `rounded-surface` (cards, sheets, 26px
+in Liquid Glass) and `rounded-compact` (16px: keys, inputs, small tiles). The older `sm/md/lg/xl/
+control/card` tokens alias onto them in Liquid Glass and keep Classic Bank's own values.
+
+WebKit and performance rules: at most 3-4 stacked `backdrop-filter` layers on a screen; never put a
+`backdrop-filter` element inside another (it renders wrong in WebKit), so cards inside sheets use
+tint plus rim; always keep the `-webkit-backdrop-filter` pair; no SVG displacement refraction. Under
+`prefers-reduced-transparency` or `forced-colors` every glass class falls back to its `*-solid` tint
+and drops the blur; the ambient drift stops under `prefers-reduced-motion`.
+
+Contrast: `scripts/glass-contrast.test.mjs` reads the tokens and asserts 4.5:1 for primary and
+secondary text over the card, panel and popover tints and for the white label on the primary
+button, against the most saturated mesh colours in both colour modes. Change a tint or a text
+token and that test says whether it still passes.
+
+Classic Bank: the same tokens exist in `visual-styles/classic-bank.css` with opaque values (solid
+surfaces from the colour tokens, flat borders, no rim light, `--mb-glass-blur: 0px`, a transparent
+tint layer). `glass.css` applies the same `.glass-*` rules to both styles (Classic's copy sits in
+`@layer components`, so a surface's own utilities still win). Shared components never branch on the
+style with `glass:` / `classic:` or hard-coded rgb values; they use the classes and tokens, and
+only components that predate the glass system keep their per-style variants.
+
+Navigation and sheets: the bottom navigation is a floating capsule (8px insets, or the safe area when larger,
+glass with rim light, content scrolls under it, fading out above it through a gradient to the
+canvas colour as tall as capsule + inset + safe area); its raised action is always the inverse
+brand style with a ring only while its sheet is open, and its label shares the tab labels'
+baseline. Items never show counts: `dot` is a small neutral accent dot (not red, no number, not a
+live region, with a screen-reader label) shown only while a request waits for the viewer's answer
+(an incoming trade, payment or loan request), on Activity. `SheetActions` is one "Back | Primary" row on
+phones (the primary wider; a lone button is full width) with no background strip.
+
+### Form primitives
+
+- `FormSection` is the one form card: a `fieldset` whose `legend` is the header inside the card padding (floated full width, never on the border). Use it for every titled form block (create lobby, profile, account upgrade).
+- `Toggle variant="row"` is the settings row: label left, switch right, optional one-line `description`, 44px tap target, rows ruled off from each other. House-rule descriptions come from `summary` in `src/content/game-rules.ts` (`ruleSummaries`), so the create form and the in-game Rules screen share one source.
+- `AnchoredPopover` renders dropdown content (name suggestions) in `document.body` at fixed coordinates with the `glass-popover` surface, so no card, overflow or glass stacking context can clip or cover it. It closes on outside tap, Escape and resize.
+- Native `<select>` stays for short pickers (currency, payment mode, lobby access): on iOS it opens the system picker, which is the right mobile behaviour.
+
 ## Responsive and overlay rules
 
 - Start from a usable 320 CSS-pixel viewport and scale fluidly. Validate compact
@@ -461,8 +528,14 @@ in both visual styles:
   `100dvh - --mb-app-safe-top - 8px`, and it scrolls internally.
 - The padding follows the insets: `max(18px, --mb-app-safe-left/right)` at the
   sides and `max(--mb-space-5, --mb-app-safe-bottom + 14px)` at the bottom.
-  `DialogActions` stays sticky at the sheet's foot with
-  `max(--mb-space-4, --mb-app-safe-bottom)` below the actions. The
+  `SheetActions` (the one Back / Review / Confirm bar of every sheet) stays sticky at the
+  sheet's foot with `max(--mb-space-4, --mb-app-safe-bottom)` below the buttons. It has no background
+  strip: a gradient of the sheet colour fades the scrolling content under pill buttons that keep the
+  sheet's side padding, and the bar is the last element of the scroll flow, so content never ends
+  beneath it. Browse sheets (Property, Activity, Statistics, Tools; `Dialog` `sheet="browse"`, the default) keep the
+  game's bottom navigation under them; step flows (payment, build, trade, auction, bankruptcy,
+  reverse, finish; `sheet="flow"`) cover the navigation and the Pay button, so the bar owns the
+  bottom edge. The
   `--mb-app-safe-*` properties are defined in `src/index.css`; iOS standalone
   portrait raises the top inset in `layout.css`.
 - A decorative 42×4px grab handle in `--mb-color-border-strong` sits 10px from
@@ -548,6 +621,26 @@ The visual validation widths `320`, `390`, `430`, `768`, `1024`, `1280`, and
   `WalletCard.tsx`) and the domain composites in `src/components/game/`. Banking
   dialogs and auxiliary game tools use the same UI kit and semantic tokens.
 
+#### App shell navigation
+
+`src/components/AppBottomNav.tsx` is rendered once by `App.tsx`, beside the route switch, so
+it stays mounted on every top-level screen (Games, + , Profile, join). It is hidden inside a
+game, which has its own `GameBottomNav`; both are built on `ui/BottomNav`. The Games tab always
+opens the list, and tapping the active Profile tab returns to Games. A screen with the nav sets
+`data-bottom-nav` on `.app-shell`: `.page` gets bottom padding and sticky bars use
+`--mb-shell-nav-offset` to sit above it. Screens keep their own scroll position (a map in
+`App.tsx`). Screens must not add their own back links for what the nav replaces.
+
+#### Create-lobby stepper
+
+`/games/new` is three steps (Basics, House rules, Players with a review card) inside the normal
+shell. `ui/StepperBar` replaces the main navigation there (same fixed glass bar, height and
+safe-area inset): step indicator, Back, and Next / "Create lobby". Next validates the current
+step with inline errors; Enter advances too. The header X and the logo ask for confirmation
+(`App.tsx` guard, also for the browser Back button) only when the draft differs from a fresh form.
+The draft lives in `sessionStorage` (`create-game-draft.ts`, never the access password) and is
+cleared on create, discard and sign-out.
+
 #### Compact game composition (below `md`)
 
 Below `48rem` the active and finished game is a single phone screen driven by a
@@ -556,7 +649,12 @@ bar is hidden and the layout above applies unchanged, so every action stays
 reachable at every size.
 
 - **Bottom navigation.** Four items in a fixed order: Activity, Statistics, Tools,
-  Pay (raised action at the thumb side). There is no Wallets item: the wallets
+  Pay (raised action at the thumb side). A game with a board (`settings.board`)
+  adds a fifth item, Property, between Statistics and Tools with a badge of the
+  viewer's card count; it opens `PropertyScreen` (Mine / All; All has one "Filters (N)" popover for owner and colour group, removable chips only when a filter is on, and a "Free (N)" then "Owned (N)" section, each by colour group from the cheapest tile with sticky group headers), which
+  the active wallet's "Property: N cards" button also opens. Without a board
+  the bar stays at four items. Keep the label short ("Майно") so five items fit
+  at 393px without clipping. There is no Wallets item: the wallets
   are the page behind the bar and every sheet closes with its own X or a swipe
   down. The bar sits above the home indicator (`--mb-app-safe-bottom`), each
   target is at least 44px, and the raised Pay button overlaps the bar by at most

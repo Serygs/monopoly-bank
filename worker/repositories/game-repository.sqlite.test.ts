@@ -3,8 +3,11 @@ import { readdir, readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DELETED_GAME_RETENTION_DAYS } from '../../shared/contracts/api.js';
+import { buildGameSettings } from '../../shared/domain/game-rules.js';
+import { defaultGameRules } from '../../shared/types/monopoly.js';
 import { D1GameAccessRepository } from './game-access-repository.js';
 import { D1GameRepository } from './game-repository.js';
+import { D1PropertyRepository } from './property-repository.js';
 
 /** The slice of D1 the repositories use, backed by a real SQLite database. */
 function d1(database: DatabaseSync): D1Database {
@@ -24,7 +27,19 @@ function d1(database: DatabaseSync): D1Database {
     };
     return statement;
   };
-  return { prepare } as unknown as D1Database;
+  const batch = async (statements: { run: () => Promise<unknown> }[]) => {
+    database.exec('BEGIN');
+    try {
+      const results: unknown[] = [];
+      for (const statement of statements) results.push(await statement.run());
+      database.exec('COMMIT');
+      return results;
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+  };
+  return { prepare, batch } as unknown as D1Database;
 }
 
 async function migrated(): Promise<DatabaseSync> {
@@ -156,5 +171,85 @@ describe('D1GameRepository soft delete against SQLite', () => {
       id: string;
     }[];
     expect(players.map((row) => row.id)).toEqual(['lobby-player', 'other-player']);
+  });
+});
+
+describe('D1GameRepository house rules', () => {
+  let database: DatabaseSync;
+  let games: D1GameRepository;
+  beforeEach(async () => {
+    database = await migrated();
+    games = new D1GameRepository(d1(database));
+    database
+      .prepare(
+        `INSERT INTO users (id, nickname, avatar, password_hash, password_salt) VALUES ('owner', 'owner', 'x', 'h', 's')`,
+      )
+      .run();
+  });
+
+  const create = (
+    id: string,
+    extra: Partial<Parameters<D1GameRepository['createWithPlayers']>[0]>,
+  ) =>
+    games.createWithPlayers(
+      {
+        id,
+        name: id,
+        startingBalance: 15_000_000,
+        passGoReward: 2_000_000,
+        currency: 'USD',
+        ownerUserId: 'owner',
+        joinCode: id.toUpperCase(),
+        gameAccessPasswordHash: null,
+        gameAccessPasswordSalt: null,
+        ...extra,
+      },
+      [{ id: `${id}-p`, gameId: id, name: 'Ada', color: '#123456', balance: 15_000_000 }],
+    );
+
+  it('stores the chosen rules and the settings snapshot and reads them back', async () => {
+    const settings = buildGameSettings(15_000_000);
+    await create('ruled', {
+      rules: { ...defaultGameRules, playerLoans: true, auctions: true },
+      settings,
+    });
+
+    const game = await games.getById('ruled');
+    expect(game?.rules).toEqual({ ...defaultGameRules, playerLoans: true, auctions: true });
+    expect(game?.settings).toEqual(settings);
+    const [summary] = await games.listSummariesForUser('owner');
+    expect(summary?.game.rules.playerLoans).toBe(true);
+  });
+
+  it('turns every rule off and keeps no snapshot when none is given', async () => {
+    await create('plain', {});
+
+    const game = await games.getById('plain');
+    expect(game?.rules).toEqual(defaultGameRules);
+    expect(game?.settings).toBeNull();
+  });
+
+  it('seeds one untouched property row per board tile and lists them', async () => {
+    await create('boarded', { settings: buildGameSettings(15_000_000, 'monopoly-ru-2012') });
+    await create('flat', { settings: buildGameSettings(15_000_000) });
+
+    const properties = await new D1PropertyRepository(d1(database)).listByGame('boarded');
+    expect(properties).toHaveLength(28);
+    expect(new Set(properties.map((property) => property.tileId)).size).toBe(28);
+    for (const property of properties) {
+      expect(property).toMatchObject({
+        gameId: 'boarded',
+        ownerPlayerId: null,
+        mortgaged: false,
+        houses: 0,
+      });
+    }
+    await expect(new D1PropertyRepository(d1(database)).listByGame('flat')).resolves.toEqual([]);
+  });
+
+  it('keeps the rules through status transitions', async () => {
+    await create('started', { rules: { ...defaultGameRules, bankLoans: true } });
+    const started = await games.transitionStatus('started', 'LOBBY', 'ACTIVE');
+    expect(started?.rules.bankLoans).toBe(true);
   });
 });

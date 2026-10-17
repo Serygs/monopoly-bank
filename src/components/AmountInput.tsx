@@ -2,6 +2,7 @@ import { useLanguage } from '../i18n/language-context';
 import { decimalSeparator } from '../utils/money';
 import {
   formatDigitsDisplay,
+  isUnrepresentableAmount,
   sanitizeMoneyInput,
   type AmountInputState,
 } from '../utils/money-input';
@@ -56,7 +57,7 @@ export function AmountInput({
           placeholder={keypad ? '0' : undefined}
           value={formatDigitsDisplay(state.digits, decimalSeparator(locale))}
           onChange={(event) => onDigitsChange(sanitizeMoneyInput(event.target.value, state.unit))}
-          aria-invalid={invalid}
+          aria-invalid={invalid || isUnrepresentableAmount(state)}
         />
         {note !== undefined && (
           <span className={suffixClass} aria-hidden="true">

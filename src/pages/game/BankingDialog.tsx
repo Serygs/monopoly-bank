@@ -1,15 +1,64 @@
+import { BANK_TO_PLAYER_MAX_AMOUNT } from '../../../shared/domain/banking';
 import { useRef, useState, type ReactNode } from 'react';
-import type { Currency, Player } from '../../../shared/types/monopoly';
-import { monopolyBankApi } from '../../api/monopoly-bank-api';
+import {
+  defaultGameRules,
+  type Auction,
+  type BankLoanCooldown,
+  type Currency,
+  type GameProperty,
+  type GameRules,
+  type GameSettings,
+  type InterestRatePercent,
+  type Loan,
+  type Mortgage,
+  type Player,
+} from '../../../shared/types/monopoly';
+import type { PropertyGroupId } from '../../../shared/board';
+import { buildGameSettings } from '../../../shared/domain/game-rules';
+import { normalizePropertyName, redemptionCost } from '../../../shared/domain/mortgage';
+import { MAX_BUILDINGS } from '../../../shared/domain/property';
+import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { AmountSelector } from '../../components/AmountSelector';
 import { Dialog } from '../../components/Dialog';
-import { WalletActionGrid } from '../../components/game/WalletActionGrid';
-import { Button, DialogActions, Field, FieldError, MoneyValue, Notice } from '../../components/ui';
-import { cx } from '../../components/ui/class-names';
+import { useBuildingLabel } from '../../components/game/property-labels';
+import { WalletMenu } from '../../components/game/WalletMenu';
+import {
+  Button,
+  SheetActions,
+  Field,
+  FieldError,
+  FieldHint,
+  MoneyValue,
+  Notice,
+  Toggle,
+} from '../../components/ui';
+import { buttonCoreClass, buttonShapeClass, cx } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
+import {
+  activeBankLoan,
+  activeLoansAsBorrower,
+  loanInterest,
+  loanOutstanding,
+} from '../../utils/loans';
+import { auctionReserveFor } from '../../utils/auction';
 import { formatMoney } from '../../utils/money';
 import { presetAmounts } from '../../utils/quick-amounts';
+import {
+  buildableTiles,
+  buildingGroups,
+  freeTiles,
+  isDiceSum,
+  mortgageableTiles,
+  rentableTiles,
+  rentDue,
+  sellableTiles,
+  previewBuildings,
+  tileRent,
+  tileViews,
+  type BuildMode,
+  type TileView,
+} from '../../utils/property-view';
 import { Confirmation } from './Confirmation';
 import {
   actionDescription,
@@ -19,11 +68,17 @@ import {
   insufficientMessage,
   isPositiveInteger,
   preflightFundsError,
+  preflightShortfall,
   previewBalances,
   primaryWalletActions,
+  walletActionTone,
   type ActionType,
 } from './game-page-helpers';
+import { InterestRatePicker, LoanPicker } from './LoanFields';
+import { MortgageDetails, RedemptionPicker } from './MortgageFields';
 import { PlayerPicker } from './PlayerPicker';
+import { BuildingStepper } from './BuildingStepper';
+import { TilePicker, type TilePickerItem } from './TilePicker';
 
 export interface BankingDialogProps {
   gameId: string;
@@ -33,14 +88,50 @@ export interface BankingDialogProps {
   currency: Currency;
   /** Scales the quick amounts; without it they fall back to fixed round amounts. */
   startingBalance?: number;
+  /** The game's house rules; omitted rules are off. */
+  rules?: GameRules;
+  /** Amounts derived at creation (taxes, jail fine); older games have none, so no fixed payments. */
+  settings?: GameSettings | null;
+  /** Every property currently mortgaged in the game. */
+  mortgages?: Mortgage[];
+  /** The loans still being repaid. */
+  loans?: Loan[];
+  /** Players who repaid a bank loan recently (bank-loans rule). */
+  bankLoanCooldowns?: BankLoanCooldown[];
+  /** The Free Parking pot (jackpot rule); what a collection pays out in full. */
+  jackpot?: number;
+  /** Open straight on repaying the player's bank loan (the overdue "Settle loan" prompt). */
+  settleOnOpen?: boolean;
+  /** Board games: the property registry; the tile pickers list only valid choices from it. */
+  properties?: GameProperty[];
+  /** Open straight on this action (the tile sheet's quick entry). */
+  initialAction?: ActionType;
+  /** The tile the quick entry started from; preselected in the tile picker. */
+  initialTileId?: string;
+  /** The running or just-closed auction (auctions rule): its leading bid is reserved cash. */
+  auction?: Auction | null;
+  /** Opens the start-auction prompt for this wallet, with a suggested property name. */
+  onStartAuction?: (lotName: string) => void;
+  /** Board games: opens the trade dialog for this wallet. */
+  onStartTrade?: () => void;
   favoriteAmounts: number[];
   recentAmounts: number[];
   onToggleFavorite: (amount: number) => void;
   onClose: () => void;
   onBankrupt: () => void;
   onViewHistory: (player: Player) => void;
-  onCompleted: (players: Player[], action: ActionType, amount: number | null) => void;
-  onPaymentRequested: () => void;
+  onCompleted: (
+    players: Player[],
+    action: ActionType,
+    amount: number | null,
+    mortgages?: Mortgage[],
+    loans?: Loan[],
+    bankLoanCooldowns?: BankLoanCooldown[],
+    jackpot?: number,
+    properties?: GameProperty[],
+  ) => void;
+  /** A payment or loan request was created; a loan request names the lender being asked. */
+  onPaymentRequested: (action: ActionType, lenderName?: string) => void;
 }
 
 /** Inverse balance plate: the label in the highlight colour over the balance figure. */
@@ -50,23 +141,30 @@ const balanceClass = cx(
   '[&_strong]:font-money [&_strong]:text-money-xl [&_strong]:leading-[0.98] [&_strong]:font-bold [&_strong]:tracking-[-0.05em] [&_strong]:text-on-inverse [&_strong]:tabular-nums [&_strong]:wrap-anywhere',
 );
 
-const advancedClass = cx(
-  'mt-[16px] border-t border-border [&_.action-grid]:mt-[4px]',
-  '[&>summary]:cursor-pointer [&>summary]:px-0 [&>summary]:pt-[16px] [&>summary]:pb-[10px] [&>summary]:font-bold [&>summary]:text-accent open:[&>summary]:text-primary',
-);
-
 /** Centred, capped-width danger action on its own row (in the single column below `md`). */
-const bankruptcyClass = 'col-span-full w-[min(100%,270px)] justify-self-center max-md:col-auto';
+/* What the payer is missing, with the way out when no amount change will help. */
+const shortfallClass =
+  'mt-(--mb-space-2) flex flex-wrap items-center justify-between gap-(--mb-space-3) [&>p]:m-0 [&>p]:font-semibold [&>p]:text-danger';
+/*
+ * A solid danger button, not an outlined box. White on the darker danger fill is 7:1 in Classic
+ * light and 4.8:1 in Liquid Glass light; the two dark fills are light, so they take dark text.
+ */
+const bankruptcyClass = cx(
+  buttonCoreClass,
+  buttonShapeClass,
+  'mt-(--mb-space-2) w-full border-transparent bg-danger-hover text-on-danger shadow-sm',
+  'glass:dark:text-[#1b080a]',
+);
 
 /*
  * The form and confirmation steps: a flex column whose body alone scrolls, so the footer sits
- * outside the scroll area and never overlaps the content. The shared compact `DialogActions`
- * (sticky, stacked) becomes a plain one-row footer: Back, then the wider primary action.
+ * outside the scroll area and never overlaps the content. The shared compact `SheetActions`
+ * (sticky, stacked, gradient fade) becomes a one-row footer: Back, then the wider primary action.
  */
 const stepPanelClass = 'flex flex-col overflow-hidden!';
 const stepBodyClass = 'min-h-0 flex-1 overflow-y-auto overscroll-contain pt-(--mb-space-3)';
 const stepFooterClass = cx(
-  'shrink-0 max-md:static! max-md:m-0! max-md:mt-(--mb-space-3)! max-md:flex-row! max-md:p-0!',
+  'shrink-0 max-md:mt-0! max-md:flex-row!',
   'max-md:[&_.button]:w-auto! max-md:[&>:first-child]:flex-1 max-md:[&>:last-child]:flex-[2]',
 );
 
@@ -81,6 +179,19 @@ export function BankingDialog({
   passGoReward,
   currency,
   startingBalance,
+  rules = defaultGameRules,
+  settings = null,
+  mortgages = [],
+  properties = [],
+  initialAction,
+  initialTileId,
+  loans = [],
+  bankLoanCooldowns = [],
+  jackpot = 0,
+  settleOnOpen = false,
+  auction = null,
+  onStartAuction,
+  onStartTrade,
   favoriteAmounts,
   recentAmounts,
   onToggleFavorite,
@@ -91,52 +202,262 @@ export function BankingDialog({
   onPaymentRequested,
 }: BankingDialogProps) {
   const { t } = useLanguage();
-  const [action, setAction] = useState<ActionType | null>(null);
+  const initialBankLoan = rules.bankLoans && settleOnOpen ? activeBankLoan(loans, player.id) : null;
+  const board = settings?.board ?? null;
+  // Quick entry from a redeemable tile: the player's active mortgage on it fixes the cost.
+  const initialRedemption =
+    board !== null && initialAction === 'MORTGAGE_REDEMPTION' && initialTileId !== undefined
+      ? mortgages.find((item) => item.playerId === player.id && item.tileId === initialTileId)
+      : undefined;
+  const [action, setAction] = useState<ActionType | null>(
+    initialBankLoan === null ? (board === null ? null : (initialAction ?? null)) : 'LOAN_REPAYMENT',
+  );
+  const [tileId, setTileId] = useState(
+    initialAction === 'MORTGAGE_REDEMPTION' ? '' : (initialTileId ?? ''),
+  );
+  const [diceSum, setDiceSum] = useState('');
+  const [exactGoChosen, setExactGoChosen] = useState(false);
   const [targetId, setTargetId] = useState('');
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(
+    initialBankLoan !== null
+      ? String(loanOutstanding(initialBankLoan))
+      : initialRedemption === undefined
+        ? ''
+        : String(redemptionCost(initialRedemption.mortgageValue)),
+  );
   const [comment, setComment] = useState('');
   const [commentOpen, setCommentOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [exactLanding, setExactLanding] = useState(false);
+  // An income-tax or luxury-tax chip was used: with the jackpot rule the money goes to the pot.
+  const [payToPot, setPayToPot] = useState(false);
+  const [propertyName, setPropertyName] = useState('');
+  const [noBuildings, setNoBuildings] = useState(false);
+  // A purchase at an agreed price instead of the list price needs an extra confirmation.
+  const [overrideOn, setOverrideOn] = useState(false);
+  const [overridePrice, setOverridePrice] = useState('');
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  // Building and selling: the colour group being edited and the levels the player set on it.
+  // `null` levels = untouched, so a quick entry from a tile starts one step on that street.
+  const [buildGroup, setBuildGroup] = useState<PropertyGroupId | ''>('');
+  const [buildLevels, setBuildLevels] = useState<Record<string, number> | null>(null);
+  const [mortgageId, setMortgageId] = useState(initialRedemption?.id ?? '');
+  const [loanId, setLoanId] = useState(initialBankLoan?.id ?? '');
+  const [ratePercent, setRatePercent] = useState<InterestRatePercent | null>(null);
+  // Rounds left in the cooldown while its warning is shown; null when there is nothing to warn about.
+  const [cooldownRounds, setCooldownRounds] = useState<number | null>(null);
+  const [cooldownAcknowledged, setCooldownAcknowledged] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<unknown | null>(null);
   const submittingRef = useRef(false);
   const commandIdRef = useRef<string | null>(null);
   const balancePresets = startingBalance === undefined ? [] : presetAmounts(startingBalance);
   const presets = balancePresets.length > 0 ? balancePresets : undefined;
-  const targetRequired = action === 'PLAYER_TO_PLAYER';
-  const recipients = players.filter((candidate) => candidate.id !== player.id);
+  const jackpotRule = rules.freeParkingJackpot;
+  const views = board === null ? [] : tileViews(board, properties);
+  const tileAction =
+    board !== null &&
+    (action === 'PROPERTY_PURCHASE' ||
+      action === 'MORTGAGE' ||
+      action === 'PAY_RENT' ||
+      action === 'PROPERTY_BUILD' ||
+      action === 'PROPERTY_SELL_BUILDING');
+  const selectedTile = views.find((view) => view.tile.id === tileId) ?? null;
+  const buildMode: BuildMode | null =
+    action === 'PROPERTY_BUILD' ? 'BUILD' : action === 'PROPERTY_SELL_BUILDING' ? 'SELL' : null;
+  const buildingGroupIds =
+    board !== null && buildMode !== null ? buildingGroups(board, views, player.id, buildMode) : [];
+  // The group is the one picked, the one of the tile the sheet opened from, or the only one there is.
+  const quickGroup = selectedTile?.tile.group;
+  const activeBuildGroup: PropertyGroupId | '' =
+    buildGroup !== '' && buildingGroupIds.includes(buildGroup)
+      ? buildGroup
+      : quickGroup !== undefined && buildingGroupIds.includes(quickGroup)
+        ? quickGroup
+        : buildingGroupIds.length === 1
+          ? (buildingGroupIds[0] ?? '')
+          : '';
+  const quickLevels: Record<string, number> =
+    selectedTile === null || buildMode === null
+      ? {}
+      : {
+          [selectedTile.tile.id]: Math.min(
+            MAX_BUILDINGS,
+            Math.max(0, selectedTile.houses + (buildMode === 'BUILD' ? 1 : -1)),
+          ),
+        };
+  const effectiveBuildLevels =
+    activeBuildGroup === ''
+      ? {}
+      : (buildLevels ?? (quickGroup === activeBuildGroup ? quickLevels : {}));
+  const buildPreview =
+    board !== null && buildMode !== null && activeBuildGroup !== ''
+      ? previewBuildings(board, views, player.id, effectiveBuildLevels, buildMode)
+      : null;
+  const diceSumValue = diceSum === '' ? undefined : Number(diceSum);
+  const needsDiceSum = action === 'PAY_RENT' && selectedTile?.tile.type === 'utility';
+  const rentAmount =
+    action === 'PAY_RENT' && board !== null && selectedTile !== null
+      ? rentDue(board, views, selectedTile, diceSumValue)
+      : null;
+  // The agreed price of a purchase, when it really differs from the list price on the card.
+  const purchaseOverride =
+    action === 'PROPERTY_PURCHASE' &&
+    overrideOn &&
+    selectedTile !== null &&
+    isPositiveInteger(overridePrice) &&
+    Number(overridePrice) !== selectedTile.tile.price
+      ? Number(overridePrice)
+      : undefined;
+  // What the chosen tile costs or pays, from the game's board snapshot.
+  const tileAmount =
+    buildMode !== null
+      ? buildPreview?.ok === true
+        ? buildPreview.amount
+        : 0
+      : selectedTile === null
+        ? 0
+        : action === 'PROPERTY_PURCHASE'
+          ? (purchaseOverride ?? selectedTile.tile.price)
+          : action === 'MORTGAGE'
+            ? selectedTile.tile.mortgage
+            : (rentAmount ?? 0);
+  const targetRequired = action === 'PLAYER_TO_PLAYER' || action === 'LOAN_ISSUE';
+  // A lender must still be playing; payments to anyone else are left to the Worker's checks.
+  const recipients = players.filter(
+    (candidate) =>
+      candidate.id !== player.id && (action !== 'LOAN_ISSUE' || candidate.status !== 'BANKRUPT'),
+  );
   // With one possible recipient there is nothing to choose, so it is selected for the player.
   const soleRecipient = targetRequired && recipients.length === 1 ? recipients[0] : undefined;
-  const effectiveTargetId = targetId !== '' ? targetId : (soleRecipient?.id ?? '');
+  // A collection always pays the whole pot, which the Worker reads again when it records it.
+  const amountValue =
+    action === 'JACKPOT_PAYOUT' ? jackpot : tileAction ? tileAmount : Number(amount);
+  const requestAction: ActionType | null =
+    action === 'PLAYER_TO_BANK' && payToPot && rules.freeParkingJackpot ? 'TO_JACKPOT' : action;
+  const playerLoans = rules.playerLoans ? activeLoansAsBorrower(loans, player.id) : [];
+  const bankLoan = rules.bankLoans ? activeBankLoan(loans, player.id) : null;
+  const repayableLoans = bankLoan === null ? playerLoans : [...playerLoans, bankLoan];
+  const selectedLoan = repayableLoans.find((item) => item.id === loanId) ?? null;
+  const isBankRepayment = action === 'LOAN_REPAYMENT' && selectedLoan?.lenderKind === 'BANK';
+  const effectiveRate: InterestRatePercent =
+    ratePercent ?? selectedLoan?.rounds?.suggestedRatePercent ?? 0;
+  const bankLoanMax =
+    (settings ?? (startingBalance === undefined ? null : buildGameSettings(startingBalance)))
+      ?.bankLoanMax ?? null;
+  const cooldown = bankLoanCooldowns.find((item) => item.playerId === player.id) ?? null;
+  const effectiveTargetId =
+    action === 'LOAN_REPAYMENT'
+      ? (selectedLoan?.lenderPlayerId ?? '')
+      : action === 'PAY_RENT'
+        ? (selectedTile?.ownerPlayerId ?? '')
+        : targetId !== ''
+          ? targetId
+          : (soleRecipient?.id ?? '');
   const target = players.find((candidate) => candidate.id === effectiveTargetId) ?? null;
-  const amountValue = Number(amount);
+  const loanOwed = selectedLoan === null ? 0 : loanOutstanding(selectedLoan);
+  const interest = isBankRepayment ? loanInterest(loanOwed, effectiveRate) : 0;
+  const overRepayment = action === 'LOAN_REPAYMENT' && amountValue > loanOwed && loanOwed > 0;
+  // The name is sent and shown as the server will store it: trimmed, spaces collapsed.
+  const tidyName = normalizePropertyName(propertyName) ?? propertyName.trim();
+  const playerMortgages = mortgages.filter((item) => item.playerId === player.id);
+  const selectedMortgage = playerMortgages.find((item) => item.id === mortgageId) ?? null;
+  const redemptionAmount =
+    selectedMortgage === null ? 0 : redemptionCost(selectedMortgage.mortgageValue);
+  // Paying rent to a player: tell the payer which properties of that player are mortgaged.
+  const targetMortgages = mortgages.filter((item) => item.playerId === effectiveTargetId);
   const request =
-    action === null
+    requestAction === null
       ? null
-      : buildRequest(action, player.id, effectiveTargetId, amountValue, comment);
-  const preview = request === null ? [] : previewBalances(request, players, passGoReward);
-  const amountRequired = action !== 'PASS_GO';
-  const fundsError = preflightFundsError(action, player, players, amountValue, currency, t);
+      : buildRequest(requestAction, player.id, effectiveTargetId, amountValue, comment, {
+          exactLanding,
+          ...(tileAction && buildMode === null ? { tileId } : {}),
+          ...(buildPreview?.ok === true ? { targets: buildPreview.targets } : {}),
+          ...(purchaseOverride === undefined ? {} : { priceOverride: purchaseOverride }),
+          ...(needsDiceSum && diceSumValue !== undefined ? { diceSum: diceSumValue } : {}),
+          propertyName: tidyName,
+          mortgageId,
+          loanId,
+          ...(isBankRepayment ? { interestRatePercent: effectiveRate } : {}),
+          acknowledgeCooldown: cooldownAcknowledged,
+        });
+  const reward = exactLanding ? passGoReward * 2 : passGoReward;
+  const preview =
+    request === null
+      ? []
+      : previewBalances(request, players, reward, redemptionAmount, loans, interest, jackpot, {
+          amount: tileAmount,
+          ownerPlayerId: selectedTile?.ownerPlayerId ?? null,
+        });
+  const amountRequired = action !== 'PASS_GO' && action !== 'JACKPOT_PAYOUT' && !tileAction;
+  const isMortgageAction = action === 'MORTGAGE' || action === 'MORTGAGE_REDEMPTION';
+  const isLoanAction =
+    action === 'LOAN_ISSUE' || action === 'LOAN_REPAYMENT' || action === 'BANK_LOAN';
+  const exceedsBankLoanMax =
+    action === 'BANK_LOAN' && bankLoanMax !== null && amountValue > bankLoanMax;
+  const exceedsBankToPlayerMax =
+    action === 'BANK_TO_PLAYER' && amountValue > BANK_TO_PLAYER_MAX_AMOUNT;
+  // What leaves the wallet: for a bank loan the interest comes on top of the principal.
+  const payAmount = amountValue + interest;
+  // Cash held back for a leading auction bid cannot be spent elsewhere.
+  const reserved = auctionReserveFor(auction, player.id);
+  const available = player.balance - reserved;
+  const spender = reserved === 0 ? player : { ...player, balance: available };
+  const fundsError = preflightFundsError(action, spender, players, payAmount, currency, t);
+  const shortfall = preflightShortfall(action, spender, players, payAmount);
+  const auctionBusy = auction?.state === 'ACTIVE';
+  const canAuction = rules.auctions && onStartAuction !== undefined;
+  const auctionLotSuggestion = comment.trim().slice(0, 60);
   const valid =
     request !== null &&
     (!targetRequired || (target !== null && target.id !== player.id)) &&
     (!amountRequired || isPositiveInteger(amount)) &&
+    (!tileAction || selectedTile !== null || buildMode !== null) &&
+    (buildMode === null || buildPreview?.ok === true) &&
+    (action !== 'PROPERTY_PURCHASE' || !overrideOn || isPositiveInteger(overridePrice)) &&
+    (action !== 'PAY_RENT' || (rentAmount !== null && rentAmount > 0)) &&
+    (action !== 'MORTGAGE' ||
+      tileAction ||
+      (normalizePropertyName(propertyName) !== null && noBuildings)) &&
+    (action !== 'MORTGAGE_REDEMPTION' || selectedMortgage !== null) &&
+    (action !== 'LOAN_REPAYMENT' || (selectedLoan !== null && !overRepayment)) &&
+    (action !== 'BANK_LOAN' || (bankLoan === null && !exceedsBankLoanMax)) &&
+    !exceedsBankToPlayerMax &&
+    (action !== 'JACKPOT_PAYOUT' || (rules.freeParkingJackpot && jackpot > 0)) &&
     fundsError === null;
 
-  const selectAction = (next: ActionType | null) => {
+  const selectAction = (next: ActionType | null, exact = false) => {
     setAction(next);
+    setExactLanding(exact);
+    setPayToPot(false);
+    setPropertyName('');
+    setNoBuildings(false);
+    setOverrideOn(false);
+    setOverridePrice('');
+    setOverrideConfirmed(false);
+    setMortgageId('');
+    setTileId('');
+    setBuildGroup('');
+    setBuildLevels(null);
+    setDiceSum('');
+    setLoanId('');
+    setRatePercent(null);
+    setCooldownRounds(null);
+    setCooldownAcknowledged(false);
     setTargetId('');
     setAmount('');
-    setComment('');
+    // The doubled reward says why in the history; the player can still edit the note.
+    setComment(exact ? t('passGoExactComment') : '');
     setCommentOpen(false);
-    // Pass GO has no inputs, so it opens directly on the confirmation.
-    setConfirming(next === 'PASS_GO');
+    // Pass GO and collecting the pot have no inputs, so they open directly on the confirmation.
+    setConfirming(next === 'PASS_GO' || next === 'JACKPOT_PAYOUT');
     setError(null);
     commandIdRef.current = null;
   };
 
   const changeAmount = (nextAmount: string) => {
     setAmount(nextAmount);
+    setPayToPot(false);
     setError(null);
     commandIdRef.current = null;
   };
@@ -151,6 +472,95 @@ export function BankingDialog({
     setComment(nextComment);
     setError(null);
     commandIdRef.current = null;
+  };
+
+  const changeOverrideOn = (next: boolean) => {
+    setOverrideOn(next);
+    setOverrideConfirmed(false);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeOverridePrice = (next: string) => {
+    setOverridePrice(next);
+    setOverrideConfirmed(false);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const chooseTile = (view: TileView) => {
+    setTileId(view.tile.id);
+    setOverrideConfirmed(false);
+    setDiceSum('');
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeBuildGroup = (group: PropertyGroupId) => {
+    setBuildGroup(group);
+    setBuildLevels({});
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeBuildLevels = (levels: Record<string, number>) => {
+    setBuildLevels(levels);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeDiceSum = (next: string) => {
+    setDiceSum(next.replace(/\D/g, '').slice(0, 2));
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  /** Picking a mortgage fixes the cost, so the amount follows it. */
+  const chooseMortgage = (mortgage: Mortgage) => {
+    setMortgageId(mortgage.id);
+    changeAmount(String(redemptionCost(mortgage.mortgageValue)));
+  };
+
+  /** Picking a loan proposes repaying all of it; the amount can be lowered for a partial repayment. */
+  const chooseLoan = (loan: Loan) => {
+    setLoanId(loan.id);
+    setRatePercent(null);
+    changeAmount(String(loanOutstanding(loan)));
+  };
+
+  const chooseRate = (rate: InterestRatePercent) => {
+    setRatePercent(rate);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  /** Borrowing during the cooldown needs the warning confirmed first. */
+  const review = () => {
+    if (action === 'BANK_LOAN' && cooldown !== null && !cooldownAcknowledged)
+      setCooldownRounds(cooldown.roundsLeft);
+    else setConfirming(true);
+  };
+
+  const borrowAnyway = () => {
+    setCooldownAcknowledged(true);
+    setCooldownRounds(null);
+    setConfirming(true);
+    commandIdRef.current = null;
+  };
+
+  /** The overdue prompt: repay the bank loan right away. */
+  const settleBankLoan = (loan: Loan) => {
+    selectAction('LOAN_REPAYMENT');
+    chooseLoan(loan);
+  };
+
+  /** A tax or fine from the game's settings: fill the amount and its name, then review it. */
+  const reviewFixedPayment = (label: string, fixedAmount: number, toPot: boolean) => {
+    changeAmount(String(fixedAmount));
+    // Set after changeAmount, which clears it: only the tax chips pay the pot.
+    setPayToPot(toPot);
+    setComment(label);
+    if (available >= fixedAmount) setConfirming(true);
   };
 
   const reviewQuickAmount = (nextAmount: number) => {
@@ -173,22 +583,118 @@ export function BankingDialog({
       const commandId = commandIdRef.current ?? crypto.randomUUID();
       commandIdRef.current = commandId;
       const result = await monopolyBankApi.createTransaction(gameId, request, commandId);
-      if ('paymentRequests' in result) onPaymentRequested();
+      if ('paymentRequests' in result) onPaymentRequested(action, target?.name);
       else
         onCompleted(
           result.players,
           action,
-          action === 'PASS_GO' ? null : result.transaction.amount,
+          action === 'PASS_GO' ||
+            action === 'JACKPOT_PAYOUT' ||
+            action === 'PROPERTY_PURCHASE' ||
+            action === 'PROPERTY_BUILD' ||
+            action === 'PROPERTY_SELL_BUILDING' ||
+            action === 'PAY_RENT' ||
+            isMortgageAction
+            ? null
+            : result.transaction.amount,
+          result.mortgages,
+          result.loans,
+          result.bankLoanCooldowns,
+          result.jackpot,
+          result.properties,
         );
     } catch (caught) {
-      setError(caught);
+      if (caught instanceof MonopolyBankApiError && caught.code === 'BANK_LOAN_COOLDOWN') {
+        // The Worker found a cooldown the client did not know about: warn, then retry acknowledged.
+        const left = caught.details?.roundsLeft;
+        setCooldownRounds(typeof left === 'number' ? left : 1);
+        setCooldownAcknowledged(false);
+        setConfirming(false);
+        commandIdRef.current = null;
+      } else setError(caught);
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
-  const title = action === null ? t('walletTitle', { name: player.name }) : actionLabel(action, t);
+  const buildingLabel = useBuildingLabel();
+  const money = (value: number) => formatMoney(value, currency);
+  const ownerName = (view: TileView) =>
+    players.find((candidate) => candidate.id === view.ownerPlayerId)?.name ?? '';
+  const tileMortgages = playerMortgages.filter(
+    (item) => item.tileId != null && views.some((view) => view.tile.id === item.tileId),
+  );
+  const buyItems: TilePickerItem[] = freeTiles(views).map((view) => ({
+    view,
+    caption: t('tilePickerPrice', { amount: money(view.tile.price) }),
+  }));
+  const mortgageItems: TilePickerItem[] = mortgageableTiles(views, player.id).map((view) => ({
+    view,
+    caption: t('tilePickerMortgageFor', { amount: money(view.tile.mortgage) }),
+  }));
+  const canBuildAny = board !== null && buildableTiles(board, views, player.id).length > 0;
+  const canSellAny = board !== null && sellableTiles(board, views, player.id).length > 0;
+  const redeemItems: TilePickerItem[] = tileMortgages.flatMap((item) => {
+    const view = views.find((candidate) => candidate.tile.id === item.tileId);
+    return view === undefined
+      ? []
+      : [
+          {
+            view,
+            caption: t('tilePickerRedeemFor', {
+              amount: money(redemptionCost(item.mortgageValue)),
+            }),
+          },
+        ];
+  });
+  const rentItems: TilePickerItem[] =
+    board === null
+      ? []
+      : rentableTiles(views, player.id).map((view) => {
+          const rent = tileRent(board, views, view);
+          return {
+            view,
+            caption:
+              rent.kind === 'dice'
+                ? t('tilePickerRentDice', { owner: ownerName(view), multiplier: rent.multiplier })
+                : t('tilePickerRent', {
+                    owner: ownerName(view),
+                    amount: money(rent.kind === 'amount' ? rent.amount : 0),
+                  }),
+          };
+        });
+  const noComment =
+    isMortgageAction ||
+    isLoanAction ||
+    action === 'PROPERTY_PURCHASE' ||
+    action === 'PROPERTY_BUILD' ||
+    action === 'PROPERTY_SELL_BUILDING' ||
+    action === 'PAY_RENT';
+  const confirmedPropertyName =
+    buildPreview?.ok === true
+      ? views
+          .filter((view) => buildPreview.targets[view.tile.id] !== undefined)
+          .map((view) =>
+            t('buildingsSummaryLine', {
+              name: view.tile.name,
+              from: buildingLabel(view.houses) ?? t('buildingNone'),
+              to:
+                buildingLabel(buildPreview.targets[view.tile.id] ?? view.houses) ??
+                t('buildingNone'),
+            }),
+          )
+          .join('\n')
+      : selectedTile !== null && tileAction
+        ? selectedTile.tile.name
+        : action === 'MORTGAGE'
+          ? tidyName
+          : selectedMortgage?.propertyName;
+
+  const title =
+    requestAction === null
+      ? t('walletTitle', { name: player.name })
+      : actionLabel(requestAction, t);
   const transactionError =
     error === null
       ? null
@@ -216,6 +722,7 @@ export function BankingDialog({
       title={title}
       closeLabel={t('closeDialog', { title })}
       onClose={onClose}
+      sheet="flow"
       className={action === null ? undefined : stepPanelClass}
     >
       {action === null ? (
@@ -225,26 +732,222 @@ export function BankingDialog({
             className={balanceClass}
             aria-label={t('walletBalanceAria', {
               name: player.name,
-              balance: formatMoney(player.balance, currency),
+              balance: formatMoney(available, currency),
             })}
           >
             <span>{t('availableBalance')}</span>
             <strong>
-              <MoneyValue amount={player.balance} currency={currency} />
+              <MoneyValue amount={available} currency={currency} />
             </strong>
           </section>
-          <WalletActionGrid actions={primaryWalletActions} onSelect={selectAction} />
-          <details className={advancedClass}>
-            <summary>{t('advancedActions')}</summary>
-            <WalletActionGrid actions={advancedWalletActions} onSelect={selectAction}>
-              <Button variant="danger" className={bankruptcyClass} onClick={onBankrupt}>
-                {t('declareBankrupt')}
+          {reserved > 0 && (
+            <FieldHint>
+              {t('auctionReservedYours', { amount: formatMoney(reserved, currency) })}
+            </FieldHint>
+          )}
+          {bankLoan?.rounds?.overdue === true && (
+            <Notice tone="error" className="mb-(--mb-space-3)">
+              <span className="block">
+                {t('settleLoanPrompt', {
+                  amount: formatMoney(loanOutstanding(bankLoan), currency),
+                  round: bankLoan.rounds.round,
+                })}
+              </span>
+              <Button
+                variant="danger"
+                className="mt-(--mb-space-2)"
+                onClick={() => settleBankLoan(bankLoan)}
+              >
+                {t('settleLoan')}
               </Button>
-            </WalletActionGrid>
-            <Button variant="quiet" className="mt-[14px]" onClick={() => onViewHistory(player)}>
+            </Notice>
+          )}
+          <WalletMenu
+            primary={(board === null
+              ? primaryWalletActions
+              : [
+                  ...primaryWalletActions.slice(0, 1),
+                  'PAY_RENT' as const,
+                  ...primaryWalletActions.slice(1),
+                ]
+            ).map((item) => ({
+              key: item,
+              label: actionLabel(item, t),
+              outgoing: walletActionTone(item) === 'expense',
+              onSelect: () => selectAction(item, item === 'PASS_GO' && exactGoChosen),
+            }))}
+            exactGo={
+              rules.doubleRewardOnExactGo
+                ? { label: t('passGoExact'), checked: exactGoChosen, onChange: setExactGoChosen }
+                : undefined
+            }
+            groups={[
+              {
+                key: 'property',
+                label: t('walletGroupProperty'),
+                icon: 'property',
+                items: [
+                  ...(board !== null && buyItems.length > 0
+                    ? [
+                        {
+                          key: 'PROPERTY_PURCHASE',
+                          label: actionLabel('PROPERTY_PURCHASE', t),
+                          outgoing: true,
+                          onSelect: () => selectAction('PROPERTY_PURCHASE'),
+                        },
+                      ]
+                    : []),
+                  ...(canBuildAny
+                    ? [
+                        {
+                          key: 'PROPERTY_BUILD',
+                          label: actionLabel('PROPERTY_BUILD', t),
+                          outgoing: true,
+                          onSelect: () => selectAction('PROPERTY_BUILD'),
+                        },
+                      ]
+                    : []),
+                  ...(canSellAny
+                    ? [
+                        {
+                          key: 'PROPERTY_SELL_BUILDING',
+                          label: actionLabel('PROPERTY_SELL_BUILDING', t),
+                          onSelect: () => selectAction('PROPERTY_SELL_BUILDING'),
+                        },
+                      ]
+                    : []),
+                  ...(board === null || mortgageItems.length > 0
+                    ? [
+                        {
+                          key: 'MORTGAGE',
+                          label: actionLabel('MORTGAGE', t),
+                          onSelect: () => selectAction('MORTGAGE'),
+                        },
+                      ]
+                    : []),
+                  ...((board === null ? playerMortgages.length : redeemItems.length) > 0
+                    ? [
+                        {
+                          key: 'MORTGAGE_REDEMPTION',
+                          label: actionLabel('MORTGAGE_REDEMPTION', t),
+                          outgoing: true,
+                          onSelect: () => selectAction('MORTGAGE_REDEMPTION'),
+                        },
+                      ]
+                    : []),
+                  ...(board !== null && onStartTrade !== undefined
+                    ? [
+                        {
+                          key: 'PROPERTY_TRANSFER',
+                          label: actionLabel('PROPERTY_TRANSFER', t),
+                          onSelect: onStartTrade,
+                        },
+                      ]
+                    : []),
+                  ...(canAuction
+                    ? [
+                        {
+                          key: 'AUCTION',
+                          label: t('auctionPutUp'),
+                          disabled: auctionBusy,
+                          onSelect: () => onStartAuction(''),
+                        },
+                      ]
+                    : []),
+                ],
+              },
+              {
+                key: 'loans',
+                label: t('walletGroupLoans'),
+                icon: 'loans',
+                items: [
+                  ...(rules.playerLoans
+                    ? [
+                        {
+                          key: 'LOAN_ISSUE',
+                          label: actionLabel('LOAN_ISSUE', t),
+                          onSelect: () => selectAction('LOAN_ISSUE'),
+                        },
+                      ]
+                    : []),
+                  ...(rules.bankLoans
+                    ? [
+                        {
+                          key: 'BANK_LOAN',
+                          label: actionLabel('BANK_LOAN', t),
+                          onSelect: () => selectAction('BANK_LOAN'),
+                        },
+                      ]
+                    : []),
+                  ...(repayableLoans.length > 0
+                    ? [
+                        {
+                          key: 'LOAN_REPAYMENT',
+                          label: actionLabel('LOAN_REPAYMENT', t),
+                          outgoing: true,
+                          onSelect: () => selectAction('LOAN_REPAYMENT'),
+                        },
+                      ]
+                    : []),
+                ],
+              },
+              {
+                key: 'group',
+                label: t('walletGroupGroup'),
+                icon: 'group',
+                items: advancedWalletActions
+                  .filter((item) => item === 'PLAYER_TO_ALL' || item === 'ALL_TO_PLAYER')
+                  .map((item) => ({
+                    key: item,
+                    label: actionLabel(item, t),
+                    outgoing: walletActionTone(item) === 'expense',
+                    onSelect: () => selectAction(item),
+                  })),
+              },
+              {
+                key: 'fund',
+                label: t('walletGroupFund'),
+                icon: 'fund',
+                items:
+                  rules.freeParkingJackpot && jackpot > 0
+                    ? [
+                        {
+                          key: 'JACKPOT_PAYOUT',
+                          label: actionLabel('JACKPOT_PAYOUT', t),
+                          onSelect: () => selectAction('JACKPOT_PAYOUT'),
+                        },
+                      ]
+                    : [],
+              },
+            ]}
+          >
+            {canAuction && auctionBusy && <FieldHint>{t('auctionActionBusy')}</FieldHint>}
+            {rules.freeParkingJackpot && jackpot > 0 && (
+              <FieldHint>
+                {t('jackpotPotHint', { amount: formatMoney(jackpot, currency) })}
+              </FieldHint>
+            )}
+            <button type="button" className={bankruptcyClass} onClick={onBankrupt}>
+              {t('declareBankrupt')}
+            </button>
+            <Button variant="quiet" onClick={() => onViewHistory(player)}>
               {t('viewPlayerHistory', { name: player.name })}
             </Button>
-          </details>
+          </WalletMenu>
+        </>
+      ) : cooldownRounds !== null ? (
+        <>
+          <StepBody>
+            <Notice tone="info">{t('bankLoanCooldownWarning', { rounds: cooldownRounds })}</Notice>
+          </StepBody>
+          <SheetActions className={stepFooterClass}>
+            <Button variant="secondary" onClick={() => setCooldownRounds(null)}>
+              {t('back')}
+            </Button>
+            <Button variant="primary" onClick={borrowAnyway}>
+              {t('borrowAnyway')}
+            </Button>
+          </SheetActions>
         </>
       ) : confirming ? (
         <>
@@ -252,33 +955,61 @@ export function BankingDialog({
             <p className="sr-only">{t('confirmationIntro')}</p>
             {errorNotice}
             <Confirmation
-              action={action}
+              action={requestAction ?? action}
               player={player}
               target={target}
               amount={amountValue}
-              passGoReward={passGoReward}
+              passGoReward={reward}
               currency={currency}
               preview={preview}
               comment={comment}
+              propertyName={confirmedPropertyName}
+              interest={interest}
+              lenderIsBank={isBankRepayment}
+              reserved={reserved}
             />
+            {purchaseOverride !== undefined && selectedTile !== null && (
+              <div className="mt-(--mb-space-3) grid gap-(--mb-space-3)">
+                <Notice tone="info">
+                  {t('priceOverrideWarning', {
+                    price: money(purchaseOverride),
+                    listPrice: money(selectedTile.tile.price),
+                  })}
+                </Notice>
+                <Toggle
+                  variant="inline"
+                  label={t('priceOverrideConfirm')}
+                  checked={overrideConfirmed}
+                  onChange={setOverrideConfirmed}
+                />
+              </div>
+            )}
             {action === 'PASS_GO' && <div className="mt-(--mb-space-3)">{commentField}</div>}
           </StepBody>
-          <DialogActions className={stepFooterClass}>
+          <SheetActions className={stepFooterClass}>
             <Button
               variant="secondary"
               disabled={submitting}
-              onClick={() => (action === 'PASS_GO' ? selectAction(null) : setConfirming(false))}
+              onClick={() =>
+                action === 'PASS_GO' || action === 'JACKPOT_PAYOUT'
+                  ? selectAction(null)
+                  : setConfirming(false)
+              }
             >
               {t('back')}
             </Button>
-            <Button variant="primary" disabled={submitting} onClick={() => void submit()}>
+            <Button
+              variant="primary"
+              disabled={submitting || (purchaseOverride !== undefined && !overrideConfirmed)}
+              onClick={() => void submit()}
+            >
               {submitting
                 ? t('recording')
                 : transactionError === null
                   ? t('confirmTransaction')
                   : t('tryAgain')}
             </Button>
-          </DialogActions>
+          </SheetActions>
         </>
       ) : (
         <>
@@ -295,33 +1026,287 @@ export function BankingDialog({
                 onChange={changeTarget}
               />
             )}
-            {amountRequired && (
-              <AmountSelector
-                value={amount}
-                onChange={changeAmount}
+            {board === null && action === 'PLAYER_TO_PLAYER' && targetMortgages.length > 0 && (
+              <Notice tone="info">
+                {t('mortgagedRentHint', {
+                  name: target?.name ?? '',
+                  properties: targetMortgages.map((item) => item.propertyName).join(', '),
+                })}
+              </Notice>
+            )}
+            {board !== null && action === 'PROPERTY_PURCHASE' && (
+              <TilePicker
                 currency={currency}
-                favorites={favoriteAmounts}
-                recent={recentAmounts}
-                presets={presets}
-                onToggleFavorite={onToggleFavorite}
-                onQuickAmountSelect={reviewQuickAmount}
+                legend={t('tileChooseBuy')}
+                items={buyItems}
+                value={tileId}
+                onChange={chooseTile}
               />
+            )}
+            {board !== null && action === 'PROPERTY_PURCHASE' && selectedTile !== null && (
+              <div className="grid gap-(--mb-space-3)">
+                <Toggle
+                  variant="inline"
+                  label={t('priceOverrideToggle')}
+                  checked={overrideOn}
+                  onChange={changeOverrideOn}
+                />
+                {overrideOn && (
+                  <AmountSelector
+                    value={overridePrice}
+                    onChange={changeOverridePrice}
+                    currency={currency}
+                    presets={presets}
+                  />
+                )}
+              </div>
+            )}
+            {board !== null && buildMode !== null && (
+              <BuildingStepper
+                board={board}
+                views={views}
+                playerId={player.id}
+                mode={buildMode}
+                groups={buildingGroupIds}
+                group={activeBuildGroup}
+                onGroupChange={changeBuildGroup}
+                levels={effectiveBuildLevels}
+                onLevelsChange={changeBuildLevels}
+                balance={available}
+                currency={currency}
+              />
+            )}
+            {board !== null && action === 'MORTGAGE' && (
+              <TilePicker
+                currency={currency}
+                legend={t('tileChooseMortgage')}
+                items={mortgageItems}
+                value={tileId}
+                onChange={chooseTile}
+              />
+            )}
+            {board !== null && action === 'PAY_RENT' && (
+              <>
+                <TilePicker
+                  currency={currency}
+                  legend={t('tileChooseRent')}
+                  items={rentItems}
+                  value={tileId}
+                  onChange={chooseTile}
+                />
+                {needsDiceSum && (
+                  <Field variant="dialog" label={t('rentDiceSum')}>
+                    <input
+                      value={diceSum}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      onChange={(event) => changeDiceSum(event.target.value)}
+                    />
+                  </Field>
+                )}
+                {needsDiceSum && diceSum !== '' && !isDiceSum(Number(diceSum)) && (
+                  <FieldError as="p" announce>
+                    {t('rentDiceSumInvalid')}
+                  </FieldError>
+                )}
+                {selectedTile !== null && rentAmount !== null && (
+                  <div className="flex items-baseline justify-between gap-(--mb-space-3)">
+                    <span className="text-secondary">{t('rentAmountLabel')}</span>
+                    <strong aria-live="polite">
+                      <MoneyValue amount={rentAmount} currency={currency} />
+                    </strong>
+                  </div>
+                )}
+                <FieldHint>{t('rentComputedHint')}</FieldHint>
+              </>
+            )}
+            {board === null && action === 'MORTGAGE' && (
+              <MortgageDetails
+                propertyName={propertyName}
+                onPropertyNameChange={(name) => {
+                  setPropertyName(name);
+                  setError(null);
+                  commandIdRef.current = null;
+                }}
+                noBuildings={noBuildings}
+                onNoBuildingsChange={setNoBuildings}
+              />
+            )}
+            {board !== null && action === 'MORTGAGE_REDEMPTION' && (
+              <TilePicker
+                currency={currency}
+                legend={t('tileChooseRedeem')}
+                items={redeemItems}
+                value={selectedMortgage?.tileId ?? ''}
+                onChange={(view) => {
+                  const mortgage = tileMortgages.find((item) => item.tileId === view.tile.id);
+                  if (mortgage !== undefined) chooseMortgage(mortgage);
+                }}
+              />
+            )}
+            {board === null && action === 'MORTGAGE_REDEMPTION' && (
+              <RedemptionPicker
+                mortgages={playerMortgages}
+                currency={currency}
+                value={mortgageId}
+                onChange={chooseMortgage}
+              />
+            )}
+            {action === 'LOAN_REPAYMENT' && (
+              <LoanPicker
+                loans={repayableLoans}
+                players={players}
+                currency={currency}
+                value={loanId}
+                onChange={chooseLoan}
+              />
+            )}
+            {isBankRepayment && selectedLoan !== null && (
+              <>
+                <InterestRatePicker
+                  value={effectiveRate}
+                  suggested={selectedLoan.rounds?.suggestedRatePercent ?? 0}
+                  round={selectedLoan.rounds?.round ?? 1}
+                  onChange={chooseRate}
+                />
+                <FieldHint>
+                  {t('bankLoanRepayHint', {
+                    principal: formatMoney(loanOwed, currency),
+                    interest: formatMoney(interest, currency),
+                    total: formatMoney(loanOwed + interest, currency),
+                  })}
+                </FieldHint>
+              </>
+            )}
+            {action === 'BANK_LOAN' && bankLoan !== null && (
+              <Notice tone="info">{t('bankLoanAlreadyActive')}</Notice>
+            )}
+            {action === 'BANK_LOAN' && bankLoanMax !== null && (
+              <FieldHint>
+                {t('bankLoanMaxHint', { max: formatMoney(bankLoanMax, currency) })}
+              </FieldHint>
+            )}
+            {board === null && action === 'MORTGAGE' && (
+              <FieldHint>{t('mortgageValueHint')}</FieldHint>
+            )}
+            {board !== null && action === 'MORTGAGE' && (
+              <FieldHint>{t('tileMortgageHint')}</FieldHint>
+            )}
+            {action === 'PROPERTY_BUILD' && <FieldHint>{t('tileBuildHint')}</FieldHint>}
+            {action === 'PROPERTY_SELL_BUILDING' && (
+              <FieldHint>{t('tileSellBuildingHint')}</FieldHint>
+            )}
+            {action === 'PROPERTY_PURCHASE' && !overrideOn && (
+              <FieldHint>{t('tilePurchaseHint')}</FieldHint>
+            )}
+            {requestAction === 'TO_JACKPOT' && <FieldHint>{t('payToPotHint')}</FieldHint>}
+            {amountRequired &&
+              action !== 'MORTGAGE_REDEMPTION' &&
+              (action !== 'LOAN_REPAYMENT' || (selectedLoan !== null && !isBankRepayment)) && (
+                <AmountSelector
+                  value={amount}
+                  onChange={changeAmount}
+                  currency={currency}
+                  favorites={favoriteAmounts}
+                  recent={recentAmounts}
+                  presets={presets}
+                  onToggleFavorite={onToggleFavorite}
+                  onQuickAmountSelect={reviewQuickAmount}
+                />
+              )}
+            {action === 'PLAYER_TO_BANK' && settings !== null && (
+              <div className="grid gap-(--mb-space-2)" role="group" aria-label={t('fixedPayments')}>
+                <span className="text-small font-semibold text-secondary">
+                  {t('fixedPayments')}
+                </span>
+                <div className="flex flex-wrap gap-(--mb-space-2)">
+                  {(
+                    [
+                      ['incomeTax', settings.incomeTax],
+                      ['luxuryTax', settings.luxuryTax],
+                      ['jailFine', settings.jailFine],
+                    ] as const
+                  ).map(([key, fixedAmount]) => (
+                    <Button
+                      key={key}
+                      variant="secondary"
+                      onClick={() =>
+                        reviewFixedPayment(t(key), fixedAmount, key !== 'jailFine' && jackpotRule)
+                      }
+                    >
+                      {t(key)} · <MoneyValue amount={fixedAmount} currency={currency} />
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {exceedsBankLoanMax && bankLoanMax !== null && (
+              <FieldError as="p" announce>
+                {t('bankLoanExceedsMax', { max: formatMoney(bankLoanMax, currency) })}
+              </FieldError>
+            )}
+            {exceedsBankToPlayerMax && (
+              <FieldError as="p" announce>
+                {t('bankToPlayerExceedsMax', {
+                  max: formatMoney(BANK_TO_PLAYER_MAX_AMOUNT, currency),
+                })}
+              </FieldError>
+            )}
+            {overRepayment && (
+              <FieldError as="p" announce>
+                {t('loanRepayExceeds', { amount: formatMoney(loanOwed, currency) })}
+              </FieldError>
             )}
             {fundsError !== null && (
               <FieldError as="p" announce>
                 {fundsError}
               </FieldError>
             )}
-            <div className="mt-(--mb-space-2)">{commentField}</div>
+            {shortfall !== null && (
+              <div className={shortfallClass}>
+                <p>{t('shortBy', { amount: formatMoney(shortfall, currency) })}</p>
+                <div className="flex flex-wrap gap-(--mb-space-2)">
+                  {isBankRepayment && (
+                    <>
+                      <Button variant="secondary" onClick={() => selectAction('MORTGAGE')}>
+                        {t('mortgageProperty')}
+                      </Button>
+                      <Button variant="secondary" onClick={() => selectAction('BANK_TO_PLAYER')}>
+                        {t('sellBuildingsToBank')}
+                      </Button>
+                    </>
+                  )}
+                  {canAuction &&
+                    !auctionBusy &&
+                    (action === 'PLAYER_TO_BANK' || action === 'PLAYER_TO_PLAYER') && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => onStartAuction(auctionLotSuggestion)}
+                      >
+                        {t('auctionInstead')}
+                      </Button>
+                    )}
+                  <Button variant="danger" onClick={onBankrupt}>
+                    {t('declareBankrupt')}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {!noComment && <div className="mt-(--mb-space-2)">{commentField}</div>}
           </StepBody>
-          <DialogActions className={stepFooterClass}>
+          <SheetActions className={stepFooterClass}>
             <Button variant="secondary" onClick={() => selectAction(null)}>
               {t('back')}
             </Button>
-            <Button variant="primary" disabled={!valid} onClick={() => setConfirming(true)}>
+            <Button
+              variant="primary"
+              disabled={!valid}
+              aria-describedby={buildMode !== null && !valid ? 'building-reason' : undefined}
+              onClick={review}
+            >
               {t('reviewTransaction')}
             </Button>
-          </DialogActions>
+          </SheetActions>
         </>
       )}
     </Dialog>

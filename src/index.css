@@ -12,6 +12,7 @@
 @import './styles/tailwind-theme.css';
 @import './styles/visual-styles/classic-bank.css';
 @import './styles/visual-styles/liquid-glass.css';
+@import './styles/glass.css';
 
 /*
  * Appearance variants follow the root attributes set by
@@ -33,6 +34,12 @@
   --mb-app-safe-right: env(safe-area-inset-right, 0px);
   --mb-app-safe-bottom: env(safe-area-inset-bottom, 0px);
   --mb-app-safe-left: env(safe-area-inset-left, 0px);
+  /* The compact game navigation: one row plus its bottom padding; dialogs stop above it. */
+  --mb-bottom-nav-inset: 8px;
+  --mb-bottom-nav-height: calc(
+    64px + max(var(--mb-bottom-nav-inset), var(--mb-app-safe-bottom)) + 16px
+  );
+  --mb-dialog-nav-offset: 0px;
   color: var(--mb-color-text-primary);
   background: var(--mb-color-canvas);
   font-family: var(--mb-font-ui);

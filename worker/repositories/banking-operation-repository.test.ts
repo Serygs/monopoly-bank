@@ -79,6 +79,10 @@ describe('D1BankingOperationRepository', () => {
       50,
       100,
       null,
+      null,
+      null,
+      0,
+      null,
     ]);
   });
 
@@ -135,8 +139,61 @@ describe('D1BankingOperationRepository', () => {
       400,
       400,
       null,
+      null,
+      null,
+      0,
+      null,
     ]);
     expect(database.batches[0][4].values).toEqual(['bankrupt-player', 'game-1']);
+  });
+
+  it('links a reversal to the transaction it moves back in the same batch', async () => {
+    const database = new FakeDatabase();
+    const repository = new D1BankingOperationRepository(database as unknown as D1Database);
+
+    await repository.persist({
+      transactionId: 'reversal-1',
+      transaction: {
+        gameId: 'game-1',
+        type: 'REVERSAL',
+        amount: 50,
+        totalAmount: 50,
+        comment: 'wrong player',
+        reversesTransactionId: 'transaction-1',
+        participants: [
+          { playerId: 'payer', balanceDelta: 50 },
+          { playerId: 'recipient', balanceDelta: -50 },
+        ],
+      },
+      balanceChanges: [
+        {
+          player: { id: 'payer', gameId: 'game-1', name: 'Payer', color: '#111', balance: 0 },
+          balanceBefore: 0,
+          balanceAfter: 50,
+          balanceDelta: 50,
+        },
+        {
+          player: { id: 'recipient', gameId: 'game-1', name: 'R', color: '#222', balance: 90 },
+          balanceBefore: 90,
+          balanceAfter: 40,
+          balanceDelta: -50,
+        },
+      ],
+    });
+
+    expect(database.batches).toHaveLength(1);
+    expect(database.batches[0][1].values).toEqual([
+      'reversal-1',
+      'game-1',
+      'REVERSAL',
+      50,
+      50,
+      'wrong player',
+      'transaction-1',
+      null,
+      0,
+      null,
+    ]);
   });
 });
 

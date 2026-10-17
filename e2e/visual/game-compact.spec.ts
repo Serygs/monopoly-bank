@@ -125,18 +125,17 @@ for (const { id: visualStyle } of visualStyles) {
           expect(layout.pageOverflowX).toBeLessThanOrEqual(0);
 
           if (action === 'payBank') {
-            // Changing the unit re-expresses the amount instead of clearing it, and the total
-            // stays right under the field, inside the visible sheet.
+            // Changing the unit keeps the typed digits and only changes the multiplier, and the
+            // total stays right under the field, inside the visible sheet.
             const keypad = panel.getByRole('group', { name: translate(language, 'numericKeypad') });
-            for (const digit of ['8', '5', '0', '0', '0'])
+            for (const digit of ['8', '5'])
               await keypad.getByRole('button', { name: digit, exact: true }).click();
             const amount = panel.getByRole('textbox', {
               name: translate(language, 'amount'),
               exact: true,
             });
-            const total = panel.getByText(/\$85 000$/).first();
-            await expect(amount).toHaveValue('85 000');
-            await expect(total).toBeVisible();
+            await expect(amount).toHaveValue('85');
+            await expect(panel.getByText(/\$85$/).first()).toBeVisible();
             await panel
               .getByRole('button', {
                 name: translate(language, 'amountUnitThousands'),
@@ -144,11 +143,12 @@ for (const { id: visualStyle } of visualStyles) {
               })
               .click();
             await expect(amount).toHaveValue('85');
-            await expect(total).toBeVisible();
+            await expect(panel.getByText(/\$85 000$/).first()).toBeVisible();
             await panel
               .getByRole('button', { name: translate(language, 'amountUnitMillions'), exact: true })
               .click();
-            await expect(amount).toHaveValue(/^0[.,]085$/);
+            await expect(amount).toHaveValue('85');
+            const total = panel.getByText(/\$85 000 000$/).first();
             await expect(total).toBeVisible();
             const box = await total.boundingBox();
             expect(box).not.toBeNull();
@@ -156,7 +156,7 @@ for (const { id: visualStyle } of visualStyles) {
             await panel
               .getByRole('button', { name: translate(language, 'amountUnitOnes'), exact: true })
               .click();
-            await expect(amount).toHaveValue('85 000');
+            await expect(amount).toHaveValue('85');
           }
 
           // The amount field keeps the system keyboard closed; the keypad types instead.

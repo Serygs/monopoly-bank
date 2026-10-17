@@ -1,3 +1,5 @@
+import { MAX_LOBBY_PLAYERS } from '../../shared/contracts/api.js';
+
 /** Errors crossing a Worker boundary. `message` is deliberately safe for clients. */
 export abstract class AppError extends Error {
   readonly code: string;
@@ -95,6 +97,38 @@ export class ConflictError extends AppError {
     super({ code, message, status: 409, details });
   }
 }
+/** An optional house rule that the game did not enable at creation was used. */
+export class RuleDisabledError extends AppError {
+  constructor(rule: string) {
+    super({
+      code: 'RULE_DISABLED',
+      message: 'This rule is not enabled for this game.',
+      status: 409,
+      details: { rule },
+    });
+  }
+}
+/** A tile request reached a game created without a board. */
+export class BoardDisabledError extends AppError {
+  constructor() {
+    super({
+      code: 'BOARD_DISABLED',
+      message: 'This game was created without a board.',
+      status: 409,
+    });
+  }
+}
+/** A free-text property request reached a board game, which names a tile instead. */
+export class TileRequiredError extends AppError {
+  constructor() {
+    super({
+      code: 'TILE_REQUIRED',
+      message: 'This game has a board; choose a tile.',
+      status: 409,
+      details: { field: 'tileId' },
+    });
+  }
+}
 export class InvalidGamePasswordError extends AppError {
   constructor() {
     super({ code: 'INVALID_GAME_PASSWORD', message: 'The game password is invalid.', status: 401 });
@@ -103,6 +137,13 @@ export class InvalidGamePasswordError extends AppError {
 export class InvalidJoinCodeError extends NotFoundError {
   constructor() {
     super('INVALID_JOIN_CODE', 'Game not found.');
+  }
+}
+export class LobbyFullError extends ConflictError {
+  constructor() {
+    super('LOBBY_FULL', 'This lobby already has the maximum number of players.', {
+      maxPlayers: MAX_LOBBY_PLAYERS,
+    });
   }
 }
 export class DuplicateCommandError extends ConflictError {

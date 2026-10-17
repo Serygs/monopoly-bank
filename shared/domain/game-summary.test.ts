@@ -43,3 +43,61 @@ describe('calculateFinalGameSummary', () =>
       amount: 50,
     });
   }));
+
+describe('the Free Parking pot in the final summary', () => {
+  it('counts pot payments as sent and collections as received, never as bank or player money', () => {
+    const summary = calculateFinalGameSummary(players, [
+      transaction('TO_JACKPOT', 200, [{ playerId: 'a', balanceDelta: -200 }]),
+      transaction('TO_JACKPOT', 75, [{ playerId: 'b', balanceDelta: -75 }]),
+      transaction('JACKPOT_PAYOUT', 275, [{ playerId: 'c', balanceDelta: 275 }]),
+    ]);
+    expect(summary.totalMoneyTransferred).toBe(550);
+    expect(summary.largestTransaction).toBe(275);
+    expect(summary.playerToPlayerTotal).toBe(0);
+    expect(summary.paidToBank).toBe(0);
+    expect(summary.receivedFromBank).toBe(0);
+    expect(summary.biggestPayerRecipient).toBeNull();
+    const metric = (id: string) => summary.players.find((item) => item.playerId === id);
+    expect(metric('a')).toMatchObject({ sent: 200, received: 0, transactionCount: 1 });
+    expect(metric('b')).toMatchObject({ sent: 75, received: 0 });
+    expect(metric('c')).toMatchObject({ sent: 0, received: 275 });
+    expect(summary.biggestSenderId).toBe('a');
+  });
+});
+
+describe('loans in the final summary', () => {
+  it('count toward the volume but are neither sent nor received money', () => {
+    const summary = calculateFinalGameSummary(players, [
+      transaction('LOAN_ISSUE', 100, [
+        { playerId: 'a', balanceDelta: -100 },
+        { playerId: 'b', balanceDelta: 100 },
+      ]),
+      transaction('LOAN_REPAYMENT', 40, [
+        { playerId: 'b', balanceDelta: -40 },
+        { playerId: 'a', balanceDelta: 40 },
+      ]),
+    ]);
+    expect(summary.totalMoneyTransferred).toBe(140);
+    expect(summary.playerToPlayerTotal).toBe(0);
+    expect(summary.paidToBank).toBe(0);
+    expect(summary.receivedFromBank).toBe(0);
+    expect(summary.biggestPayerRecipient).toBeNull();
+    for (const metric of summary.players) {
+      expect(metric.sent).toBe(0);
+      expect(metric.received).toBe(0);
+    }
+    expect(summary.players.find((metric) => metric.playerId === 'a')?.transactionCount).toBe(2);
+  });
+});
+
+describe('building in the final summary', () => {
+  it('counts a build as paid to the bank and a sale as received from it', () => {
+    const summary = calculateFinalGameSummary(players, [
+      transaction('PROPERTY_BUILD', 500, [{ playerId: 'a', balanceDelta: -500 }]),
+      transaction('PROPERTY_SELL_BUILDING', 250, [{ playerId: 'a', balanceDelta: 250 }]),
+    ]);
+    expect(summary.paidToBank).toBe(500);
+    expect(summary.receivedFromBank).toBe(250);
+    expect(summary.playerToPlayerTotal).toBe(0);
+  });
+});

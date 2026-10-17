@@ -51,6 +51,7 @@
   --color-inverse-hover: var(--mb-color-inverse-hover);
   --color-dialog-divider: var(--mb-color-dialog-divider);
   --color-qr-background: var(--mb-color-qr-background);
+  --color-qr-modules: var(--mb-color-qr-modules);
   --color-player-red: var(--mb-color-player-red);
   --color-player-blue: var(--mb-color-player-blue);
   --color-player-green: var(--mb-color-player-green);
@@ -102,6 +103,8 @@
   --radius-control: var(--mb-radius-control);
   --radius-card: var(--mb-radius-card);
   --radius-card-large: var(--mb-radius-card-large);
+  --radius-surface: var(--mb-radius-surface);
+  --radius-compact: var(--mb-radius-compact);
 
   /* Elevation */
   --shadow-sm: var(--mb-shadow-sm);

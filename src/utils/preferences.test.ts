@@ -26,6 +26,7 @@ describe('device preferences', () => {
         colorMode: theme,
         sound: false,
         vibration: false,
+        keepScreenAwake: true,
       });
       writePreferences(preferences);
       expect(localStorage.setItem).toHaveBeenCalledWith(key, JSON.stringify(preferences));
@@ -48,6 +49,7 @@ describe('device preferences', () => {
       colorMode: 'light',
       sound: false,
       vibration: true,
+      keepScreenAwake: true,
     });
   });
 
@@ -63,6 +65,7 @@ describe('device preferences', () => {
       colorMode: 'system',
       sound: true,
       vibration: false,
+      keepScreenAwake: true,
     });
   });
 
@@ -78,7 +81,15 @@ describe('device preferences', () => {
       colorMode: 'dark',
       sound: true,
       vibration: false,
+      keepScreenAwake: true,
     });
+  });
+
+  it('keeps the screen-awake choice and defaults it to on', () => {
+    stored = JSON.stringify({ keepScreenAwake: false });
+    expect(readPreferences().keepScreenAwake).toBe(false);
+    stored = JSON.stringify({ keepScreenAwake: 'yes' });
+    expect(readPreferences().keepScreenAwake).toBe(true);
   });
 
   it('can recover the legacy mode when a new mode is invalid', () => {
@@ -95,6 +106,7 @@ describe('device preferences', () => {
         colorMode: 'system',
         sound: true,
         vibration: true,
+        keepScreenAwake: true,
       });
     },
   );

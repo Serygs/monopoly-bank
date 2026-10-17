@@ -6,11 +6,19 @@ import type {
   GameSummary,
   RestoreGameResponse,
 } from '../../shared/contracts/api.js';
-import type { Currency } from '../../shared/types/monopoly.js';
+import { buildGameSettings } from '../../shared/domain/game-rules.js';
+import { defaultGameRules, type Currency } from '../../shared/types/monopoly.js';
+import type { AuctionRepository } from '../repositories/auction-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
+import { isBoardMode } from '../../shared/board/index.js';
+import type { PropertyRepository } from '../repositories/property-repository.js';
+import type { LoanRepository } from '../repositories/loan-repository.js';
+import type { MortgageRepository } from '../repositories/mortgage-repository.js';
 import type { CreatePlayerInput, PlayerRepository } from '../repositories/player-repository.js';
+import type { TransactionRepository } from '../repositories/transaction-repository.js';
+import { loadBankLoanView } from './bank-loan-view.js';
 import { ConflictError, ResourceNotFoundError } from './errors.js';
-import { hashPassword, randomToken } from './password-security.js';
+import { hashPassword } from './password-security.js';
 
 /** The API only lets a new game pick a selectable currency; duplicating keeps the source game's stored currency, including the legacy `K`. */
 export type CreateGameInput = Omit<CreateGameRequest, 'currency'> & { currency: Currency };
@@ -31,22 +39,44 @@ export interface GameService {
   startGame(gameId: string): Promise<GameDetails>;
   finishGame(gameId: string): Promise<GameDetails>;
   toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
+  /** Owner only (the router checks): a new join code; the old one stops working at once. */
+  regenerateJoinCode(gameId: string, ownerUserId: string): Promise<{ joinCode: string }>;
 }
 
 export interface GameServiceDependencies {
   games: GameRepository;
   players: PlayerRepository;
+  /** Lists the properties mortgaged in a game; without it a game reports none. */
+  mortgages?: MortgageRepository;
+  /** Lists the loans still being repaid in a game; without it a game reports none. */
+  loans?: LoanRepository;
+  /** Lets a game with the bank-loans rule report loan rounds and cooldowns. */
+  transactions?: TransactionRepository;
+  /** Lets a game with the auctions rule report its running (or just closed) auction. */
+  auctions?: AuctionRepository;
+  /** Lets a game with a board report the state of its properties. */
+  properties?: PropertyRepository;
   createId: () => string;
 }
 
 export class DefaultGameService implements GameService {
   private readonly games: GameRepository;
   private readonly players: PlayerRepository;
+  private readonly mortgages: MortgageRepository | undefined;
+  private readonly loans: LoanRepository | undefined;
+  private readonly transactions: TransactionRepository | undefined;
+  private readonly auctions: AuctionRepository | undefined;
+  private readonly properties: PropertyRepository | undefined;
   private readonly createId: () => string;
 
   constructor(dependencies: GameServiceDependencies) {
     this.games = dependencies.games;
     this.players = dependencies.players;
+    this.mortgages = dependencies.mortgages;
+    this.loans = dependencies.loans;
+    this.transactions = dependencies.transactions;
+    this.auctions = dependencies.auctions;
+    this.properties = dependencies.properties;
     this.createId = dependencies.createId;
   }
 
@@ -68,10 +98,7 @@ export class DefaultGameService implements GameService {
         : await hashPassword(request.gameAccessPassword);
     return this.createGameInternal(request, {
       userId,
-      joinCode: randomToken(5)
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/gu, 'X')
-        .slice(0, 8),
+      isPublic: request.isPublic === true,
       ...gameAccessCredentials,
       hasPassword: request.gameAccessPassword !== undefined,
     });
@@ -79,7 +106,7 @@ export class DefaultGameService implements GameService {
 
   private async createGameInternal(
     request: CreateGameInput,
-    owner: { userId: string; joinCode: string; hash: string; salt: string; hasPassword: boolean },
+    owner: { userId: string; isPublic: boolean; hash: string; salt: string; hasPassword: boolean },
   ): Promise<GameDetails> {
     const gameId = this.createId();
     const playerInputs: CreatePlayerInput[] = request.players.map((player) => ({
@@ -90,7 +117,27 @@ export class DefaultGameService implements GameService {
       balance: request.startingBalance,
     }));
 
-    await this.games.createWithPlayers(
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await this.createWithJoinCode(gameId, request, owner, playerInputs, generateJoinCode());
+        break;
+      } catch (error) {
+        // The join code is unique across games; a collision just means drawing another one.
+        if (attempt >= JOIN_CODE_ATTEMPTS || !isJoinCodeCollision(error)) throw error;
+      }
+    }
+
+    return this.getGame(gameId);
+  }
+
+  private createWithJoinCode(
+    gameId: string,
+    request: CreateGameInput,
+    owner: { userId: string; isPublic: boolean; hash: string; salt: string; hasPassword: boolean },
+    playerInputs: CreatePlayerInput[],
+    joinCode: string,
+  ): Promise<void> {
+    return this.games.createWithPlayers(
       {
         id: gameId,
         name: request.name,
@@ -99,15 +146,33 @@ export class DefaultGameService implements GameService {
         currency: request.currency,
         status: 'LOBBY',
         paymentMode: request.paymentMode ?? 'FAST',
+        rules: request.rules ?? defaultGameRules,
+        settings: buildGameSettings(request.startingBalance, request.board),
         ownerUserId: owner.userId,
-        joinCode: owner.joinCode,
+        isPublic: owner.isPublic,
+        joinCode,
         gameAccessPasswordHash: owner.hasPassword ? owner.hash : null,
         gameAccessPasswordSalt: owner.hasPassword ? owner.salt : null,
       },
       playerInputs,
     );
+  }
 
-    return this.getGame(gameId);
+  async regenerateJoinCode(gameId: string, ownerUserId: string): Promise<{ joinCode: string }> {
+    for (let attempt = 1; ; attempt += 1) {
+      const joinCode = generateJoinCode();
+      try {
+        if (!(await this.games.replaceJoinCode(gameId, ownerUserId, joinCode)))
+          throw new ConflictError(
+            'JOIN_CODE_UNAVAILABLE',
+            'The join code can only be changed while the game is a lobby or running.',
+          );
+        return { joinCode };
+      } catch (error) {
+        // The join code is unique across games; a collision just means drawing another one.
+        if (attempt >= JOIN_CODE_ATTEMPTS || !isJoinCodeCollision(error)) throw error;
+      }
+    }
   }
 
   async getGame(gameId: string): Promise<GameDetails> {
@@ -116,9 +181,29 @@ export class DefaultGameService implements GameService {
       throw new ResourceNotFoundError('Game');
     }
 
+    const players = await this.players.listByGameId(gameId);
+    // With the bank-loans rule the loans carry their round and the cooldowns are reported too.
+    const bankLoans =
+      game.rules.bankLoans && this.loans !== undefined && this.transactions !== undefined
+        ? await loadBankLoanView(
+            { loans: this.loans, transactions: this.transactions },
+            gameId,
+            players,
+          )
+        : null;
     return {
       game,
-      players: await this.players.listByGameId(gameId),
+      players,
+      mortgages: (await this.mortgages?.listActive(gameId)) ?? [],
+      loans: bankLoans?.loans ?? (await this.loans?.listActive(gameId)) ?? [],
+      ...(bankLoans === null ? {} : { bankLoanCooldowns: bankLoans.bankLoanCooldowns }),
+      ...(game.rules.freeParkingJackpot ? { jackpot: await this.games.getJackpot(gameId) } : {}),
+      ...(game.rules.auctions && this.auctions !== undefined
+        ? { auction: await this.auctions.getCurrent(gameId, Date.now()) }
+        : {}),
+      ...(game.settings?.board && this.properties !== undefined
+        ? { properties: await this.properties.listByGame(gameId) }
+        : {}),
       favoriteAmounts: await this.games.listFavoriteAmounts(gameId),
       recentAmounts: await this.games.listRecentAmounts(gameId),
     };
@@ -152,6 +237,10 @@ export class DefaultGameService implements GameService {
       passGoReward: source.game.passGoReward,
       currency: source.game.currency,
       paymentMode: source.game.paymentMode,
+      rules: source.game.rules,
+      ...(isBoardMode(source.game.settings?.board?.presetId)
+        ? { board: source.game.settings.board.presetId }
+        : {}),
       gameAccessPassword,
       players: source.players.map((player) => ({ name: player.name, color: player.color })),
     });
@@ -187,4 +276,32 @@ export class DefaultGameService implements GameService {
     if ((await this.games.getById(gameId)) === null) throw new ResourceNotFoundError('Game');
     return this.games.toggleFavoriteAmount(gameId, amount);
   }
+}
+
+/**
+ * No 0/O/1/I/L, so a code read aloud or typed by hand is not mistaken. 31 symbols, 4 characters.
+ * Codes issued before L was dropped keep working: lookups accept any letters and digits.
+ */
+const JOIN_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const JOIN_CODE_LENGTH = 4;
+const JOIN_CODE_ATTEMPTS = 10;
+
+export function generateJoinCode(): string {
+  const alphabet = JOIN_CODE_ALPHABET.length;
+  // Rejection sampling keeps the draw unbiased: 248 = 8 * 31, higher bytes are discarded.
+  const limit = 256 - (256 % alphabet);
+  const code: string[] = [];
+  while (code.length < JOIN_CODE_LENGTH) {
+    const bytes = new Uint8Array(JOIN_CODE_LENGTH * 2);
+    crypto.getRandomValues(bytes);
+    for (const byte of bytes)
+      if (byte < limit && code.length < JOIN_CODE_LENGTH)
+        code.push(JOIN_CODE_ALPHABET[byte % alphabet]);
+  }
+  return code.join('');
+}
+
+function isJoinCodeCollision(error: unknown): boolean {
+  const message = error instanceof Error ? `${error.message} ${String(error.cause ?? '')}` : '';
+  return /UNIQUE/iu.test(message) && /join_code/iu.test(message);
 }

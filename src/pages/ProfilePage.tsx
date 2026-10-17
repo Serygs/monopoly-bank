@@ -3,37 +3,46 @@ import type { UserProfile } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Avatar, AvatarPicker } from '../components/AvatarPicker';
 import { PageHeader } from '../components/PageHeader';
-import { Button, Field, Notice, PageShell, useFeedback } from '../components/ui';
+import { Dialog } from '../components/Dialog';
+import {
+  Button,
+  DialogBody,
+  Field,
+  FormSection,
+  Notice,
+  PageShell,
+  useFeedback,
+} from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { EMAIL_FEATURES_ENABLED } from '../utils/email-features';
 import { cx } from '../components/ui/class-names';
 import { MutedText } from '../components/ui/Text';
 
-const layoutClass = cx(
-  'grid min-w-0 gap-(--mb-layout-gap-compact)',
-  'md:grid-cols-[minmax(18rem,0.82fr)_minmax(0,1.18fr)] md:gap-(--mb-layout-gap-medium) lg:gap-(--mb-layout-gap-wide)',
+/* The whole page is one column of glass cards; the save bar sticks above the home indicator. */
+const layoutClass = 'mx-auto grid w-full max-w-[40rem] min-w-0 gap-(--mb-layout-gap-compact)';
+const cardClass = cx(
+  'glass-panel min-w-0 rounded-card-large border border-border bg-surface-elevated shadow-sm',
+  'p-[clamp(var(--mb-space-4),4vw,var(--mb-space-6))]',
 );
-const panelClass =
-  'min-w-0 rounded-card-large border border-border p-[clamp(var(--mb-space-5),4vw,var(--mb-space-7))] shadow-sm';
-/* Every section after the profile form (upgrade, legacy email, verification) is ruled off. */
-const editorClass = cx(
-  panelClass,
-  'bg-surface-elevated [&>*+*]:mt-(--mb-space-7) [&>*+*]:border-t [&>*+*]:border-border [&>*+*]:pt-(--mb-space-7)',
+const identityClass = 'grid grid-cols-[auto_minmax(0,1fr)] items-end gap-(--mb-space-4)';
+const avatarButtonClass = cx(
+  'relative grid size-[72px] cursor-pointer place-items-center rounded-full border-0 bg-transparent p-0',
+  '[&_.avatar]:size-[72px] [&_.avatar]:text-[2rem]',
 );
-/* The summary name overrides the page's low-specificity `h2` typography. */
-const summaryClass = cx(
-  'flex min-w-0 items-center gap-(--mb-space-4) border-b border-border pb-(--mb-space-5) [&>div]:min-w-0',
-  '[&_.avatar]:size-[72px] [&_.avatar]:flex-none [&_.avatar]:text-[2rem]',
-  '[&_h2]:text-[length:clamp(1.25rem,5vw,1.7rem)] [&_h2]:leading-[1.12] [&_h2]:wrap-anywhere',
-  '[&_p]:mx-0 [&_p]:mt-(--mb-space-1) [&_p]:mb-0',
+/* A glass edit badge on the avatar's lower-right edge; the button itself stays the 72px target. */
+const avatarBadgeClass = cx(
+  'absolute -right-1 -bottom-1 grid size-8 place-items-center rounded-full border border-border-strong',
+  'bg-surface-elevated text-primary shadow-md',
+  'glass:glass-card glass:border-[rgb(255_255_255/0.7)] glass:text-accent-hover glass:dark:border-[rgb(255_255_255/0.3)] glass:dark:text-primary',
 );
-const statisticsClass = cx(
-  'mx-0 mt-(--mb-space-5) mb-0 grid grid-cols-2 gap-(--mb-space-3)',
-  '*:min-w-0 *:rounded-card *:border *:border-border *:bg-surface-elevated *:p-(--mb-space-4)',
-  '[&_dt]:text-small [&_dt]:text-secondary',
-  '[&_dd]:mx-0 [&_dd]:mt-(--mb-space-1) [&_dd]:mb-0 [&_dd]:font-money [&_dd]:text-[length:clamp(1.25rem,5vw,1.65rem)] [&_dd]:leading-[1.1] [&_dd]:font-bold [&_dd]:text-primary [&_dd]:wrap-anywhere',
-);
+const statisticsClass =
+  'mx-0 mt-(--mb-space-4) mb-0 grid grid-cols-2 gap-(--mb-space-2) sm:grid-cols-4';
+const statTileClass =
+  'grid min-w-0 content-between gap-[2px] rounded-compact bg-surface-subtle px-(--mb-space-2) py-(--mb-space-3) text-center';
+/* Sticks to the bottom edge of the scroll area, clear of the iOS home indicator. */
+const saveBarClass =
+  'sticky bottom-[calc(var(--mb-shell-nav-offset,0px)+var(--mb-space-3))] z-10 grid gap-(--mb-space-2)';
 /* `!` outranks the unlayered `.game-form` gap in `primitives.css`. */
 const profileFormClass = 'game-form gap-(--mb-space-6)!';
 
@@ -42,18 +51,31 @@ function ProfileForm(props: Omit<FormHTMLAttributes<HTMLFormElement>, 'className
   return <form className={profileFormClass} {...props} />;
 }
 
+/** One profile figure; the label wraps onto a second line instead of being cut off. */
+function ProfileStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className={statTileClass}>
+      <dt className="text-[0.75rem] leading-tight text-secondary [overflow-wrap:anywhere]">
+        {label}
+      </dt>
+      <dd className="m-0 font-money text-[1.25rem] leading-[1.1] font-bold text-primary">
+        {value}
+      </dd>
+    </div>
+  );
+}
+
 export function ProfilePage({
   profile,
   onUpdated,
-  onBack,
 }: {
   profile: UserProfile;
   onUpdated: (profile: UserProfile) => void;
-  onBack: () => void;
 }) {
   const { t } = useLanguage();
   const [nickname, setNickname] = useState(profile.nickname);
   const [avatar, setAvatar] = useState(profile.avatar);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
   const notify = useFeedback();
@@ -72,88 +94,103 @@ export function ProfilePage({
   };
   return (
     <PageShell>
-      <PageHeader
-        eyebrow={t('playerProfile')}
-        title={t('playerProfile')}
-        description={t('profileDescription')}
-        backAction={
-          <Button variant="quiet" onClick={onBack}>
-            {t('savedGames')}
-          </Button>
-        }
-      />
+      <PageHeader title={t('playerProfile')} />
       <div className={layoutClass}>
-        <section className={cx(panelClass, 'self-start bg-surface-subtle')}>
-          <div className={summaryClass}>
-            <Avatar avatar={avatar} label={nickname} />
-            <div>
-              <h2>{nickname}</h2>
-              <MutedText>
-                {profile.accountType === 'GUEST' ? t('guestAccount') : t('playerProfile')}
-              </MutedText>
+        <form className="grid gap-(--mb-layout-gap-compact)" onSubmit={(event) => void save(event)}>
+          <section className={cardClass} aria-label={t('playerProfile')}>
+            <div className={identityClass}>
+              <button
+                type="button"
+                className={avatarButtonClass}
+                aria-label={t('changeAvatar')}
+                aria-haspopup="dialog"
+                onClick={() => setPickerOpen(true)}
+              >
+                <Avatar avatar={avatar} label={nickname} />
+                <span className={avatarBadgeClass} aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="size-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </span>
+              </button>
+              <div className="game-form min-w-0">
+                <Field label={t('nickname')}>
+                  <input
+                    value={nickname}
+                    minLength={2}
+                    maxLength={40}
+                    onChange={(event) => setNickname(event.target.value)}
+                    required
+                  />
+                </Field>
+              </div>
             </div>
+            {profile.accountType === 'GUEST' && (
+              <div className="mt-(--mb-space-2)">
+                <MutedText>{t('guestAccount')}</MutedText>
+              </div>
+            )}
+            <dl className={statisticsClass}>
+              <ProfileStat label={t('gamesPlayed')} value={profile.gamesPlayed} />
+              <ProfileStat label={t('gamesWon')} value={profile.gamesWon} />
+              <ProfileStat label={t('gamesLost')} value={profile.gamesLost} />
+              <ProfileStat label={t('winRate')} value={`${Math.round(profile.winRate * 100)}%`} />
+            </dl>
+          </section>
+          {error !== null && (
+            <Notice tone="error">{apiErrorMessage(error, t, 'unableUpdateProfile')}</Notice>
+          )}
+          <div className={saveBarClass}>
+            <Button
+              variant="primary"
+              type="submit"
+              className="w-full rounded-pill shadow-lg"
+              disabled={saving}
+            >
+              {saving ? t('savingProfile') : t('saveProfile')}
+            </Button>
           </div>
-          <dl className={statisticsClass}>
-            <div>
-              <dt>{t('gamesPlayed')}</dt>
-              <dd>{profile.gamesPlayed}</dd>
-            </div>
-            <div>
-              <dt>{t('gamesWon')}</dt>
-              <dd>{profile.gamesWon}</dd>
-            </div>
-            <div>
-              <dt>{t('gamesLost')}</dt>
-              <dd>{profile.gamesLost}</dd>
-            </div>
-            <div>
-              <dt>{t('winRate')}</dt>
-              <dd>{Math.round(profile.winRate * 100)}%</dd>
-            </div>
-          </dl>
-        </section>
-        <section className={editorClass}>
-          <ProfileForm onSubmit={(event) => void save(event)}>
-            <Field label={t('nickname')}>
-              <input
-                value={nickname}
-                minLength={2}
-                maxLength={40}
-                onChange={(event) => setNickname(event.target.value)}
-                required
-              />
-            </Field>
+        </form>
+        {EMAIL_FEATURES_ENABLED &&
+          (profile.accountType === 'GUEST' ? (
+            <GuestUpgradeForm onUpgraded={onUpdated} />
+          ) : profile.email === null ? (
+            <LegacyEmailForm onAdded={onUpdated} />
+          ) : (
+            !profile.emailVerified && <VerificationNotice />
+          ))}
+      </div>
+      {pickerOpen && (
+        <Dialog
+          title={t('avatar')}
+          closeLabel={t('closeDialog', { title: t('avatar') })}
+          onClose={() => setPickerOpen(false)}
+        >
+          <DialogBody>
             <AvatarPicker
               avatar={avatar}
-              onChange={setAvatar}
+              onChange={(next) => {
+                setAvatar(next);
+                setPickerOpen(false);
+              }}
               label={t('avatar')}
               uploadLabel={t('avatarUpload')}
               uploadHint={t('avatarUploadHint')}
               invalidImageMessage={t('avatarUploadError')}
               allowUpload
             />
-            {error !== null && (
-              <Notice tone="error">{apiErrorMessage(error, t, 'unableUpdateProfile')}</Notice>
-            )}
-            <Button
-              variant="primary"
-              type="submit"
-              className="min-w-48 justify-self-start max-md:w-full"
-              disabled={saving}
-            >
-              {saving ? t('savingProfile') : t('saveProfile')}
-            </Button>
-          </ProfileForm>
-          {EMAIL_FEATURES_ENABLED &&
-            (profile.accountType === 'GUEST' ? (
-              <GuestUpgradeForm onUpgraded={onUpdated} />
-            ) : profile.email === null ? (
-              <LegacyEmailForm onAdded={onUpdated} />
-            ) : (
-              !profile.emailVerified && <VerificationNotice />
-            ))}
-        </section>
-      </div>
+          </DialogBody>
+        </Dialog>
+      )}
     </PageShell>
   );
 }
@@ -178,34 +215,35 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
   };
   return (
     <ProfileForm onSubmit={(event) => void upgrade(event)}>
-      <h2>{t('secureGuestAccount')}</h2>
-      <MutedText>{t('secureGuestDescription')}</MutedText>
-      <Field label={t('email')}>
-        <input
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          required
-        />
-      </Field>
-      <Field label={t('password')}>
-        <input
-          type="password"
-          minLength={6}
-          maxLength={256}
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-        />
-      </Field>
-      {error !== null && (
-        <Notice tone="error">{apiErrorMessage(error, t, 'unableAuthenticate')}</Notice>
-      )}
-      <Button variant="primary" type="submit" disabled={busy}>
-        {busy ? t('pleaseWait') : t('secureGuestAccount')}
-      </Button>
+      <FormSection legend={t('secureGuestAccount')}>
+        <MutedText>{t('secureGuestDescription')}</MutedText>
+        <Field label={t('email')}>
+          <input
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+        </Field>
+        <Field label={t('password')}>
+          <input
+            type="password"
+            minLength={6}
+            maxLength={256}
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+        </Field>
+        {error !== null && (
+          <Notice tone="error">{apiErrorMessage(error, t, 'unableAuthenticate')}</Notice>
+        )}
+        <Button variant="primary" type="submit" disabled={busy}>
+          {busy ? t('pleaseWait') : t('secureGuestAccount')}
+        </Button>
+      </FormSection>
     </ProfileForm>
   );
 }
@@ -261,23 +299,24 @@ function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void 
   };
   return (
     <ProfileForm onSubmit={(event) => void add(event)}>
-      <h2>{t('addAccountEmail')}</h2>
-      <MutedText>{t('addAccountEmailDescription')}</MutedText>
-      <Field label={t('email')}>
-        <input
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          required
-        />
-      </Field>
-      {error !== null && (
-        <Notice tone="error">{apiErrorMessage(error, t, 'unableAuthenticate')}</Notice>
-      )}
-      <Button variant="primary" type="submit" disabled={busy}>
-        {busy ? t('pleaseWait') : t('addAccountEmail')}
-      </Button>
+      <FormSection legend={t('addAccountEmail')}>
+        <MutedText>{t('addAccountEmailDescription')}</MutedText>
+        <Field label={t('email')}>
+          <input
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+        </Field>
+        {error !== null && (
+          <Notice tone="error">{apiErrorMessage(error, t, 'unableAuthenticate')}</Notice>
+        )}
+        <Button variant="primary" type="submit" disabled={busy}>
+          {busy ? t('pleaseWait') : t('addAccountEmail')}
+        </Button>
+      </FormSection>
     </ProfileForm>
   );
 }

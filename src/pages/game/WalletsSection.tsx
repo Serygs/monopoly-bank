@@ -1,8 +1,13 @@
 import type { PlayerController } from '../../../shared/contracts/api';
-import type { Currency, Player } from '../../../shared/types/monopoly';
-import { Button } from '../../components/ui';
+import type { BoardSnapshot } from '../../../shared/board';
+import type { Auction, Currency, Loan, Player, Transaction } from '../../../shared/types/monopoly';
+import { TransactionRow } from '../../components/game/TransactionRow';
+import { Button, Notice } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
+import { auctionReserveFor } from '../../utils/auction';
+import { activeBankLoan, loanOutstanding } from '../../utils/loans';
+import { formatMoney } from '../../utils/money';
 import { controllerLabel } from './game-page-helpers';
 import { WalletCard } from './WalletCard';
 
@@ -14,8 +19,18 @@ export interface WalletsSectionProps {
   activeWallet: Player | null;
   otherPlayers: Player[];
   canMutate: boolean;
+  /** Active player loans, shown on each wallet card. */
+  loans?: Loan[];
+  /** The running auction; its leading bid is shown as reserved on the leader's card. */
+  auction?: Auction | null;
+  /** Board games: the viewer's cards (count, formatted list value) and the entry to the Property screen. */
+  property?: { count: number; value: string; onOpen: () => void };
+  recentTransactions?: Transaction[];
+  board?: BoardSnapshot | null;
   onSelectWallet: (playerId: string) => void;
   onOpenWallet: (player: Player) => void;
+  /** Opens the repay flow for the player's overdue bank loan. */
+  onSettleLoan?: (player: Player) => void;
 }
 
 /*
@@ -51,10 +66,51 @@ export function WalletsSection({
   activeWallet,
   otherPlayers,
   canMutate,
+  loans = [],
+  auction = null,
+  property,
+  recentTransactions = [],
+  board = null,
   onSelectWallet,
   onOpenWallet,
+  onSettleLoan,
 }: WalletsSectionProps) {
-  const { t } = useLanguage();
+  const { t, language, locale } = useLanguage();
+  const overdueLoan = activeWallet === null ? null : activeBankLoan(loans, activeWallet.id);
+  const settleLoan =
+    activeWallet !== null &&
+    overdueLoan?.rounds?.overdue === true &&
+    canMutate &&
+    activeWallet.status !== 'BANKRUPT' &&
+    onSettleLoan !== undefined
+      ? { player: activeWallet, loan: overdueLoan, onSettle: onSettleLoan }
+      : null;
+  const recentList =
+    activeWallet === null || recentTransactions.length === 0 ? null : (
+      <section
+        className="mt-(--mb-space-5) grid gap-(--mb-space-2)"
+        aria-labelledby="recent-activity-title"
+      >
+        <h3 id="recent-activity-title" className="m-0 text-small font-semibold text-secondary">
+          {t('myEvents')}
+        </h3>
+        <ol className="activity-ledger m-0 grid list-none gap-(--mb-space-2) p-0">
+          {recentTransactions.map((transaction) => (
+            <TransactionRow
+              key={transaction.id}
+              variant="compact"
+              transaction={transaction}
+              players={players}
+              playerId={activeWallet.id}
+              currency={currency}
+              language={language}
+              locale={locale}
+              board={board}
+            />
+          ))}
+        </ol>
+      </section>
+    );
   return (
     <section
       className="wallets-section mt-(--mb-space-7) max-md:mt-(--mb-space-4)"
@@ -105,8 +161,38 @@ export function WalletsSection({
               active
               gameActive={canMutate}
               prominent
+              loans={loans}
+              auctionReserve={auctionReserveFor(auction, activeWallet.id)}
               onOpen={() => onOpenWallet(activeWallet)}
             />
+            {property !== undefined && (
+              <Button
+                variant="secondary"
+                className="mt-(--mb-space-3) w-full"
+                onClick={property.onOpen}
+              >
+                {property.count === 1
+                  ? t('walletPropertyOne', { value: property.value })
+                  : t('walletProperty', { count: property.count, value: property.value })}
+              </Button>
+            )}
+            {settleLoan !== null && (
+              <Notice tone="error" className="mt-(--mb-space-3)">
+                <span className="block">
+                  {t('settleLoanPrompt', {
+                    amount: formatMoney(loanOutstanding(settleLoan.loan), currency),
+                    round: settleLoan.loan.rounds?.round ?? 4,
+                  })}
+                </span>
+                <Button
+                  variant="danger"
+                  className="mt-(--mb-space-2)"
+                  onClick={() => settleLoan.onSettle(settleLoan.player)}
+                >
+                  {t('settleLoan')}
+                </Button>
+              </Notice>
+            )}
           </section>
         )}
         <div className={cx(groupClass, '@container')}>
@@ -119,6 +205,8 @@ export function WalletsSection({
                 players={players}
                 currency={currency}
                 active={false}
+                loans={loans}
+                auctionReserve={auctionReserveFor(auction, player.id)}
                 gameActive={canMutate}
                 onOpen={() => onOpenWallet(player)}
               />
@@ -126,6 +214,7 @@ export function WalletsSection({
           </div>
         </div>
       </div>
+      {recentList}
     </section>
   );
 }

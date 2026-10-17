@@ -87,4 +87,10 @@ describe('TableCalculator', () => {
     await user.keyboard('{Escape}');
     expect(display()).toHaveTextContent('0');
   });
+
+  it('marks the pending operator as pressed', async () => {
+    const { press } = setup();
+    await press('2', 'Add');
+    expect(screen.getByRole('button', { name: 'Add' })).toHaveAttribute('aria-pressed', 'true');
+  });
 });

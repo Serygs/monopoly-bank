@@ -6,9 +6,13 @@ import type {
   ActivityScope,
   AddAccountEmailRequest,
   ApiError,
+  AuctionResponse,
   ApiResponse,
   BankruptcyRequest,
   CreateBankingCommandResponse,
+  CreateTradeRequestBody,
+  CreateTradeRequestResponse,
+  TradeRequestActionResponse,
   CreateGameRequest,
   CreateInvitationResponse,
   CreateTransactionRequest,
@@ -26,8 +30,10 @@ import type {
   LoginRequest,
   PaymentRequest,
   PaymentRequestActionResponse,
+  PlaceBidRequest,
   RegisterRequest,
   RevokeInvitationResponse,
+  StartAuctionRequest,
   UpdateProfileRequest,
   UpgradeGuestRequest,
   UserProfile,
@@ -65,6 +71,7 @@ export interface MonopolyBankApi {
   upgradeGuest(input: UpgradeGuestRequest): Promise<UserProfile>;
   addEmailToLegacyAccount(input: AddAccountEmailRequest): Promise<UserProfile>;
   createInvitation(gameId: string): Promise<CreateInvitationResponse>;
+  removeLobbyPlayer(gameId: string, playerId: string): Promise<GameDetails>;
   revokeInvitations(gameId: string): Promise<RevokeInvitationResponse>;
   getGame(gameId: string): Promise<GameDetails>;
   deleteGame(gameId: string): Promise<DeleteGameResponse>;
@@ -97,7 +104,39 @@ export interface MonopolyBankApi {
     paymentRequestId: string,
     commandId?: string,
   ): Promise<PaymentRequestActionResponse>;
+  /** Board games: proposes a property trade; nothing moves until the counterparty accepts. */
+  createTradeRequest(
+    gameId: string,
+    request: CreateTradeRequestBody,
+    commandId?: string,
+  ): Promise<CreateTradeRequestResponse>;
+  acceptTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse>;
+  declineTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse>;
+  cancelTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse>;
+  /** Owner only: replaces the game's join code; the old code stops working. */
+  regenerateJoinCode(gameId: string): Promise<{ joinCode: string }>;
   declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<CreateTransactionResponse>;
+  /** The active auction, or the one that closed most recently (polling fallback). */
+  getAuction(gameId: string): Promise<AuctionResponse>;
+  startAuction(
+    gameId: string,
+    request: StartAuctionRequest,
+    commandId?: string,
+  ): Promise<AuctionResponse>;
+  /** The bid is `request.step` on top of the current bid; the auction id is in the path. */
+  placeBid(gameId: string, request: PlaceBidRequest, commandId?: string): Promise<AuctionResponse>;
   getGameSummary(gameId: string): Promise<{ game: Game; winners: Player[] } & LedgerStatistics>;
   getActivity(gameId: string, scope: ActivityScope, cursor?: string): Promise<ActivityPage>;
   listTransactions(gameId: string, limit?: number): Promise<Transaction[]>;
@@ -176,6 +215,12 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   }
   async addEmailToLegacyAccount(input: AddAccountEmailRequest): Promise<UserProfile> {
     return request<UserProfile>('/api/auth/email', { method: 'POST', body: JSON.stringify(input) });
+  }
+  async removeLobbyPlayer(gameId: string, playerId: string): Promise<GameDetails> {
+    return request<GameDetails>(
+      `/api/games/${encodeURIComponent(gameId)}/players/${encodeURIComponent(playerId)}`,
+      commandInit({ method: 'DELETE' }),
+    );
   }
   async createInvitation(gameId: string): Promise<CreateInvitationResponse> {
     return request<CreateInvitationResponse>(
@@ -287,6 +332,54 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
       commandInit({ method: 'POST' }, commandId),
     );
   }
+  async createTradeRequest(
+    gameId: string,
+    input: CreateTradeRequestBody,
+    commandId?: string,
+  ): Promise<CreateTradeRequestResponse> {
+    return request<CreateTradeRequestResponse>(
+      `/api/games/${encodeURIComponent(gameId)}/trade-requests`,
+      commandInit({ method: 'POST', body: JSON.stringify(input) }, commandId),
+    );
+  }
+  async acceptTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse> {
+    return this.tradeRequestAction(gameId, tradeRequestId, 'accept', commandId);
+  }
+  async declineTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse> {
+    return this.tradeRequestAction(gameId, tradeRequestId, 'decline', commandId);
+  }
+  async cancelTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse> {
+    return this.tradeRequestAction(gameId, tradeRequestId, 'cancel', commandId);
+  }
+  private async tradeRequestAction(
+    gameId: string,
+    tradeRequestId: string,
+    action: 'accept' | 'decline' | 'cancel',
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse> {
+    return request<TradeRequestActionResponse>(
+      `/api/games/${encodeURIComponent(gameId)}/trade-requests/${encodeURIComponent(tradeRequestId)}/${action}`,
+      commandInit({ method: 'POST' }, commandId),
+    );
+  }
+  async regenerateJoinCode(gameId: string): Promise<{ joinCode: string }> {
+    return request<{ joinCode: string }>(
+      `/api/games/${encodeURIComponent(gameId)}/join-code/regenerate`,
+      { method: 'POST' },
+    );
+  }
   async declareBankruptcy(
     gameId: string,
     input: BankruptcyRequest,
@@ -294,6 +387,30 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
     return request<CreateTransactionResponse>(
       `/api/games/${encodeURIComponent(gameId)}/bankruptcy`,
       commandInit({ method: 'POST', body: JSON.stringify(input) }),
+    );
+  }
+  async getAuction(gameId: string): Promise<AuctionResponse> {
+    return request<AuctionResponse>(`/api/games/${encodeURIComponent(gameId)}/auction`);
+  }
+  async startAuction(
+    gameId: string,
+    input: StartAuctionRequest,
+    commandId?: string,
+  ): Promise<AuctionResponse> {
+    return request<AuctionResponse>(
+      `/api/games/${encodeURIComponent(gameId)}/auctions`,
+      commandInit({ method: 'POST', body: JSON.stringify(input) }, commandId),
+    );
+  }
+  async placeBid(
+    gameId: string,
+    input: PlaceBidRequest,
+    commandId?: string,
+  ): Promise<AuctionResponse> {
+    const { auctionId, ...body } = input;
+    return request<AuctionResponse>(
+      `/api/games/${encodeURIComponent(gameId)}/auctions/${encodeURIComponent(auctionId)}/bids`,
+      commandInit({ method: 'POST', body: JSON.stringify(body) }, commandId),
     );
   }
   async getGameSummary(

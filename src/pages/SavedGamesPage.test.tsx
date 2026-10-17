@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeletedGameSummary, GameSummary } from '../../shared/contracts/api';
-import type { Game } from '../../shared/types/monopoly';
+import { defaultGameRules, type Game } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { FeedbackProvider } from '../components/ui';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -16,6 +16,8 @@ function game(id: string, name: string, status: Game['status'] = 'ACTIVE'): Game
     passGoReward: 200,
     currency: 'USD',
     paymentMode: 'FAST',
+    rules: defaultGameRules,
+    settings: null,
     status,
     createdAt: '2026-10-01T10:00:00.000Z',
     updatedAt: '2026-10-02T10:00:00.000Z',
@@ -32,13 +34,19 @@ const deleted: DeletedGameSummary = {
   purgeAt: '2026-11-09T10:00:00.000Z',
 };
 
+const handlers = {
+  onCreateGame: vi.fn(),
+  onJoinGame: vi.fn(),
+  onOpenGame: vi.fn(),
+};
+
 function setup(games: GameSummary[], deletedGames: DeletedGameSummary[]) {
   vi.spyOn(monopolyBankApi, 'listGames').mockResolvedValue(games);
   vi.spyOn(monopolyBankApi, 'listDeletedGames').mockResolvedValue(deletedGames);
   render(
     <LanguageProvider>
       <FeedbackProvider>
-        <SavedGamesPage onCreateGame={vi.fn()} onJoinGame={vi.fn()} onOpenGame={vi.fn()} />
+        <SavedGamesPage {...handlers} />
       </FeedbackProvider>
     </LanguageProvider>,
   );
@@ -88,5 +96,16 @@ describe('SavedGamesPage deleted games', () => {
     const user = setup([], [deleted]);
     await user.click(await screen.findByRole('radio', { name: 'Deleted' }));
     expect(screen.getByText('Old Table')).toBeInTheDocument();
+  });
+
+  it('keeps the same meta lines on every card and adds the time only to games that share a name', async () => {
+    const twin: GameSummary = { game: game('g3', 'Friday Game'), playerCount: 2 };
+    const other: GameSummary = { game: game('g4', 'Sunday Game'), playerCount: 2 };
+    setup([friday, twin, other], []);
+    await screen.findAllByText('Friday Game');
+    expect(screen.queryAllByText(/^Created /)).toHaveLength(0);
+    const updated = screen.getAllByText(/^Updated /);
+    expect(updated).toHaveLength(3);
+    expect(updated.filter((line) => /\d:\d\d/.test(line.textContent ?? ''))).toHaveLength(2);
   });
 });

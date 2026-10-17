@@ -1,21 +1,26 @@
-import type { MutableRefObject } from 'react';
 import type {
-  CreateTransactionRequest,
   GameDetails,
+  PaymentRequest,
   PlayerControllerKind,
+  PlayerTransactionRequest,
 } from '../../../shared/contracts/api';
 import type { LiveServerEvent } from '../../../shared/contracts/live';
 import type {
   Currency,
+  InterestRatePercent,
+  Loan,
   Player,
   Transaction,
   TransactionType,
 } from '../../../shared/types/monopoly';
 import { MonopolyBankApiError } from '../../api/monopoly-bank-api';
 import type { Translate } from '../../i18n/translations';
+import { newerAuction } from '../../utils/auction';
 import { formatMoney } from '../../utils/money';
+import { mergeProperties } from '../../utils/property-view';
 
-export type ActionType = CreateTransactionRequest['type'];
+/** A wallet action the banking dialog can start; a reversal is started from the history instead. */
+export type ActionType = PlayerTransactionRequest['type'] | 'BANK_LOAN';
 
 /** One player's balance before and after a previewed transaction. */
 export interface BalancePreview {
@@ -30,12 +35,51 @@ export const primaryWalletActions: ActionType[] = [
   'BANK_TO_PLAYER',
   'PASS_GO',
 ];
-export const advancedWalletActions: ActionType[] = ['PLAYER_TO_ALL', 'ALL_TO_PLAYER'];
+export const advancedWalletActions: ActionType[] = [
+  'PLAYER_TO_ALL',
+  'ALL_TO_PLAYER',
+  'MORTGAGE',
+  'MORTGAGE_REDEMPTION',
+];
+/** Player-loan actions; offered only when the game enables the player-loans rule. */
+export const loanWalletActions: ActionType[] = ['LOAN_ISSUE', 'LOAN_REPAYMENT'];
+/** Borrowing from the bank; offered only when the game enables the bank-loans rule. */
+export const bankLoanWalletActions: ActionType[] = ['BANK_LOAN'];
 
 export function walletActionTone(action: ActionType): 'income' | 'expense' {
-  return action === 'BANK_TO_PLAYER' || action === 'ALL_TO_PLAYER' || action === 'PASS_GO'
+  return action === 'BANK_TO_PLAYER' ||
+    action === 'ALL_TO_PLAYER' ||
+    action === 'PASS_GO' ||
+    action === 'MORTGAGE' ||
+    action === 'PROPERTY_SELL_BUILDING' ||
+    action === 'BANK_LOAN' ||
+    action === 'LOAN_ISSUE' ||
+    action === 'JACKPOT_PAYOUT'
     ? 'income'
     : 'expense';
+}
+
+/**
+ * Splits the pending requests into those a wallet of the viewer must answer and the viewer's own
+ * loan requests still waiting for a lender. Without any known wallet everything counts as incoming.
+ */
+export function splitPaymentRequests(
+  requests: PaymentRequest[],
+  controlledPlayerIds: string[],
+): { incoming: PaymentRequest[]; outgoingLoans: PaymentRequest[] } {
+  const controlled = new Set(controlledPlayerIds);
+  return {
+    incoming:
+      controlled.size === 0
+        ? requests
+        : requests.filter((request) => controlled.has(request.approverPlayerId)),
+    outgoingLoans: requests.filter(
+      (request) =>
+        request.kind === 'LOAN' &&
+        controlled.has(request.creatorPlayerId) &&
+        !controlled.has(request.approverPlayerId),
+    ),
+  };
 }
 
 export function transactionInvolvesPlayer(transaction: Transaction, playerId: string): boolean {
@@ -51,18 +95,12 @@ export function filterTransactionsForPlayer(
     : transactions.filter((transaction) => transactionInvolvesPlayer(transaction, playerId));
 }
 
-/** `historyPlayerId` is the player whose history dialog is open, or null for the whole game. */
 export function applyLiveEvent(
   event: LiveServerEvent,
   setDetails: React.Dispatch<React.SetStateAction<GameDetails | null>>,
-  setHistory: React.Dispatch<React.SetStateAction<Transaction[] | null>>,
-  historyCache: MutableRefObject<Map<string, Transaction[]>>,
-  historyPlayerId: string | null = null,
 ) {
   if (event.type === 'GAME_SNAPSHOT') {
-    historyCache.current.set('all', event.state.transactions);
     setDetails((current) => withClientGameDetails(event.state.details, current));
-    setHistory(filterTransactionsForPlayer(event.state.transactions, historyPlayerId));
     return;
   }
   if (event.type === 'LOBBY_UPDATED') {
@@ -74,16 +112,30 @@ export function applyLiveEvent(
     return;
   }
   if (event.type === 'GAME_COMMITTED') {
-    historyCache.current.clear();
-    setDetails((current) => (current === null ? current : { ...current, players: event.players }));
-    setHistory((current) =>
-      current === null ||
-      (historyPlayerId !== null && !transactionInvolvesPlayer(event.transaction, historyPlayerId))
+    setDetails((current) =>
+      current === null
         ? current
-        : [
-            event.transaction,
-            ...current.filter((transaction) => transaction.id !== event.transaction.id),
-          ],
+        : {
+            ...current,
+            players: event.players,
+            ...(event.mortgages === undefined ? {} : { mortgages: event.mortgages }),
+            ...(event.loans === undefined ? {} : { loans: event.loans }),
+            ...(event.bankLoanCooldowns === undefined
+              ? {}
+              : { bankLoanCooldowns: event.bankLoanCooldowns }),
+            ...(event.jackpot === undefined ? {} : { jackpot: event.jackpot }),
+            ...(event.properties === undefined
+              ? {}
+              : { properties: mergeProperties(current.properties, event.properties) }),
+          },
+    );
+    return;
+  }
+  if (event.type === 'AUCTION_UPDATED') {
+    setDetails((current) =>
+      current === null
+        ? current
+        : { ...current, auction: newerAuction(current.auction ?? null, event.auction) },
     );
     return;
   }
@@ -116,7 +168,28 @@ export function buildRequest(
   targetId: string,
   amount: number,
   comment: string,
-): CreateTransactionRequest | null {
+  options: {
+    exactLanding?: boolean;
+    /** The mortgaged property's name (MORTGAGE) */
+    propertyName?: string;
+    /** The mortgage being redeemed (MORTGAGE_REDEMPTION) */
+    mortgageId?: string;
+    /** The loan being repaid (LOAN_REPAYMENT) */
+    loanId?: string;
+    /** The rate confirmed for a bank-loan repayment; omitted for a player loan. */
+    interestRatePercent?: InterestRatePercent;
+    /** The player confirmed the warning about borrowing again during the cooldown (BANK_LOAN). */
+    acknowledgeCooldown?: boolean;
+    /** Board games: the tile a purchase, mortgage or rent payment concerns. */
+    tileId?: string;
+    /** Rent on a utility: the dice total the payer entered. */
+    diceSum?: number;
+    /** A purchase paid at an agreed price instead of the list price. */
+    priceOverride?: number;
+    /** Building or selling: the final level of every street that changes (one colour group). */
+    targets?: Record<string, number>;
+  } = {},
+): PlayerTransactionRequest | null {
   const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
   switch (action) {
     case 'PLAYER_TO_PLAYER':
@@ -131,7 +204,11 @@ export function buildRequest(
           };
     case 'PLAYER_TO_BANK':
     case 'BANK_TO_PLAYER':
+    case 'TO_JACKPOT':
       return { type: action, playerId, amount, ...optionalComment };
+    case 'JACKPOT_PAYOUT':
+      // The pot the player reviewed; the Worker refuses the collection if the pot has changed.
+      return { type: action, playerId, expectedAmount: amount };
     case 'PLAYER_TO_ALL':
       return { type: action, payerPlayerId: playerId, amountPerPlayer: amount, ...optionalComment };
     case 'ALL_TO_PLAYER':
@@ -142,14 +219,91 @@ export function buildRequest(
         ...optionalComment,
       };
     case 'PASS_GO':
-      return { type: action, playerId, ...optionalComment };
+      return {
+        type: action,
+        playerId,
+        ...(options.exactLanding === true ? { exactLanding: true } : {}),
+        ...optionalComment,
+      };
+    case 'MORTGAGE':
+      if (options.tileId !== undefined)
+        return options.tileId === '' ? null : { type: action, playerId, tileId: options.tileId };
+      // The bank records the property name as the comment, so no separate note is sent.
+      return { type: action, playerId, propertyName: options.propertyName ?? '', amount };
+    case 'PROPERTY_PURCHASE':
+      return options.tileId === undefined || options.tileId === ''
+        ? null
+        : {
+            type: action,
+            playerId,
+            tileId: options.tileId,
+            ...(options.priceOverride === undefined
+              ? {}
+              : { priceOverride: options.priceOverride }),
+          };
+    case 'PROPERTY_TRANSFER':
+      return null; // A trade is built by its own dialog, never by the single-amount form.
+    case 'PROPERTY_BUILD':
+    case 'PROPERTY_SELL_BUILDING':
+      if (options.targets !== undefined && Object.keys(options.targets).length > 0)
+        return { type: action, playerId, targets: options.targets };
+      return options.tileId === undefined || options.tileId === ''
+        ? null
+        : { type: action, playerId, tileId: options.tileId };
+    case 'PAY_RENT':
+      return options.tileId === undefined || options.tileId === ''
+        ? null
+        : {
+            type: action,
+            payerPlayerId: playerId,
+            tileId: options.tileId,
+            ...(options.diceSum === undefined ? {} : { diceSum: options.diceSum }),
+          };
+    case 'MORTGAGE_REDEMPTION':
+      return options.mortgageId === undefined || options.mortgageId === ''
+        ? null
+        : { type: action, playerId, mortgageId: options.mortgageId };
+    case 'LOAN_ISSUE':
+      return targetId === ''
+        ? null
+        : { type: action, borrowerPlayerId: playerId, lenderPlayerId: targetId, amount };
+    case 'LOAN_REPAYMENT':
+      return options.loanId === undefined || options.loanId === ''
+        ? null
+        : {
+            type: action,
+            playerId,
+            loanId: options.loanId,
+            amount,
+            ...(options.interestRatePercent === undefined
+              ? {}
+              : { interestRatePercent: options.interestRatePercent }),
+          };
+    case 'BANK_LOAN':
+      return {
+        type: 'LOAN_ISSUE',
+        lenderKind: 'BANK',
+        playerId,
+        amount,
+        ...(options.acknowledgeCooldown === true ? { acknowledgeCooldown: true } : {}),
+      };
   }
 }
 
 export function previewBalances(
-  request: CreateTransactionRequest,
+  request: PlayerTransactionRequest,
   players: Player[],
   passGoReward: number,
+  /** What redeeming the chosen mortgage will cost (mortgage value plus 10%). */
+  redemptionAmount = 0,
+  /** The active loans, to find who receives a repayment. */
+  loans: Loan[] = [],
+  /** Interest leaving the game with a bank-loan repayment, on top of the principal. */
+  interest = 0,
+  /** The Free Parking pot a collection pays out in full. */
+  jackpot = 0,
+  /** Board games: the tile's price, mortgage value or rent, and who receives the rent. */
+  tile: { amount: number; ownerPlayerId?: string | null } = { amount: 0 },
 ): BalancePreview[] {
   return players.map((player) => {
     let delta = 0;
@@ -164,6 +318,12 @@ export function previewBalances(
       case 'BANK_TO_PLAYER':
         if (player.id === request.playerId) delta = request.amount;
         break;
+      case 'TO_JACKPOT':
+        if (player.id === request.playerId) delta = -request.amount;
+        break;
+      case 'JACKPOT_PAYOUT':
+        if (player.id === request.playerId) delta = jackpot;
+        break;
       case 'PLAYER_TO_ALL':
         if (player.id === request.payerPlayerId)
           delta = -request.amountPerPlayer * (players.length - 1);
@@ -177,6 +337,35 @@ export function previewBalances(
       case 'PASS_GO':
         if (player.id === request.playerId) delta = passGoReward;
         break;
+      case 'MORTGAGE':
+        if (player.id === request.playerId)
+          delta = 'amount' in request ? request.amount : tile.amount;
+        break;
+      case 'PROPERTY_PURCHASE':
+      case 'PROPERTY_BUILD':
+        if (player.id === request.playerId) delta = -tile.amount;
+        break;
+      case 'PROPERTY_SELL_BUILDING':
+        if (player.id === request.playerId) delta = tile.amount;
+        break;
+      case 'PAY_RENT':
+        if (player.id === request.payerPlayerId) delta = -tile.amount;
+        else if (player.id === tile.ownerPlayerId) delta = tile.amount;
+        break;
+      case 'MORTGAGE_REDEMPTION':
+        if (player.id === request.playerId) delta = -redemptionAmount;
+        break;
+      case 'LOAN_ISSUE':
+        // A player loan is only a request: no money moves until the lender accepts. The bank pays at once.
+        if (request.lenderKind === 'BANK' && player.id === request.playerId) delta = request.amount;
+        break;
+      case 'LOAN_REPAYMENT': {
+        const lenderId = loans.find((loan) => loan.id === request.loanId)?.lenderPlayerId;
+        if (player.id === request.playerId) delta = -(request.amount + interest);
+        if (lenderId !== null && lenderId !== undefined && player.id === lenderId)
+          delta = request.amount;
+        break;
+      }
     }
     return { player, delta, after: player.balance + delta };
   });
@@ -190,6 +379,18 @@ export function actionLabel(type: ActionType, t: Translate): string {
     PLAYER_TO_ALL: t('payEveryone'),
     ALL_TO_PLAYER: t('everyonePaysMe'),
     PASS_GO: t('passGo'),
+    MORTGAGE: t('mortgageProperty'),
+    MORTGAGE_REDEMPTION: t('redeemMortgage'),
+    PROPERTY_PURCHASE: t('buyProperty'),
+    PROPERTY_TRANSFER: t('tradeAction'),
+    PROPERTY_BUILD: t('buildProperty'),
+    PROPERTY_SELL_BUILDING: t('sellBuilding'),
+    PAY_RENT: t('payRent'),
+    LOAN_ISSUE: t('loanBorrow'),
+    LOAN_REPAYMENT: t('loanRepay'),
+    BANK_LOAN: t('loanBorrowBank'),
+    TO_JACKPOT: t('payFreeParking'),
+    JACKPOT_PAYOUT: t('collectFreeParking'),
   }[type];
 }
 
@@ -202,14 +403,40 @@ export function actionDescription(action: ActionType, name: string, t: Translate
       PLAYER_TO_ALL: 'actionPayEveryone',
       ALL_TO_PLAYER: 'actionEveryonePays',
       PASS_GO: 'actionPassGo',
+      MORTGAGE: 'actionMortgage',
+      MORTGAGE_REDEMPTION: 'actionRedeemMortgage',
+      PROPERTY_PURCHASE: 'actionBuyProperty',
+      PROPERTY_TRANSFER: 'actionTrade',
+      PROPERTY_BUILD: 'actionBuildProperty',
+      PROPERTY_SELL_BUILDING: 'actionSellBuilding',
+      PAY_RENT: 'actionPayRent',
+      LOAN_ISSUE: 'actionLoanIssue',
+      LOAN_REPAYMENT: 'actionLoanRepay',
+      BANK_LOAN: 'actionBankLoan',
+      TO_JACKPOT: 'actionToJackpot',
+      JACKPOT_PAYOUT: 'actionJackpotPayout',
     } as const
   )[action];
   return t(key, { name });
 }
 
-export function sourceFor(action: ActionType, player: Player, t: Translate): string {
-  if (action === 'BANK_TO_PLAYER' || action === 'PASS_GO') return t('bank');
+export function sourceFor(
+  action: ActionType,
+  player: Player,
+  t: Translate,
+  target: Player | null = null,
+): string {
+  if (action === 'LOAN_ISSUE') return target?.name ?? t('selectedPlayer');
+  if (
+    action === 'BANK_TO_PLAYER' ||
+    action === 'PASS_GO' ||
+    action === 'MORTGAGE' ||
+    action === 'PROPERTY_SELL_BUILDING' ||
+    action === 'BANK_LOAN'
+  )
+    return t('bank');
   if (action === 'ALL_TO_PLAYER') return t('allOtherPlayers');
+  if (action === 'JACKPOT_PAYOUT') return t('freeParkingPot');
   return player.name;
 }
 
@@ -218,10 +445,21 @@ export function destinationFor(
   player: Player,
   target: Player | null,
   t: Translate,
+  /** The loan being repaid belongs to the bank, so there is no lender to name. */
+  lenderIsBank = false,
 ): string {
-  if (action === 'PLAYER_TO_BANK') return t('bank');
+  if (
+    action === 'PLAYER_TO_BANK' ||
+    action === 'MORTGAGE_REDEMPTION' ||
+    action === 'PROPERTY_PURCHASE' ||
+    action === 'PROPERTY_BUILD' ||
+    (action === 'LOAN_REPAYMENT' && lenderIsBank)
+  )
+    return t('bank');
   if (action === 'PLAYER_TO_ALL') return t('allOtherPlayers');
-  if (action === 'PLAYER_TO_PLAYER') return target?.name ?? t('selectedPlayer');
+  if (action === 'TO_JACKPOT') return t('freeParkingPot');
+  if (action === 'PLAYER_TO_PLAYER' || action === 'LOAN_REPAYMENT' || action === 'PAY_RENT')
+    return target?.name ?? t('selectedPlayer');
   return player.name;
 }
 
@@ -235,6 +473,18 @@ export function transactionLabel(type: TransactionType, t: Translate): string {
     PAY_RENT: t('paidRent'),
     PASS_GO: t('passedGo'),
     BANKRUPTCY_TRANSFER: t('bankruptcyTransfer'),
+    REVERSAL: t('reversal'),
+    MORTGAGE: t('mortgageLabel'),
+    MORTGAGE_REDEMPTION: t('redemptionLabel'),
+    PROPERTY_PURCHASE: t('propertyPurchaseLabel'),
+    PROPERTY_TRANSFER: t('propertyTradeLabel'),
+    PROPERTY_BUILD: t('propertyBuildLabel'),
+    PROPERTY_SELL_BUILDING: t('propertySellBuildingLabel'),
+    LOAN_ISSUE: t('loanIssueLabel'),
+    LOAN_REPAYMENT: t('loanRepaymentLabel'),
+    TO_JACKPOT: t('paidFreeParking'),
+    JACKPOT_PAYOUT: t('collectedFreeParking'),
+    AUCTION_PAYMENT: t('auctionPaymentLabel'),
   }[type];
 }
 
@@ -268,12 +518,43 @@ export function preflightFundsError(
           amount: formatMoney(amount, currency),
         });
   }
-  if (action === 'PLAYER_TO_PLAYER' || action === 'PLAYER_TO_BANK') {
+  if (
+    action === 'PLAYER_TO_PLAYER' ||
+    action === 'PLAYER_TO_BANK' ||
+    action === 'MORTGAGE_REDEMPTION' ||
+    action === 'PROPERTY_PURCHASE' ||
+    action === 'PROPERTY_BUILD' ||
+    action === 'PAY_RENT' ||
+    action === 'LOAN_REPAYMENT'
+  ) {
     return player.balance < amount
       ? `${t('insufficientFunds')} ${t('balanceRequirement', { current: formatMoney(player.balance, currency), required: formatMoney(amount, currency) })}`
       : null;
   }
   return null;
+}
+
+/** How much the acting player is short of their own payment, or `null` when they can afford it. */
+export function preflightShortfall(
+  action: ActionType | null,
+  player: Player,
+  players: Player[],
+  amount: number,
+): number | null {
+  if (!Number.isSafeInteger(amount) || amount <= 0) return null;
+  const required =
+    action === 'PLAYER_TO_ALL'
+      ? amount * (players.length - 1)
+      : action === 'PLAYER_TO_PLAYER' ||
+          action === 'PLAYER_TO_BANK' ||
+          action === 'MORTGAGE_REDEMPTION' ||
+          action === 'PROPERTY_PURCHASE' ||
+          action === 'PROPERTY_BUILD' ||
+          action === 'PAY_RENT' ||
+          action === 'LOAN_REPAYMENT'
+        ? amount
+        : null;
+  return required !== null && player.balance < required ? required - player.balance : null;
 }
 
 export function insufficientMessage(
@@ -282,9 +563,15 @@ export function insufficientMessage(
   currency: Currency,
   t: Translate,
 ) {
-  if (!(error instanceof MonopolyBankApiError) || error.code !== 'INSUFFICIENT_FUNDS') return null;
-  const current = error.details?.currentBalance;
-  const required = error.details?.requiredAmount;
+  if (
+    !(error instanceof MonopolyBankApiError) ||
+    (error.code !== 'INSUFFICIENT_FUNDS' && error.code !== 'INSUFFICIENT_AVAILABLE_FUNDS')
+  )
+    return null;
+  // Spending cash reserved for a leading auction bid reports `available` and `required`.
+  const reserved = error.code === 'INSUFFICIENT_AVAILABLE_FUNDS';
+  const current = reserved ? error.details?.available : error.details?.currentBalance;
+  const required = reserved ? error.details?.required : error.details?.requiredAmount;
   const playerId = error.details?.playerId;
   const player =
     typeof playerId === 'string'
@@ -297,4 +584,10 @@ export function insufficientMessage(
   return typeof current === 'number' && typeof required === 'number'
     ? `${prefix} ${t('balanceRequirement', { current: formatMoney(current, currency), required: formatMoney(required, currency) })}`
     : prefix;
+}
+
+/** A lobby can be started from two players; the "at least two" hint only shows below that. */
+export const MIN_PLAYERS_TO_START = 2;
+export function lobbyNeedsMorePlayers(playerCount: number): boolean {
+  return playerCount < MIN_PLAYERS_TO_START;
 }

@@ -1,9 +1,12 @@
-import type { LedgerStatistics } from '../../shared/contracts/api';
-import type { Currency, Player } from '../../shared/types/monopoly';
+import type { CashLeaderboardEntry, LedgerStatistics } from '../../shared/contracts/api';
+import type { Currency, Loan, Player } from '../../shared/types/monopoly';
 import { Dialog } from '../components/Dialog';
+import { BalanceChart } from '../components/game/BalanceChart';
 import { MoneyValue } from '../components/ui';
 import { useLanguage } from '../i18n/language-context';
+import type { Translate } from '../i18n/translations';
 import { cx, wideDialogClass } from '../components/ui/class-names';
+import { playerDebt } from '../utils/loans';
 import { formatMoney } from '../utils/money';
 
 /*
@@ -42,10 +45,15 @@ const leaderboardClass = cx(
 export function StatisticsScreen({
   summary,
   currency,
+  loans = [],
+  finished = false,
   onClose,
 }: {
   summary: { winners: Player[] } & LedgerStatistics;
   currency: Currency;
+  /** The loans still ACTIVE; with a finished game each player's net after debts is shown. */
+  loans?: Loan[];
+  finished?: boolean;
   onClose: () => void;
 }) {
   const { t } = useLanguage();
@@ -54,6 +62,10 @@ export function StatisticsScreen({
     hours: Math.floor(summary.durationMs / 3_600_000),
     minutes: Math.floor(summary.durationMs / 60_000) % 60,
   });
+  const nameOf = (id: string | null) =>
+    summary.cashLeaderboard.find((entry) => entry.player.id === id)?.player.name ?? '';
+  const money = (amount: number) => formatMoney(amount, currency);
+  const cards = awardCards(summary, nameOf, money, t);
   return (
     <Dialog
       title={t('statistics')}
@@ -64,12 +76,18 @@ export function StatisticsScreen({
       <section className={reportClass}>
         <header className={reportHeaderClass}>
           <div>
-            <h3>
-              {summary.winners.length === 0
-                ? t('noWinner')
-                : summary.winners.map((player) => player.name).join(', ')}
-            </h3>
-            <p>{t('winners')}</p>
+            {finished ? (
+              <>
+                <h3>
+                  {summary.winners.length === 0
+                    ? t('noWinner')
+                    : summary.winners.map((player) => player.name).join(', ')}
+                </h3>
+                <p>{t('winners')}</p>
+              </>
+            ) : (
+              <h3>{t('statistics')}</h3>
+            )}
           </div>
           {leader !== undefined && (
             <div className={leaderClass}>
@@ -92,6 +110,23 @@ export function StatisticsScreen({
             value={formatMoney(summary.largestTransaction, currency)}
           />
         </dl>
+        {cards.length > 0 && (
+          <section>
+            <h3>{finished ? t('finalSummary') : t('awards')}</h3>
+            <dl className={gridClass} data-testid="awards">
+              {cards.map((card) => (
+                <Metric key={card.key} label={card.label} value={card.value} detail={card.detail} />
+              ))}
+            </dl>
+          </section>
+        )}
+        {summary.balanceSeries !== undefined && (
+          <BalanceChart
+            series={summary.balanceSeries}
+            players={summary.cashLeaderboard.map((entry) => entry.player)}
+            currency={currency}
+          />
+        )}
         <section>
           <h3>{t('cashLeaderboard')}</h3>
           <ol className={leaderboardClass}>
@@ -105,6 +140,13 @@ export function StatisticsScreen({
                   {t('sent')}: <MoneyValue amount={entry.sent} currency={currency} /> ·{' '}
                   {t('received')}: <MoneyValue amount={entry.received} currency={currency} /> ·{' '}
                   {t('passGoCount')}: {entry.passGoCount}
+                  {finished && loans.length > 0 && (
+                    <>
+                      {' · '}
+                      {t('netAfterDebts')}:{' '}
+                      <MoneyValue amount={netAfterDebts(loans, entry.player)} currency={currency} />
+                    </>
+                  )}
                 </small>
               </li>
             ))}
@@ -114,11 +156,97 @@ export function StatisticsScreen({
     </Dialog>
   );
 }
-function Metric({ label, value }: { label: string; value: string }) {
+/** Balance minus what the player still owes plus what they are still owed by players. */
+function netAfterDebts(loans: Loan[], player: Player): number {
+  const { owes, owed } = playerDebt(loans, player.id);
+  return player.balance - owes + owed;
+}
+function Metric({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
     <div>
       <dt>{label}</dt>
       <dd>{value}</dd>
+      {detail !== undefined && detail !== '' && (
+        <dd className="text-[0.84rem]! font-normal! text-secondary!">{detail}</dd>
+      )}
     </div>
   );
+}
+
+interface AwardCard {
+  key: string;
+  label: string;
+  value: string;
+  detail?: string;
+}
+
+/** The award cards that have a holder; a game without rent or auctions simply shows fewer. */
+function awardCards(
+  summary: LedgerStatistics,
+  nameOf: (playerId: string | null) => string,
+  money: (amount: number) => string,
+  t: Translate,
+): AwardCard[] {
+  const best = (pick: (entry: CashLeaderboardEntry) => number) =>
+    summary.cashLeaderboard.reduce<CashLeaderboardEntry | null>(
+      (leader, entry) => (pick(entry) > (leader === null ? 0 : pick(leader)) ? entry : leader),
+      null,
+    );
+  const sender = best((entry) => entry.sent);
+  const receiver = best((entry) => entry.received);
+  const goPasser = best((entry) => entry.passGoCount);
+  const { awards } = summary;
+  const cards: Array<AwardCard | null | undefined> = [
+    sender && {
+      key: 'sender',
+      label: t('awardTopSender'),
+      value: sender.player.name,
+      detail: money(sender.sent),
+    },
+    receiver && {
+      key: 'receiver',
+      label: t('awardTopReceiver'),
+      value: receiver.player.name,
+      detail: money(receiver.received),
+    },
+    awards?.biggestOperation && {
+      key: 'operation',
+      label: t('awardBiggestOperation'),
+      value: money(awards.biggestOperation.amount),
+      detail: nameOf(awards.biggestOperation.playerId),
+    },
+    awards?.rentPaid && {
+      key: 'rentPaid',
+      label: t('awardRentPaid'),
+      value: nameOf(awards.rentPaid.playerId),
+      detail: money(awards.rentPaid.amount),
+    },
+    awards?.rentCollected && {
+      key: 'rentCollected',
+      label: t('awardRentCollected'),
+      value: nameOf(awards.rentCollected.playerId),
+      detail: money(awards.rentCollected.amount),
+    },
+    goPasser && {
+      key: 'go',
+      label: t('awardMostGoPasses'),
+      value: goPasser.player.name,
+      detail: String(goPasser.passGoCount),
+    },
+    awards?.bestAuctionDeal && {
+      key: 'auction',
+      label: t('awardBestAuction'),
+      value: nameOf(awards.bestAuctionDeal.playerId),
+      detail: [awards.bestAuctionDeal.label, money(awards.bestAuctionDeal.amount)]
+        .filter((part) => part !== null && part !== undefined && part !== '')
+        .join(' · '),
+    },
+    awards?.biggestLoan && {
+      key: 'loan',
+      label: t('awardBiggestLoan'),
+      value: nameOf(awards.biggestLoan.playerId),
+      detail: money(awards.biggestLoan.amount),
+    },
+  ];
+  return cards.filter((card): card is AwardCard => card != null);
 }

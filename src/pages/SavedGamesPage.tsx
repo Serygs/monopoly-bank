@@ -7,10 +7,11 @@ import {
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { Dialog } from '../components/Dialog';
 import { DeletedGameCard, GameCard } from '../components/game/GameCard';
+import { OverflowMenu } from '../components/OverflowMenu';
 import { PageHeader } from '../components/PageHeader';
 import {
   Button,
-  DialogActions,
+  SheetActions,
   DialogBody,
   EmptyState,
   Field,
@@ -31,18 +32,18 @@ import { cx } from '../components/ui/class-names';
 const heroClass = cx(
   'page-header--hero relative overflow-hidden rounded-xl border border-[color:color-mix(in_srgb,var(--mb-color-highlight)_45%,transparent)]',
   'text-on-inverse shadow-md [background:var(--mb-background-hero)]',
-  'min-h-[clamp(230px,20vw,280px)] p-(--mb-space-6) pb-[clamp(var(--mb-space-6),5vw,var(--mb-space-9))]',
-  'lg:p-[clamp(var(--mb-space-7),4vw,var(--mb-space-9))] lg:pb-[clamp(var(--mb-space-6),5vw,var(--mb-space-9))]',
+  'min-h-[clamp(112px,12vw,148px)] content-center p-(--mb-space-5)',
+  'lg:p-(--mb-space-6)',
   'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-0 *:relative *:z-1',
   '[&_h1]:text-inherit [&_.lede]:text-inherit [&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-highlight)_82%,white)]',
-  'max-md:[&_h1]:text-[length:clamp(2.125rem,10vw,2.875rem)]',
+  'max-md:[&_h1]:text-[length:clamp(1.75rem,8vw,2.25rem)]',
   // Only the dark Classic hero needs the inverse ring; Liquid Glass light keeps the default.
   'classic:light:[&_button:focus-visible]:outline-text-on-inverse',
   // `!` outranks PageHeader's own `lg:` columns.
   'lg:grid-cols-[minmax(0,62%)_minmax(0,38%)]! lg:items-center',
   'max-md:[&_.page-header-actions]:grid-cols-1 max-md:[&_.page-header-actions_.button]:w-full max-md:[&_.button-primary]:-order-1',
   'lg:[&_.page-header-actions]:col-[1] lg:[&_.page-header-actions]:max-w-[28rem]',
-  'classic:after:hidden classic:max-md:bg-[position:62%_center] classic:max-md:bg-[size:auto_100%]',
+  'classic:after:hidden classic:max-md:bg-[position:62%_center] classic:max-md:bg-[size:cover]',
   'glass:isolate glass:border-[rgb(255_255_255/0.6)] glass:text-primary glass:shadow-lg',
   'glass:[&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-accent-hover)_88%,var(--mb-color-text-primary))]',
   'glass:after:w-[42%] glass:after:opacity-82',
@@ -50,7 +51,7 @@ const heroClass = cx(
 );
 /* The search field and sort select share each style's control skin. */
 const controlsClass = cx(
-  'mb-(--mb-layout-section-gap-compact) grid gap-(--mb-space-3)',
+  'mb-(--mb-layout-section-gap-compact) grid grid-cols-[minmax(0,1fr)] gap-(--mb-space-3)',
   'md:grid-cols-[minmax(0,1fr)_auto] md:items-center lg:grid-cols-[minmax(18rem,1fr)_auto_auto]',
   'classic:[&_:is(input,select)]:border-border classic:[&_:is(input,select)]:bg-[#fffcf3] classic:[&_:is(input,select)]:shadow-[0_5px_16px_rgb(42_52_39/0.05)]',
   'classic:dark:[&_:is(input,select)]:bg-surface-elevated',
@@ -63,10 +64,6 @@ const searchClass = cx(
   'saved-games-search relative block md:col-span-full lg:col-auto',
   '[&_input]:block [&_input]:w-full [&_input]:ps-12',
 );
-const searchIconClass =
-  'saved-games-search-icon pointer-events-none absolute top-1/2 left-4 z-1 block size-5 -translate-y-1/2 text-muted';
-const sortClass =
-  'flex items-center gap-(--mb-space-2) text-small font-semibold text-secondary md:justify-self-end [&_select]:min-h-(--mb-control-height-md)';
 const gridClass = cx(
   'grid grid-cols-[1fr] gap-(--mb-layout-gap-compact)',
   'md:grid-cols-2 md:gap-(--mb-layout-gap-medium) lg:gap-(--mb-layout-gap-wide)',
@@ -99,6 +96,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   const [deletedError, setDeletedError] = useState<unknown | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'updated' | 'name'>('updated');
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const visibleGames = useMemo(
     () =>
@@ -237,22 +235,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
 
   return (
     <PageShell>
-      <PageHeader
-        className={heroClass}
-        eyebrow={t('appName')}
-        title={t('savedGames')}
-        description={t('savedGamesLede')}
-        actions={
-          <>
-            <Button variant="primary" onClick={onCreateGame}>
-              {t('createNewGame')}
-            </Button>
-            <Button variant="secondary" onClick={() => onJoinGame()}>
-              {t('joinGame')}
-            </Button>
-          </>
-        }
-      />
+      <PageHeader className={heroClass} title={t('savedGames')} description={t('savedGamesLede')} />
 
       {loading && (
         <StatPill variant="status" live>
@@ -281,64 +264,84 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
       {!loading && error === null && (games.length > 0 || deletedGames.length > 0) && (
         <>
           <section className={controlsClass} aria-label={t('savedGamesControls')}>
-            <label className={searchClass}>
-              <span className="sr-only">{t('searchGames')}</span>
-              <svg
-                className={searchIconClass}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                aria-hidden="true"
+            <div className="flex items-center gap-(--mb-space-2)">
+              <Button
+                variant="secondary"
+                className="w-(--mb-control-height-md) shrink-0 px-0"
+                aria-label={t('searchGames')}
+                aria-expanded={searchOpen || query !== ''}
+                onClick={() => setSearchOpen((open) => !open)}
               >
-                <circle cx="10.75" cy="10.75" r="5.75" />
-                <path d="m15 15 4 4" />
-              </svg>
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={t('searchGames')}
-              />
-            </label>
-            <SegmentedControl
-              variant="filter"
-              className="flex flex-wrap gap-(--mb-space-2)"
-              label={t('filterGames')}
-              options={(
-                [
-                  'ALL',
-                  'ACTIVE',
-                  'LOBBY',
-                  'FINISHED',
-                  ...(deletedGames.length > 0 || statusFilter === 'DELETED'
-                    ? (['DELETED'] as const)
-                    : []),
-                ] as const
-              ).map((status) => ({
-                value: status,
-                label: t(
-                  status === 'ALL'
-                    ? 'allGames'
-                    : status === 'DELETED'
-                      ? 'deletedGames'
-                      : (`gameStatus${status[0]}${status.slice(1).toLowerCase()}` as 'gameStatusLobby'),
-                ),
-              }))}
-              value={statusFilter}
-              onChange={setStatusFilter}
-            />
-            <label className={sortClass}>
-              <span>{t('sortGames')}</span>
-              <select
-                value={sortOrder}
-                onChange={(event) => setSortOrder(event.target.value as 'updated' | 'name')}
-              >
-                <option value="updated">{t('sortUpdated')}</option>
-                <option value="name">{t('sortName')}</option>
-              </select>
-            </label>
+                <svg
+                  className="size-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="10.75" cy="10.75" r="5.75" />
+                  <path d="m15 15 4 4" />
+                </svg>
+              </Button>
+              <div className="min-w-0 flex-[1_1_auto] snap-x snap-proximity overflow-x-auto [-webkit-mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)] [mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <SegmentedControl
+                  variant="filter"
+                  className="flex w-max flex-nowrap gap-(--mb-space-2) pe-6 whitespace-nowrap"
+                  label={t('filterGames')}
+                  options={(
+                    [
+                      'ALL',
+                      'ACTIVE',
+                      'LOBBY',
+                      'FINISHED',
+                      ...(deletedGames.length > 0 || statusFilter === 'DELETED'
+                        ? (['DELETED'] as const)
+                        : []),
+                    ] as const
+                  ).map((status) => ({
+                    value: status,
+                    label: t(
+                      status === 'ALL'
+                        ? 'allGames'
+                        : status === 'DELETED'
+                          ? 'deletedGames'
+                          : (`gameStatus${status[0]}${status.slice(1).toLowerCase()}` as 'gameStatusLobby'),
+                    ),
+                  }))}
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                />
+              </div>
+              <div className="flex-none">
+                <OverflowMenu
+                  label={t('sortGames')}
+                  items={[
+                    {
+                      label: `${sortOrder === 'updated' ? '✓ ' : ''}${t('sortUpdated')}`,
+                      onSelect: () => setSortOrder('updated'),
+                    },
+                    {
+                      label: `${sortOrder === 'name' ? '✓ ' : ''}${t('sortName')}`,
+                      onSelect: () => setSortOrder('name'),
+                    },
+                  ]}
+                />
+              </div>
+            </div>
+            {(searchOpen || query !== '') && (
+              <label className={searchClass}>
+                <span className="sr-only">{t('searchGames')}</span>
+                <input
+                  type="search"
+                  autoFocus={searchOpen}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={t('searchGames')}
+                />
+              </label>
+            )}
           </section>
           {statusFilter === 'DELETED' ? (
             <>
@@ -373,6 +376,9 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
                 <GameCard
                   key={summary.game.id}
                   summary={summary}
+                  sharesName={
+                    visibleGames.filter((other) => other.game.name === summary.game.name).length > 1
+                  }
                   duplicating={duplicating === summary.game.id}
                   onJoinGame={onJoinGame}
                   onOpenGame={onOpenGame}
@@ -441,14 +447,14 @@ function RemoveGameDialog({
       {error !== null && (
         <Notice tone="error">{apiErrorMessage(error, t, 'unableRemoveGame')}</Notice>
       )}
-      <DialogActions>
+      <SheetActions>
         <Button variant="secondary" disabled={removing} onClick={onCancel}>
           {t('cancel')}
         </Button>
         <Button variant="danger" disabled={removing} onClick={onConfirm}>
           {removing ? t('removing') : t('removeGame')}
         </Button>
-      </DialogActions>
+      </SheetActions>
     </Dialog>
   );
 }
@@ -502,14 +508,14 @@ function DuplicateGameDialog({
             : apiErrorMessage(error, t, 'unableDuplicateGame')}
         </Notice>
       )}
-      <DialogActions>
+      <SheetActions>
         <Button variant="secondary" disabled={duplicating} onClick={onCancel}>
           {t('cancel')}
         </Button>
         <Button variant="primary" disabled={duplicating} onClick={onConfirm}>
           {duplicating ? t('duplicating') : t('duplicateGame')}
         </Button>
-      </DialogActions>
+      </SheetActions>
     </Dialog>
   );
 }

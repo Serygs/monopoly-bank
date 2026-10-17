@@ -46,16 +46,13 @@ export const banknotePanelClass =
  * to outrank the core's `disabled:shadow-none`, as the old theme sheet did.
  */
 export const glassControlClass = cx(
-  'glass:border-[rgb(255_255_255/0.62)] glass:bg-[rgb(255_255_255/0.36)] glass:text-primary',
-  'glass:shadow-[inset_0_1px_0_rgb(255_255_255/0.55),0_6px_18px_rgb(40_60_90/0.08)]',
-  'glass:disabled:shadow-[inset_0_1px_0_rgb(255_255_255/0.55),0_6px_18px_rgb(40_60_90/0.08)]',
+  'glass:border-(--mb-glass-border) glass:bg-(--mb-glass-control-tint) glass:text-primary',
+  'glass:shadow-(--mb-glass-control-shadow)',
+  'glass:disabled:shadow-(--mb-glass-control-shadow)',
 );
 
 /** Liquid Glass frosted panel: the auth card and the table tools. */
-export const glassPanelClass = cx(
-  'glass:border-border glass:bg-[color-mix(in_srgb,var(--mb-color-surface-elevated)_90%,transparent)] glass:shadow-lg',
-  'glass:backdrop-blur-[22px] glass:backdrop-saturate-[1.35]',
-);
+export const glassPanelClass = cx('glass-panel');
 
 /** Every button: layout, type weight, motion, and the pressed/disabled states. */
 export const buttonCoreClass = cx(
@@ -76,11 +73,11 @@ export const buttonToneClass = {
     'not-disabled:active:bg-accent-pressed fine-pointer:not-disabled:hover:bg-accent-hover',
     buttonHoverLift,
     'classic:shadow-[0_5px_12px_rgb(10_63_46/0.16)] classic:disabled:shadow-[0_5px_12px_rgb(10_63_46/0.16)]',
-    'glass:border-[rgb(255_255_255/0.3)] glass:text-white',
-    'glass:[background:linear-gradient(180deg,rgb(48_65_86/0.8),rgb(28_41_58/0.86))]',
-    'glass:shadow-[inset_0_1px_0_rgb(255_255_255/0.3),0_8px_20px_rgb(32_49_73/0.16)] glass:disabled:shadow-[inset_0_1px_0_rgb(255_255_255/0.3),0_8px_20px_rgb(32_49_73/0.16)]',
+    'glass:border-(--mb-glass-button-primary-border) glass:text-white',
+    'glass:[background:var(--mb-glass-button-primary-bg)]',
+    'glass:shadow-(--mb-glass-button-primary-shadow) glass:disabled:shadow-(--mb-glass-button-primary-shadow)',
     'glass:not-disabled:active:bg-accent-pressed glass:not-disabled:active:bg-none',
-    'glass:fine-pointer:not-disabled:hover:[background:linear-gradient(180deg,rgb(64_84_109/0.84),rgb(35_51_70/0.9))] glass:fine-pointer:not-disabled:hover:shadow-[inset_0_1px_0_rgb(255_255_255/0.36),0_10px_24px_rgb(32_49_73/0.2)]',
+    'glass:fine-pointer:not-disabled:hover:[background:var(--mb-glass-button-primary-hover-bg)]',
   ),
   /* Both styles replace the base border and fill, so the pressed colours are per style. */
   secondary: cx(
@@ -137,13 +134,12 @@ export const playerSwatchClass =
 
 /** Elevated table-tool surface shared by `DiceRoller` and `TableCalculator`. */
 export const toolPanelClass = cx(
-  'grid gap-(--mb-space-4) rounded-lg border border-border bg-surface-elevated p-(--mb-space-6) shadow-sm',
-  glassPanelClass,
+  'glass-card grid gap-(--mb-space-4) rounded-surface border border-border bg-surface-elevated p-(--mb-space-6) shadow-sm',
 );
 
 /** Square key of the numeric keypad and the calculator operation buttons. */
 export const keyButtonClass = cx(
-  'min-h-(--mb-control-height-md) rounded-[8px] border border-border-strong bg-surface-elevated font-semibold text-primary',
+  'min-h-(--mb-control-height-md) rounded-compact border border-border-strong bg-surface-elevated font-semibold text-primary',
   'transition-[color,background-color,border-color,translate] duration-(--mb-duration-fast) ease-standard',
   'active:translate-y-px motion-reduce:transition-none',
 );

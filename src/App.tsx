@@ -1,4 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
+import { joinCodeFromSearch } from './utils/join-code';
 import type { UserProfile } from '../shared/contracts/api';
 import { monopolyBankApi } from './api/monopoly-bank-api';
 import { loadAccountSession } from './api/account-session';
@@ -9,16 +17,22 @@ import { AuthPage } from './pages/AuthPage';
 import { PasswordRecoveryPage, PasswordResetPage, VerifyEmailPage } from './pages/EmailTokenPage';
 import { CreateGamePage } from './pages/CreateGamePage';
 import { GamePage } from './pages/GamePage';
+import { JoinEntryPage } from './pages/JoinEntryPage';
 import { JoinGamePage } from './pages/JoinGamePage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SavedGamesPage } from './pages/SavedGamesPage';
 import { readPreferences, writePreferences, type DevicePreferences } from './utils/preferences';
 import { mountAppearance } from './appearance/appearance-controller';
 import { AppearanceSettings, SettingsGroup } from './components/AppearanceSettings';
+import { AppBottomNav } from './components/AppBottomNav';
+import { appTabForPath } from './utils/app-tab';
+import { clearDraft } from './pages/create-game-draft';
 import { Dialog } from './components/Dialog';
 import {
   BankSeal,
   Button,
+  SheetActions,
+  DialogBody,
   FeedbackProvider,
   Notice,
   PageShell,
@@ -93,10 +107,7 @@ const settingsPanelClass = cx(
   // The cap applies to the anchored popover only; below `md` both styles share the full-width sheet.
   'glass:min-w-0 glass:md:max-w-[min(22.5rem,calc(100vw_-_2_*_var(--mb-space-3)))] glass:overflow-x-hidden',
   'glass:md:w-[min(22.5rem,calc(100vw_-_2_*_var(--mb-space-3)))]',
-  'glass:border-[rgb(255_255_255/0.65)] glass:bg-[rgb(255_255_255/0.76)] glass:dark:border-[rgb(255_255_255/0.24)] glass:dark:bg-[rgb(40_49_62/0.88)]',
-  'glass:shadow-[0_18px_45px_rgb(40_60_90/0.14),inset_0_1px_0_rgb(255_255_255/0.65)]',
-  'glass:backdrop-blur-[24px] glass:backdrop-saturate-[1.3] glass:max-md:backdrop-blur-[16px] glass:max-md:backdrop-saturate-[1.24]',
-  'glass:forced-colors:backdrop-filter-none',
+  'glass-popover',
   'glass:[&>header>div]:min-w-0 glass:[&>header_h2]:max-w-full glass:[&>header_h2]:text-[1.75rem] glass:[&>header_h2]:whitespace-nowrap',
   'glass:[&_.settings-options]:min-w-0',
 );
@@ -134,12 +145,22 @@ function AppRoutes() {
   const [paymentFlowOpen, setPaymentFlowOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<unknown | null>(null);
+  const [joinChoice, setJoinChoice] = useState<'choice' | 'signIn' | 'register' | 'guest'>(
+    'choice',
+  );
   const [settingsPopoverPosition, setSettingsPopoverPosition] = useState<{
     top: number;
     right: number;
   } | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const accountRequestVersion = useRef(0);
+  const pathRef = useRef(path);
+  const scrollPositions = useRef<Record<string, number>>({});
+  const createDirty = useRef(false);
+  const [leaveTarget, setLeaveTarget] = useState<string | null>(null);
+  const setCreateDirty = useCallback((dirty: boolean) => {
+    createDirty.current = dirty;
+  }, []);
 
   const { visualStyle, colorMode } = preferences;
   useLayoutEffect(() => mountAppearance({ visualStyle, colorMode }), [visualStyle, colorMode]);
@@ -160,8 +181,34 @@ function AppRoutes() {
   useEffect(() => {
     writePreferences(preferences);
   }, [preferences]);
+  /* Each screen keeps its own scroll position; the browser's restoration cannot know about ours. */
+  useLayoutEffect(() => {
+    pathRef.current = path;
+    window.scrollTo(0, scrollPositions.current[path] ?? 0);
+  }, [path]);
   useEffect(() => {
-    const onPopState = () => setPath(window.location.pathname);
+    const previous = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+    return () => {
+      window.history.scrollRestoration = previous;
+    };
+  }, []);
+  useEffect(() => {
+    const onPopState = () => {
+      if (
+        pathRef.current === '/games/new' &&
+        createDirty.current &&
+        window.location.pathname !== '/games/new'
+      ) {
+        /* Put the new-lobby entry back and ask before the typed input is lost. */
+        const target = window.location.pathname;
+        window.history.pushState({}, '', '/games/new');
+        setLeaveTarget(target);
+        return;
+      }
+      scrollPositions.current[pathRef.current] = window.scrollY;
+      setPath(window.location.pathname);
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -207,6 +254,16 @@ function AppRoutes() {
   }, []);
 
   const navigate = (target: string) => {
+    if (
+      pathRef.current === '/games/new' &&
+      createDirty.current &&
+      routePath(target) !== '/games/new'
+    ) {
+      setSettingsOpen(false);
+      setLeaveTarget(target);
+      return;
+    }
+    scrollPositions.current[pathRef.current] = window.scrollY;
     setSettingsOpen(false);
     window.history.pushState({}, '', target);
     setPath(routePath(target));
@@ -221,9 +278,12 @@ function AppRoutes() {
       setAccountError(null);
       setSettingsOpen(false);
       setPaymentFlowOpen(false);
+      clearDraft();
+      createDirty.current = false;
       window.history.replaceState({}, '', '/');
       setPath('/');
       setProfile(null);
+      setJoinChoice('choice');
     } catch (caught) {
       setSignOutError(caught);
     } finally {
@@ -273,7 +333,15 @@ function AppRoutes() {
     };
     if (EMAIL_FEATURES_ENABLED && path === '/forgot-password')
       return <PasswordRecoveryPage onBack={() => navigatePublic('/')} />;
-    if (path === '/games/join') {
+    if (path === '/games/join' && joinChoice === 'choice')
+      return (
+        <JoinEntryPage
+          onSignIn={() => setJoinChoice('signIn')}
+          onRegister={() => setJoinChoice('register')}
+          onGuest={() => setJoinChoice('guest')}
+        />
+      );
+    if (path === '/games/join' && joinChoice === 'guest') {
       const guestJoinCode = new URLSearchParams(window.location.search).get('code') ?? '';
       const guestInvitationToken = invitationFromLocation();
       return (
@@ -286,10 +354,7 @@ function AppRoutes() {
             window.history.pushState({}, '', `/games/${encodeURIComponent(gameId)}`);
             setPath(`/games/${encodeURIComponent(gameId)}`);
           }}
-          onBack={() => {
-            window.history.pushState({}, '', '/');
-            setPath('/');
-          }}
+          onBack={() => setJoinChoice('choice')}
         />
       );
     }
@@ -300,19 +365,20 @@ function AppRoutes() {
     );
     return (
       <AuthPage
+        initialRegistering={path === '/games/join' && joinChoice === 'register'}
         onAuthenticated={(user) => {
           authenticated(user);
+          setJoinChoice('choice');
           navigate(returnRoute);
         }}
       />
     );
   }
 
-  const joinCode =
-    path === '/games/join' ? (new URLSearchParams(window.location.search).get('code') ?? '') : '';
+  const joinCode = path === '/games/join' ? joinCodeFromSearch(window.location.search) : '';
   const invitationToken = path === '/games/join' ? invitationFromLocation() : '';
   return (
-    <div className={appShellClass}>
+    <div className={appShellClass} data-bottom-nav={appTabForPath(path) === null ? undefined : ''}>
       <header className={appHeaderClass}>
         <div className={appHeaderInnerClass}>
           <button type="button" className={brandClass} onClick={() => navigate('/')}>
@@ -384,6 +450,11 @@ function AppRoutes() {
             checked={preferences.vibration}
             onChange={(vibration) => setPreferences({ ...preferences, vibration })}
           />
+          <Toggle
+            label={t('keepScreenAwake')}
+            checked={preferences.keepScreenAwake}
+            onChange={(keepScreenAwake) => setPreferences({ ...preferences, keepScreenAwake })}
+          />
           <div className="settings-account-actions grid gap-(--mb-space-3) border-t border-dialog-divider mt-(--mb-space-1) pt-(--mb-space-4)">
             {signOutError !== null && (
               <Notice tone="error" className="m-0">
@@ -426,19 +497,24 @@ function AppRoutes() {
         </section>
       )}
       {path === '/profile' ? (
-        <ProfilePage profile={profile} onUpdated={setProfile} onBack={() => navigate('/')} />
+        <ProfilePage profile={profile} onUpdated={setProfile} />
       ) : path === '/games/new' ? (
         <CreateGamePage
           profile={profile}
-          onCancel={() => navigate('/')}
-          onCreated={(id) => navigate(`/games/${encodeURIComponent(id)}`)}
+          onClose={() => navigate('/')}
+          onDirtyChange={setCreateDirty}
+          onCreated={(id) => {
+            // The lobby exists now, so the form has nothing left to lose: leave without the prompt.
+            createDirty.current = false;
+            navigate(`/games/${encodeURIComponent(id)}`);
+          }}
         />
       ) : path === '/games/join' ? (
         <JoinGamePage
           initialJoinCode={joinCode}
           invitationToken={invitationToken}
+          autoJoin
           onJoined={(id) => navigate(`/games/${encodeURIComponent(id)}`)}
-          onBack={() => navigate('/')}
         />
       ) : gameMatch !== null ? (
         <GamePage
@@ -456,6 +532,33 @@ function AppRoutes() {
           }
           onOpenGame={(id) => navigate('/games/' + encodeURIComponent(id))}
         />
+      )}
+      <AppBottomNav path={path} navigate={navigate} />
+      {leaveTarget !== null && (
+        <Dialog
+          title={t('discardDraftTitle')}
+          closeLabel={t('closeDialog', { title: t('discardDraftTitle') })}
+          onClose={() => setLeaveTarget(null)}
+        >
+          <DialogBody>{t('discardDraftBody')}</DialogBody>
+          <SheetActions>
+            <Button variant="secondary" onClick={() => setLeaveTarget(null)}>
+              {t('keepEditing')}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                const target = leaveTarget;
+                clearDraft();
+                createDirty.current = false;
+                setLeaveTarget(null);
+                navigate(target);
+              }}
+            >
+              {t('discardDraft')}
+            </Button>
+          </SheetActions>
+        </Dialog>
       )}
     </div>
   );
