@@ -5,7 +5,7 @@ import type { Currency, GameProperty, Player } from '../../../shared/types/monop
 import { normalizePropertyName } from '../../../shared/domain/mortgage';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
-import { Button, DialogActions, DialogBody, Field, Notice } from '../../components/ui';
+import { Button, SheetActions, DialogBody, Field, Notice } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
@@ -81,7 +81,7 @@ export function StartAuctionDialog({
   };
 
   return (
-    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
+    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose} sheet="flow">
       <DialogBody>{t('auctionStartIntro')}</DialogBody>
       {error !== null && (
         <Notice tone="error">{apiErrorMessage(error, t, 'unableStartAuction')}</Notice>
@@ -124,14 +124,14 @@ export function StartAuctionDialog({
         <p className="mt-(--mb-space-2) text-small text-secondary">
           {t('auctionOfferedBy', { name: initiator.name })}
         </p>
-        <DialogActions>
+        <SheetActions>
           <Button variant="secondary" type="button" onClick={onClose}>
             {t('cancel')}
           </Button>
           <Button variant="primary" type="submit" disabled={normalized === null || submitting}>
             {submitting ? t('auctionStarting') : t('auctionStart')}
           </Button>
-        </DialogActions>
+        </SheetActions>
       </form>
     </Dialog>
   );

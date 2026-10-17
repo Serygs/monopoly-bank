@@ -19,6 +19,11 @@ interface DialogProps {
   className?: string;
   closeDisabled?: boolean;
   presentation?: 'modal' | 'popover';
+  /**
+   * `browse` (default) keeps the game's bottom navigation under the sheet; `flow` is a step flow
+   * (payment, build, trade, auction ...) whose sheet covers the navigation and the Pay button.
+   */
+  sheet?: 'browse' | 'flow';
   id?: string;
   popoverStyle?: CSSProperties;
 }
@@ -111,13 +116,14 @@ export function Dialog({
   className = '',
   closeDisabled = false,
   presentation = 'modal',
+  sheet = 'browse',
   id,
   popoverStyle,
 }: DialogProps) {
   // The dialog stays mounted for its leave transition; `onClose` runs once that has finished.
   const [open, setOpen] = useState(true);
   const bottomNav = useContext(DialogNavContext);
-  const withNav = bottomNav !== null && presentation === 'modal';
+  const withNav = bottomNav !== null && presentation === 'modal' && sheet === 'browse';
   const requestClose = () => {
     if (!closeDisabled) setOpen(false);
   };

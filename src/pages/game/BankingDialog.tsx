@@ -22,7 +22,7 @@ import { useBuildingLabel } from '../../components/game/property-labels';
 import { WalletMenu } from '../../components/game/WalletMenu';
 import {
   Button,
-  DialogActions,
+  SheetActions,
   Field,
   FieldError,
   FieldHint,
@@ -145,13 +145,13 @@ const dangerZoneClass =
 
 /*
  * The form and confirmation steps: a flex column whose body alone scrolls, so the footer sits
- * outside the scroll area and never overlaps the content. The shared compact `DialogActions`
- * (sticky, stacked) becomes a plain one-row footer: Back, then the wider primary action.
+ * outside the scroll area and never overlaps the content. The shared compact `SheetActions`
+ * (sticky, stacked, gradient fade) becomes a one-row footer: Back, then the wider primary action.
  */
 const stepPanelClass = 'flex flex-col overflow-hidden!';
 const stepBodyClass = 'min-h-0 flex-1 overflow-y-auto overscroll-contain pt-(--mb-space-3)';
 const stepFooterClass = cx(
-  'shrink-0 max-md:static! max-md:m-0! max-md:mt-(--mb-space-3)! max-md:flex-row! max-md:p-0!',
+  'shrink-0 max-md:mt-0! max-md:flex-row!',
   'max-md:[&_.button]:w-auto! max-md:[&>:first-child]:flex-1 max-md:[&>:last-child]:flex-[2]',
 );
 
@@ -659,6 +659,7 @@ export function BankingDialog({
       title={title}
       closeLabel={t('closeDialog', { title })}
       onClose={onClose}
+      sheet="flow"
       className={action === null ? undefined : stepPanelClass}
     >
       {action === null ? (
@@ -878,14 +879,14 @@ export function BankingDialog({
           <StepBody>
             <Notice tone="info">{t('bankLoanCooldownWarning', { rounds: cooldownRounds })}</Notice>
           </StepBody>
-          <DialogActions className={stepFooterClass}>
+          <SheetActions className={stepFooterClass}>
             <Button variant="secondary" onClick={() => setCooldownRounds(null)}>
               {t('back')}
             </Button>
             <Button variant="primary" onClick={borrowAnyway}>
               {t('borrowAnyway')}
             </Button>
-          </DialogActions>
+          </SheetActions>
         </>
       ) : confirming ? (
         <>
@@ -924,7 +925,7 @@ export function BankingDialog({
             )}
             {action === 'PASS_GO' && <div className="mt-(--mb-space-3)">{commentField}</div>}
           </StepBody>
-          <DialogActions className={stepFooterClass}>
+          <SheetActions className={stepFooterClass}>
             <Button
               variant="secondary"
               disabled={submitting}
@@ -947,7 +948,7 @@ export function BankingDialog({
                   ? t('confirmTransaction')
                   : t('tryAgain')}
             </Button>
-          </DialogActions>
+          </SheetActions>
         </>
       ) : (
         <>
@@ -1222,14 +1223,14 @@ export function BankingDialog({
             )}
             {!noComment && <div className="mt-(--mb-space-2)">{commentField}</div>}
           </StepBody>
-          <DialogActions className={stepFooterClass}>
+          <SheetActions className={stepFooterClass}>
             <Button variant="secondary" onClick={() => selectAction(null)}>
               {t('back')}
             </Button>
             <Button variant="primary" disabled={!valid} onClick={review}>
               {t('reviewTransaction')}
             </Button>
-          </DialogActions>
+          </SheetActions>
         </>
       )}
     </Dialog>

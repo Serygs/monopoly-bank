@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { PaymentRequest } from '../../../shared/contracts/api';
 import type { Currency, Player } from '../../../shared/types/monopoly';
-import { Button, DialogActions, Notice, StatPill } from '../../components/ui';
+import { Button, SheetActions, Notice, StatPill } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
@@ -92,7 +92,7 @@ export function PaymentInbox({
                     })}
                   </small>
                 </div>
-                <DialogActions>
+                <SheetActions>
                   <Button
                     variant="primary"
                     disabled={busyId !== null}
@@ -107,7 +107,7 @@ export function PaymentInbox({
                   >
                     {t(isLoan ? 'declineLoan' : 'declinePayment')}
                   </Button>
-                </DialogActions>
+                </SheetActions>
               </li>
             );
           })}
@@ -123,7 +123,7 @@ export function PaymentInbox({
                     })}
                   </strong>
                 </div>
-                <DialogActions>
+                <SheetActions>
                   <Button
                     variant="secondary"
                     disabled={busyId !== null}
@@ -131,7 +131,7 @@ export function PaymentInbox({
                   >
                     {t('cancelRequest')}
                   </Button>
-                </DialogActions>
+                </SheetActions>
               </li>
             );
           })}
