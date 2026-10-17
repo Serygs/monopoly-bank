@@ -227,6 +227,8 @@ describe('GameSession serialisation and deadline bookkeeping', () => {
         request: { type: 'PLAYER_TO_BANK', playerId: 'p', amount: 10 },
       }),
     );
+    // The bid is sent only once the debit is running, so the order does not depend on timing.
+    await vi.waitFor(() => expect(events).toEqual(['debit:start']));
     const bid = session.mutate(
       gameId,
       'actor',
