@@ -8,10 +8,13 @@ import type {
   JackpotPayoutTransactionRequest,
   LoanIssueTransactionRequest,
   LoanRepaymentTransactionRequest,
+  PayRentTransactionRequest,
   PaymentRequest,
   MortgageTransactionRequest,
   PlayerTransactionRequest,
+  PropertyPurchaseTransactionRequest,
   RedeemMortgageTransactionRequest,
+  TileMortgageTransactionRequest,
   ReversalTransactionRequest,
   PaymentRequestActionResponse,
 } from '../../shared/contracts/api.js';
@@ -38,6 +41,9 @@ import {
   LoanNotFoundError,
   MortgageNotFoundError,
   mortgageProperty,
+  mortgageTile,
+  payRent,
+  propertyPurchase,
   redeemMortgage,
   repayBankLoan,
   repayLoan,
@@ -53,8 +59,11 @@ import type {
   Loan,
   Mortgage,
   Player,
+  PropertyChange,
+  GameProperty,
   Transaction,
 } from '../../shared/types/monopoly.js';
+import { requireTile, type PropertyContext } from '../../shared/domain/property.js';
 import type { AuctionRepository } from '../repositories/auction-repository.js';
 import type { BankingOperationRepository } from '../repositories/banking-operation-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
@@ -63,15 +72,17 @@ import type { MortgageRepository } from '../repositories/mortgage-repository.js'
 import type { PlayerRepository } from '../repositories/player-repository.js';
 import type { TransactionRepository } from '../repositories/transaction-repository.js';
 import type { PaymentRequestRepository } from '../repositories/payment-request-repository.js';
+import type { PropertyRepository } from '../repositories/property-repository.js';
 import {
   ConflictError,
   DatabaseError,
   PersistenceConsistencyError,
   ResourceNotFoundError,
+  TileRequiredError,
   ValidationError,
 } from './errors.js';
 import { loadBankLoanView } from './bank-loan-view.js';
-import { assertRuleEnabled } from './rule-guard.js';
+import { assertBoardEnabled, assertRuleEnabled } from './rule-guard.js';
 import { propertyNameKey } from '../../shared/domain/mortgage.js';
 
 export interface BankingService {
@@ -101,6 +112,8 @@ export interface BankingServiceDependencies {
   loans: LoanRepository;
   /** Needed by games with the auctions rule: the leading bid is reserved on the leader's wallet. */
   auctions?: AuctionRepository;
+  /** Needed by board games: the registry the tile requests read and the stored changes. */
+  properties?: PropertyRepository;
   createId: () => string;
 }
 
@@ -113,6 +126,7 @@ export class DefaultBankingService implements BankingService {
   private readonly mortgages: MortgageRepository;
   private readonly loans: LoanRepository;
   private readonly auctions: AuctionRepository | undefined;
+  private readonly properties: PropertyRepository | undefined;
   private readonly createId: () => string;
 
   constructor(dependencies: BankingServiceDependencies) {
@@ -124,6 +138,7 @@ export class DefaultBankingService implements BankingService {
     this.mortgages = dependencies.mortgages;
     this.loans = dependencies.loans;
     this.auctions = dependencies.auctions;
+    this.properties = dependencies.properties;
     this.createId = dependencies.createId;
   }
 
@@ -135,12 +150,14 @@ export class DefaultBankingService implements BankingService {
     const existing = await this.transactions.getById(gameId, transactionId);
     if (existing !== null) {
       const players = await this.players.listByGameId(gameId);
+      const replayGame = await this.games.getById(gameId);
       return {
         transaction: existing,
         players,
         ...(await this.mortgagesFor(gameId, existing.type)),
-        ...(await this.loansFor(await this.games.getById(gameId), players, existing.type)),
-        ...(await this.jackpotFor(await this.games.getById(gameId))),
+        ...(await this.loansFor(replayGame, players, existing.type)),
+        ...(await this.jackpotFor(replayGame)),
+        ...(await this.propertiesFor(replayGame, existing.id)),
       };
     }
     const game = await this.games.getById(gameId);
@@ -167,20 +184,7 @@ export class DefaultBankingService implements BankingService {
     }
     if (request.type === 'PASS_GO' && request.exactLanding === true)
       assertRuleEnabled(game, 'doubleRewardOnExactGo');
-    const result =
-      request.type === 'REVERSAL'
-        ? await this.reverse(game, players, request)
-        : request.type === 'LOAN_ISSUE'
-          ? await this.issueFromBank(game, players, request as BankLoanTransactionRequest)
-          : request.type === 'MORTGAGE'
-            ? await this.mortgage(game, players, request)
-            : request.type === 'MORTGAGE_REDEMPTION'
-              ? await this.redeem(game, players, request)
-              : request.type === 'LOAN_REPAYMENT'
-                ? await this.repay(game, players, request)
-                : request.type === 'JACKPOT_PAYOUT'
-                  ? await this.collectJackpot(game, players, request)
-                  : executeOperation(game, players, request);
+    const result = await this.execute(game, players, request);
     await this.assertAuctionReserveRespected(game, result);
     try {
       await this.operations.persist({
@@ -192,14 +196,24 @@ export class DefaultBankingService implements BankingService {
         request.type === 'MORTGAGE' ||
         request.type === 'MORTGAGE_REDEMPTION' ||
         request.type === 'LOAN_REPAYMENT' ||
-        request.type === 'JACKPOT_PAYOUT'
+        request.type === 'JACKPOT_PAYOUT' ||
+        request.type === 'PROPERTY_PURCHASE' ||
+        request.type === 'PAY_RENT'
           ? {}
           : { recentAmount: result.transaction.amount }),
       });
     } catch (error) {
       // Two commands for the same property race on the unique active name; say so plainly.
-      if (request.type === 'MORTGAGE' && error instanceof DatabaseError)
+      if (request.type === 'MORTGAGE' && !('tileId' in request) && error instanceof DatabaseError)
         await this.assertNotMortgaged(gameId, request.playerId, result);
+      // A tile operation whose registry moved between reading and writing: run it again on the
+      // fresh registry so the precise rule (already owned, mortgaged, ...) is what the player sees.
+      if (
+        error instanceof DatabaseError &&
+        request.type !== 'REVERSAL' &&
+        result.transaction.registryChanges !== undefined
+      )
+        await this.execute(game, await this.players.listByGameId(gameId), request);
       // Two bank loans for one player race on the unique active loan; the loser says so plainly.
       if (request.type === 'LOAN_ISSUE' && error instanceof DatabaseError)
         await this.assertNoActiveBankLoan(gameId, request.playerId);
@@ -227,7 +241,122 @@ export class DefaultBankingService implements BankingService {
       ...(await this.mortgagesFor(gameId, transaction.type)),
       ...(await this.loansFor(game, updatedPlayers, transaction.type)),
       ...(await this.jackpotFor(game)),
+      ...(await this.propertiesFor(game, transactionId)),
     };
+  }
+
+  private async execute(
+    game: Game,
+    players: Player[],
+    request: CreateTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    switch (request.type) {
+      case 'REVERSAL':
+        return this.reverse(game, players, request);
+      case 'LOAN_ISSUE':
+        return this.issueFromBank(game, players, request as BankLoanTransactionRequest);
+      case 'MORTGAGE':
+        return 'tileId' in request
+          ? this.mortgageBoardTile(game, players, request)
+          : this.mortgage(game, players, request);
+      case 'MORTGAGE_REDEMPTION':
+        return this.redeem(game, players, request);
+      case 'LOAN_REPAYMENT':
+        return this.repay(game, players, request);
+      case 'JACKPOT_PAYOUT':
+        return this.collectJackpot(game, players, request);
+      case 'PROPERTY_PURCHASE':
+        return this.purchase(game, players, request);
+      case 'PAY_RENT':
+        return this.rent(game, players, request);
+      default:
+        return executeOperation(game, players, request);
+    }
+  }
+
+  /** The board and the registry of a board game; tile requests to any other game are refused. */
+  private async propertyContext(game: Game, tileId?: string): Promise<PropertyContext> {
+    const board = assertBoardEnabled(game);
+    if (this.properties === undefined) throw new PersistenceConsistencyError();
+    const context = { board, registry: await this.properties.listByGame(game.id) };
+    if (tileId !== undefined) {
+      requireTile(board, tileId);
+      // Seeded with the game; a missing row would make the guarded write silently do nothing.
+      if (!context.registry.some((row) => row.tileId === tileId))
+        throw new PersistenceConsistencyError();
+    }
+    return context;
+  }
+
+  /**
+   * The registry rows an operation changed (every row after a bankruptcy), carried by the response
+   * of a board game so clients can merge them by tile id.
+   */
+  private async propertiesFor(
+    game: Game | null,
+    transactionId: string,
+    all = false,
+  ): Promise<{ properties: GameProperty[] } | Record<string, never>> {
+    if (game?.settings?.board == null || this.properties === undefined) return {};
+    const registry = await this.properties.listByGame(game.id);
+    if (all) return { properties: registry };
+    const changes = await this.properties.listChanges(game.id, transactionId);
+    if (changes.length === 0) return {};
+    const tileIds = new Set(changes.map((change) => change.tileId));
+    return { properties: registry.filter((row) => tileIds.has(row.tileId)) };
+  }
+
+  private async mortgageBoardTile(
+    game: Game,
+    players: Player[],
+    request: TileMortgageTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    const property = await this.propertyContext(game, request.tileId);
+    return mortgageTile({
+      game,
+      players,
+      playerId: request.playerId,
+      tileId: request.tileId,
+      property,
+    });
+  }
+
+  private async purchase(
+    game: Game,
+    players: Player[],
+    request: PropertyPurchaseTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    const property = await this.propertyContext(game, request.tileId);
+    // A tile being auctioned is sold by the auction, not bought from the bank meanwhile.
+    const auction = await this.runningAuction(game);
+    if (auction?.tileId === request.tileId)
+      throw new ConflictError('PROPERTY_IN_AUCTION', 'This property is being auctioned.', {
+        tileId: request.tileId,
+        auctionId: auction.id,
+      });
+    return propertyPurchase({
+      game,
+      players,
+      playerId: request.playerId,
+      tileId: request.tileId,
+      property,
+    });
+  }
+
+  private async rent(
+    game: Game,
+    players: Player[],
+    request: PayRentTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    const property = await this.propertyContext(game, request.tileId);
+    return payRent({
+      game,
+      players,
+      payerPlayerId: request.payerPlayerId,
+      tileId: request.tileId,
+      ...(request.diceSum === undefined ? {} : { diceSum: request.diceSum }),
+      property,
+    });
   }
 
   /** The running auction of a game with the rule, else null: zero cost for every other game. */
@@ -438,6 +567,8 @@ export class DefaultBankingService implements BankingService {
     players: Player[],
     request: MortgageTransactionRequest,
   ): Promise<BankingOperationResult> {
+    // A board game mortgages a tile; a free-text property would bypass the registry.
+    if (game.settings?.board != null) throw new TileRequiredError();
     const result = mortgageProperty({
       game,
       players,
@@ -473,7 +604,14 @@ export class DefaultBankingService implements BankingService {
   ): Promise<BankingOperationResult> {
     const mortgage = await this.mortgages.getActive(game.id, request.mortgageId);
     if (mortgage === null) throw new MortgageNotFoundError(request.mortgageId);
-    return redeemMortgage({ game, players, playerId: request.playerId, mortgage });
+    const property = mortgage.tileId == null ? undefined : await this.propertyContext(game);
+    return redeemMortgage({
+      game,
+      players,
+      playerId: request.playerId,
+      mortgage,
+      ...(property === undefined ? {} : { property }),
+    });
   }
 
   private async reverse(
@@ -487,7 +625,25 @@ export class DefaultBankingService implements BankingService {
     const later = (await this.transactions.listChronologicalSince(game.id, [original.id])).filter(
       (candidate) => candidate.id !== original.id,
     );
-    return reverseTransaction({ game, players, original, later, comment: request.comment ?? null });
+    const originalRegistryChanges =
+      this.properties !== undefined && original.tileId != null
+        ? await this.properties.listChanges(game.id, original.id)
+        : [];
+    const result = reverseTransaction({
+      game,
+      players,
+      original,
+      later,
+      originalRegistryChanges,
+      comment: request.comment ?? null,
+    });
+    // The tiles must still be exactly as the original left them (a bankruptcy may have moved them).
+    if (this.properties !== undefined && result.transaction.registryChanges !== undefined)
+      assertRegistryMatches(
+        await this.properties.listByGame(game.id),
+        result.transaction.registryChanges,
+      );
+    return result;
   }
 
   async getTransaction(gameId: string, transactionId: string): Promise<Transaction | null> {
@@ -626,10 +782,15 @@ export class DefaultBankingService implements BankingService {
           request.playerId,
         )
       : null;
+    const property =
+      game.settings?.board != null && this.properties !== undefined
+        ? await this.propertyContext(game)
+        : undefined;
     const result = declareBankruptcy({
       game,
       players,
       ...request,
+      ...(property === undefined ? {} : { property }),
       ...(bankLoan === null
         ? {}
         : {
@@ -649,6 +810,7 @@ export class DefaultBankingService implements BankingService {
         mortgages: await this.mortgages.listActive(gameId),
         ...(await this.bankruptcyLoans(game, current)),
         ...(await this.jackpotFor(game)),
+        ...(await this.propertiesFor(game, existing.id, true)),
       };
     }
     await this.operations.persist({
@@ -670,6 +832,7 @@ export class DefaultBankingService implements BankingService {
       mortgages: await this.mortgages.listActive(gameId),
       ...(await this.bankruptcyLoans(game, updatedPlayers)),
       ...(await this.jackpotFor(game)),
+      ...(await this.propertiesFor(game, transactionId, true)),
     };
   }
 
@@ -774,6 +937,27 @@ function bankLoanOf(loans: readonly Loan[], playerId: string): Loan | null {
   );
 }
 
+/** Throws when a tile is not in the state a stored change expects (its before state). */
+function assertRegistryMatches(
+  registry: readonly GameProperty[],
+  changes: readonly PropertyChange[],
+): void {
+  for (const change of changes) {
+    const row = registry.find((candidate) => candidate.tileId === change.tileId);
+    if (
+      row === undefined ||
+      row.ownerPlayerId !== change.before.ownerPlayerId ||
+      row.mortgaged !== change.before.mortgaged ||
+      row.houses !== change.before.houses
+    )
+      throw new ConflictError(
+        'PROPERTY_CHANGED',
+        'The property changed since this transaction, so it cannot be reversed.',
+        { tileId: change.tileId },
+      );
+  }
+}
+
 function commandScopedId(commandId: string, index: number): string {
   return `${commandId.slice(0, -1)}${index.toString(16)}`;
 }
@@ -784,6 +968,9 @@ function executeOperation(
   request: Exclude<
     PlayerTransactionRequest,
     | MortgageTransactionRequest
+    | TileMortgageTransactionRequest
+    | PropertyPurchaseTransactionRequest
+    | PayRentTransactionRequest
     | RedeemMortgageTransactionRequest
     | LoanIssueTransactionRequest
     | LoanRepaymentTransactionRequest

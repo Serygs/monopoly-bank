@@ -253,6 +253,47 @@ describe('reversal validation', () => {
   });
 });
 
+describe('board tile validation', () => {
+  const playerId = '11111111-1111-4111-8111-111111111111';
+
+  it('accepts a purchase and a rent payment by tile id', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'PROPERTY_PURCHASE', playerId, tileId: 'arbat' }),
+      ),
+    ).resolves.toEqual({ type: 'PROPERTY_PURCHASE', playerId, tileId: 'arbat' });
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({
+          type: 'PAY_RENT',
+          payerPlayerId: playerId,
+          tileId: 'power_plant',
+          diceSum: 7,
+        }),
+      ),
+    ).resolves.toEqual({
+      type: 'PAY_RENT',
+      payerPlayerId: playerId,
+      tileId: 'power_plant',
+      diceSum: 7,
+    });
+  });
+
+  it('rejects a purchase without a tile id', async () => {
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ type: 'PROPERTY_PURCHASE', playerId })),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+
+  it.each([0, 1, 13, 100000, 7.5])('rejects the dice sum %s', async (diceSum) => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'PAY_RENT', payerPlayerId: playerId, tileId: 'power_plant', diceSum }),
+      ),
+    ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+});
+
 describe('mortgage validation', () => {
   const playerId = '11111111-1111-4111-8111-111111111111';
   const mortgageId = '33333333-3333-4333-8333-333333333333';

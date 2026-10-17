@@ -5,6 +5,7 @@ interface MortgageRow {
   game_id: string;
   player_id: string;
   property_name: string;
+  tile_id: string | null;
   mortgage_value: number;
   created_at: string;
 }
@@ -16,7 +17,7 @@ export interface MortgageRepository {
   getActive(gameId: string, mortgageId: string): Promise<Mortgage | null>;
 }
 
-const columns = 'id, game_id, player_id, property_name, mortgage_value, created_at';
+const columns = 'id, game_id, player_id, property_name, tile_id, mortgage_value, created_at';
 
 export class D1MortgageRepository implements MortgageRepository {
   private readonly database: D1Database;
@@ -50,6 +51,7 @@ function mapMortgage(row: MortgageRow): Mortgage {
     gameId: row.game_id,
     playerId: row.player_id,
     propertyName: row.property_name,
+    ...(row.tile_id == null ? {} : { tileId: row.tile_id }),
     mortgageValue: row.mortgage_value,
     createdAt: row.created_at,
   };

@@ -4,6 +4,7 @@ import {
   type Auction,
   type BankLoanCooldown,
   type Currency,
+  type GameProperty,
   type GameRules,
   type GameSettings,
   type InterestRatePercent,
@@ -38,6 +39,16 @@ import {
 import { auctionReserveFor } from '../../utils/auction';
 import { formatMoney } from '../../utils/money';
 import { presetAmounts } from '../../utils/quick-amounts';
+import {
+  freeTiles,
+  isDiceSum,
+  mortgageableTiles,
+  rentableTiles,
+  rentDue,
+  tileRent,
+  tileViews,
+  type TileView,
+} from '../../utils/property-view';
 import { Confirmation } from './Confirmation';
 import {
   actionDescription,
@@ -56,6 +67,7 @@ import {
 import { InterestRatePicker, LoanPicker } from './LoanFields';
 import { MortgageDetails, RedemptionPicker } from './MortgageFields';
 import { PlayerPicker } from './PlayerPicker';
+import { TilePicker, type TilePickerItem } from './TilePicker';
 
 export interface BankingDialogProps {
   gameId: string;
@@ -79,6 +91,12 @@ export interface BankingDialogProps {
   jackpot?: number;
   /** Open straight on repaying the player's bank loan (the overdue "Settle loan" prompt). */
   settleOnOpen?: boolean;
+  /** Board games: the property registry; the tile pickers list only valid choices from it. */
+  properties?: GameProperty[];
+  /** Open straight on this action (the tile sheet's quick entry). */
+  initialAction?: ActionType;
+  /** The tile the quick entry started from; preselected in the tile picker. */
+  initialTileId?: string;
   /** The running or just-closed auction (auctions rule): its leading bid is reserved cash. */
   auction?: Auction | null;
   /** Opens the start-auction prompt for this wallet, with a suggested property name. */
@@ -97,6 +115,7 @@ export interface BankingDialogProps {
     loans?: Loan[],
     bankLoanCooldowns?: BankLoanCooldown[],
     jackpot?: number,
+    properties?: GameProperty[],
   ) => void;
   /** A payment or loan request was created; a loan request names the lender being asked. */
   onPaymentRequested: (action: ActionType, lenderName?: string) => void;
@@ -143,6 +162,9 @@ export function BankingDialog({
   rules = defaultGameRules,
   settings = null,
   mortgages = [],
+  properties = [],
+  initialAction,
+  initialTileId,
   loans = [],
   bankLoanCooldowns = [],
   jackpot = 0,
@@ -160,13 +182,27 @@ export function BankingDialog({
 }: BankingDialogProps) {
   const { t } = useLanguage();
   const initialBankLoan = rules.bankLoans && settleOnOpen ? activeBankLoan(loans, player.id) : null;
+  const board = settings?.board ?? null;
+  // Quick entry from a redeemable tile: the player's active mortgage on it fixes the cost.
+  const initialRedemption =
+    board !== null && initialAction === 'MORTGAGE_REDEMPTION' && initialTileId !== undefined
+      ? mortgages.find((item) => item.playerId === player.id && item.tileId === initialTileId)
+      : undefined;
   const [action, setAction] = useState<ActionType | null>(
-    initialBankLoan === null ? null : 'LOAN_REPAYMENT',
+    initialBankLoan === null ? (board === null ? null : (initialAction ?? null)) : 'LOAN_REPAYMENT',
   );
+  const [tileId, setTileId] = useState(
+    initialAction === 'MORTGAGE_REDEMPTION' ? '' : (initialTileId ?? ''),
+  );
+  const [diceSum, setDiceSum] = useState('');
   const [exactGoChosen, setExactGoChosen] = useState(false);
   const [targetId, setTargetId] = useState('');
   const [amount, setAmount] = useState(
-    initialBankLoan === null ? '' : String(loanOutstanding(initialBankLoan)),
+    initialBankLoan !== null
+      ? String(loanOutstanding(initialBankLoan))
+      : initialRedemption === undefined
+        ? ''
+        : String(redemptionCost(initialRedemption.mortgageValue)),
   );
   const [comment, setComment] = useState('');
   const [commentOpen, setCommentOpen] = useState(false);
@@ -176,7 +212,7 @@ export function BankingDialog({
   const [payToPot, setPayToPot] = useState(false);
   const [propertyName, setPropertyName] = useState('');
   const [noBuildings, setNoBuildings] = useState(false);
-  const [mortgageId, setMortgageId] = useState('');
+  const [mortgageId, setMortgageId] = useState(initialRedemption?.id ?? '');
   const [loanId, setLoanId] = useState(initialBankLoan?.id ?? '');
   const [ratePercent, setRatePercent] = useState<InterestRatePercent | null>(null);
   // Rounds left in the cooldown while its warning is shown; null when there is nothing to warn about.
@@ -189,6 +225,26 @@ export function BankingDialog({
   const balancePresets = startingBalance === undefined ? [] : presetAmounts(startingBalance);
   const presets = balancePresets.length > 0 ? balancePresets : undefined;
   const jackpotRule = rules.freeParkingJackpot;
+  const views = board === null ? [] : tileViews(board, properties);
+  const tileAction =
+    board !== null &&
+    (action === 'PROPERTY_PURCHASE' || action === 'MORTGAGE' || action === 'PAY_RENT');
+  const selectedTile = views.find((view) => view.tile.id === tileId) ?? null;
+  const diceSumValue = diceSum === '' ? undefined : Number(diceSum);
+  const needsDiceSum = action === 'PAY_RENT' && selectedTile?.tile.type === 'utility';
+  const rentAmount =
+    action === 'PAY_RENT' && board !== null && selectedTile !== null
+      ? rentDue(board, views, selectedTile, diceSumValue)
+      : null;
+  // What the chosen tile costs or pays, from the game's board snapshot.
+  const tileAmount =
+    selectedTile === null
+      ? 0
+      : action === 'PROPERTY_PURCHASE'
+        ? selectedTile.tile.price
+        : action === 'MORTGAGE'
+          ? selectedTile.tile.mortgage
+          : (rentAmount ?? 0);
   const targetRequired = action === 'PLAYER_TO_PLAYER' || action === 'LOAN_ISSUE';
   // A lender must still be playing; payments to anyone else are left to the Worker's checks.
   const recipients = players.filter(
@@ -198,7 +254,8 @@ export function BankingDialog({
   // With one possible recipient there is nothing to choose, so it is selected for the player.
   const soleRecipient = targetRequired && recipients.length === 1 ? recipients[0] : undefined;
   // A collection always pays the whole pot, which the Worker reads again when it records it.
-  const amountValue = action === 'JACKPOT_PAYOUT' ? jackpot : Number(amount);
+  const amountValue =
+    action === 'JACKPOT_PAYOUT' ? jackpot : tileAction ? tileAmount : Number(amount);
   const requestAction: ActionType | null =
     action === 'PLAYER_TO_BANK' && payToPot && rules.freeParkingJackpot ? 'TO_JACKPOT' : action;
   const playerLoans = rules.playerLoans ? activeLoansAsBorrower(loans, player.id) : [];
@@ -215,9 +272,11 @@ export function BankingDialog({
   const effectiveTargetId =
     action === 'LOAN_REPAYMENT'
       ? (selectedLoan?.lenderPlayerId ?? '')
-      : targetId !== ''
-        ? targetId
-        : (soleRecipient?.id ?? '');
+      : action === 'PAY_RENT'
+        ? (selectedTile?.ownerPlayerId ?? '')
+        : targetId !== ''
+          ? targetId
+          : (soleRecipient?.id ?? '');
   const target = players.find((candidate) => candidate.id === effectiveTargetId) ?? null;
   const loanOwed = selectedLoan === null ? 0 : loanOutstanding(selectedLoan);
   const interest = isBankRepayment ? loanInterest(loanOwed, effectiveRate) : 0;
@@ -235,6 +294,8 @@ export function BankingDialog({
       ? null
       : buildRequest(requestAction, player.id, effectiveTargetId, amountValue, comment, {
           exactLanding,
+          ...(tileAction ? { tileId } : {}),
+          ...(needsDiceSum && diceSumValue !== undefined ? { diceSum: diceSumValue } : {}),
           propertyName: tidyName,
           mortgageId,
           loanId,
@@ -245,8 +306,11 @@ export function BankingDialog({
   const preview =
     request === null
       ? []
-      : previewBalances(request, players, reward, redemptionAmount, loans, interest, jackpot);
-  const amountRequired = action !== 'PASS_GO' && action !== 'JACKPOT_PAYOUT';
+      : previewBalances(request, players, reward, redemptionAmount, loans, interest, jackpot, {
+          amount: tileAmount,
+          ownerPlayerId: selectedTile?.ownerPlayerId ?? null,
+        });
+  const amountRequired = action !== 'PASS_GO' && action !== 'JACKPOT_PAYOUT' && !tileAction;
   const isMortgageAction = action === 'MORTGAGE' || action === 'MORTGAGE_REDEMPTION';
   const isLoanAction =
     action === 'LOAN_ISSUE' || action === 'LOAN_REPAYMENT' || action === 'BANK_LOAN';
@@ -267,7 +331,11 @@ export function BankingDialog({
     request !== null &&
     (!targetRequired || (target !== null && target.id !== player.id)) &&
     (!amountRequired || isPositiveInteger(amount)) &&
-    (action !== 'MORTGAGE' || (normalizePropertyName(propertyName) !== null && noBuildings)) &&
+    (!tileAction || selectedTile !== null) &&
+    (action !== 'PAY_RENT' || (rentAmount !== null && rentAmount > 0)) &&
+    (action !== 'MORTGAGE' ||
+      tileAction ||
+      (normalizePropertyName(propertyName) !== null && noBuildings)) &&
     (action !== 'MORTGAGE_REDEMPTION' || selectedMortgage !== null) &&
     (action !== 'LOAN_REPAYMENT' || (selectedLoan !== null && !overRepayment)) &&
     (action !== 'BANK_LOAN' || (bankLoan === null && !exceedsBankLoanMax)) &&
@@ -281,6 +349,8 @@ export function BankingDialog({
     setPropertyName('');
     setNoBuildings(false);
     setMortgageId('');
+    setTileId('');
+    setDiceSum('');
     setLoanId('');
     setRatePercent(null);
     setCooldownRounds(null);
@@ -311,6 +381,19 @@ export function BankingDialog({
 
   const changeComment = (nextComment: string) => {
     setComment(nextComment);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const chooseTile = (view: TileView) => {
+    setTileId(view.tile.id);
+    setDiceSum('');
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeDiceSum = (next: string) => {
+    setDiceSum(next.replace(/\D/g, '').slice(0, 2));
     setError(null);
     commandIdRef.current = null;
   };
@@ -388,13 +471,18 @@ export function BankingDialog({
         onCompleted(
           result.players,
           action,
-          action === 'PASS_GO' || action === 'JACKPOT_PAYOUT' || isMortgageAction
+          action === 'PASS_GO' ||
+            action === 'JACKPOT_PAYOUT' ||
+            action === 'PROPERTY_PURCHASE' ||
+            action === 'PAY_RENT' ||
+            isMortgageAction
             ? null
             : result.transaction.amount,
           result.mortgages,
           result.loans,
           result.bankLoanCooldowns,
           result.jackpot,
+          result.properties,
         );
     } catch (caught) {
       if (caught instanceof MonopolyBankApiError && caught.code === 'BANK_LOAN_COOLDOWN') {
@@ -410,6 +498,58 @@ export function BankingDialog({
       setSubmitting(false);
     }
   };
+
+  const money = (value: number) => formatMoney(value, currency);
+  const ownerName = (view: TileView) =>
+    players.find((candidate) => candidate.id === view.ownerPlayerId)?.name ?? '';
+  const tileMortgages = playerMortgages.filter(
+    (item) => item.tileId != null && views.some((view) => view.tile.id === item.tileId),
+  );
+  const buyItems: TilePickerItem[] = freeTiles(views).map((view) => ({
+    view,
+    caption: t('tilePickerPrice', { amount: money(view.tile.price) }),
+  }));
+  const mortgageItems: TilePickerItem[] = mortgageableTiles(views, player.id).map((view) => ({
+    view,
+    caption: t('tilePickerMortgageFor', { amount: money(view.tile.mortgage) }),
+  }));
+  const redeemItems: TilePickerItem[] = tileMortgages.flatMap((item) => {
+    const view = views.find((candidate) => candidate.tile.id === item.tileId);
+    return view === undefined
+      ? []
+      : [
+          {
+            view,
+            caption: t('tilePickerRedeemFor', {
+              amount: money(redemptionCost(item.mortgageValue)),
+            }),
+          },
+        ];
+  });
+  const rentItems: TilePickerItem[] =
+    board === null
+      ? []
+      : rentableTiles(views, player.id).map((view) => {
+          const rent = tileRent(board, views, view);
+          return {
+            view,
+            caption:
+              rent.kind === 'dice'
+                ? t('tilePickerRentDice', { owner: ownerName(view), multiplier: rent.multiplier })
+                : t('tilePickerRent', {
+                    owner: ownerName(view),
+                    amount: money(rent.kind === 'amount' ? rent.amount : 0),
+                  }),
+          };
+        });
+  const noComment =
+    isMortgageAction || isLoanAction || action === 'PROPERTY_PURCHASE' || action === 'PAY_RENT';
+  const confirmedPropertyName =
+    selectedTile !== null && tileAction
+      ? selectedTile.tile.name
+      : action === 'MORTGAGE'
+        ? tidyName
+        : selectedMortgage?.propertyName;
 
   const title =
     requestAction === null
@@ -482,7 +622,14 @@ export function BankingDialog({
             </Notice>
           )}
           <WalletMenu
-            primary={primaryWalletActions.map((item) => ({
+            primary={(board === null
+              ? primaryWalletActions
+              : [
+                  ...primaryWalletActions.slice(0, 1),
+                  'PAY_RENT' as const,
+                  ...primaryWalletActions.slice(1),
+                ]
+            ).map((item) => ({
               key: item,
               label: actionLabel(item, t),
               outgoing: walletActionTone(item) === 'expense',
@@ -499,12 +646,26 @@ export function BankingDialog({
                 label: t('walletGroupProperty'),
                 icon: '🏠',
                 items: [
-                  {
-                    key: 'MORTGAGE',
-                    label: actionLabel('MORTGAGE', t),
-                    onSelect: () => selectAction('MORTGAGE'),
-                  },
-                  ...(playerMortgages.length > 0
+                  ...(board !== null && buyItems.length > 0
+                    ? [
+                        {
+                          key: 'PROPERTY_PURCHASE',
+                          label: actionLabel('PROPERTY_PURCHASE', t),
+                          outgoing: true,
+                          onSelect: () => selectAction('PROPERTY_PURCHASE'),
+                        },
+                      ]
+                    : []),
+                  ...(board === null || mortgageItems.length > 0
+                    ? [
+                        {
+                          key: 'MORTGAGE',
+                          label: actionLabel('MORTGAGE', t),
+                          onSelect: () => selectAction('MORTGAGE'),
+                        },
+                      ]
+                    : []),
+                  ...((board === null ? playerMortgages.length : redeemItems.length) > 0
                     ? [
                         {
                           key: 'MORTGAGE_REDEMPTION',
@@ -635,7 +796,7 @@ export function BankingDialog({
               currency={currency}
               preview={preview}
               comment={comment}
-              propertyName={action === 'MORTGAGE' ? tidyName : selectedMortgage?.propertyName}
+              propertyName={confirmedPropertyName}
               interest={interest}
               lenderIsBank={isBankRepayment}
               reserved={reserved}
@@ -678,7 +839,7 @@ export function BankingDialog({
                 onChange={changeTarget}
               />
             )}
-            {action === 'PLAYER_TO_PLAYER' && targetMortgages.length > 0 && (
+            {board === null && action === 'PLAYER_TO_PLAYER' && targetMortgages.length > 0 && (
               <Notice tone="info">
                 {t('mortgagedRentHint', {
                   name: target?.name ?? '',
@@ -686,7 +847,57 @@ export function BankingDialog({
                 })}
               </Notice>
             )}
-            {action === 'MORTGAGE' && (
+            {board !== null && action === 'PROPERTY_PURCHASE' && (
+              <TilePicker
+                legend={t('tileChooseBuy')}
+                items={buyItems}
+                value={tileId}
+                onChange={chooseTile}
+              />
+            )}
+            {board !== null && action === 'MORTGAGE' && (
+              <TilePicker
+                legend={t('tileChooseMortgage')}
+                items={mortgageItems}
+                value={tileId}
+                onChange={chooseTile}
+              />
+            )}
+            {board !== null && action === 'PAY_RENT' && (
+              <>
+                <TilePicker
+                  legend={t('tileChooseRent')}
+                  items={rentItems}
+                  value={tileId}
+                  onChange={chooseTile}
+                />
+                {needsDiceSum && (
+                  <Field variant="dialog" label={t('rentDiceSum')}>
+                    <input
+                      value={diceSum}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      onChange={(event) => changeDiceSum(event.target.value)}
+                    />
+                  </Field>
+                )}
+                {needsDiceSum && diceSum !== '' && !isDiceSum(Number(diceSum)) && (
+                  <FieldError as="p" announce>
+                    {t('rentDiceSumInvalid')}
+                  </FieldError>
+                )}
+                {selectedTile !== null && rentAmount !== null && (
+                  <div className="flex items-baseline justify-between gap-(--mb-space-3)">
+                    <span className="text-secondary">{t('rentAmountLabel')}</span>
+                    <strong aria-live="polite">
+                      <MoneyValue amount={rentAmount} currency={currency} />
+                    </strong>
+                  </div>
+                )}
+                <FieldHint>{t('rentComputedHint')}</FieldHint>
+              </>
+            )}
+            {board === null && action === 'MORTGAGE' && (
               <MortgageDetails
                 propertyName={propertyName}
                 onPropertyNameChange={(name) => {
@@ -698,7 +909,18 @@ export function BankingDialog({
                 onNoBuildingsChange={setNoBuildings}
               />
             )}
-            {action === 'MORTGAGE_REDEMPTION' && (
+            {board !== null && action === 'MORTGAGE_REDEMPTION' && (
+              <TilePicker
+                legend={t('tileChooseRedeem')}
+                items={redeemItems}
+                value={selectedMortgage?.tileId ?? ''}
+                onChange={(view) => {
+                  const mortgage = tileMortgages.find((item) => item.tileId === view.tile.id);
+                  if (mortgage !== undefined) chooseMortgage(mortgage);
+                }}
+              />
+            )}
+            {board === null && action === 'MORTGAGE_REDEMPTION' && (
               <RedemptionPicker
                 mortgages={playerMortgages}
                 currency={currency}
@@ -740,7 +962,13 @@ export function BankingDialog({
                 {t('bankLoanMaxHint', { max: formatMoney(bankLoanMax, currency) })}
               </FieldHint>
             )}
-            {action === 'MORTGAGE' && <FieldHint>{t('mortgageValueHint')}</FieldHint>}
+            {board === null && action === 'MORTGAGE' && (
+              <FieldHint>{t('mortgageValueHint')}</FieldHint>
+            )}
+            {board !== null && action === 'MORTGAGE' && (
+              <FieldHint>{t('tileMortgageHint')}</FieldHint>
+            )}
+            {action === 'PROPERTY_PURCHASE' && <FieldHint>{t('tilePurchaseHint')}</FieldHint>}
             {requestAction === 'TO_JACKPOT' && <FieldHint>{t('payToPotHint')}</FieldHint>}
             {amountRequired &&
               action !== 'MORTGAGE_REDEMPTION' &&
@@ -827,9 +1055,7 @@ export function BankingDialog({
                 </div>
               </div>
             )}
-            {!isMortgageAction && !isLoanAction && (
-              <div className="mt-(--mb-space-2)">{commentField}</div>
-            )}
+            {!noComment && <div className="mt-(--mb-space-2)">{commentField}</div>}
           </StepBody>
           <DialogActions className={stepFooterClass}>
             <Button variant="secondary" onClick={() => selectAction(null)}>

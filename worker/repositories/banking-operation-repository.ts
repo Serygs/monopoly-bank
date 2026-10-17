@@ -41,8 +41,8 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
     const balanceStatement = createBalanceUpdateStatement(this.database, input.balanceChanges);
     const transactionStatement = this.database
       .prepare(
-        `INSERT INTO transactions (id, game_id, type, amount, total_amount, comment, reverses_transaction_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO transactions (id, game_id, type, amount, total_amount, comment, reverses_transaction_id, tile_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         input.transactionId,
@@ -52,6 +52,7 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
         input.transaction.totalAmount,
         input.transaction.comment,
         input.transaction.reversesTransactionId ?? null,
+        input.transaction.tileId ?? null,
       );
     const participantStatements = input.transaction.participants.map((participant) =>
       this.database
@@ -75,8 +76,8 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
       mortgageStatements.push(
         this.database
           .prepare(
-            `INSERT INTO mortgages (id, game_id, player_id, property_name, name_key, mortgage_value)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO mortgages (id, game_id, player_id, property_name, name_key, mortgage_value, tile_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             input.transactionId,
@@ -85,6 +86,7 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
             newMortgage.propertyName,
             propertyNameKey(newMortgage.propertyName),
             newMortgage.mortgageValue,
+            newMortgage.tileId ?? null,
           ),
       );
     if (redeemedMortgageId !== undefined)
@@ -97,6 +99,47 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
              WHERE id = ? AND game_id = ?`,
           )
           .bind(input.transactionId, redeemedMortgageId, input.transaction.gameId),
+      );
+
+    // Board games: each registry change is guarded by the state it read. A tile that moved on makes
+    // the mortgaged flag -1, which breaks its CHECK and rolls the whole batch back (balances included).
+    const registryStatements: D1PreparedStatement[] = [];
+    for (const change of input.transaction.registryChanges ?? [])
+      registryStatements.push(
+        this.database
+          .prepare(
+            `UPDATE game_properties
+             SET owner_player_id = ?1,
+                 mortgaged = CASE WHEN owner_player_id IS ?2 AND mortgaged = ?3 AND houses = ?4 THEN ?5 ELSE -1 END,
+                 houses = ?6
+             WHERE game_id = ?7 AND tile_id = ?8`,
+          )
+          .bind(
+            change.after.ownerPlayerId,
+            change.before.ownerPlayerId,
+            change.before.mortgaged ? 1 : 0,
+            change.before.houses,
+            change.after.mortgaged ? 1 : 0,
+            change.after.houses,
+            input.transaction.gameId,
+            change.tileId,
+          ),
+        this.database
+          .prepare(
+            `INSERT INTO property_changes (transaction_id, game_id, tile_id, before_owner_player_id, before_mortgaged, before_houses, after_owner_player_id, after_mortgaged, after_houses)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            input.transactionId,
+            input.transaction.gameId,
+            change.tileId,
+            change.before.ownerPlayerId,
+            change.before.mortgaged ? 1 : 0,
+            change.before.houses,
+            change.after.ownerPlayerId,
+            change.after.mortgaged ? 1 : 0,
+            change.after.houses,
+          ),
       );
 
     // A repayment lowers the debt in the same batch. Repaying a loan that is no longer active, that
@@ -318,6 +361,7 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
         balanceStatement,
         transactionStatement,
         ...participantStatements,
+        ...registryStatements,
         ...mortgageStatements,
         ...loanStatements,
         ...jackpotStatements,

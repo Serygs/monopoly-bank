@@ -1,7 +1,8 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { Auction, Loan, Player } from '../../../shared/types/monopoly';
+import { buildBoardSnapshot, getBoardPreset } from '../../../shared/board';
+import type { Auction, GameProperty, Loan, Player } from '../../../shared/types/monopoly';
 import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { buildGameSettings } from '../../../shared/domain/game-rules';
 import { defaultGameRules } from '../../../shared/types/monopoly';
@@ -350,6 +351,7 @@ describe('BankingDialog mortgages', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
     createTransaction.mockRestore();
   });
@@ -382,6 +384,7 @@ describe('BankingDialog mortgages', () => {
       'MORTGAGE_REDEMPTION',
       null,
       [],
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -488,6 +491,7 @@ describe('BankingDialog player loans', () => {
       [],
       undefined,
       undefined,
+      undefined,
     );
     createTransaction.mockRestore();
   });
@@ -547,6 +551,7 @@ describe('BankingDialog bank loans', () => {
       undefined,
       [],
       [],
+      undefined,
       undefined,
     );
     createTransaction.mockRestore();
@@ -661,6 +666,7 @@ describe('BankingDialog bank loans', () => {
       [],
       [{ playerId: 'p1', roundsLeft: 2 }],
       undefined,
+      undefined,
     );
     createTransaction.mockRestore();
   });
@@ -726,6 +732,7 @@ describe('BankingDialog Free Parking jackpot', () => {
       undefined,
       undefined,
       1_000_000,
+      undefined,
     );
     createTransaction.mockRestore();
   });
@@ -849,5 +856,189 @@ describe('BankingDialog auctions', () => {
     await user.type(screen.getByRole('textbox', { name: 'Comment' }), 'Boardwalk');
     await user.click(screen.getByRole('button', { name: 'Auction it instead' }));
     expect(onStartAuction).toHaveBeenCalledWith('Boardwalk');
+  });
+});
+
+describe('BankingDialog board mode', () => {
+  const board = buildBoardSnapshot(getBoardPreset('monopoly-ru-2012'), 100_000);
+  const settings = { ...buildGameSettings(15_000_000), board };
+  const tile = (id: string) => board.tiles.find((candidate) => candidate.id === id)!;
+  const row = (tileId: string, over: Partial<GameProperty> = {}): GameProperty => ({
+    gameId: 'g1',
+    tileId,
+    ownerPlayerId: 'p1',
+    mortgaged: false,
+    houses: 0,
+    ...over,
+  });
+  const boardProps = (properties: GameProperty[], extra: Partial<BankingDialogProps> = {}) => ({
+    settings,
+    properties,
+    ...extra,
+  });
+  const tileButton = (id: string) =>
+    screen.queryByRole('button', { name: new RegExp(tile(id).name) });
+
+  it('buys an unowned tile from a list of free tiles and reviews price and resulting balance', async () => {
+    const createTransaction = vi
+      .spyOn(monopolyBankApi, 'createTransaction')
+      .mockResolvedValue({ transaction: { amount: 1 }, players: [] } as never);
+    const { user, props } = renderDialog(
+      [olena, taras],
+      boardProps([row('zhitna'), row('nagatinska', { ownerPlayerId: 'p2' })]),
+    );
+    await user.click(screen.getByRole('button', { name: 'Buy property' }));
+    expect(screen.queryByRole('textbox', { name: 'Amount' })).toBeNull();
+    expect(tileButton('zhitna')).toBeNull();
+    expect(tileButton('nagatinska')).toBeNull();
+    await user.click(tileButton('ogarova')!);
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    expect(screen.getByText(tile('ogarova').name)).toBeInTheDocument();
+    expect(screen.getByText('Resulting available balance')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      { type: 'PROPERTY_PURCHASE', playerId: 'p1', tileId: 'ogarova' },
+      expect.any(String),
+    );
+    expect(props.onCompleted).toHaveBeenCalledWith(
+      [],
+      'PROPERTY_PURCHASE',
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
+    createTransaction.mockRestore();
+  });
+
+  it('lists only own unmortgaged tiles without buildings in the group and hides the free-text name', async () => {
+    const { user } = renderDialog(
+      [olena, taras],
+      boardProps([
+        row('zhitna'),
+        row('nagatinska', { houses: 1 }),
+        row('ogarova', { mortgaged: true }),
+        row('polyanka', { ownerPlayerId: 'p2' }),
+        row('tverska'),
+      ]),
+    );
+    await user.click(screen.getByRole('button', { name: 'Mortgage property' }));
+    expect(screen.queryByRole('textbox', { name: 'Property name' })).toBeNull();
+    // The brown group has a building; a mortgaged tile and a tile of another player are not offered.
+    expect(tileButton('zhitna')).toBeNull();
+    expect(tileButton('ogarova')).toBeNull();
+    expect(tileButton('polyanka')).toBeNull();
+    expect(tileButton('tverska')).toBeInTheDocument();
+  });
+
+  it('mortgages a chosen tile at the card value without a typed amount', async () => {
+    const createTransaction = vi
+      .spyOn(monopolyBankApi, 'createTransaction')
+      .mockResolvedValue({ transaction: { amount: 1 }, players: [] } as never);
+    const { user } = renderDialog([olena, taras], boardProps([row('zhitna')]));
+    await user.click(screen.getByRole('button', { name: 'Mortgage property' }));
+    await user.click(tileButton('zhitna')!);
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      { type: 'MORTGAGE', playerId: 'p1', tileId: 'zhitna' },
+      expect.any(String),
+    );
+    createTransaction.mockRestore();
+  });
+
+  it('redeems an active tile mortgage picked from the tile list', async () => {
+    const createTransaction = vi
+      .spyOn(monopolyBankApi, 'createTransaction')
+      .mockResolvedValue({ transaction: { amount: 1 }, players: [] } as never);
+    const mortgage = {
+      id: 'm1',
+      gameId: 'g1',
+      playerId: 'p1',
+      propertyName: tile('zhitna').name,
+      tileId: 'zhitna',
+      mortgageValue: tile('zhitna').mortgage,
+      createdAt: '',
+    };
+    const { user } = renderDialog(
+      [olena, taras],
+      boardProps([row('zhitna', { mortgaged: true })], { mortgages: [mortgage] }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Redeem mortgage' }));
+    await user.click(tileButton('zhitna')!);
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      { type: 'MORTGAGE_REDEMPTION', playerId: 'p1', mortgageId: 'm1' },
+      expect.any(String),
+    );
+    createTransaction.mockRestore();
+  });
+
+  it('previews street rent read-only and offers no mortgaged or own tiles', async () => {
+    const { user } = renderDialog(
+      [olena, taras],
+      boardProps([
+        row('zhitna', { ownerPlayerId: 'p2' }),
+        row('nagatinska', { ownerPlayerId: 'p2', mortgaged: true }),
+        row('ogarova'),
+      ]),
+    );
+    await user.click(screen.getByRole('button', { name: 'Pay rent' }));
+    expect(tileButton('nagatinska')).toBeNull();
+    expect(tileButton('ogarova')).toBeNull();
+    await user.click(tileButton('zhitna')!);
+    expect(screen.queryByRole('textbox', { name: 'Amount' })).toBeNull();
+    expect(screen.getByText('Rent to pay')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeEnabled();
+  });
+
+  it('asks for the dice total on a utility and sends it with the rent payment', async () => {
+    const createTransaction = vi
+      .spyOn(monopolyBankApi, 'createTransaction')
+      .mockResolvedValue({ transaction: { amount: 1 }, players: [] } as never);
+    const { user } = renderDialog(
+      [olena, taras],
+      boardProps([row('power_plant', { ownerPlayerId: 'p2' })]),
+    );
+    await user.click(screen.getByRole('button', { name: 'Pay rent' }));
+    await user.click(tileButton('power_plant')!);
+    const dice = () => screen.getByRole('textbox', { name: 'Dice total (2-12)' });
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+    await user.type(dice(), '13');
+    expect(screen.getByText('Enter the dice total, a number from 2 to 12.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+    await user.clear(dice());
+    await user.type(dice(), '7');
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction).toHaveBeenCalledWith(
+      'g1',
+      { type: 'PAY_RENT', payerPlayerId: 'p1', tileId: 'power_plant', diceSum: 7 },
+      expect.any(String),
+    );
+    createTransaction.mockRestore();
+  });
+
+  it('opens straight on the quick-entry action with the tile preselected', () => {
+    renderDialog(
+      [olena, taras],
+      boardProps([], { initialAction: 'PROPERTY_PURCHASE', initialTileId: 'zhitna' }),
+    );
+    expect(tileButton('zhitna')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeEnabled();
+  });
+
+  it('keeps the manual name and amount flows when the game has no board', async () => {
+    const { user } = renderDialog([olena, taras]);
+    expect(screen.queryByRole('button', { name: 'Buy property' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pay rent' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Mortgage property' }));
+    expect(screen.getByRole('textbox', { name: 'Property name' })).toBeInTheDocument();
   });
 });

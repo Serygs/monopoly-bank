@@ -69,6 +69,7 @@ export const transactionTypes = [
   'TO_JACKPOT',
   'JACKPOT_PAYOUT',
   'AUCTION_PAYMENT',
+  'PROPERTY_PURCHASE',
 ] as const;
 
 export type TransactionType = (typeof transactionTypes)[number];
@@ -117,6 +118,8 @@ export interface Mortgage {
   gameId: string;
   playerId: string;
   propertyName: string;
+  /** The board tile mortgaged; null for a free-text property. */
+  tileId?: string | null;
   /** What the bank paid out; redeeming costs this plus 10%. */
   mortgageValue: number;
   createdAt: string;
@@ -131,6 +134,20 @@ export interface GameProperty {
   mortgaged: boolean;
   /** 0-4 houses, 5 is a hotel. */
   houses: number;
+}
+
+/** The mutable state of one tile in the registry. */
+export interface PropertyState {
+  ownerPlayerId: string | null;
+  mortgaged: boolean;
+  houses: number;
+}
+
+/** One registry change stored with a transaction; a reversal applies it backwards. */
+export interface PropertyChange {
+  tileId: string;
+  before: PropertyState;
+  after: PropertyState;
 }
 
 export const loanStates = ['ACTIVE', 'REPAID', 'WRITTEN_OFF'] as const;
@@ -197,6 +214,8 @@ export interface Auction {
   id: string;
   gameId: string;
   lotName: string;
+  /** The board tile being sold; null for a free-text lot. */
+  tileId?: string | null;
   initiatorPlayerId: string;
   state: AuctionState;
   /** 0 until the first bid. */
@@ -227,6 +246,8 @@ export interface Transaction {
   comment: string | null;
   createdAt: string;
   participants: TransactionParticipant[];
+  /** The board tile this operation concerned (purchase, mortgage, redemption, auction, rent). */
+  tileId?: string | null;
   /** Set on a REVERSAL: the transaction it moved back. */
   reversesTransactionId?: string | null;
   /** Set on a reversed transaction: the REVERSAL that moved it back. */
