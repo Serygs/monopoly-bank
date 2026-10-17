@@ -12,6 +12,7 @@ import {
   auctionPayment,
   type BankingOperationResult,
 } from './banking.js';
+import { stateOf, type PropertyContext } from './property.js';
 
 export {
   AUCTION_BID_EXTENSION_MS,
@@ -163,6 +164,8 @@ export function planAuctionSettlement(input: {
   game: Game;
   players: readonly Player[];
   auction: Auction;
+  /** Board games: the registry, needed to hand a sold tile to the winner. */
+  property?: PropertyContext;
 }): AuctionSettlementPlan {
   const { game, players, auction } = input;
   const leader =
@@ -177,6 +180,13 @@ export function planAuctionSettlement(input: {
     leader.balance < auction.currentBid
   )
     return { kind: 'NO_SALE' };
+  // A tile that is no longer unowned (or cannot be checked) is not sold.
+  if (
+    auction.tileId != null &&
+    (input.property === undefined ||
+      stateOf(input.property.registry, auction.tileId).ownerPlayerId !== null)
+  )
+    return { kind: 'NO_SALE' };
   return {
     kind: 'SOLD',
     result: auctionPayment({
@@ -185,6 +195,9 @@ export function planAuctionSettlement(input: {
       playerId: leader.id,
       amount: auction.currentBid,
       lotName: auction.lotName,
+      ...(auction.tileId != null && input.property !== undefined
+        ? { tileId: auction.tileId, property: input.property }
+        : {}),
     }),
   };
 }

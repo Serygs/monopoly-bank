@@ -121,3 +121,100 @@ export function tileRent(
     monopolyDoubled: doubled,
   };
 }
+
+/** Merges the registry rows a response or live event changed into the loaded registry, by tileId. */
+export function mergeProperties(
+  current: readonly GameProperty[] | undefined,
+  changed: readonly GameProperty[],
+): GameProperty[] {
+  const merged = new Map((current ?? []).map((row) => [row.tileId, row]));
+  for (const row of changed) merged.set(row.tileId, row);
+  return [...merged.values()];
+}
+
+/** A utility's rent is a multiple of the dice total the payer enters (two dice: 2 to 12). */
+export function isDiceSum(value: number): boolean {
+  return Number.isInteger(value) && value >= 2 && value <= 12;
+}
+
+/**
+ * The rent the payer owes for a tile, or `null` when nothing is due (free or mortgaged tile) or a
+ * utility still lacks a valid dice total. Same logic as `tileRent`, extended with the dice total;
+ * the server works it out again and is authoritative.
+ */
+export function rentDue(
+  board: BoardSnapshot,
+  views: readonly TileView[],
+  view: TileView,
+  diceSum?: number,
+): number | null {
+  const rent = tileRent(board, views, view);
+  if (rent.kind === 'amount') return rent.amount;
+  if (rent.kind === 'dice')
+    return diceSum !== undefined && isDiceSum(diceSum) ? diceSum * rent.multiplier : null;
+  return null;
+}
+
+/** Tiles nobody owns: what a player may buy or put up for auction. */
+export function freeTiles(views: readonly TileView[]): TileView[] {
+  return views.filter((view) => view.status === 'free');
+}
+
+/** The player's own unmortgaged tiles that may be mortgaged: no buildings on the tile or its group. */
+export function mortgageableTiles(views: readonly TileView[], playerId: string): TileView[] {
+  return views.filter(
+    (view) =>
+      view.ownerPlayerId === playerId &&
+      !view.mortgaged &&
+      !views.some((other) => other.tile.group === view.tile.group && other.houses > 0),
+  );
+}
+
+/** Tiles another player owns and that still earn rent: what the payer may pay rent on. */
+export function rentableTiles(views: readonly TileView[], payerPlayerId: string): TileView[] {
+  return views.filter(
+    (view) =>
+      view.ownerPlayerId !== null && view.ownerPlayerId !== payerPlayerId && !view.mortgaged,
+  );
+}
+
+export type TileIntentKind =
+  'PROPERTY_PURCHASE' | 'MORTGAGE' | 'MORTGAGE_REDEMPTION' | 'AUCTION' | 'PAY_RENT';
+
+/** An action a wallet can start on one tile, with the wallet that performs it. */
+export interface TileIntent {
+  kind: TileIntentKind;
+  tileId: string;
+  playerId: string;
+}
+
+/**
+ * The actions offered on a tile's sheet. Owner actions use the owning wallet (it must be one the
+ * viewer controls); buying, bidding-off and paying rent use the viewer's acting wallet.
+ */
+export function tileIntents(
+  views: readonly TileView[],
+  view: TileView,
+  options: {
+    controlledPlayerIds: readonly string[];
+    actorPlayerId: string | null;
+    auctionsAvailable: boolean;
+  },
+): TileIntent[] {
+  const { controlledPlayerIds, actorPlayerId, auctionsAvailable } = options;
+  const tileId = view.tile.id;
+  const intents: TileIntent[] = [];
+  if (view.status === 'free' && actorPlayerId !== null) {
+    intents.push({ kind: 'PROPERTY_PURCHASE', tileId, playerId: actorPlayerId });
+    if (auctionsAvailable) intents.push({ kind: 'AUCTION', tileId, playerId: actorPlayerId });
+  }
+  const owner = view.ownerPlayerId;
+  if (owner !== null && controlledPlayerIds.includes(owner)) {
+    if (view.mortgaged) intents.push({ kind: 'MORTGAGE_REDEMPTION', tileId, playerId: owner });
+    else if (mortgageableTiles(views, owner).some((candidate) => candidate.tile.id === tileId))
+      intents.push({ kind: 'MORTGAGE', tileId, playerId: owner });
+  }
+  if (owner !== null && actorPlayerId !== null && owner !== actorPlayerId && !view.mortgaged)
+    intents.push({ kind: 'PAY_RENT', tileId, playerId: actorPlayerId });
+  return intents;
+}

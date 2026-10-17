@@ -1,3 +1,4 @@
+import type { BoardSnapshot } from '../../../shared/board';
 import type { Currency, Player, Transaction } from '../../../shared/types/monopoly';
 import { translate, type Language } from '../../i18n/translations';
 import { transactionAmount, transactionDescription } from '../../utils/transaction-history';
@@ -24,6 +25,8 @@ export interface TransactionRowProps {
   onReverse?: () => void;
   /** Ledger rows: why the viewer's own operation cannot be reversed right now. */
   reversalNote?: string;
+  /** Board games: names the tile a purchase, mortgage, rent payment or auction concerned. */
+  board?: BoardSnapshot | null;
 }
 
 /** One ledger/history list item for a committed transaction. */
@@ -38,9 +41,14 @@ export function TransactionRow({
   tone,
   onReverse,
   reversalNote,
+  board = null,
 }: TransactionRowProps) {
   const reversed = transaction.reversedByTransactionId != null;
-  const title = transactionDescription(transaction, players, language);
+  const tileName =
+    transaction.tileId == null
+      ? undefined
+      : board?.tiles.find((tile) => tile.id === transaction.tileId)?.name;
+  const title = transactionDescription(transaction, players, language, tileName);
   const timestamp = new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'short',

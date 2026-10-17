@@ -89,6 +89,7 @@ export default {
         mortgages: new D1MortgageRepository(env.MONOPOLY_BANK_DB),
         loans: new D1LoanRepository(env.MONOPOLY_BANK_DB),
         auctions: new D1AuctionRepository(env.MONOPOLY_BANK_DB),
+        properties: new D1PropertyRepository(env.MONOPOLY_BANK_DB),
         createId,
       }),
       live: new DurableObjectGameLiveGateway(env.GAME_SESSIONS),

@@ -16,7 +16,13 @@ import { Dialog } from '../components/Dialog';
 import { DialogNavContext } from '../components/dialog-nav-context';
 import { formatMoney } from '../utils/money';
 import { PropertyScreen } from './PropertyScreen';
-import { cardsOwnedBy, cardsValue, tileViews } from '../utils/property-view';
+import {
+  cardsOwnedBy,
+  cardsValue,
+  mergeProperties,
+  tileViews,
+  type TileIntent,
+} from '../utils/property-view';
 import { GameBottomNav, type GameNavDestination } from '../components/game/GameBottomNav';
 import { cx } from '../components/ui/class-names';
 import { Button, Notice, PageShell, StatPill, useFeedback } from '../components/ui';
@@ -40,6 +46,7 @@ import { StartAuctionDialog } from './game/StartAuctionDialog';
 import { WalletsSection } from './game/WalletsSection';
 import {
   applyLiveEvent,
+  type ActionType,
   splitPaymentRequests,
   withClientGameDetails,
 } from './game/game-page-helpers';
@@ -101,11 +108,19 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
   const lastAppliedVersion = useRef(0);
   // The wallet putting a property up for auction, with the suggested name.
-  const [auctionPrompt, setAuctionPrompt] = useState<{ player: Player; lotName: string } | null>(
+  const [auctionPrompt, setAuctionPrompt] = useState<{
+    player: Player;
+    lotName: string;
+    tileId?: string;
+  } | null>(null);
+  // Board games: the property-sheet action that opened the wallet dialog, read once when it opens.
+  const [walletIntent, setWalletIntent] = useState<{ action: ActionType; tileId: string } | null>(
     null,
   );
   // The auction (id and state) whose dialog the viewer closed, so it does not reopen by itself.
   const [dismissedAuction, setDismissedAuction] = useState<string | null>(null);
+  // The quick-entry intent only lives while the wallet dialog it opened is open.
+  if (selectedPlayer === null && walletIntent !== null) setWalletIntent(null);
   useEffect(() => {
     onPaymentFlowChange(selectedPlayer !== null || bankruptPlayer !== null);
     return () => onPaymentFlowChange(false);
@@ -318,6 +333,18 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const properties = details.properties ?? [];
   const controlledIds =
     details.controlledPlayerIds ?? controlledWallets.map((wallet) => wallet.playerId);
+  /** The property sheet's quick entry: the same wallet dialog and auction prompt as the wallet menu. */
+  const startTileIntent = (intent: TileIntent) => {
+    const wallet = details.players.find((candidate) => candidate.id === intent.playerId);
+    if (wallet === undefined) return;
+    setPropertyOpen(false);
+    if (intent.kind === 'AUCTION') {
+      setAuctionPrompt({ player: wallet, lotName: '', tileId: intent.tileId });
+      return;
+    }
+    setWalletIntent({ action: intent.kind, tileId: intent.tileId });
+    setSelectedPlayer(wallet);
+  };
   const myCards = board === null ? [] : cardsOwnedBy(tileViews(board, properties), controlledIds);
   const activeNav: GameNavDestination | null = toolsOpen
     ? 'tools'
@@ -480,6 +507,11 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                             ? {}
                             : { bankLoanCooldowns: result.bankLoanCooldowns }),
                           ...(result.jackpot === undefined ? {} : { jackpot: result.jackpot }),
+                          ...(result.properties === undefined
+                            ? {}
+                            : {
+                                properties: mergeProperties(current.properties, result.properties),
+                              }),
                         },
                   );
                 }
@@ -523,6 +555,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             showPending={confirmationMode}
             initialScope={activityScope}
             refreshKey={activityVersion}
+            board={board}
             reversal={
               canMutate
                 ? {
@@ -542,6 +575,9 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             players={details.players}
             currency={details.game.currency}
             controlledPlayerIds={controlledIds}
+            actorPlayerId={canMutate ? (activeWallet?.id ?? null) : null}
+            auctionsAvailable={rules.auctions && details.auction?.state !== 'ACTIVE'}
+            onIntent={canMutate ? startTileIntent : undefined}
             onClose={() => setPropertyOpen(false)}
           />
         )}
@@ -565,6 +601,9 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             rules={details.game.rules}
             settings={details.game.settings}
             mortgages={details.mortgages ?? []}
+            properties={properties}
+            initialAction={walletIntent?.action}
+            initialTileId={walletIntent?.tileId}
             loans={details.loans ?? []}
             bankLoanCooldowns={details.bankLoanCooldowns ?? []}
             jackpot={details.jackpot ?? 0}
@@ -604,6 +643,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               loans,
               bankLoanCooldowns,
               jackpot,
+              changedProperties,
             ) => {
               playPaymentFeedback(preferences.sound);
               vibrate(35, preferences.vibration);
@@ -614,6 +654,9 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                 ...(loans === undefined ? {} : { loans }),
                 ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
                 ...(jackpot === undefined ? {} : { jackpot }),
+                ...(changedProperties === undefined
+                  ? {}
+                  : { properties: mergeProperties(details.properties, changedProperties) }),
                 recentAmounts:
                   amount === null
                     ? details.recentAmounts
@@ -626,17 +669,21 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               notify({
                 tone: 'success',
                 message: t(
-                  action === 'MORTGAGE'
-                    ? 'mortgageRecorded'
-                    : action === 'MORTGAGE_REDEMPTION'
-                      ? 'redemptionRecorded'
-                      : action === 'LOAN_REPAYMENT'
-                        ? 'loanRepaid'
-                        : action === 'BANK_LOAN'
-                          ? 'bankLoanRecorded'
-                          : action === 'JACKPOT_PAYOUT'
-                            ? 'jackpotCollected'
-                            : 'paymentSent',
+                  action === 'PROPERTY_PURCHASE'
+                    ? 'propertyBought'
+                    : action === 'PAY_RENT'
+                      ? 'rentPaid'
+                      : action === 'MORTGAGE'
+                        ? 'mortgageRecorded'
+                        : action === 'MORTGAGE_REDEMPTION'
+                          ? 'redemptionRecorded'
+                          : action === 'LOAN_REPAYMENT'
+                            ? 'loanRepaid'
+                            : action === 'BANK_LOAN'
+                              ? 'bankLoanRecorded'
+                              : action === 'JACKPOT_PAYOUT'
+                                ? 'jackpotCollected'
+                                : 'paymentSent',
                 ),
               });
             }}
@@ -696,6 +743,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             gameId={gameId}
             initiator={auctionPrompt.player}
             initialLotName={auctionPrompt.lotName}
+            board={board}
+            properties={properties}
+            currency={details.game.currency}
+            initialTileId={auctionPrompt.tileId}
             onClose={() => setAuctionPrompt(null)}
             onStarted={(response) => {
               applyAuctionResponse(response);

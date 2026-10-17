@@ -17,6 +17,7 @@ import { MonopolyBankApiError } from '../../api/monopoly-bank-api';
 import type { Translate } from '../../i18n/translations';
 import { newerAuction } from '../../utils/auction';
 import { formatMoney } from '../../utils/money';
+import { mergeProperties } from '../../utils/property-view';
 
 /** A wallet action the banking dialog can start; a reversal is started from the history instead. */
 export type ActionType = PlayerTransactionRequest['type'] | 'BANK_LOAN';
@@ -122,6 +123,9 @@ export function applyLiveEvent(
               ? {}
               : { bankLoanCooldowns: event.bankLoanCooldowns }),
             ...(event.jackpot === undefined ? {} : { jackpot: event.jackpot }),
+            ...(event.properties === undefined
+              ? {}
+              : { properties: mergeProperties(current.properties, event.properties) }),
           },
     );
     return;
@@ -175,6 +179,10 @@ export function buildRequest(
     interestRatePercent?: InterestRatePercent;
     /** The player confirmed the warning about borrowing again during the cooldown (BANK_LOAN). */
     acknowledgeCooldown?: boolean;
+    /** Board games: the tile a purchase, mortgage or rent payment concerns. */
+    tileId?: string;
+    /** Rent on a utility: the dice total the payer entered. */
+    diceSum?: number;
   } = {},
 ): PlayerTransactionRequest | null {
   const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
@@ -213,8 +221,23 @@ export function buildRequest(
         ...optionalComment,
       };
     case 'MORTGAGE':
+      if (options.tileId !== undefined)
+        return options.tileId === '' ? null : { type: action, playerId, tileId: options.tileId };
       // The bank records the property name as the comment, so no separate note is sent.
       return { type: action, playerId, propertyName: options.propertyName ?? '', amount };
+    case 'PROPERTY_PURCHASE':
+      return options.tileId === undefined || options.tileId === ''
+        ? null
+        : { type: action, playerId, tileId: options.tileId };
+    case 'PAY_RENT':
+      return options.tileId === undefined || options.tileId === ''
+        ? null
+        : {
+            type: action,
+            payerPlayerId: playerId,
+            tileId: options.tileId,
+            ...(options.diceSum === undefined ? {} : { diceSum: options.diceSum }),
+          };
     case 'MORTGAGE_REDEMPTION':
       return options.mortgageId === undefined || options.mortgageId === ''
         ? null
@@ -258,6 +281,8 @@ export function previewBalances(
   interest = 0,
   /** The Free Parking pot a collection pays out in full. */
   jackpot = 0,
+  /** Board games: the tile's price, mortgage value or rent, and who receives the rent. */
+  tile: { amount: number; ownerPlayerId?: string | null } = { amount: 0 },
 ): BalancePreview[] {
   return players.map((player) => {
     let delta = 0;
@@ -292,7 +317,15 @@ export function previewBalances(
         if (player.id === request.playerId) delta = passGoReward;
         break;
       case 'MORTGAGE':
-        if (player.id === request.playerId) delta = request.amount;
+        if (player.id === request.playerId)
+          delta = 'amount' in request ? request.amount : tile.amount;
+        break;
+      case 'PROPERTY_PURCHASE':
+        if (player.id === request.playerId) delta = -tile.amount;
+        break;
+      case 'PAY_RENT':
+        if (player.id === request.payerPlayerId) delta = -tile.amount;
+        else if (player.id === tile.ownerPlayerId) delta = tile.amount;
         break;
       case 'MORTGAGE_REDEMPTION':
         if (player.id === request.playerId) delta = -redemptionAmount;
@@ -323,6 +356,8 @@ export function actionLabel(type: ActionType, t: Translate): string {
     PASS_GO: t('passGo'),
     MORTGAGE: t('mortgageProperty'),
     MORTGAGE_REDEMPTION: t('redeemMortgage'),
+    PROPERTY_PURCHASE: t('buyProperty'),
+    PAY_RENT: t('payRent'),
     LOAN_ISSUE: t('loanBorrow'),
     LOAN_REPAYMENT: t('loanRepay'),
     BANK_LOAN: t('loanBorrowBank'),
@@ -342,6 +377,8 @@ export function actionDescription(action: ActionType, name: string, t: Translate
       PASS_GO: 'actionPassGo',
       MORTGAGE: 'actionMortgage',
       MORTGAGE_REDEMPTION: 'actionRedeemMortgage',
+      PROPERTY_PURCHASE: 'actionBuyProperty',
+      PAY_RENT: 'actionPayRent',
       LOAN_ISSUE: 'actionLoanIssue',
       LOAN_REPAYMENT: 'actionLoanRepay',
       BANK_LOAN: 'actionBankLoan',
@@ -382,12 +419,13 @@ export function destinationFor(
   if (
     action === 'PLAYER_TO_BANK' ||
     action === 'MORTGAGE_REDEMPTION' ||
+    action === 'PROPERTY_PURCHASE' ||
     (action === 'LOAN_REPAYMENT' && lenderIsBank)
   )
     return t('bank');
   if (action === 'PLAYER_TO_ALL') return t('allOtherPlayers');
   if (action === 'TO_JACKPOT') return t('freeParkingPot');
-  if (action === 'PLAYER_TO_PLAYER' || action === 'LOAN_REPAYMENT')
+  if (action === 'PLAYER_TO_PLAYER' || action === 'LOAN_REPAYMENT' || action === 'PAY_RENT')
     return target?.name ?? t('selectedPlayer');
   return player.name;
 }
@@ -405,6 +443,7 @@ export function transactionLabel(type: TransactionType, t: Translate): string {
     REVERSAL: t('reversal'),
     MORTGAGE: t('mortgageLabel'),
     MORTGAGE_REDEMPTION: t('redemptionLabel'),
+    PROPERTY_PURCHASE: t('propertyPurchaseLabel'),
     LOAN_ISSUE: t('loanIssueLabel'),
     LOAN_REPAYMENT: t('loanRepaymentLabel'),
     TO_JACKPOT: t('paidFreeParking'),
@@ -447,6 +486,8 @@ export function preflightFundsError(
     action === 'PLAYER_TO_PLAYER' ||
     action === 'PLAYER_TO_BANK' ||
     action === 'MORTGAGE_REDEMPTION' ||
+    action === 'PROPERTY_PURCHASE' ||
+    action === 'PAY_RENT' ||
     action === 'LOAN_REPAYMENT'
   ) {
     return player.balance < amount
@@ -470,6 +511,8 @@ export function preflightShortfall(
       : action === 'PLAYER_TO_PLAYER' ||
           action === 'PLAYER_TO_BANK' ||
           action === 'MORTGAGE_REDEMPTION' ||
+          action === 'PROPERTY_PURCHASE' ||
+          action === 'PAY_RENT' ||
           action === 'LOAN_REPAYMENT'
         ? amount
         : null;

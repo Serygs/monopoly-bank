@@ -251,6 +251,34 @@ export interface MortgageTransactionRequest extends Omit<TransactionRequestBase,
   amount: number;
 }
 
+/** Board games: mortgages a tile the player owns; the bank pays the snapshot's mortgage value. */
+export interface TileMortgageTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
+  type: 'MORTGAGE';
+  playerId: string;
+  tileId: string;
+}
+
+/** Board games: buys an unowned tile from the bank at the snapshot price. */
+export interface PropertyPurchaseTransactionRequest extends Omit<
+  TransactionRequestBase,
+  'comment'
+> {
+  type: 'PROPERTY_PURCHASE';
+  playerId: string;
+  tileId: string;
+}
+
+/**
+ * Board games: the payer pays the tile's owner the rent the server works out from the registry.
+ * `diceSum` is required for a utility (entered by the payer) and rejected otherwise.
+ */
+export interface PayRentTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
+  type: 'PAY_RENT';
+  payerPlayerId: string;
+  tileId: string;
+  diceSum?: number;
+}
+
 /** Redeems one active mortgage; the cost is the mortgage value plus 10%, worked out server-side. */
 export interface RedeemMortgageTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
   type: 'MORTGAGE_REDEMPTION';
@@ -330,6 +358,8 @@ export interface StartAuctionRequest {
   initiatorPlayerId: string;
   /** Free-text name, up to 60 characters. */
   lotName: string;
+  /** Board games: the unowned tile put up for sale; the server takes the lot name from it. */
+  tileId?: string;
 }
 
 /**
@@ -462,6 +492,9 @@ export type CreateTransactionRequest =
   | AllToPlayerTransactionRequest
   | PassGoTransactionRequest
   | MortgageTransactionRequest
+  | TileMortgageTransactionRequest
+  | PropertyPurchaseTransactionRequest
+  | PayRentTransactionRequest
   | RedeemMortgageTransactionRequest
   | LoanIssueTransactionRequest
   | LoanRepaymentTransactionRequest
@@ -487,6 +520,8 @@ export interface CreateTransactionResponse {
   bankLoanCooldowns?: BankLoanCooldown[];
   /** The Free Parking pot after this operation; present whenever the game has the jackpot rule. */
   jackpot?: number;
+  /** Board games: the registry rows this operation changed. */
+  properties?: GameProperty[];
 }
 
 export const paymentRequestStates = [
@@ -530,6 +565,8 @@ export interface PaymentRequestActionResponse {
   bankLoanCooldowns?: BankLoanCooldown[];
   /** The Free Parking pot after this operation; present whenever the game has the jackpot rule. */
   jackpot?: number;
+  /** Board games: the registry rows this operation changed. */
+  properties?: GameProperty[];
 }
 
 /** One roll of the two table dice by one player; kept only while the game is active. */
