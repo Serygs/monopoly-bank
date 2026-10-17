@@ -10,6 +10,7 @@ import {
 } from '../types/monopoly.js';
 import {
   auctionPayment,
+  BankruptcyCreditorShortError,
   declareBankruptcy,
   InsufficientFundsError,
   mortgageTile,
@@ -672,7 +673,7 @@ describe('bankruptcy of a tile owner', () => {
   it('passes the tiles to the creditor, keeping the mortgage flag', () => {
     const result = declareBankruptcy({
       game,
-      players: players([500, 500, 500]),
+      players: players([1_000_000, 1_000_000, 1_000_000]),
       playerId: p1,
       creditorPlayerId: p2,
       property: property(ownership),
@@ -689,7 +690,7 @@ describe('bankruptcy of a tile owner', () => {
   it('returns the tiles to the bank unmortgaged when the bank is the creditor', () => {
     const result = declareBankruptcy({
       game,
-      players: players([500, 500, 500]),
+      players: players([1_000_000, 1_000_000, 1_000_000]),
       playerId: p1,
       property: property(ownership),
     });
@@ -698,7 +699,147 @@ describe('bankruptcy of a tile owner', () => {
   });
 
   it('writes no registry changes for a legacy game', () => {
-    const result = declareBankruptcy({ game, players: players([500, 500, 500]), playerId: p1 });
+    const result = declareBankruptcy({
+      game,
+      players: players([1_000_000, 1_000_000, 1_000_000]),
+      playerId: p1,
+    });
     expect(result.transaction.registryChanges).toBeUndefined();
+  });
+});
+
+describe('bankruptcy with buildings and mortgages', () => {
+  const bankrupt = (
+    balances: readonly number[],
+    overrides: Record<string, Partial<GameProperty>>,
+    creditorPlayerId: string | null = p2,
+  ) =>
+    declareBankruptcy({
+      game,
+      players: players(balances),
+      playerId: p1,
+      ...(creditorPlayerId === null ? {} : { creditorPlayerId }),
+      property: property(overrides),
+    });
+  // Brown houses cost 500_000, so each building sold back pays 250_000.
+  const built = {
+    zhitna: { ownerPlayerId: p1, houses: 2 },
+    nagatinska: { ownerPlayerId: p1, houses: 1 },
+  };
+
+  it('sells every building to the bank first: the proceeds go to the creditor with the cash', () => {
+    const result = bankrupt([100_000, 1_000_000, 1_000_000], built);
+    expect(result.transaction).toMatchObject({
+      type: 'BANKRUPTCY_TRANSFER',
+      amount: 100_000 + 3 * 250_000,
+      participants: [
+        { playerId: p1, balanceDelta: -100_000 },
+        { playerId: p2, balanceDelta: 100_000 + 3 * 250_000 },
+      ],
+    });
+    for (const change of result.transaction.registryChanges ?? []) {
+      expect(change.after.houses).toBe(0);
+      expect(change.after.ownerPlayerId).toBe(p2);
+    }
+    expect(
+      result.transaction.registryChanges?.map((change) => change.before.houses).sort(),
+    ).toEqual([1, 2]);
+  });
+
+  it('counts a hotel as five buildings', () => {
+    const result = bankrupt([0, 1_000_000, 1_000_000], {
+      zhitna: { ownerPlayerId: p1, houses: 5 },
+      nagatinska: { ownerPlayerId: p1, houses: 4 },
+    });
+    expect(result.transaction.amount).toBe(9 * 250_000);
+    // No cash of their own: the bankrupt player has no balance change, only the creditor does.
+    expect(result.transaction.participants).toEqual([{ playerId: p2, balanceDelta: 9 * 250_000 }]);
+  });
+
+  it('puts the proceeds in the bank loan debt before the creditor', () => {
+    const loan = {
+      id: 'loan-1',
+      gameId: game.id,
+      lenderKind: 'BANK' as const,
+      lenderPlayerId: null,
+      borrowerPlayerId: p1,
+      principal: 600_000,
+      repaidAmount: 0,
+      state: 'ACTIVE' as const,
+      createdAt: '',
+    };
+    const result = declareBankruptcy({
+      game,
+      players: players([100_000, 1_000_000, 1_000_000]),
+      playerId: p1,
+      creditorPlayerId: p2,
+      property: property(built),
+      bankLoan: { loan, suggestedRatePercent: 0 },
+    });
+    expect(result.transaction.bankLoanSettlement).toMatchObject({
+      outcome: 'REPAID',
+      paidPrincipal: 600_000,
+    });
+    // 100_000 cash + 750_000 proceeds - 600_000 to the bank.
+    expect(result.transaction.participants[1]).toEqual({ playerId: p2, balanceDelta: 250_000 });
+  });
+
+  it('charges the creditor 10% of the mortgage value for each inherited mortgaged tile', () => {
+    const result = bankrupt([100_000, 1_000_000, 1_000_000], {
+      zhitna: { ownerPlayerId: p1, mortgaged: true },
+      nagatinska: { ownerPlayerId: p1, mortgaged: true },
+    });
+    // 60_000 in fees (30_000 each) out of the creditor's 100_000 share.
+    expect(result.transaction.participants).toEqual([
+      { playerId: p1, balanceDelta: -100_000 },
+      { playerId: p2, balanceDelta: 100_000 - 60_000 },
+    ]);
+    expect(result.transaction.registryChanges?.every((change) => change.after.mortgaged)).toBe(
+      true,
+    );
+  });
+
+  it('can charge a creditor more than they receive, from their own cash', () => {
+    const result = bankrupt([0, 1_000_000, 1_000_000], {
+      zhitna: { ownerPlayerId: p1, mortgaged: true },
+    });
+    expect(result.transaction.participants).toEqual([{ playerId: p2, balanceDelta: -30_000 }]);
+  });
+
+  it('rejects before anything is written when the creditor cannot pay the fees', () => {
+    const attempt = () =>
+      bankrupt([10_000, 10_000, 1_000_000], { zhitna: { ownerPlayerId: p1, mortgaged: true } });
+    expect(attempt).toThrow(BankruptcyCreditorShortError);
+    try {
+      attempt();
+    } catch (error) {
+      // 10_000 own cash + 10_000 share = 20_000 available against a 30_000 fee.
+      expect((error as BankruptcyCreditorShortError).details).toEqual({
+        creditorPlayerId: p2,
+        required: 30_000,
+        available: 20_000,
+        shortfall: 10_000,
+      });
+    }
+  });
+
+  it('charges no fee when the bank is the creditor: tiles return unowned, unmortgaged, unbuilt', () => {
+    const result = bankrupt(
+      [100_000, 1_000_000, 1_000_000],
+      {
+        zhitna: { ownerPlayerId: p1, mortgaged: true, houses: 0 },
+        nagatinska: { ownerPlayerId: p1, houses: 0 },
+      },
+      null,
+    );
+    expect(result.transaction.participants).toEqual([{ playerId: p1, balanceDelta: -100_000 }]);
+    for (const change of result.transaction.registryChanges ?? [])
+      expect(change.after).toEqual({ ownerPlayerId: null, mortgaged: false, houses: 0 });
+  });
+
+  it('records the sale proceeds of a bank bankruptcy in the amount, with one change per tile', () => {
+    const result = bankrupt([50_000, 1_000_000, 1_000_000], built, null);
+    expect(result.transaction.amount).toBe(50_000 + 3 * 250_000);
+    expect(result.transaction.registryChanges).toHaveLength(2);
   });
 });
