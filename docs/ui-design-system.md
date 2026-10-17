@@ -451,7 +451,7 @@ tint layer). `glass.css` applies the same `.glass-*` rules to both styles (Class
 style with `glass:` / `classic:` or hard-coded rgb values; they use the classes and tokens, and
 only components that predate the glass system keep their per-style variants.
 
-Navigation and sheets: the bottom navigation is a floating capsule (12px insets plus safe area,
+Navigation and sheets: the bottom navigation is a floating capsule (8px insets, or the safe area when larger,
 glass with rim light, content scrolls under it, fading out above it through a gradient to the
 canvas colour as tall as capsule + inset + safe area); its raised action is always the inverse
 brand style with a ring only while its sheet is open, and its label shares the tab labels'
