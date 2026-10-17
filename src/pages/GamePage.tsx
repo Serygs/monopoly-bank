@@ -46,6 +46,7 @@ import { PaymentInbox } from './game/PaymentInbox';
 import { StartAuctionDialog } from './game/StartAuctionDialog';
 import { TradeDialog } from './game/TradeDialog';
 import { TradeInbox } from './game/TradeInbox';
+import { selectRecentEventsForPlayer } from '../utils/recent-events';
 import { WalletsSection } from './game/WalletsSection';
 import {
   applyLiveEvent,
@@ -326,15 +327,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     );
   }
   const controlledWallets = details.controlledWallets ?? [];
-  // Live transactions first, then the fetched page; de-duplicated by id, newest first, at most 4.
-  const recentTransactions = [
-    ...liveTransactions,
-    ...seededTransactions.filter(
-      (seeded) => !liveTransactions.some((live) => live.id === seeded.id),
-    ),
-  ]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 4);
   const activeControlledWalletId = controlledWallets.some(
     (wallet) => wallet.playerId === activeWalletId,
   )
@@ -342,6 +334,18 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     : (controlledWallets[0]?.playerId ?? null);
   const activeWallet =
     details.players.find((player) => player.id === activeControlledWalletId) ?? null;
+  const recentTransactions =
+    activeWallet === null
+      ? []
+      : selectRecentEventsForPlayer(
+          [
+            ...liveTransactions,
+            ...seededTransactions.filter(
+              (seeded) => !liveTransactions.some((live) => live.id === seeded.id),
+            ),
+          ],
+          activeWallet.id,
+        );
   const otherPlayers = details.players
     .filter((player) => player.id !== activeWallet?.id)
     .sort((a, b) => Number(a.status === 'BANKRUPT') - Number(b.status === 'BANKRUPT'));
@@ -535,10 +539,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           loans={visibleLoans}
           auction={rules.auctions ? (details.auction ?? null) : null}
           recentTransactions={recentTransactions}
-          onShowActivity={() => {
-            closeNavSheets();
-            setActivityOpen(true);
-          }}
+          board={board}
           property={
             board === null
               ? undefined

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatMoney, formatMoneyDelta, formatThousands } from './money';
+import { formatMoney, formatMoneyDelta, formatThousands, moneyTone } from './money';
 
 describe('money formatting', () => {
   it.each([
@@ -17,7 +17,12 @@ describe('money formatting', () => {
     expect(formatMoney(0, 'K')).toBe('0k');
   });
   it('formats negative deltas without losing the currency', () => {
-    expect(formatMoneyDelta(-1000, 'USD')).toBe('-$1 000');
+    expect(formatMoneyDelta(-1000, 'USD')).toBe('\u2212$1 000');
     expect(formatMoneyDelta(1000, 'UAH')).toBe('+₴1 000');
+  });
+  it('classifies a change as income, expense or neutral', () => {
+    expect(moneyTone(5)).toBe('income');
+    expect(moneyTone(-5)).toBe('expense');
+    expect(moneyTone(0)).toBe('neutral');
   });
 });
