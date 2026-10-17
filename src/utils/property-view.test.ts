@@ -3,8 +3,10 @@ import { buildBoardSnapshot, getBoardPreset } from '../../shared/board';
 import type { GameProperty } from '../../shared/types/monopoly';
 import {
   buildableTiles,
+  cardsByGroup,
   cardsOwnedBy,
   cardsValue,
+  groupOrder,
   groupProgress,
   sellableTiles,
   tileIntents,
@@ -166,5 +168,37 @@ describe('trade intents', () => {
         actor: 'a',
       }),
     ).toEqual([]);
+  });
+});
+
+describe('group order and sections', () => {
+  const views = tileViews(board, []);
+
+  it('orders the groups by their cheapest tile', () => {
+    expect(groupOrder(views)).toEqual([
+      'brown',
+      'lightblue',
+      'pink',
+      'utility',
+      'orange',
+      'railway',
+      'red',
+      'yellow',
+      'green',
+      'blue',
+    ]);
+  });
+
+  it('sorts a group by price, ties by board position', () => {
+    const order = groupOrder(views);
+    for (const { cards } of cardsByGroup(views, order)) {
+      const keys = cards.map((card) => [card.tile.price, card.tile.pos]);
+      expect(keys).toEqual([...keys].sort((a, b) => a[0]! - b[0]! || a[1]! - b[1]!));
+    }
+  });
+
+  it('drops groups without cards', () => {
+    const only = views.filter((view) => view.tile.group === 'blue');
+    expect(cardsByGroup(only, groupOrder(views)).map((entry) => entry.group)).toEqual(['blue']);
   });
 });

@@ -25,18 +25,31 @@ const tileClass = cx(
 export interface PropertyTileButtonProps {
   view: TileView;
   owner: Player | null;
+  /** The list price, shown on the right of a free card. */
+  price: string;
+  /** Today's rent, shown in the card of an owned one. */
+  rent?: string | null;
   onOpen: () => void;
 }
 
-/** One tile in a list: group colour bar, name, building level, owner swatch and status. */
-export function PropertyTileButton({ view, owner, onOpen }: PropertyTileButtonProps) {
+/**
+ * One tile in a list: group colour bar, name, and on the right the price (free card) or the
+ * mortgage badge (owned one). An owned card shows owner, buildings and rent, slightly dimmed.
+ */
+export function PropertyTileButton({
+  view,
+  owner,
+  price,
+  rent = null,
+  onOpen,
+}: PropertyTileButtonProps) {
   const { t } = useLanguage();
   const building = useBuildingLabel()(view.houses);
   const status = t(statusKeys[view.status]);
   return (
     <button
       type="button"
-      className={tileClass}
+      className={cx(tileClass, view.status !== 'free' && 'opacity-85')}
       onClick={onOpen}
       aria-label={t('propertyTileAria', { name: view.tile.name, status })}
     >
@@ -49,23 +62,29 @@ export function PropertyTileButton({ view, owner, onOpen }: PropertyTileButtonPr
         <span className="text-small leading-[1.2] font-semibold wrap-anywhere">
           {view.tile.name}
         </span>
-        <span className="flex flex-wrap items-center gap-(--mb-space-1) text-meta text-secondary">
-          {owner !== null && (
-            <>
-              <span
-                aria-hidden="true"
-                className="inline-block size-3 rounded-full border border-border"
-                style={{ backgroundColor: owner.color }}
-              />
-              <span>{owner.name}</span>
-            </>
-          )}
-          {building !== null && <span>{building}</span>}
-        </span>
+        {(owner !== null || building !== null || rent !== null) && (
+          <span className="flex flex-wrap items-center gap-x-(--mb-space-2) gap-y-[2px] text-meta text-secondary">
+            {owner !== null && (
+              <span className="inline-flex items-center gap-(--mb-space-1)">
+                <span
+                  aria-hidden="true"
+                  className="inline-block size-3 rounded-full border border-border"
+                  style={{ backgroundColor: owner.color }}
+                />
+                <span>{owner.name}</span>
+              </span>
+            )}
+            {building !== null && <span>{building}</span>}
+            {rent !== null && <span>{rent}</span>}
+          </span>
+        )}
       </span>
-      <span className={cx(pillClass, view.status === 'mortgaged' && mortgagedPillClass)}>
-        {status}
-      </span>
+      {view.status === 'free' && (
+        <span className="font-money text-small font-semibold tabular-nums">{price}</span>
+      )}
+      {view.status === 'mortgaged' && (
+        <span className={cx(pillClass, mortgagedPillClass)}>{status}</span>
+      )}
     </button>
   );
 }

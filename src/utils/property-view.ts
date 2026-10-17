@@ -67,6 +67,47 @@ export function groupProgress(
   return { owned, size: tiles.length, monopoly: tiles.length > 0 && owned === tiles.length };
 }
 
+/**
+ * The colour groups from the cheapest to the dearest, by their cheapest tile (ties by board
+ * position). It follows the snapshot prices, so a scaled or custom board keeps the right order:
+ * brown, light blue, pink, utilities, orange, railways, red, yellow, green, blue on the classic one.
+ */
+export function groupOrder(views: readonly TileView[]): PropertyGroupId[] {
+  const cheapest = new Map<PropertyGroupId, { price: number; pos: number }>();
+  for (const { tile } of views) {
+    const current = cheapest.get(tile.group);
+    if (
+      current === undefined ||
+      tile.price < current.price ||
+      (tile.price === current.price && tile.pos < current.pos)
+    )
+      cheapest.set(tile.group, { price: tile.price, pos: tile.pos });
+  }
+  return [...cheapest.entries()]
+    .sort(([, a], [, b]) => a.price - b.price || a.pos - b.pos)
+    .map(([group]) => group);
+}
+
+export interface GroupCards {
+  group: PropertyGroupId;
+  cards: TileView[];
+}
+
+/** Cards split into colour groups in `order`; inside a group by price, ties by board position. */
+export function cardsByGroup(
+  cards: readonly TileView[],
+  order: readonly PropertyGroupId[],
+): GroupCards[] {
+  return order
+    .map((group) => ({
+      group,
+      cards: cards
+        .filter((card) => card.tile.group === group)
+        .sort((a, b) => a.tile.price - b.tile.price || a.tile.pos - b.tile.pos),
+    }))
+    .filter((entry) => entry.cards.length > 0);
+}
+
 /** The cards the given wallets hold, in board order. */
 export function cardsOwnedBy(views: readonly TileView[], playerIds: readonly string[]): TileView[] {
   return views.filter(

@@ -1,16 +1,19 @@
 import { useState } from 'react';
-import type { BoardSnapshot, PropertyGroupId } from '../../shared/board';
-import { propertyGroupIds } from '../../shared/board';
+import type { BoardSnapshot } from '../../shared/board';
 import type { Currency, GameProperty, Player } from '../../shared/types/monopoly';
 import { Dialog } from '../components/Dialog';
 import { PropertyTileButton, PropertyTileSheet } from '../components/game/PropertyTile';
-import { propertyGroupKeys, useBuildingLabel } from '../components/game/property-labels';
-import { Button, SegmentedControl } from '../components/ui';
+import { propertyGroupKeys } from '../components/game/property-labels';
+import { SegmentedControl } from '../components/ui';
 import { cx, wideDialogClass } from '../components/ui/class-names';
 import { useLanguage } from '../i18n/language-context';
+import { noPropertyFilters, type PropertyFilterState } from '../utils/property-filters';
+import { PropertyFilters } from './PropertyFilters';
 import { formatMoney } from '../utils/money';
 import {
+  cardsByGroup,
   cardsOwnedBy,
+  groupOrder,
   groupProgress,
   propertyGroupColors,
   tileRent,
@@ -50,8 +53,10 @@ export interface PropertyScreenProps {
 }
 
 const listClass = 'm-0 grid list-none gap-(--mb-space-2) p-0';
-const filterRowClass = 'flex flex-wrap gap-(--mb-space-2)';
-const groupHeaderClass = 'm-0 flex items-center gap-(--mb-space-2) text-small font-semibold';
+const sectionTitleClass = 'm-0 text-body font-semibold';
+// Sticky inside its section, so the header of the group being scrolled stays in view.
+const groupHeaderClass =
+  'sticky top-0 z-1 m-0 flex items-center gap-(--mb-space-2) bg-surface-elevated py-(--mb-space-1) text-small font-semibold';
 const emptyClass = 'm-0 text-secondary';
 
 /** Read-only property overview: the viewer's cards grouped by colour, or every tile with filters. */
@@ -67,23 +72,24 @@ export function PropertyScreen({
   onClose,
 }: PropertyScreenProps) {
   const { t } = useLanguage();
-  const building = useBuildingLabel();
   const [view, setView] = useState<PropertyView>('MINE');
-  const [freeOnly, setFreeOnly] = useState(false);
-  const [playerFilter, setPlayerFilter] = useState<string | null>(null);
-  const [groupFilter, setGroupFilter] = useState<PropertyGroupId | null>(null);
+  const [filters, setFilters] = useState<PropertyFilterState>(noPropertyFilters);
   const [openTileId, setOpenTileId] = useState<string | null>(null);
   const views = tileViews(board, properties);
   const ownerOf = (card: TileView) =>
     players.find((player) => player.id === card.ownerPlayerId) ?? null;
   const mine = cardsOwnedBy(views, controlledPlayerIds);
-  const groups = propertyGroupIds.filter((group) => mine.some((card) => card.tile.group === group));
+  const order = groupOrder(views);
   const visible = views.filter(
     (card) =>
-      (!freeOnly || card.status === 'free') &&
-      (playerFilter === null || card.ownerPlayerId === playerFilter) &&
-      (groupFilter === null || card.tile.group === groupFilter),
+      (filters.owner === 'ALL' ||
+        (filters.owner === 'FREE'
+          ? card.status === 'free'
+          : card.ownerPlayerId === filters.owner)) &&
+      (filters.groups.length === 0 || filters.groups.includes(card.tile.group)),
   );
+  const freeCards = visible.filter((card) => card.status === 'free');
+  const ownedCards = visible.filter((card) => card.status !== 'free');
   const openTile = views.find((card) => card.tile.id === openTileId) ?? null;
   const rentLabel = (card: TileView): string | null => {
     const rent = tileRent(board, views, card);
@@ -96,8 +102,58 @@ export function PropertyScreen({
       });
     return card.status === 'mortgaged' ? t('propertyRentNone') : null;
   };
-  const toggle = <Value,>(current: Value | null, value: Value) =>
-    current === value ? null : value;
+  const row = (card: TileView, withRent: boolean) => (
+    <li key={card.tile.id}>
+      <PropertyTileButton
+        view={card}
+        owner={ownerOf(card)}
+        price={formatMoney(card.tile.price, currency)}
+        rent={withRent ? rentLabel(card) : null}
+        onOpen={() => setOpenTileId(card.tile.id)}
+      />
+    </li>
+  );
+  /** Colour groups with a sticky header (colour, name, count), the cards of each below it. */
+  const groupedList = (cards: readonly TileView[], progressOwner: boolean) =>
+    cardsByGroup(cards, order).map(({ group, cards: inGroup }) => {
+      // Progress is counted per owner; the first card's owner decides in the owned views.
+      const progress = progressOwner
+        ? groupProgress(views, group, inGroup[0]?.ownerPlayerId ?? '')
+        : null;
+      return (
+        <section key={group} className="grid gap-(--mb-space-2)" data-group={group}>
+          <h4 className={groupHeaderClass}>
+            <span
+              aria-hidden="true"
+              className="inline-block size-3 rounded-full"
+              style={{ backgroundColor: propertyGroupColors[group] }}
+            />
+            <span>{t(propertyGroupKeys[group])}</span>
+            {progress === null ? (
+              <span className="text-secondary">{inGroup.length}</span>
+            ) : (
+              <span
+                className="text-secondary"
+                aria-label={t('propertyGroupProgressAria', {
+                  owned: progress.owned,
+                  size: progress.size,
+                })}
+              >
+                {t('propertyGroupProgress', { owned: progress.owned, size: progress.size })}
+              </span>
+            )}
+            {progress?.monopoly === true && (
+              <span
+                className={cx('rounded-pill bg-accent px-(--mb-space-2) text-meta text-on-accent')}
+              >
+                {t('propertyMonopoly')}
+              </span>
+            )}
+          </h4>
+          <ul className={listClass}>{inGroup.map((card) => row(card, true))}</ul>
+        </section>
+      );
+    });
 
   return (
     <Dialog
@@ -119,110 +175,31 @@ export function PropertyScreen({
         {view === 'MINE' && mine.length === 0 && (
           <p className={emptyClass}>{t('propertyEmptyMine')}</p>
         )}
-        {view === 'MINE' &&
-          groups.map((group) => {
-            const cards = mine.filter((card) => card.tile.group === group);
-            // Progress is counted per owner; the first controlled wallet holding the group decides.
-            const progress = groupProgress(views, group, cards[0]?.ownerPlayerId ?? '');
-            return (
-              <section key={group} className="grid gap-(--mb-space-2)" data-group={group}>
-                <h3 className={groupHeaderClass}>
-                  <span
-                    aria-hidden="true"
-                    className="inline-block size-3 rounded-full"
-                    style={{ backgroundColor: propertyGroupColors[group] }}
-                  />
-                  <span>{t(propertyGroupKeys[group])}</span>
-                  <span
-                    className="text-secondary"
-                    aria-label={t('propertyGroupProgressAria', {
-                      owned: progress.owned,
-                      size: progress.size,
-                    })}
-                  >
-                    {t('propertyGroupProgress', { owned: progress.owned, size: progress.size })}
-                  </span>
-                  {progress.monopoly && (
-                    <span
-                      className={cx(
-                        'rounded-pill bg-accent px-(--mb-space-2) text-meta text-on-accent',
-                      )}
-                    >
-                      {t('propertyMonopoly')}
-                    </span>
-                  )}
-                </h3>
-                <ul className={listClass}>
-                  {cards.map((card) => (
-                    <li key={card.tile.id} className="grid gap-[2px]">
-                      <PropertyTileButton
-                        view={card}
-                        owner={ownerOf(card)}
-                        onOpen={() => setOpenTileId(card.tile.id)}
-                      />
-                      <span className="px-(--mb-space-3) text-meta text-secondary">
-                        {[building(card.houses), rentLabel(card)]
-                          .filter((part) => part !== null)
-                          .join(' · ')}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            );
-          })}
+        {view === 'MINE' && groupedList(mine, true)}
         {view === 'ALL' && (
           <>
-            <fieldset className="m-0 grid gap-(--mb-space-2) border-0 p-0">
-              <legend className="sr-only">{t('propertyFilters')}</legend>
-              <div className={filterRowClass}>
-                <Button
-                  variant="secondary"
-                  aria-pressed={freeOnly}
-                  onClick={() => setFreeOnly(!freeOnly)}
-                >
-                  {t('propertyFilterFree')}
-                </Button>
-              </div>
-              <div className={filterRowClass} role="group" aria-label={t('propertyFilterPlayer')}>
-                {players.map((player) => (
-                  <Button
-                    key={player.id}
-                    variant="secondary"
-                    aria-pressed={playerFilter === player.id}
-                    onClick={() => setPlayerFilter(toggle(playerFilter, player.id))}
-                  >
-                    {player.name}
-                  </Button>
-                ))}
-              </div>
-              <div className={filterRowClass} role="group" aria-label={t('propertyFilterGroup')}>
-                {propertyGroupIds.map((group) => (
-                  <Button
-                    key={group}
-                    variant="secondary"
-                    aria-pressed={groupFilter === group}
-                    onClick={() => setGroupFilter(toggle(groupFilter, group))}
-                  >
-                    {t(propertyGroupKeys[group])}
-                  </Button>
-                ))}
-              </div>
-            </fieldset>
-            {visible.length === 0 ? (
-              <p className={emptyClass}>{t('propertyNoMatches')}</p>
-            ) : (
-              <ul className={listClass}>
-                {visible.map((card) => (
-                  <li key={card.tile.id}>
-                    <PropertyTileButton
-                      view={card}
-                      owner={ownerOf(card)}
-                      onOpen={() => setOpenTileId(card.tile.id)}
-                    />
-                  </li>
-                ))}
-              </ul>
+            <PropertyFilters
+              players={players}
+              groupIds={order}
+              filters={filters}
+              onChange={setFilters}
+            />
+            {visible.length === 0 && <p className={emptyClass}>{t('propertyNoMatches')}</p>}
+            {freeCards.length > 0 && (
+              <section className="grid gap-(--mb-space-3)" data-section="free">
+                <h3 className={sectionTitleClass}>
+                  {t('propertySectionFree', { count: freeCards.length })}
+                </h3>
+                {groupedList(freeCards, false)}
+              </section>
+            )}
+            {ownedCards.length > 0 && (
+              <section className="grid gap-(--mb-space-3)" data-section="owned">
+                <h3 className={sectionTitleClass}>
+                  {t('propertySectionOwned', { count: ownedCards.length })}
+                </h3>
+                {groupedList(ownedCards, false)}
+              </section>
             )}
           </>
         )}
