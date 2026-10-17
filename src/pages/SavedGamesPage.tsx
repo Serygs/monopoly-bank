@@ -11,7 +11,7 @@ import { OverflowMenu } from '../components/OverflowMenu';
 import { PageHeader } from '../components/PageHeader';
 import {
   Button,
-  DialogActions,
+  SheetActions,
   DialogBody,
   EmptyState,
   Field,
@@ -447,14 +447,14 @@ function RemoveGameDialog({
       {error !== null && (
         <Notice tone="error">{apiErrorMessage(error, t, 'unableRemoveGame')}</Notice>
       )}
-      <DialogActions>
+      <SheetActions>
         <Button variant="secondary" disabled={removing} onClick={onCancel}>
           {t('cancel')}
         </Button>
         <Button variant="danger" disabled={removing} onClick={onConfirm}>
           {removing ? t('removing') : t('removeGame')}
         </Button>
-      </DialogActions>
+      </SheetActions>
     </Dialog>
   );
 }
@@ -508,14 +508,14 @@ function DuplicateGameDialog({
             : apiErrorMessage(error, t, 'unableDuplicateGame')}
         </Notice>
       )}
-      <DialogActions>
+      <SheetActions>
         <Button variant="secondary" disabled={duplicating} onClick={onCancel}>
           {t('cancel')}
         </Button>
         <Button variant="primary" disabled={duplicating} onClick={onConfirm}>
           {duplicating ? t('duplicating') : t('duplicateGame')}
         </Button>
-      </DialogActions>
+      </SheetActions>
     </Dialog>
   );
 }

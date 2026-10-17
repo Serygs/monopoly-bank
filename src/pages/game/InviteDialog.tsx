@@ -1,5 +1,5 @@
 import { Dialog } from '../../components/Dialog';
-import { Button, DialogActions, DialogBody, StatPill, useFeedback } from '../../components/ui';
+import { Button, SheetActions, DialogBody, StatPill, useFeedback } from '../../components/ui';
 import { useLanguage } from '../../i18n/language-context';
 import { createLocalQr } from '../../utils/local-qr';
 import { LocalQr } from './LocalQr';
@@ -50,7 +50,7 @@ export function InviteDialog({ joinCode, onClose }: InviteDialogProps) {
             <p className={shortCodeClass}>{joinCode}</p>
           </div>
           {qr !== null && <LocalQr matrix={qr} label={t('inviteQrLabel')} />}
-          <DialogActions>
+          <SheetActions>
             <Button variant="primary" onClick={() => void copy()}>
               {t('copyInviteLink')}
             </Button>
@@ -59,7 +59,7 @@ export function InviteDialog({ joinCode, onClose }: InviteDialogProps) {
                 {t('shareInvite')}
               </Button>
             )}
-          </DialogActions>
+          </SheetActions>
         </section>
       )}
     </Dialog>

@@ -3,6 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  buildProperty,
   declareBankruptcy,
   propertyPurchase,
   transferProperties,
@@ -487,6 +488,106 @@ describe('board registry (real SQLite)', () => {
       const sold = await buildOn('zhitna', 'PROPERTY_SELL_BUILDING');
       await reverse(sold.transaction.id);
       expect(houses('zhitna')).toBe(1);
+    });
+
+    describe('several streets at once', () => {
+      const buildTo = (targets: Record<string, number>, type = 'PROPERTY_BUILD' as const) =>
+        banking.createTransaction('game', { type, playerId: 'a', targets });
+      const diffCount = () => count('property_changes');
+
+      it('builds the group in one operation, one diff per street, and reverses it as a unit', async () => {
+        await setup();
+        await ownBrown();
+        const before = balance('a');
+        const diffsBefore = diffCount();
+        const txBefore = count('transactions');
+        const response = await buildTo({ zhitna: 2, nagatinska: 1 });
+        expect(response.transaction).toMatchObject({ type: 'PROPERTY_BUILD', amount: 1_500_000 });
+        expect(houses('zhitna')).toBe(2);
+        expect(houses('nagatinska')).toBe(1);
+        expect(balance('a')).toBe(before - 1_500_000);
+        expect(count('transactions')).toBe(txBefore + 1);
+        expect(diffCount()).toBe(diffsBefore + 2);
+        expect(response.properties).toHaveLength(2);
+
+        const stored = await banking.getTransaction('game', response.transaction.id);
+        expect(stored?.tileIds?.slice().sort()).toEqual(['nagatinska', 'zhitna']);
+
+        await reverse(response.transaction.id);
+        expect(houses('zhitna')).toBe(0);
+        expect(houses('nagatinska')).toBe(0);
+        expect(balance('a')).toBe(before);
+      });
+
+      it('refuses an uneven or short plan and writes nothing', async () => {
+        await setup();
+        await ownBrown();
+        const txBefore = count('transactions');
+        await expect(buildTo({ zhitna: 2 })).rejects.toMatchObject({ code: 'BUILD_UNEVEN' });
+        database.exec("UPDATE players SET balance = 400000 WHERE id = 'a'");
+        await expect(buildTo({ zhitna: 1, nagatinska: 1 })).rejects.toMatchObject({
+          code: 'INSUFFICIENT_FUNDS',
+        });
+        expect(houses('zhitna')).toBe(0);
+        expect(houses('nagatinska')).toBe(0);
+        expect(balance('a')).toBe(400_000);
+        expect(count('transactions')).toBe(txBefore);
+      });
+
+      it('refuses a group with a mortgaged tile', async () => {
+        await setup();
+        await ownBrown();
+        await banking.createTransaction('game', {
+          type: 'MORTGAGE',
+          playerId: 'a',
+          tileId: 'nagatinska',
+        });
+        await expect(buildTo({ zhitna: 1 })).rejects.toMatchObject({
+          code: 'BUILD_MORTGAGED_GROUP',
+        });
+        expect(houses('zhitna')).toBe(0);
+      });
+
+      it('rolls everything back when a street moved between reading and writing', async () => {
+        await setup();
+        await ownBrown();
+        const game_ = (await games.getById('game'))!;
+        const stale = buildProperty({
+          game: game_,
+          players: await players.listByGameId('game'),
+          playerId: 'a',
+          targets: { zhitna: 1, nagatinska: 1 },
+          property: { board: settings.board!, registry: await properties.listByGame('game') },
+        });
+        // Another operation builds on one street first.
+        database.exec("UPDATE game_properties SET houses = 1 WHERE tile_id = 'zhitna'");
+        const txBefore = count('transactions');
+        const cash = balance('a');
+        await expect(
+          operations.persist({
+            transactionId: newId(),
+            transaction: stale.transaction,
+            balanceChanges: stale.affectedPlayers,
+          }),
+        ).rejects.toMatchObject({ name: 'DatabaseError' });
+        expect(count('transactions')).toBe(txBefore);
+        expect(balance('a')).toBe(cash);
+        expect(houses('nagatinska')).toBe(0);
+      });
+
+      it('sells several buildings and reverses the sale as a unit', async () => {
+        await setup();
+        await ownBrown();
+        await buildTo({ zhitna: 2, nagatinska: 2 });
+        const before = balance('a');
+        const sold = await buildTo({ zhitna: 1, nagatinska: 1 }, 'PROPERTY_SELL_BUILDING');
+        expect(balance('a')).toBe(before + 500_000);
+        expect(houses('zhitna')).toBe(1);
+        await reverse(sold.transaction.id);
+        expect(houses('zhitna')).toBe(2);
+        expect(houses('nagatinska')).toBe(2);
+        expect(balance('a')).toBe(before);
+      });
     });
 
     it('blocks reversing the purchase that completed a group once a house stands', async () => {

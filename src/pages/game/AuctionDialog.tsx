@@ -3,7 +3,7 @@ import type { AuctionResponse } from '../../../shared/contracts/api';
 import type { Auction, Currency, GameSettings, Player } from '../../../shared/types/monopoly';
 import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
-import { Button, DialogActions, MoneyValue, Notice } from '../../components/ui';
+import { Button, SheetActions, MoneyValue, Notice } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import {
@@ -136,7 +136,7 @@ export function AuctionDialog({
   const seconds = Math.ceil(remaining / 1000);
 
   return (
-    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
+    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose} sheet="flow">
       <h3 className="m-0 text-[1.25rem] font-semibold wrap-anywhere">{auction.lotName}</h3>
       <p className="mt-(--mb-space-1) mb-(--mb-space-3) text-small text-secondary">
         {t('auctionOfferedBy', { name: nameOf(auction.initiatorPlayerId) ?? '' })}
@@ -240,11 +240,11 @@ export function AuctionDialog({
           )}
         </>
       )}
-      <DialogActions>
+      <SheetActions>
         <Button variant="secondary" onClick={onClose}>
           {t('close')}
         </Button>
-      </DialogActions>
+      </SheetActions>
     </Dialog>
   );
 }

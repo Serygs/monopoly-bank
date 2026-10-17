@@ -12,7 +12,7 @@ import type {
 } from '../../../shared/types/monopoly';
 import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
-import { Button, DialogActions, DialogBody, Notice } from '../../components/ui';
+import { Button, SheetActions, DialogBody, Notice } from '../../components/ui';
 import { actionGridClass } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
@@ -102,7 +102,7 @@ export function BankruptcyDialog({
   const shortfall =
     typeof shortError?.details?.shortfall === 'number' ? shortError.details.shortfall : 0;
   return (
-    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
+    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose} sheet="flow">
       {confirming ? (
         <>
           <DialogBody>
@@ -150,14 +150,14 @@ export function BankruptcyDialog({
               <Notice tone="error">{apiErrorMessage(error, t, 'unableRecordTransaction')}</Notice>
             )
           )}
-          <DialogActions>
+          <SheetActions>
             <Button variant="secondary" onClick={() => setConfirming(false)}>
               {t('back')}
             </Button>
             <Button variant="danger" onClick={() => void submit()}>
               {t('confirmBankruptcy')}
             </Button>
-          </DialogActions>
+          </SheetActions>
         </>
       ) : (
         <>
@@ -179,14 +179,14 @@ export function BankruptcyDialog({
                 </Button>
               ))}
           </div>
-          <DialogActions>
+          <SheetActions>
             <Button variant="secondary" onClick={onClose}>
               {t('cancel')}
             </Button>
             <Button variant="danger" onClick={() => setConfirming(true)}>
               {t('reviewBankruptcy')}
             </Button>
-          </DialogActions>
+          </SheetActions>
         </>
       )}
     </Dialog>

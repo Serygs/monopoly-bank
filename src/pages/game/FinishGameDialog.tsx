@@ -3,7 +3,7 @@ import type { GameDetails } from '../../../shared/contracts/api';
 import type { Currency, Player } from '../../../shared/types/monopoly';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
-import { Button, DialogActions, DialogBody, MoneyValue, Notice, Toggle } from '../../components/ui';
+import { Button, SheetActions, DialogBody, MoneyValue, Notice, Toggle } from '../../components/ui';
 import { useLanguage } from '../../i18n/language-context';
 import { cx } from '../../components/ui/class-names';
 import { MutedText } from '../../components/ui/Text';
@@ -56,6 +56,7 @@ export function FinishGameDialog({
       title={t('finishGame')}
       closeLabel={t('closeDialog', { title: t('finishGame') })}
       onClose={onClose}
+      sheet="flow"
       closeDisabled={saving}
     >
       <DialogBody>{t('finishGameDescription')}</DialogBody>
@@ -84,7 +85,7 @@ export function FinishGameDialog({
         ))}
       </fieldset>
       {error && <Notice tone="error">{t('unableLoadGame')}</Notice>}
-      <DialogActions>
+      <SheetActions>
         <Button variant="secondary" disabled={saving} onClick={onClose}>
           {t('cancel')}
         </Button>
@@ -101,7 +102,7 @@ export function FinishGameDialog({
         <Button variant="danger" disabled={saving} onClick={() => void finish()}>
           {t('finishGame')}
         </Button>
-      </DialogActions>
+      </SheetActions>
     </Dialog>
   );
 }

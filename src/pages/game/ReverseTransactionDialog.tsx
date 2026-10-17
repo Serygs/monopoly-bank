@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import type { Currency, Player, Transaction } from '../../../shared/types/monopoly';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
-import { Button, DialogActions, DialogBody, Field, MoneyValue, Notice } from '../../components/ui';
+import { Button, SheetActions, DialogBody, Field, MoneyValue, Notice } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import type { Language } from '../../i18n/translations';
@@ -77,7 +77,7 @@ export function ReverseTransactionDialog({
     players.find((player) => player.id === playerId)?.name ?? t('playerFallback');
 
   return (
-    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
+    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose} sheet="flow">
       <DialogBody>{t('reverseTransactionIntro')}</DialogBody>
       <p className="m-0 font-semibold">{transactionDescription(transaction, players, language)}</p>
       <ul className={effectListClass} aria-label={t('reverseTransactionEffects')}>
@@ -99,14 +99,14 @@ export function ReverseTransactionDialog({
         />
       </Field>
       {errorMessage !== null && <Notice tone="error">{errorMessage}</Notice>}
-      <DialogActions>
+      <SheetActions>
         <Button variant="secondary" disabled={submitting} onClick={onClose}>
           {t('cancel')}
         </Button>
         <Button variant="danger" disabled={submitting} onClick={() => void submit()}>
           {submitting ? t('recording') : t('confirmReversal')}
         </Button>
-      </DialogActions>
+      </SheetActions>
     </Dialog>
   );
 }

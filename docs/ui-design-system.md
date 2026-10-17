@@ -226,7 +226,7 @@ markup:
   auth-card parts `AuthHeading` and `AuthForm`, and the text roles `Eyebrow`,
   `Lede`, and `MutedText`;
 - dialog parts, used inside `src/components/Dialog.tsx`: `DialogBody` and
-  `DialogActions`;
+  `SheetActions`;
 - feedback: `FeedbackProvider` (`ToastRegion.tsx`), `Toast`, and the
   `useFeedback()` hook;
 - `class-names.ts`: shared class recipes (`cx`, button cores and tones, notice
@@ -481,8 +481,14 @@ in both visual styles:
   `100dvh - --mb-app-safe-top - 8px`, and it scrolls internally.
 - The padding follows the insets: `max(18px, --mb-app-safe-left/right)` at the
   sides and `max(--mb-space-5, --mb-app-safe-bottom + 14px)` at the bottom.
-  `DialogActions` stays sticky at the sheet's foot with
-  `max(--mb-space-4, --mb-app-safe-bottom)` below the actions. The
+  `SheetActions` (the one Back / Review / Confirm bar of every sheet) stays sticky at the
+  sheet's foot with `max(--mb-space-4, --mb-app-safe-bottom)` below the buttons. It has no background
+  strip: a gradient of the sheet colour fades the scrolling content under pill buttons that keep the
+  sheet's side padding, and the bar is the last element of the scroll flow, so content never ends
+  beneath it. Browse sheets (Property, Activity, Statistics, Tools; `Dialog` `sheet="browse"`, the default) keep the
+  game's bottom navigation under them; step flows (payment, build, trade, auction, bankruptcy,
+  reverse, finish; `sheet="flow"`) cover the navigation and the Pay button, so the bar owns the
+  bottom edge. The
   `--mb-app-safe-*` properties are defined in `src/index.css`; iOS standalone
   portrait raises the top inset in `layout.css`.
 - A decorative 42×4px grab handle in `--mb-color-border-strong` sits 10px from
@@ -598,7 +604,7 @@ reachable at every size.
 - **Bottom navigation.** Four items in a fixed order: Activity, Statistics, Tools,
   Pay (raised action at the thumb side). A game with a board (`settings.board`)
   adds a fifth item, Property, between Statistics and Tools with a badge of the
-  viewer's card count; it opens `PropertyScreen` (Mine / All, read-only), which
+  viewer's card count; it opens `PropertyScreen` (Mine / All; All has one "Filters (N)" popover for owner and colour group, removable chips only when a filter is on, and a "Free (N)" then "Owned (N)" section, each by colour group from the cheapest tile with sticky group headers), which
   the active wallet's "Property: N cards" button also opens. Without a board
   the bar stays at four items. Keep the label short ("Майно") so five items fit
   at 393px without clipping. There is no Wallets item: the wallets
