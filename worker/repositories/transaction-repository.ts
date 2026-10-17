@@ -187,7 +187,7 @@ const transactionSelect = `SELECT
   transactions.tile_id,
   transactions.price_overridden,
   transactions.initiator_player_id,
-  CASE WHEN transactions.type = 'PROPERTY_TRANSFER' THEN (
+  CASE WHEN transactions.type IN ('PROPERTY_TRANSFER', 'PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING') THEN (
     SELECT group_concat(tile_id) FROM property_changes WHERE property_changes.transaction_id = transactions.id
   ) END AS changed_tile_ids,
   reversal.id AS reversed_by_transaction_id,

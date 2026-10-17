@@ -273,21 +273,31 @@ export interface PropertyPurchaseTransactionRequest extends Omit<
   priceOverride?: number;
 }
 
-/** Board games: the owner adds a house (or the hotel) to a street; the bank is paid one house cost. */
+/**
+ * Board games: the owner adds houses (or the hotel) to the streets of one colour group; the bank is
+ * paid one house cost per building. Name one street (`tileId`: one building up) or the final levels
+ * of several (`targets`: tile id -> 0-5, a hotel is 5), which are validated as a whole and written
+ * as one operation.
+ */
 export interface PropertyBuildTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
   type: 'PROPERTY_BUILD';
   playerId: string;
-  tileId: string;
+  tileId?: string;
+  targets?: Record<string, number>;
 }
 
-/** Board games: the owner sells a building back; the bank pays half the house cost. */
+/**
+ * Board games: the owner sells buildings back; the bank pays half the house cost for each. `tileId`
+ * sells one building, `targets` lowers several streets of one colour group to the given levels.
+ */
 export interface PropertySellBuildingTransactionRequest extends Omit<
   TransactionRequestBase,
   'comment'
 > {
   type: 'PROPERTY_SELL_BUILDING';
   playerId: string;
-  tileId: string;
+  tileId?: string;
+  targets?: Record<string, number>;
 }
 
 /**

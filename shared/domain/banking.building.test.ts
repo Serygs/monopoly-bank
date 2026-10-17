@@ -21,6 +21,7 @@ import {
   BuildUnevenError,
   canBuild,
   canSellBuilding,
+  InvalidBuildTargetError,
   MaxBuildingsError,
   NoBuildingsError,
   PropertyNotOwnedError,
@@ -307,5 +308,179 @@ describe('reversing buildings', () => {
     const purchase: Transaction = { ...buildTx, id: 'tx-purchase', type: 'PROPERTY_PURCHASE' };
     const later: Transaction = { ...buildTx, id: 'tx-b', tileId: 'nagatinska' };
     expect(findReversalDependency(purchase, [later], ['zhitna', 'nagatinska'])).toBe(later);
+  });
+});
+
+describe('building a whole colour group at once', () => {
+  const lightblue = ['varshavske', 'ogarova', 'persha_parkova'];
+  /** Player 1 holds the light blue group with the given houses. */
+  const group = (
+    houses: readonly [number, number, number] = [0, 0, 0],
+    extra: Record<string, Partial<GameProperty>> = {},
+  ): PropertyContext => ({
+    board,
+    registry: board.tiles.map((tile) => {
+      const index = lightblue.indexOf(tile.id);
+      return {
+        gameId: game.id,
+        tileId: tile.id,
+        ownerPlayerId: index === -1 ? null : p1,
+        mortgaged: false,
+        houses: index === -1 ? 0 : (houses[index] ?? 0),
+        ...extra[tile.id],
+      };
+    }),
+  });
+  const buildMany = (
+    property: PropertyContext,
+    targets: Record<string, number>,
+    balance = 15_000_000,
+  ) =>
+    buildProperty({
+      game,
+      players: players([balance, 1_000_000]),
+      playerId: p1,
+      targets,
+      property,
+    });
+  const sellMany = (property: PropertyContext, targets: Record<string, number>) =>
+    sellBuilding({
+      game,
+      players: players([1_000_000, 1_000_000]),
+      playerId: p1,
+      targets,
+      property,
+    });
+
+  it('builds several streets as one operation with one diff per street', () => {
+    const result = buildMany(group(), { varshavske: 1, ogarova: 1, persha_parkova: 1 });
+    expect(result.transaction).toMatchObject({
+      type: 'PROPERTY_BUILD',
+      amount: 1_500_000,
+      totalAmount: 1_500_000,
+      tileId: 'varshavske',
+      participants: [{ playerId: p1, balanceDelta: -1_500_000 }],
+    });
+    expect(result.transaction.registryChanges?.map((change) => change.tileId)).toEqual(lightblue);
+    expect(result.affectedPlayers).toHaveLength(1);
+  });
+
+  it('prices every added building, hotel included', () => {
+    const result = buildMany(group([3, 3, 3]), { varshavske: 5, ogarova: 4, persha_parkova: 4 });
+    expect(result.transaction.amount).toBe(4 * 500_000);
+    expect(result.transaction.registryChanges?.map((change) => change.after.houses)).toEqual([
+      5, 4, 4,
+    ]);
+  });
+
+  it('leaves streets out of the targets at their level', () => {
+    const result = buildMany(group([1, 1, 1]), { varshavske: 2 });
+    expect(result.transaction.registryChanges).toHaveLength(1);
+  });
+
+  it('validates the final state, not the order', () => {
+    // Uneven in the middle of the plan, but 2/1/1 at the end.
+    expect(() => buildMany(group([1, 1, 1]), { persha_parkova: 2 })).not.toThrow();
+    expect(() => buildMany(group([0, 0, 0]), { varshavske: 2, ogarova: 0 })).toThrow(
+      BuildUnevenError,
+    );
+    expect(() =>
+      buildMany(group([0, 0, 0]), { varshavske: 1, ogarova: 1, persha_parkova: 0 }),
+    ).not.toThrow();
+  });
+
+  it('refuses an uneven target and writes nothing', () => {
+    expect(() => buildMany(group(), { varshavske: 2, ogarova: 1, persha_parkova: 0 })).toThrow(
+      BuildUnevenError,
+    );
+  });
+
+  it('allows any target when even building is off', () => {
+    const loose: BoardSnapshot = { ...board, rules: { ...board.rules, buildEvenly: false } };
+    const property = { ...group(), board: loose };
+    expect(() => buildMany(property, { varshavske: 5 })).not.toThrow();
+  });
+
+  it('refuses when the group has a mortgaged tile', () => {
+    expect(() =>
+      buildMany(group([0, 0, 0], { ogarova: { mortgaged: true } }), { varshavske: 1 }),
+    ).toThrow(BuildMortgagedGroupError);
+  });
+
+  it('refuses a partial group and a foreign street', () => {
+    expect(() =>
+      buildMany(group([0, 0, 0], { ogarova: { ownerPlayerId: p2 } }), { varshavske: 1 }),
+    ).toThrow(BuildRequiresFullGroupError);
+    expect(() =>
+      buildMany(group([0, 0, 0], { ogarova: { ownerPlayerId: p2 } }), { ogarova: 1 }),
+    ).toThrow(PropertyNotOwnedError);
+  });
+
+  it('refuses levels out of range, other groups, empty plans and wrong direction', () => {
+    expect(() => buildMany(group(), { varshavske: 6 })).toThrow(InvalidBuildTargetError);
+    expect(() => buildMany(group(), { varshavske: -1 })).toThrow(InvalidBuildTargetError);
+    expect(() => buildMany(group(), { varshavske: 1.5 })).toThrow(InvalidBuildTargetError);
+    expect(() => buildMany(group(), {})).toThrow(InvalidBuildTargetError);
+    expect(() => buildMany(group([1, 1, 1]), { varshavske: 1 })).toThrow(InvalidBuildTargetError);
+    expect(() => buildMany(group([2, 2, 2]), { varshavske: 1 })).toThrow(InvalidBuildTargetError);
+    expect(() => buildMany(group(), { varshavske: 1, zhitna: 1 })).toThrow(InvalidBuildTargetError);
+    expect(() => sellMany(group([1, 1, 1]), { varshavske: 2 })).toThrow(InvalidBuildTargetError);
+  });
+
+  it('checks the cash once for the whole plan', () => {
+    expect(() =>
+      buildMany(group(), { varshavske: 1, ogarova: 1, persha_parkova: 1 }, 1_499_999),
+    ).toThrow(InsufficientFundsError);
+    expect(() =>
+      buildMany(group(), { varshavske: 1, ogarova: 1, persha_parkova: 1 }, 1_500_000),
+    ).not.toThrow();
+  });
+
+  it('sells several buildings and refunds each', () => {
+    const result = sellMany(group([2, 2, 2]), { varshavske: 1, ogarova: 1, persha_parkova: 1 });
+    expect(result.transaction).toMatchObject({
+      type: 'PROPERTY_SELL_BUILDING',
+      amount: 3 * 250_000,
+      participants: [{ playerId: p1, balanceDelta: 750_000 }],
+    });
+    expect(() => sellMany(group([2, 2, 2]), { varshavske: 0 })).toThrow(BuildUnevenError);
+  });
+
+  it('reverses a multi-street build as a unit', () => {
+    const built = buildMany(group(), { varshavske: 1, ogarova: 1, persha_parkova: 1 });
+    const original: Transaction = {
+      id: 'tx-multi',
+      gameId: game.id,
+      type: 'PROPERTY_BUILD',
+      amount: built.transaction.amount,
+      totalAmount: built.transaction.totalAmount,
+      comment: null,
+      createdAt: '',
+      participants: [{ playerId: p1, balanceDelta: -1_500_000 }],
+      tileId: 'varshavske',
+      tileIds: lightblue,
+      reversesTransactionId: null,
+      reversedByTransactionId: null,
+    };
+    const reversal = reverseTransaction({
+      game,
+      players: players([13_500_000, 1_000_000]),
+      original,
+      originalRegistryChanges: built.transaction.registryChanges ?? [],
+      groupTileIds: lightblue,
+    });
+    expect(reversal.transaction.participants).toEqual([{ playerId: p1, balanceDelta: 1_500_000 }]);
+    expect(reversal.transaction.registryChanges?.map((change) => change.after.houses)).toEqual([
+      0, 0, 0,
+    ]);
+    // A later operation on any street of the group blocks it.
+    const later: Transaction = {
+      ...original,
+      id: 'tx-later',
+      type: 'PAY_RENT',
+      tileId: 'ogarova',
+      tileIds: undefined,
+    };
+    expect(findReversalDependency(original, [later], lightblue)).toBe(later);
   });
 });

@@ -604,7 +604,7 @@ reachable at every size.
 - **Bottom navigation.** Four items in a fixed order: Activity, Statistics, Tools,
   Pay (raised action at the thumb side). A game with a board (`settings.board`)
   adds a fifth item, Property, between Statistics and Tools with a badge of the
-  viewer's card count; it opens `PropertyScreen` (Mine / All, read-only), which
+  viewer's card count; it opens `PropertyScreen` (Mine / All; All has one "Filters (N)" popover for owner and colour group, removable chips only when a filter is on, and a "Free (N)" then "Owned (N)" section, each by colour group from the cheapest tile with sticky group headers), which
   the active wallet's "Property: N cards" button also opens. Without a board
   the bar stays at four items. Keep the label short ("Майно") so five items fit
   at 393px without clipping. There is no Wallets item: the wallets
