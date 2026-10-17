@@ -118,7 +118,17 @@ export function Confirmation({
         {propertyName !== undefined && propertyName !== '' && (
           <div>
             <dt>{t('property')}</dt>
-            <dd>{propertyName}</dd>
+            <dd>
+              {propertyName.includes('\n') ? (
+                <ul className="m-0 grid list-none gap-(--mb-space-1) p-0">
+                  {propertyName.split('\n').map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              ) : (
+                propertyName
+              )}
+            </dd>
           </div>
         )}
         <div className={compactHidden}>

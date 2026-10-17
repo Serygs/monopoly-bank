@@ -105,6 +105,9 @@ export class GameAccessService {
     if (joinCode === null) throw new ResourceNotFoundError('Game');
     return joinCode;
   }
+  async hasAccessPassword(gameId: string): Promise<boolean> {
+    return this.access.hasAccessPassword(gameId);
+  }
   async createInvitation(gameId: string, ownerUserId: string): Promise<CreateInvitationResponse> {
     const invitationToken = randomToken();
     const shortCode = randomToken(6)

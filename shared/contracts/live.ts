@@ -7,6 +7,9 @@ import type {
   CreateTransactionRequest,
   GameDetails,
   PaymentRequestActionResponse,
+  CreateTradeRequestBody,
+  CreateTradeRequestResponse,
+  TradeRequestActionResponse,
 } from './api.js';
 import type {
   GameProperty,
@@ -24,6 +27,10 @@ export type LiveMutationCommand =
   | { type: 'ACCEPT_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
   | { type: 'DECLINE_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
   | { type: 'CANCEL_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
+  | { type: 'CREATE_TRADE_REQUEST'; commandId: string; request: CreateTradeRequestBody }
+  | { type: 'ACCEPT_TRADE_REQUEST'; commandId: string; tradeRequestId: string }
+  | { type: 'DECLINE_TRADE_REQUEST'; commandId: string; tradeRequestId: string }
+  | { type: 'CANCEL_TRADE_REQUEST'; commandId: string; tradeRequestId: string }
   | { type: 'DECLARE_BANKRUPTCY'; commandId: string; request: BankruptcyRequest }
   | { type: 'START_AUCTION'; commandId: string; request: StartAuctionRequest }
   | { type: 'PLACE_BID'; commandId: string; request: PlaceBidRequest }
@@ -73,7 +80,12 @@ export type LiveServerEvent =
   | { type: 'HEARTBEAT'; stateVersion: number };
 
 export type LiveMutationResponse =
-  CreateBankingCommandResponse | PaymentRequestActionResponse | AuctionResponse | GameDetails;
+  | CreateBankingCommandResponse
+  | PaymentRequestActionResponse
+  | CreateTradeRequestResponse
+  | TradeRequestActionResponse
+  | AuctionResponse
+  | GameDetails;
 
 export function isLiveMutationCommand(value: unknown): value is LiveMutationCommand {
   if (value === null || typeof value !== 'object' || !('type' in value) || !('commandId' in value))
@@ -90,12 +102,18 @@ export function isLiveMutationCommand(value: unknown): value is LiveMutationComm
       command.type === 'ACCEPT_PAYMENT_REQUEST' ||
       command.type === 'DECLINE_PAYMENT_REQUEST' ||
       command.type === 'CANCEL_PAYMENT_REQUEST' ||
+      command.type === 'CREATE_TRADE_REQUEST' ||
+      command.type === 'ACCEPT_TRADE_REQUEST' ||
+      command.type === 'DECLINE_TRADE_REQUEST' ||
+      command.type === 'CANCEL_TRADE_REQUEST' ||
       command.type === 'START_GAME' ||
       command.type === 'JOIN_LOBBY' ||
       command.type === 'REMOVE_PLAYER' ||
       command.type === 'START_AUCTION' ||
       command.type === 'PLACE_BID') &&
-    (command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY'
+    (command.type === 'CREATE_TRANSACTION' ||
+    command.type === 'DECLARE_BANKRUPTCY' ||
+    command.type === 'CREATE_TRADE_REQUEST'
       ? 'request' in value
       : command.type === 'START_AUCTION'
         ? isStartAuctionRequest((value as { request?: unknown }).request)
@@ -115,7 +133,12 @@ export function isLiveMutationCommand(value: unknown): value is LiveMutationComm
                     typeof (value as { nickname?: unknown }).nickname === 'string' &&
                     typeof (value as { color?: unknown }).color === 'string' &&
                     typeof (value as { startingBalance?: unknown }).startingBalance === 'number'
-                  : typeof (value as { paymentRequestId?: unknown }).paymentRequestId === 'string')
+                  : command.type === 'ACCEPT_TRADE_REQUEST' ||
+                      command.type === 'DECLINE_TRADE_REQUEST' ||
+                      command.type === 'CANCEL_TRADE_REQUEST'
+                    ? typeof (value as { tradeRequestId?: unknown }).tradeRequestId === 'string'
+                    : typeof (value as { paymentRequestId?: unknown }).paymentRequestId ===
+                      'string')
   );
 }
 

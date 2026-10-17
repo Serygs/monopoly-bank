@@ -16,7 +16,6 @@ import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { AmountInput } from '../components/AmountInput';
 import { useAmountInput } from '../components/amount-input-state';
-import { PageHeader } from '../components/PageHeader';
 import {
   Button,
   AnchoredPopover,
@@ -24,6 +23,7 @@ import {
   FieldError,
   FieldHint,
   FormSection,
+  Lede,
   Notice,
   PageShell,
   SegmentedControl,
@@ -269,22 +269,40 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
     }
   };
   const stepTitles = [t('stepBasics'), t('houseRules'), t('stepPlayers')];
+  const stepSubtitles = [t('lobbyLede'), t('houseRulesHint'), t('localPlayersHint')];
   return (
     <PageShell>
-      <PageHeader
-        eyebrow={t('newBank')}
-        title={stepTitles[step]}
-        description={step === 0 ? t('lobbyLede') : undefined}
-        backAction={
-          <Button variant="quiet" aria-label={t('closeCreateLobby')} onClick={onClose}>
-            ✕
-          </Button>
-        }
-      />
+      <header className="mb-(--mb-layout-section-gap-compact) flex items-start justify-between gap-(--mb-space-4)">
+        <div className="min-w-0 pt-(--mb-space-1)">
+          <h1 className="m-0 font-display text-display leading-tight font-bold tracking-display text-primary wrap-anywhere">
+            {stepTitles[step]}
+          </h1>
+          <Lede as="p">{stepSubtitles[step]}</Lede>
+        </div>
+        <Button
+          variant="quiet"
+          className="icon-button min-h-11 min-w-11 shrink-0 justify-center rounded-pill p-0"
+          aria-label={t('closeCreateLobby')}
+          onClick={onClose}
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </Button>
+      </header>
       <form ref={formRef} className={formClass} onSubmit={(event) => void submit(event)} noValidate>
         {step === 0 && (
           <>
-            <FormSection legend={t('gameBasics')}>
+            <FormSection legend={t('gameBasics')} className="[&>legend]:sr-only">
               <FieldStack>
                 <div className="game-name-field grid gap-[7px] font-medium text-primary">
                   <label htmlFor={gameNameInputId}>{t('gameName')}</label>
@@ -429,9 +447,8 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
           </>
         )}
         {step === 1 && (
-          <FormSection legend={t('houseRules')} className="md:col-span-full">
+          <FormSection legend={t('houseRules')} className="md:col-span-full [&>legend]:sr-only">
             <FieldStack>
-              <FieldHint>{t('houseRulesHint')}</FieldHint>
               <div>
                 {houseRuleOptions.map(({ key, label }) => (
                   <Toggle
@@ -476,7 +493,6 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
               intro={
                 <>
                   <div className={sectionTitleClass}>
-                    <FieldHint as="p">{t('localPlayersHint')}</FieldHint>
                     <Button variant="secondary" onClick={addPlayer} disabled={players.length >= 6}>
                       {t('addPlayer')}
                     </Button>
@@ -486,31 +502,51 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
               }
             >
               {players.slice(1).map((player, index) => (
-                <section key={player.key}>
-                  <Field
-                    label={t('playerName', { number: index + 2 })}
-                    error={errors[`player-${player.key}`]}
-                  >
-                    <input
-                      value={player.name}
-                      onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
-                      aria-invalid={errors[`player-${player.key}`] !== undefined}
-                    />
-                  </Field>
+                <section
+                  key={player.key}
+                  className="grid gap-(--mb-space-3) rounded-surface border border-border bg-surface-subtle p-(--mb-space-4)"
+                >
+                  <div className="flex items-end gap-(--mb-space-2)">
+                    <Field
+                      label={t('playerName', { number: index + 2 })}
+                      error={errors[`player-${player.key}`]}
+                    >
+                      <input
+                        value={player.name}
+                        onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
+                        aria-invalid={errors[`player-${player.key}`] !== undefined}
+                      />
+                    </Field>
+                    <Button
+                      variant="quiet"
+                      className="icon-button min-h-11 min-w-11 shrink-0 justify-center rounded-pill p-0"
+                      aria-label={t('removePlayer', {
+                        name: player.name.trim() || t('playerName', { number: index + 2 }),
+                      })}
+                      onClick={() =>
+                        setPlayers(players.filter((candidate) => candidate.key !== player.key))
+                      }
+                    >
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3" />
+                      </svg>
+                    </Button>
+                  </div>
                   <ColorPicker
                     player={player}
                     players={players}
                     onChange={(color) => updatePlayer(player.key, { color })}
                   />
-                  <Button
-                    variant="quiet"
-                    className="justify-self-start"
-                    onClick={() =>
-                      setPlayers(players.filter((candidate) => candidate.key !== player.key))
-                    }
-                  >
-                    {t('remove')}
-                  </Button>
                 </section>
               ))}
             </PlayersFieldset>

@@ -73,20 +73,20 @@ const backdropPresentationClass = {
  */
 const sheetClass = cx(
   'max-md:relative max-md:max-h-[calc(100dvh_-_var(--mb-app-safe-top)_-_8px_-_var(--mb-dialog-nav-offset))] max-md:w-full max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0',
-  'max-md:pt-[28px] max-md:pr-[max(18px,var(--mb-app-safe-right))] max-md:pb-[max(var(--mb-space-5),calc(var(--mb-sheet-safe-bottom,var(--mb-app-safe-bottom))_+_14px))] max-md:pl-[max(18px,var(--mb-app-safe-left))]',
+  'max-md:[--mb-sheet-pad-bottom:max(var(--mb-space-5),calc(var(--mb-sheet-safe-bottom,var(--mb-app-safe-bottom))_+_14px))] max-md:pt-[24px] max-md:pr-[max(18px,var(--mb-app-safe-right))] max-md:pb-(--mb-sheet-pad-bottom) max-md:pl-[max(18px,var(--mb-app-safe-left))]',
   "max-md:before:absolute max-md:before:inset-x-0 max-md:before:top-[10px] max-md:before:mx-auto max-md:before:h-[4px] max-md:before:w-[42px] max-md:before:rounded-pill max-md:before:bg-border-strong max-md:before:content-['']",
 );
 const panelClass = cx(
   'dialog max-h-[calc(100dvh_-_48px)] overflow-auto rounded-xl border border-border bg-surface-elevated p-[clamp(var(--mb-space-5),4vw,var(--mb-space-7))] text-primary shadow-lg',
   sheetClass,
   'origin-center max-md:origin-bottom motion-reduce:transform-none!',
-  '[&>header]:flex [&>header]:items-start [&>header]:justify-between [&>header]:border-b [&>header]:border-dialog-divider [&>header]:pb-(--mb-space-4)',
-  '[&_h2]:font-display [&_h2]:text-primary [&>header_h2]:m-0 [&>header_h2]:text-heading-lg',
+  '[&>header]:flex [&>header]:items-start [&>header]:justify-between [&>header]:border-b [&>header]:border-dialog-divider [&>header]:pb-(--mb-space-4) max-md:[&>header]:pb-(--mb-space-3)',
+  '[&_h2]:font-display [&_h2]:text-primary [&>header_h2]:m-0 [&>header_h2]:text-heading-lg max-md:[&>header_h2]:text-[clamp(1.125rem,5vw,1.3125rem)]',
 );
 const presentationClass = {
   modal: cx(
     'w-[min(100%,640px)] [&>header]:gap-(--mb-space-5)',
-    '[&_h2]:m-0 [&_h2]:text-heading-lg [&_h2]:leading-[1.2] [&_h2]:tracking-[-0.025em]',
+    '[&_h2]:m-0 [&_h2]:text-heading-lg max-md:[&_h2]:text-[clamp(1.125rem,5vw,1.3125rem)] [&_h2]:leading-[1.2] [&_h2]:tracking-[-0.025em]',
     'glass-panel',
   ),
   // The settings panel; its Liquid Glass surface is in `App.tsx`.

@@ -20,6 +20,10 @@ import type {
   TileMortgageTransactionRequest,
   ReversalTransactionRequest,
   PaymentRequestActionResponse,
+  CreateTradeRequestBody,
+  CreateTradeRequestResponse,
+  TradeRequest,
+  TradeRequestActionResponse,
 } from '../../shared/contracts/api.js';
 import {
   assertReserveRespected,
@@ -77,9 +81,14 @@ import type { LoanRepository } from '../repositories/loan-repository.js';
 import type { MortgageRepository } from '../repositories/mortgage-repository.js';
 import type { PlayerRepository } from '../repositories/player-repository.js';
 import type { TransactionRepository } from '../repositories/transaction-repository.js';
-import type { PaymentRequestRepository } from '../repositories/payment-request-repository.js';
+import {
+  PAYMENT_REQUEST_TTL_MS,
+  type PaymentRequestRepository,
+} from '../repositories/payment-request-repository.js';
+import type { TradeRequestRepository } from '../repositories/trade-request-repository.js';
 import type { PropertyRepository } from '../repositories/property-repository.js';
 import {
+  AppError,
   ConflictError,
   DatabaseError,
   PersistenceConsistencyError,
@@ -102,6 +111,16 @@ export interface BankingService {
   declinePaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse>;
   cancelPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequestActionResponse>;
   getPaymentRequest(gameId: string, requestId: string): Promise<PaymentRequest | null>;
+  /** The PENDING trades the given wallets must answer (counterparty) or proposed (proposer). */
+  listTradeRequests(gameId: string, playerIds: readonly string[]): Promise<TradeRequest[]>;
+  getTradeRequest(gameId: string, requestId: string): Promise<TradeRequest | null>;
+  createTradeRequest(
+    gameId: string,
+    request: CreateTradeRequestBody,
+  ): Promise<CreateTradeRequestResponse>;
+  acceptTradeRequest(gameId: string, requestId: string): Promise<TradeRequestActionResponse>;
+  declineTradeRequest(gameId: string, requestId: string): Promise<TradeRequestActionResponse>;
+  cancelTradeRequest(gameId: string, requestId: string): Promise<TradeRequestActionResponse>;
   getTransaction(gameId: string, transactionId: string): Promise<Transaction | null>;
   listTransactions(gameId: string, limit: number): Promise<Transaction[]>;
   listPlayerTransactions(gameId: string, playerId: string, limit: number): Promise<Transaction[]>;
@@ -114,6 +133,8 @@ export interface BankingServiceDependencies {
   transactions: TransactionRepository;
   operations: BankingOperationRepository;
   paymentRequests: PaymentRequestRepository;
+  /** Needed by board games for trade requests. */
+  tradeRequests?: TradeRequestRepository;
   mortgages: MortgageRepository;
   loans: LoanRepository;
   /** Needed by games with the auctions rule: the leading bid is reserved on the leader's wallet. */
@@ -129,6 +150,7 @@ export class DefaultBankingService implements BankingService {
   private readonly transactions: TransactionRepository;
   private readonly operations: BankingOperationRepository;
   private readonly paymentRequests: PaymentRequestRepository;
+  private readonly tradeRequests: TradeRequestRepository | undefined;
   private readonly mortgages: MortgageRepository;
   private readonly loans: LoanRepository;
   private readonly auctions: AuctionRepository | undefined;
@@ -141,6 +163,7 @@ export class DefaultBankingService implements BankingService {
     this.transactions = dependencies.transactions;
     this.operations = dependencies.operations;
     this.paymentRequests = dependencies.paymentRequests;
+    this.tradeRequests = dependencies.tradeRequests;
     this.mortgages = dependencies.mortgages;
     this.loans = dependencies.loans;
     this.auctions = dependencies.auctions;
@@ -151,6 +174,34 @@ export class DefaultBankingService implements BankingService {
   async createTransaction(
     gameId: string,
     request: CreateTransactionRequest,
+  ): Promise<CreateBankingCommandResponse> {
+    // A trade moves another player's tiles and cash, so it only happens through a trade request
+    // the counterparty accepted (`acceptTradeRequest`), never as a direct transaction.
+    if (request.type === 'PROPERTY_TRANSFER')
+      throw new ConflictError(
+        'TRADE_REQUEST_REQUIRED',
+        'A trade must be proposed as a trade request and accepted by the other player.',
+      );
+    return this.commit(gameId, request);
+  }
+
+  /**
+   * The single `PROPERTY_TRANSFER` operation of an accepted trade. Internal: the public
+   * `createTransaction` refuses this type. With `tradeRequestId` the request flips to ACCEPTED in
+   * the same D1 batch as the ledger and registry writes.
+   */
+  async executeTradeTransfer(
+    gameId: string,
+    request: PropertyTransferTransactionRequest,
+    tradeRequestId?: string,
+  ): Promise<CreateBankingCommandResponse> {
+    return this.commit(gameId, request, tradeRequestId);
+  }
+
+  private async commit(
+    gameId: string,
+    request: CreateTransactionRequest,
+    tradeRequestId?: string,
   ): Promise<CreateBankingCommandResponse> {
     const transactionId = this.createId();
     const existing = await this.transactions.getById(gameId, transactionId);
@@ -197,6 +248,7 @@ export class DefaultBankingService implements BankingService {
         transactionId,
         transaction: result.transaction,
         balanceChanges: result.affectedPlayers,
+        ...(tradeRequestId === undefined ? {} : { acceptTradeRequestId: tradeRequestId }),
         ...(request.type === 'PASS_GO' ||
         request.type === 'REVERSAL' ||
         request.type === 'MORTGAGE' ||
@@ -600,7 +652,7 @@ export class DefaultBankingService implements BankingService {
       amount: request.amount,
       comment: null,
       state: 'PENDING',
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + PAYMENT_REQUEST_TTL_MS).toISOString(),
     });
     return {
       paymentRequests: [(await this.paymentRequests.getById(game.id, id)) as PaymentRequest],
@@ -817,6 +869,193 @@ export class DefaultBankingService implements BankingService {
     return this.resolvePaymentRequest(gameId, requestId, 'CANCELLED');
   }
 
+  // --- Trade requests -------------------------------------------------------------------------
+  // Consent for a trade. Nothing touches the ledger or the registry until the counterparty accepts;
+  // accepting re-validates the CURRENT state and runs the one `PROPERTY_TRANSFER` operation.
+
+  private requireTradeRepository(): TradeRequestRepository {
+    if (this.tradeRequests === undefined) throw new PersistenceConsistencyError();
+    return this.tradeRequests;
+  }
+
+  async listTradeRequests(gameId: string, playerIds: readonly string[]): Promise<TradeRequest[]> {
+    return this.tradeRequests === undefined
+      ? []
+      : this.tradeRequests.listPendingForPlayers(gameId, playerIds);
+  }
+
+  async getTradeRequest(gameId: string, requestId: string): Promise<TradeRequest | null> {
+    const repository = this.requireTradeRepository();
+    await repository.expirePending(gameId);
+    return repository.getById(gameId, requestId);
+  }
+
+  private async requireTradeRequest(gameId: string, requestId: string): Promise<TradeRequest> {
+    const tradeRequest = await this.requireTradeRepository().getById(gameId, requestId);
+    if (tradeRequest === null) throw new ResourceNotFoundError('Trade request');
+    return tradeRequest;
+  }
+
+  private tradeTransferOf(
+    tradeRequest: Pick<
+      TradeRequest,
+      | 'proposerPlayerId'
+      | 'counterpartyPlayerId'
+      | 'giveTileIds'
+      | 'takeTileIds'
+      | 'cashGive'
+      | 'cashTake'
+    >,
+  ): PropertyTransferTransactionRequest {
+    return {
+      type: 'PROPERTY_TRANSFER',
+      playerId: tradeRequest.proposerPlayerId,
+      counterpartyPlayerId: tradeRequest.counterpartyPlayerId,
+      giveTileIds: [...tradeRequest.giveTileIds],
+      takeTileIds: [...tradeRequest.takeTileIds],
+      cashGive: tradeRequest.cashGive,
+      cashTake: tradeRequest.cashTake,
+    };
+  }
+
+  async createTradeRequest(
+    gameId: string,
+    body: CreateTradeRequestBody,
+  ): Promise<CreateTradeRequestResponse> {
+    const repository = this.requireTradeRepository();
+    await repository.expirePending(gameId);
+    const existing = await repository.getById(gameId, body.id);
+    if (existing !== null) {
+      if (existing.proposerPlayerId !== body.playerId)
+        throw new ConflictError('TRADE_REQUEST_EXISTS', 'This trade request id is already used.');
+      const sameTiles = (a: string[], b: string[]): boolean =>
+        a.length === b.length && a.every((id, index) => id === b[index]);
+      if (
+        existing.counterpartyPlayerId !== body.counterpartyPlayerId ||
+        !sameTiles(existing.giveTileIds, body.giveTileIds) ||
+        !sameTiles(existing.takeTileIds, body.takeTileIds) ||
+        existing.cashGive !== (body.cashGive ?? 0) ||
+        existing.cashTake !== (body.cashTake ?? 0)
+      )
+        throw new ConflictError('TRADE_REQUEST_EXISTS', 'This trade request id is already used.');
+      return { tradeRequest: existing };
+    }
+    const game = await this.games.getById(gameId);
+    if (game === null) throw new ResourceNotFoundError('Game');
+    const players = await this.players.listByGameId(gameId);
+    // The same rules as the direct trade (board game, ownership, no buildings, funds for cash and
+    // mortgage fees), so a trade that could not be accepted is refused up front.
+    const transfer = this.tradeTransferOf({
+      proposerPlayerId: body.playerId,
+      counterpartyPlayerId: body.counterpartyPlayerId,
+      giveTileIds: body.giveTileIds,
+      takeTileIds: body.takeTileIds,
+      cashGive: body.cashGive ?? 0,
+      cashTake: body.cashTake ?? 0,
+    });
+    const result = await this.transfer(game, players, transfer);
+    await this.assertAuctionReserveRespected(game, result);
+    await repository.create({
+      id: body.id,
+      gameId,
+      proposerPlayerId: transfer.playerId,
+      counterpartyPlayerId: transfer.counterpartyPlayerId,
+      giveTileIds: transfer.giveTileIds,
+      takeTileIds: transfer.takeTileIds,
+      cashGive: transfer.cashGive ?? 0,
+      cashTake: transfer.cashTake ?? 0,
+      state: 'PENDING',
+      expiresAt: new Date(Date.now() + PAYMENT_REQUEST_TTL_MS).toISOString(),
+    });
+    return { tradeRequest: await this.requireTradeRequest(gameId, body.id) };
+  }
+
+  async acceptTradeRequest(gameId: string, requestId: string): Promise<TradeRequestActionResponse> {
+    const repository = this.requireTradeRepository();
+    await repository.expirePending(gameId);
+    const tradeRequest = await this.requireTradeRequest(gameId, requestId);
+    if (tradeRequest.state === 'ACCEPTED') {
+      const transaction =
+        tradeRequest.transactionId === null
+          ? null
+          : await this.transactions.getById(gameId, tradeRequest.transactionId);
+      if (transaction === null) throw new PersistenceConsistencyError();
+      const game = await this.games.getById(gameId);
+      const players = await this.players.listByGameId(gameId);
+      return {
+        tradeRequest,
+        transaction,
+        players,
+        ...(await this.propertiesFor(game, transaction.id)),
+        ...(await this.mortgagesFor(gameId, transaction.type, true)),
+        ...(await this.loansFor(game, players, transaction.type)),
+        ...(await this.jackpotFor(game)),
+      };
+    }
+    if (tradeRequest.state !== 'PENDING')
+      throw new ConflictError(
+        'TRADE_REQUEST_NOT_PENDING',
+        'This trade request is no longer pending.',
+        { state: tradeRequest.state },
+      );
+    let committed: CreateBankingCommandResponse;
+    try {
+      committed = await this.executeTradeTransfer(
+        gameId,
+        this.tradeTransferOf(tradeRequest),
+        requestId,
+      );
+    } catch (error) {
+      if (error instanceof DatabaseError) {
+        // The guarded batch rolled back: the request was resolved or expired in the meantime.
+        const current = await repository.getById(gameId, requestId);
+        if (current !== null && current.state !== 'PENDING')
+          throw new ConflictError(
+            'TRADE_REQUEST_NOT_PENDING',
+            'This trade request is no longer pending.',
+            { state: current.state },
+          );
+      }
+      throw staleTradeError(error);
+    }
+    if (!('transaction' in committed)) throw new PersistenceConsistencyError();
+    return {
+      ...committed,
+      tradeRequest: await this.requireTradeRequest(gameId, requestId),
+    };
+  }
+
+  async declineTradeRequest(
+    gameId: string,
+    requestId: string,
+  ): Promise<TradeRequestActionResponse> {
+    return this.resolveTradeRequest(gameId, requestId, 'DECLINED');
+  }
+
+  async cancelTradeRequest(gameId: string, requestId: string): Promise<TradeRequestActionResponse> {
+    return this.resolveTradeRequest(gameId, requestId, 'CANCELLED');
+  }
+
+  private async resolveTradeRequest(
+    gameId: string,
+    requestId: string,
+    state: 'DECLINED' | 'CANCELLED',
+  ): Promise<TradeRequestActionResponse> {
+    const repository = this.requireTradeRepository();
+    await repository.expirePending(gameId);
+    const current = await this.requireTradeRequest(gameId, requestId);
+    if (current.state === 'PENDING') await repository.resolve(requestId, state);
+    const resolved = await this.requireTradeRequest(gameId, requestId);
+    // Repeating the same answer is harmless; any other final state cannot be turned into this one.
+    if (resolved.state !== state)
+      throw new ConflictError(
+        'TRADE_REQUEST_NOT_PENDING',
+        'This trade request is no longer pending.',
+        { state: resolved.state },
+      );
+    return { tradeRequest: resolved, players: await this.players.listByGameId(gameId) };
+  }
+
   async listTransactions(gameId: string, limit: number): Promise<Transaction[]> {
     return this.transactions.listByGameId(gameId, limit);
   }
@@ -969,7 +1208,7 @@ export class DefaultBankingService implements BankingService {
       if (payer.balance - reserved < pair.amount)
         throw new InsufficientAvailableFundsError(payer.id, payer.balance - reserved, pair.amount);
     }
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + PAYMENT_REQUEST_TTL_MS).toISOString();
     const paymentRequests = await Promise.all(
       pairs.map(async (pair, index) => {
         const id = commandScopedId(commandId, index);
@@ -1048,6 +1287,24 @@ function assertRegistryMatches(
         { tileId: change.tileId },
       );
   }
+}
+
+/**
+ * A trade that can no longer happen (a tile moved, got built on, a wallet is short) is refused as
+ * stale; a plain money shortfall keeps its own code so the player sees whose wallet is short.
+ */
+function staleTradeError(error: unknown): unknown {
+  if (
+    !(error instanceof AppError) ||
+    error.status >= 500 ||
+    error instanceof ConflictError ||
+    error.code === 'INSUFFICIENT_FUNDS' ||
+    error.code === 'TRADE_REQUEST_NOT_PENDING'
+  )
+    return error;
+  return new ConflictError('TRADE_REQUEST_STALE', 'This trade is no longer possible.', {
+    reason: error.code,
+  });
 }
 
 function commandScopedId(commandId: string, index: number): string {

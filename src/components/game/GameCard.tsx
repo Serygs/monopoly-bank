@@ -24,6 +24,8 @@ const metaClass = cx(
 
 export interface GameCardProps {
   summary: GameSummary;
+  /** Another saved game has the same name: the card adds its creation date and time. */
+  sharesName?: boolean;
   /** True while this game is being duplicated. */
   duplicating: boolean;
   onJoinGame: (joinCode?: string) => void;
@@ -35,6 +37,7 @@ export interface GameCardProps {
 /** Saved-game card: status, name, meta line, primary action and overflow menu. */
 export function GameCard({
   summary,
+  sharesName = false,
   duplicating,
   onJoinGame,
   onOpenGame,
@@ -56,6 +59,11 @@ export function GameCard({
           <div className={metaClass}>
             <span>{t('playersCount', { count: summary.playerCount })}</span>
             <span>{t('updated', { date: formatDate(summary.game.updatedAt, locale) })}</span>
+            {sharesName && (
+              <span>
+                {t('gameCreated', { date: formatDate(summary.game.createdAt, locale, true) })}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -125,9 +133,12 @@ export function DeletedGameCard({ summary, restoring, onRestore }: DeletedGameCa
   );
 }
 
-function formatDate(value: string, locale: string): string {
+function formatDate(value: string, locale: string, withTime = false): string {
   const date = new Date(value);
   return Number.isNaN(date.valueOf())
     ? value
-    : new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
+    : new Intl.DateTimeFormat(locale, {
+        dateStyle: 'medium',
+        ...(withTime ? { timeStyle: 'short', hourCycle: 'h23' as const } : {}),
+      }).format(date);
 }

@@ -1,4 +1,4 @@
-import type { BoardSnapshot, PropertyTile } from '../board/types.js';
+import type { BoardSnapshot, PropertyGroupId, PropertyTile } from '../board/types.js';
 import type { GameProperty, PropertyChange, PropertyState } from '../types/monopoly.js';
 import { AppError } from '../../worker/services/errors.js';
 
@@ -495,4 +495,83 @@ export function applyChanges(
           houses: change.after.houses,
         };
   });
+}
+
+/** Anything with a tile and an owner that a picker can list. */
+export interface PickerTileLike {
+  tile: PropertyTile;
+  ownerPlayerId: string | null;
+}
+
+export interface PickerGroup<T extends PickerTileLike> {
+  group: PropertyGroupId;
+  items: T[];
+}
+
+export interface PickerSection<T extends PickerTileLike> {
+  /** Free tiles come first, owned ones last. */
+  kind: 'free' | 'owned';
+  groups: PickerGroup<T>[];
+}
+
+/**
+ * The order of every tile picker: free tiles first, owned ones last; inside each, colour groups
+ * from the cheapest to the dearest (by their cheapest tile, ties by board position), and inside a
+ * group by ascending price (ties by board position). Empty sections are left out. Pure: the input
+ * is not modified.
+ */
+export function orderTilesForPicker<T extends PickerTileLike>(
+  items: readonly T[],
+): PickerSection<T>[] {
+  const byPrice = (a: T, b: T) => a.tile.price - b.tile.price || a.tile.pos - b.tile.pos;
+  const section = (kind: 'free' | 'owned', list: readonly T[]): PickerSection<T> => {
+    const groups = new Map<PropertyGroupId, T[]>();
+    for (const item of [...list].sort(byPrice)) {
+      const inGroup = groups.get(item.tile.group);
+      if (inGroup === undefined) groups.set(item.tile.group, [item]);
+      else inGroup.push(item);
+    }
+    // Insertion order is already by each group's cheapest tile, because the list is price-sorted.
+    return { kind, groups: [...groups].map(([group, grouped]) => ({ group, items: grouped })) };
+  };
+  return [
+    section(
+      'free',
+      items.filter((item) => item.ownerPlayerId === null),
+    ),
+    section(
+      'owned',
+      items.filter((item) => item.ownerPlayerId !== null),
+    ),
+  ].filter((entry) => entry.groups.length > 0);
+}
+
+/**
+ * Which streets of the colour group of `tileId` caused a `planBuildings` error `code`, so the UI
+ * can mark them (display only; validation is unchanged). `finalLevels` is the wanted level per
+ * street (tile id -> level; a missing street keeps its registry level). A mortgaged group points at
+ * the mortgaged streets, an uneven plan at the streets that run too far ahead (build) or fall too
+ * far behind (sell); any other code names no particular street.
+ */
+export function offendingStreets(
+  context: PropertyContext,
+  tileId: string,
+  code: string,
+  finalLevels: Readonly<Record<string, number>>,
+  direction: 'BUILD' | 'SELL',
+): string[] {
+  const { board, registry } = context;
+  const group = groupTiles(board, requireTile(board, tileId));
+  if (code === 'BUILD_MORTGAGED_GROUP')
+    return group.filter((tile) => stateOf(registry, tile.id).mortgaged).map((tile) => tile.id);
+  if (code !== 'BUILD_UNEVEN') return [];
+  const levels = group.map((tile) => ({
+    id: tile.id,
+    level: finalLevels[tile.id] ?? stateOf(registry, tile.id).houses,
+  }));
+  const min = Math.min(...levels.map((item) => item.level));
+  const max = Math.max(...levels.map((item) => item.level));
+  return levels
+    .filter((item) => (direction === 'BUILD' ? item.level > min + 1 : item.level < max - 1))
+    .map((item) => item.id);
 }

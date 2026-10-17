@@ -77,3 +77,21 @@ describe('WalletCard bank loan', () => {
     expect(screen.getByText('Overdue')).toBeInTheDocument();
   });
 });
+
+describe('WalletCard own card', () => {
+  it('tags the own card with a visible "You"', () => {
+    render(
+      <LanguageProvider>
+        <WalletCard
+          player={olena}
+          players={[olena]}
+          currency="USD"
+          active
+          gameActive
+          onOpen={() => undefined}
+        />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText('You')).toBeInTheDocument();
+  });
+});

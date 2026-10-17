@@ -8,6 +8,8 @@ import {
   DiceSumError,
   invertChanges,
   mortgageChange,
+  offendingStreets,
+  orderTilesForPicker,
   ownerChange,
   PropertyMortgagedError,
   PropertyNotOwnedError,
@@ -210,5 +212,78 @@ describe('registry changes', () => {
     expect(after.find((row) => row.tileId === 'zhitna')?.mortgaged).toBe(true);
     const back = applyChanges(after, invertChanges([change]));
     expect(back.find((row) => row.tileId === 'zhitna')?.mortgaged).toBe(false);
+  });
+});
+
+describe('orderTilesForPicker', () => {
+  const tile = (id: string) => {
+    const found = board.tiles.find((candidate) => candidate.id === id);
+    if (found === undefined) throw new Error(id);
+    return found;
+  };
+  const streets = board.tiles.filter((candidate) => candidate.type === 'street');
+
+  it('lists free tiles first, owned last, grouped by colour and ascending by price', () => {
+    const pool = [...streets].reverse().map((candidate, index) => ({
+      tile: candidate,
+      ownerPlayerId: index % 3 === 0 ? 'p1' : null,
+    }));
+    const sections = orderTilesForPicker(pool);
+    expect(sections.map((entry) => entry.kind)).toEqual(['free', 'owned']);
+    for (const entry of sections) {
+      const groups = entry.groups.map((group) => group.group);
+      expect(new Set(groups).size).toBe(groups.length);
+      for (const group of entry.groups) {
+        const prices = group.items.map((item) => item.tile.price);
+        expect(prices).toEqual([...prices].sort((a, b) => a - b));
+        expect(group.items.every((item) => item.tile.group === group.group)).toBe(true);
+      }
+      const cheapest = entry.groups.map((group) => group.items[0]!.tile.price);
+      expect(cheapest).toEqual([...cheapest].sort((a, b) => a - b));
+    }
+  });
+
+  it('omits empty sections and does not modify the input', () => {
+    const only = [{ tile: tile(streets[0]!.id), ownerPlayerId: 'p1' }];
+    const copy = [...only];
+    expect(orderTilesForPicker(only).map((entry) => entry.kind)).toEqual(['owned']);
+    expect(only).toEqual(copy);
+    expect(orderTilesForPicker([])).toEqual([]);
+  });
+});
+
+describe('offendingStreets', () => {
+  const brown = board.tiles.filter((candidate) => candidate.group === 'brown');
+  const owned = registry(
+    Object.fromEntries(brown.map((tile) => [tile.id, { ownerPlayerId: 'p1' }])),
+  );
+  const [first, second] = brown;
+  it('marks the street that runs ahead of an uneven build', () => {
+    const context = { board, registry: owned };
+    expect(
+      offendingStreets(context, first!.id, 'BUILD_UNEVEN', { [first!.id]: 3 }, 'BUILD'),
+    ).toEqual([first!.id]);
+    expect(
+      offendingStreets(context, first!.id, 'BUILD_UNEVEN', { [first!.id]: 1 }, 'BUILD'),
+    ).toEqual([]);
+  });
+  it('marks the mortgaged streets and nothing for other codes', () => {
+    const mortgaged = registry(
+      Object.fromEntries(
+        brown.map((tile) => [tile.id, { ownerPlayerId: 'p1', mortgaged: tile.id === second!.id }]),
+      ),
+    );
+    expect(
+      offendingStreets(
+        { board, registry: mortgaged },
+        first!.id,
+        'BUILD_MORTGAGED_GROUP',
+        {},
+        'BUILD',
+      ),
+    ).toEqual([second!.id]);
+    expect(offendingStreets({ board, registry: owned }, first!.id, 'OTHER', {}, 'SELL')).toEqual(
+      [],
+    );
   });
 });

@@ -65,6 +65,8 @@
   --mb-radius-control: var(--mb-radius-md);
   --mb-radius-card: var(--mb-radius-lg);
   --mb-radius-card-large: var(--mb-radius-xl);
+  --mb-radius-surface: var(--mb-radius-xl);
+  --mb-radius-compact: var(--mb-radius-md);
   --mb-control-height-md: 44px;
   --mb-control-height-lg: 48px;
   --mb-duration-fast: 120ms;
@@ -101,6 +103,7 @@
   --mb-color-focus-ring: #8b6322;
   --mb-color-inverse-hover: rgb(255 255 255 / 0.09);
   --mb-color-qr-background: #fff;
+  --mb-color-qr-modules: #000;
 
   /* Stable player identity colors */
   --mb-color-player-red: #d83f55;
@@ -147,6 +150,40 @@
   --mb-shadow-balance-inset: inset 0 0 0 1px rgb(255 255 255 / 0.08);
   --mb-shadow-player-inset: inset 0 -4px 8px rgb(0 0 0 / 0.1);
   --mb-focus-ring: 3px solid var(--mb-color-focus-ring);
+
+  /*
+   * Glass surface tokens, Classic values: solid surfaces, flat borders, no rim light, no blur.
+   * Components never branch on the style; they use these through `src/styles/glass.css`, which
+   * shares one rule set with Liquid Glass. Defined once from the colour tokens, so dark mode follows.
+   */
+  --mb-glass-blur: 0px;
+  --mb-glass-saturate: 100%;
+  --mb-glass-tint: var(--mb-color-surface-elevated);
+  --mb-glass-tint-solid: var(--mb-color-surface-elevated);
+  --mb-glass-border: var(--mb-color-border);
+  --mb-glass-specular: none;
+  --mb-glass-rim: 0 0 0 0 transparent;
+  --mb-glass-shadow: var(--mb-shadow-md);
+  --mb-glass-card-tint: var(--mb-color-surface-elevated);
+  --mb-glass-card-tint-solid: var(--mb-color-surface-elevated);
+  --mb-glass-card-border: var(--mb-color-border);
+  --mb-glass-card-blur: 0px;
+  --mb-glass-card-shadow: var(--mb-shadow-sm);
+  /* Surfaces are already opaque, so the text-heavy tint layer has nothing to add. */
+  --mb-glass-tint-layer: transparent;
+  --mb-glass-button-primary-bg: var(--mb-color-accent);
+  --mb-glass-button-primary-hover-bg: var(--mb-color-accent-hover);
+  --mb-glass-button-primary-border: var(--mb-color-accent);
+  --mb-glass-button-primary-shadow: 0 5px 12px rgb(10 63 46 / 0.16);
+  --mb-glass-control-tint: var(--mb-color-surface-elevated);
+  --mb-glass-control-shadow: var(--mb-shadow-sm);
+  --mb-popover-blur: 0px;
+  --mb-popover-tint: var(--mb-color-surface-elevated);
+  --mb-popover-tint-solid: var(--mb-color-surface-elevated);
+  --mb-popover-border: var(--mb-color-border);
+  --mb-popover-shadow: var(--mb-shadow-lg);
+  --mb-scrim-tint: var(--mb-color-overlay);
+  --mb-scrim-blur: 0px;
 
   /* Cross-style semantic API. Legacy aliases above keep feature CSS stable. */
   --mb-ui-canvas: var(--mb-color-canvas);

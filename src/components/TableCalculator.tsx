@@ -27,9 +27,12 @@ const keyClass = cx(
 );
 const operatorKeyClass = cx(
   keyClass,
-  'text-accent aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-on-accent',
+  'border-accent bg-accent-soft text-accent-hover aria-pressed:bg-accent aria-pressed:text-on-accent',
 );
-const equalsKeyClass = cx(keyClass, 'border-accent bg-accent text-on-accent');
+const equalsKeyClass = cx(
+  keyClass,
+  'rounded-pill border-accent bg-accent text-on-accent fine-pointer:hover:bg-accent-hover',
+);
 const historyButtonClass = cx(
   'flex w-full items-baseline justify-between gap-(--mb-space-3) rounded-control border-0 bg-transparent px-(--mb-space-2) py-[6px] text-start',
   'text-small text-secondary fine-pointer:hover:bg-surface-subtle',

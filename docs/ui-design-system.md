@@ -413,6 +413,53 @@ Shared surfaces are defined once in `src/styles/visual-styles/liquid-glass.css` 
 
 Fallbacks: without `backdrop-filter`, and under `prefers-reduced-transparency` or `forced-colors`, panels and popovers use the `*-solid` tints and the scrim uses `--mb-color-overlay`. The faint board/house/dice pattern (`--mb-background-pattern-opacity`, 5% light / 7% dark) sits behind the content; the ambient drift stops under `prefers-reduced-motion`.
 
+#### Liquid Glass primitives and rules
+
+Added tokens (light and dark, `visual-styles/liquid-glass.css`): `--mb-glass-rim` (inset 1px top
+highlight and 1px bottom highlight, used by every glass shadow), `--mb-glass-card-*` (tint 58% light,
+border, shadow, optional 12px blur), `--mb-glass-tint-layer` (thin tint under text-heavy content),
+`--mb-glass-button-primary-*` (tinted ~82-90% accent with an inner top highlight, not a flat
+gradient; secondary buttons keep `--mb-glass-control-*`), `--mb-color-qr-modules` (black).
+
+| Class / component                                                     | Use                                                                                          |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `.glass-card`, `GlassSurface card`                                    | Cards and rows **inside** a sheet or panel. Tint and rim only, never blur.                   |
+| `.glass-card-blur` (`blur` prop)                                      | A card that is not inside another glass layer. Opt in; never nest.                           |
+| `.glass-tint-layer` (`tinted` prop)                                   | Text- or number-heavy areas so page content never shows through as smudges.                  |
+| `GlassButton`                                                         | `primary` (tinted accent), `secondary` (glass), `ghost`, `danger`; always pill radius.       |
+| `GroupHeader`, `SelectableRow`, `ToggleRow`, `CountBadge`, `StatTile` | Shared list and settings pieces; selection always shows a check or radio, never colour only. |
+
+Radius vocabulary: `rounded-pill` (buttons, chips, badges), `rounded-surface` (cards, sheets, 26px
+in Liquid Glass) and `rounded-compact` (16px: keys, inputs, small tiles). The older `sm/md/lg/xl/
+control/card` tokens alias onto them in Liquid Glass and keep Classic Bank's own values.
+
+WebKit and performance rules: at most 3-4 stacked `backdrop-filter` layers on a screen; never put a
+`backdrop-filter` element inside another (it renders wrong in WebKit), so cards inside sheets use
+tint plus rim; always keep the `-webkit-backdrop-filter` pair; no SVG displacement refraction. Under
+`prefers-reduced-transparency` or `forced-colors` every glass class falls back to its `*-solid` tint
+and drops the blur; the ambient drift stops under `prefers-reduced-motion`.
+
+Contrast: `scripts/glass-contrast.test.mjs` reads the tokens and asserts 4.5:1 for primary and
+secondary text over the card, panel and popover tints and for the white label on the primary
+button, against the most saturated mesh colours in both colour modes. Change a tint or a text
+token and that test says whether it still passes.
+
+Classic Bank: the same tokens exist in `visual-styles/classic-bank.css` with opaque values (solid
+surfaces from the colour tokens, flat borders, no rim light, `--mb-glass-blur: 0px`, a transparent
+tint layer). `glass.css` applies the same `.glass-*` rules to both styles (Classic's copy sits in
+`@layer components`, so a surface's own utilities still win). Shared components never branch on the
+style with `glass:` / `classic:` or hard-coded rgb values; they use the classes and tokens, and
+only components that predate the glass system keep their per-style variants.
+
+Navigation and sheets: the bottom navigation is a floating capsule (12px insets plus safe area,
+glass with rim light, content scrolls under it, fading out above it through a gradient to the
+canvas colour as tall as capsule + inset + safe area); its raised action is always the inverse
+brand style with a ring only while its sheet is open, and its label shares the tab labels'
+baseline. Items never show counts: `dot` is a small neutral accent dot (not red, no number, not a
+live region, with a screen-reader label) shown only while a request waits for the viewer's answer
+(an incoming trade, payment or loan request), on Activity. `SheetActions` is one "Back | Primary" row on
+phones (the primary wider; a lone button is full width) with no background strip.
+
 ### Form primitives
 
 - `FormSection` is the one form card: a `fieldset` whose `legend` is the header inside the card padding (floated full width, never on the border). Use it for every titled form block (create lobby, profile, account upgrade).

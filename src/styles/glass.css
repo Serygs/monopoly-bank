@@ -1,13 +1,26 @@
 /*
  * Shared Liquid Glass surfaces. Tokens (`--mb-glass-*`, `--mb-popover-*`, `--mb-scrim-*`) come from
  * `visual-styles/liquid-glass.css`; components opt in with `.glass-panel`, `.glass-popover` and
- * `.glass-scrim` instead of per-screen blur and tint values. Classic Bank never matches these rules.
+ * `.glass-scrim` instead of per-screen blur and tint values. Classic Bank maps the same tokens to
+ * opaque values (`visual-styles/classic-bank.css`) and gets the same rules in `@layer components`
+ * below, so a component's own utilities still win there and nothing branches on the style.
  */
 :root[data-visual-style='liquid-glass'] .glass-panel {
   border: 1px solid var(--mb-glass-border);
   background-color: var(--mb-glass-tint-solid);
   background-image: var(--mb-glass-specular);
   box-shadow: var(--mb-glass-shadow);
+}
+
+:root[data-visual-style='liquid-glass'] .glass-card {
+  border: 1px solid var(--mb-glass-card-border);
+  background-color: var(--mb-glass-card-tint-solid);
+  box-shadow: var(--mb-glass-card-shadow);
+}
+
+/* Thin tint under text-heavy content so the page behind never shows through as smudges. */
+:root[data-visual-style='liquid-glass'] .glass-tint-layer {
+  background-color: var(--mb-glass-tint-layer);
 }
 
 :root[data-visual-style='liquid-glass'] .glass-popover {
@@ -26,6 +39,14 @@
     -webkit-backdrop-filter: blur(var(--mb-glass-blur)) saturate(var(--mb-glass-saturate));
     backdrop-filter: blur(var(--mb-glass-blur)) saturate(var(--mb-glass-saturate));
   }
+  :root[data-visual-style='liquid-glass'] .glass-card {
+    background-color: var(--mb-glass-card-tint);
+  }
+  /* Opt-in blur for a card that is not inside another backdrop-filter layer (never nest them). */
+  :root[data-visual-style='liquid-glass'] .glass-card-blur {
+    -webkit-backdrop-filter: blur(var(--mb-glass-card-blur)) saturate(var(--mb-glass-saturate));
+    backdrop-filter: blur(var(--mb-glass-card-blur)) saturate(var(--mb-glass-saturate));
+  }
   :root[data-visual-style='liquid-glass'] .glass-popover {
     background-color: var(--mb-popover-tint);
     -webkit-backdrop-filter: blur(var(--mb-popover-blur)) saturate(var(--mb-glass-saturate));
@@ -41,12 +62,17 @@
 @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
   :root[data-visual-style='liquid-glass'] .glass-panel,
   :root[data-visual-style='liquid-glass'] .glass-popover,
+  :root[data-visual-style='liquid-glass'] .glass-card-blur,
   :root[data-visual-style='liquid-glass'] .glass-scrim {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
   :root[data-visual-style='liquid-glass'] .glass-panel {
     background-color: var(--mb-glass-tint-solid);
+  }
+  :root[data-visual-style='liquid-glass'] .glass-card,
+  :root[data-visual-style='liquid-glass'] .glass-tint-layer {
+    background-color: var(--mb-glass-card-tint-solid);
   }
   :root[data-visual-style='liquid-glass'] .glass-popover {
     background-color: var(--mb-popover-tint-solid);
@@ -66,4 +92,33 @@
   background-size: 160px 160px;
   opacity: var(--mb-background-pattern-opacity);
   pointer-events: none;
+}
+
+/*
+ * Classic Bank: the same classes through the same tokens, with flat opaque values (no rim, no blur).
+ * Layered below utilities, so a surface that sets its own border, fill or shadow keeps it.
+ */
+@layer components {
+  :root[data-visual-style='classic-bank'] .glass-panel {
+    border: 1px solid var(--mb-glass-border);
+    background-color: var(--mb-glass-tint-solid);
+    background-image: var(--mb-glass-specular);
+    box-shadow: var(--mb-glass-shadow);
+  }
+  :root[data-visual-style='classic-bank'] .glass-card {
+    border: 1px solid var(--mb-glass-card-border);
+    background-color: var(--mb-glass-card-tint-solid);
+    box-shadow: var(--mb-glass-card-shadow);
+  }
+  :root[data-visual-style='classic-bank'] .glass-tint-layer {
+    background-color: var(--mb-glass-tint-layer);
+  }
+  :root[data-visual-style='classic-bank'] .glass-popover {
+    border: 1px solid var(--mb-popover-border);
+    background-color: var(--mb-popover-tint-solid);
+    box-shadow: var(--mb-popover-shadow);
+  }
+  :root[data-visual-style='classic-bank'] .glass-scrim {
+    background-color: var(--mb-scrim-tint);
+  }
 }

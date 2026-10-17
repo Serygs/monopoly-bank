@@ -39,6 +39,8 @@ export interface GameService {
   startGame(gameId: string): Promise<GameDetails>;
   finishGame(gameId: string): Promise<GameDetails>;
   toggleFavoriteAmount(gameId: string, amount: number): Promise<number[]>;
+  /** Owner only (the router checks): a new join code; the old one stops working at once. */
+  regenerateJoinCode(gameId: string, ownerUserId: string): Promise<{ joinCode: string }>;
 }
 
 export interface GameServiceDependencies {
@@ -156,6 +158,23 @@ export class DefaultGameService implements GameService {
     );
   }
 
+  async regenerateJoinCode(gameId: string, ownerUserId: string): Promise<{ joinCode: string }> {
+    for (let attempt = 1; ; attempt += 1) {
+      const joinCode = generateJoinCode();
+      try {
+        if (!(await this.games.replaceJoinCode(gameId, ownerUserId, joinCode)))
+          throw new ConflictError(
+            'JOIN_CODE_UNAVAILABLE',
+            'The join code can only be changed while the game is a lobby or running.',
+          );
+        return { joinCode };
+      } catch (error) {
+        // The join code is unique across games; a collision just means drawing another one.
+        if (attempt >= JOIN_CODE_ATTEMPTS || !isJoinCodeCollision(error)) throw error;
+      }
+    }
+  }
+
   async getGame(gameId: string): Promise<GameDetails> {
     const game = await this.games.getById(gameId);
     if (game === null) {
@@ -259,16 +278,27 @@ export class DefaultGameService implements GameService {
   }
 }
 
-/** No 0/O/1/I, so a code read aloud or typed by hand is not mistaken. 32 symbols, 4 characters. */
-const JOIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/**
+ * No 0/O/1/I/L, so a code read aloud or typed by hand is not mistaken. 31 symbols, 4 characters.
+ * Codes issued before L was dropped keep working: lookups accept any letters and digits.
+ */
+const JOIN_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const JOIN_CODE_LENGTH = 4;
 const JOIN_CODE_ATTEMPTS = 10;
 
 export function generateJoinCode(): string {
-  const bytes = new Uint8Array(JOIN_CODE_LENGTH);
-  crypto.getRandomValues(bytes);
-  // 256 is a multiple of 32, so masking the low five bits is unbiased.
-  return Array.from(bytes, (byte) => JOIN_CODE_ALPHABET[byte & 31]).join('');
+  const alphabet = JOIN_CODE_ALPHABET.length;
+  // Rejection sampling keeps the draw unbiased: 248 = 8 * 31, higher bytes are discarded.
+  const limit = 256 - (256 % alphabet);
+  const code: string[] = [];
+  while (code.length < JOIN_CODE_LENGTH) {
+    const bytes = new Uint8Array(JOIN_CODE_LENGTH * 2);
+    crypto.getRandomValues(bytes);
+    for (const byte of bytes)
+      if (byte < limit && code.length < JOIN_CODE_LENGTH)
+        code.push(JOIN_CODE_ALPHABET[byte % alphabet]);
+  }
+  return code.join('');
 }
 
 function isJoinCodeCollision(error: unknown): boolean {
