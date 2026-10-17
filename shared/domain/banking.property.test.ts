@@ -466,17 +466,175 @@ describe('reversing registry operations', () => {
     ).toBeNull();
   });
 
-  it('keeps a mortgage and its redemption non-reversible', () => {
+  it('keeps a free-text mortgage and redemption non-reversible', () => {
     for (const type of ['MORTGAGE', 'MORTGAGE_REDEMPTION'] as const) {
+      const { tileId: _tileId, ...freeText } = purchase;
       expect(() =>
         reverseTransaction({
           game,
           players: players([1_000_000, 1_000_000]),
-          original: { ...purchase, type, tileId: 'zhitna' },
-          originalRegistryChanges: originalChanges,
+          original: { ...freeText, type },
         }),
       ).toThrow(TransactionNotReversibleError);
     }
+  });
+
+  const mortgageTx: Transaction = {
+    ...purchase,
+    id: 'tx-mortgage',
+    type: 'MORTGAGE',
+    amount: 300_000,
+    totalAmount: 300_000,
+    participants: [{ playerId: p1, balanceDelta: 300_000 }],
+  };
+  const mortgageChanges = [
+    {
+      tileId: 'zhitna',
+      before: { ownerPlayerId: p1, mortgaged: false, houses: 0 },
+      after: { ownerPlayerId: p1, mortgaged: true, houses: 0 },
+    },
+  ];
+
+  it('reverses a board mortgage: money back, flag off, mortgage row cancelled', () => {
+    const result = reverseTransaction({
+      game,
+      players: players([1_000_000, 1_000_000]),
+      original: mortgageTx,
+      originalRegistryChanges: mortgageChanges,
+    });
+    expect(result.transaction).toMatchObject({
+      type: 'REVERSAL',
+      participants: [{ playerId: p1, balanceDelta: -300_000 }],
+      mortgageReversal: { kind: 'CANCEL', mortgageId: 'tx-mortgage' },
+    });
+    expect(result.transaction.registryChanges?.[0]?.after.mortgaged).toBe(false);
+  });
+
+  it('refuses to reverse a mortgage when the player no longer holds the money', () => {
+    expect(() =>
+      reverseTransaction({
+        game,
+        players: players([100_000, 1_000_000]),
+        original: mortgageTx,
+        originalRegistryChanges: mortgageChanges,
+      }),
+    ).toThrow(InsufficientFundsError);
+  });
+
+  it('reverses a board redemption: money back, flag on, mortgage row restored', () => {
+    const redemption: Transaction = {
+      ...mortgageTx,
+      id: 'tx-redeem',
+      type: 'MORTGAGE_REDEMPTION',
+      amount: 330_000,
+      totalAmount: 330_000,
+      participants: [{ playerId: p1, balanceDelta: -330_000 }],
+    };
+    const changes = [
+      {
+        tileId: 'zhitna',
+        before: mortgageChanges[0]!.after,
+        after: mortgageChanges[0]!.before,
+      },
+    ];
+    const result = reverseTransaction({
+      game,
+      players: players([1_000_000, 1_000_000]),
+      original: redemption,
+      originalRegistryChanges: changes,
+      redeemedMortgageId: 'tx-mortgage',
+    });
+    expect(result.transaction).toMatchObject({
+      participants: [{ playerId: p1, balanceDelta: 330_000 }],
+      mortgageReversal: { kind: 'RESTORE', mortgageId: 'tx-mortgage' },
+    });
+    expect(result.transaction.registryChanges?.[0]?.after.mortgaged).toBe(true);
+    // Without the mortgage row the redemption cannot be put back in step.
+    expect(() =>
+      reverseTransaction({
+        game,
+        players: players([1_000_000, 1_000_000]),
+        original: redemption,
+        originalRegistryChanges: changes,
+      }),
+    ).toThrow(TransactionNotReversibleError);
+  });
+
+  it('blocks reversing a mortgage once it was redeemed, and a redemption once re-mortgaged', () => {
+    const redemption: Transaction = {
+      ...mortgageTx,
+      id: 'tx-redeem',
+      type: 'MORTGAGE_REDEMPTION',
+      participants: [{ playerId: p1, balanceDelta: -330_000 }],
+    };
+    expect(findReversalDependency(mortgageTx, [redemption])).toBe(redemption);
+    const again: Transaction = { ...mortgageTx, id: 'tx-again' };
+    expect(findReversalDependency(redemption, [again])).toBe(again);
+  });
+
+  it('blocks reversing a purchase while rent was paid on a tile of its colour group', () => {
+    const rent: Transaction = {
+      ...purchase,
+      id: 'tx-rent',
+      type: 'PAY_RENT',
+      tileId: 'nagatinska',
+      participants: [
+        { playerId: p2, balanceDelta: -40_000 },
+        { playerId: p1, balanceDelta: 40_000 },
+      ],
+    };
+    // Without the board the check cannot know the group, the Worker passes it.
+    expect(findReversalDependency(purchase, [rent])).toBeNull();
+    expect(findReversalDependency(purchase, [rent], ['zhitna', 'nagatinska'])).toBe(rent);
+    expect(findReversalDependency(purchase, [rent], ['other'])).toBeNull();
+    expect(() =>
+      reverseTransaction({
+        game,
+        players: players([1_000_000, 1_000_000]),
+        original: purchase,
+        originalRegistryChanges: originalChanges,
+        later: [rent],
+        groupTileIds: ['zhitna', 'nagatinska'],
+      }),
+    ).toThrow(ReversalBlockedByLaterOperationError);
+  });
+
+  it('settles a tile auction as a PROPERTY_PURCHASE at the winning bid', () => {
+    const result = auctionPayment({
+      game,
+      players: players([1_000_000, 1_000_000]),
+      playerId: p1,
+      amount: 700_000,
+      lotName: 'Житна',
+      tileId: 'zhitna',
+      property: property(),
+    });
+    expect(result.transaction).toMatchObject({
+      type: 'PROPERTY_PURCHASE',
+      amount: 700_000,
+      tileId: 'zhitna',
+    });
+    expect(result.transaction.priceOverridden).toBeUndefined();
+  });
+
+  it('buys at an overridden price and marks it, but not at the list price', () => {
+    const base = {
+      game,
+      players: players([1_000_000, 1_000_000]),
+      playerId: p1,
+      tileId: 'zhitna',
+      property: property(),
+    };
+    const list = propertyPurchase(base).transaction;
+    const overridden = propertyPurchase({ ...base, priceOverride: 250_000 }).transaction;
+    expect(overridden).toMatchObject({ amount: 250_000, priceOverridden: true });
+    expect(
+      propertyPurchase({ ...base, priceOverride: list.amount }).transaction.priceOverridden,
+    ).toBe(undefined);
+    expect(() => propertyPurchase({ ...base, priceOverride: 0 })).toThrow();
+    expect(() => propertyPurchase({ ...base, priceOverride: 2_000_000 })).toThrow(
+      InsufficientFundsError,
+    );
   });
 
   it('reverses rent like a player payment', () => {

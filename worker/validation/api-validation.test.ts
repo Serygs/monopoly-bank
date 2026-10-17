@@ -279,6 +279,30 @@ describe('board tile validation', () => {
     });
   });
 
+  it('accepts a positive integer price override on a purchase', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'PROPERTY_PURCHASE', playerId, tileId: 'arbat', priceOverride: 250 }),
+      ),
+    ).resolves.toEqual({
+      type: 'PROPERTY_PURCHASE',
+      playerId,
+      tileId: 'arbat',
+      priceOverride: 250,
+    });
+  });
+
+  it.each([0, -5, 1.5, '250', null, Number.MAX_SAFE_INTEGER + 2])(
+    'rejects the price override %s',
+    async (priceOverride) => {
+      await expect(
+        parseCreateTransactionRequest(
+          jsonRequest({ type: 'PROPERTY_PURCHASE', playerId, tileId: 'arbat', priceOverride }),
+        ),
+      ).rejects.toBeInstanceOf(ApiValidationError);
+    },
+  );
+
   it('rejects a purchase without a tile id', async () => {
     await expect(
       parseCreateTransactionRequest(jsonRequest({ type: 'PROPERTY_PURCHASE', playerId })),

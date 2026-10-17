@@ -330,7 +330,14 @@ export async function parseCreateTransactionRequest(
         amount: readPositiveInteger(body, 'amount'),
       };
     case 'PROPERTY_PURCHASE':
-      return { type, playerId: readUuid(body, 'playerId'), tileId: readTileId(body) };
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        tileId: readTileId(body),
+        ...(body.priceOverride === undefined
+          ? {}
+          : { priceOverride: readPositiveInteger(body, 'priceOverride') }),
+      };
     case 'PAY_RENT':
       return {
         type,

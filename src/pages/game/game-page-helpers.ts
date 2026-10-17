@@ -183,6 +183,8 @@ export function buildRequest(
     tileId?: string;
     /** Rent on a utility: the dice total the payer entered. */
     diceSum?: number;
+    /** A purchase paid at an agreed price instead of the list price. */
+    priceOverride?: number;
   } = {},
 ): PlayerTransactionRequest | null {
   const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
@@ -228,7 +230,14 @@ export function buildRequest(
     case 'PROPERTY_PURCHASE':
       return options.tileId === undefined || options.tileId === ''
         ? null
-        : { type: action, playerId, tileId: options.tileId };
+        : {
+            type: action,
+            playerId,
+            tileId: options.tileId,
+            ...(options.priceOverride === undefined
+              ? {}
+              : { priceOverride: options.priceOverride }),
+          };
     case 'PAY_RENT':
       return options.tileId === undefined || options.tileId === ''
         ? null

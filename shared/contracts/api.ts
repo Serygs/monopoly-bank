@@ -258,7 +258,7 @@ export interface TileMortgageTransactionRequest extends Omit<TransactionRequestB
   tileId: string;
 }
 
-/** Board games: buys an unowned tile from the bank at the snapshot price. */
+/** Board games: buys an unowned tile from the bank at the snapshot price (or `priceOverride`). */
 export interface PropertyPurchaseTransactionRequest extends Omit<
   TransactionRequestBase,
   'comment'
@@ -266,6 +266,11 @@ export interface PropertyPurchaseTransactionRequest extends Omit<
   type: 'PROPERTY_PURCHASE';
   playerId: string;
   tileId: string;
+  /**
+   * Pays this price instead of the list price (an agreed deal). The review screen asks for an
+   * extra confirmation and the ledger marks the purchase as overridden.
+   */
+  priceOverride?: number;
 }
 
 /**

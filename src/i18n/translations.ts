@@ -397,6 +397,11 @@ const english = {
   rentComputedHint: 'Rent comes from the property card; the bank checks it again when recording.',
   tileMortgageHint: 'The bank pays the mortgage value from the card.',
   tilePurchaseHint: 'The bank sells the property at the card price.',
+  priceOverrideToggle: 'Pay a different price',
+  priceOverrideWarning:
+    'You are paying {price} instead of the list price {listPrice}. The ledger will mark this purchase as a different price.',
+  priceOverrideConfirm: 'We agreed on this price at the table.',
+  priceOverriddenBadge: 'Different price',
   propertyActions: 'Property actions',
   propertyActionBuy: 'Buy',
   propertyActionMortgage: 'Mortgage',
@@ -1149,6 +1154,11 @@ const ukrainian: TranslationCatalog = {
   rentComputedHint: 'Оренда береться з картки майна; банк перевірить її ще раз під час запису.',
   tileMortgageHint: 'Банк виплатить заставну вартість з картки.',
   tilePurchaseHint: 'Банк продає майно за ціною з картки.',
+  priceOverrideToggle: 'Заплатити іншу ціну',
+  priceOverrideWarning:
+    'Ви платите {price} замість ціни з картки {listPrice}. У журналі цю купівлю буде позначено як куплену за іншу ціну.',
+  priceOverrideConfirm: 'Ми домовилися про цю ціну за столом.',
+  priceOverriddenBadge: 'Інша ціна',
   propertyActions: 'Дії з майном',
   propertyActionBuy: 'Купити',
   propertyActionMortgage: 'Закласти',

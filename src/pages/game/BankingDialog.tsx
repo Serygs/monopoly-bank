@@ -26,6 +26,7 @@ import {
   FieldHint,
   MoneyValue,
   Notice,
+  Toggle,
 } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
@@ -212,6 +213,10 @@ export function BankingDialog({
   const [payToPot, setPayToPot] = useState(false);
   const [propertyName, setPropertyName] = useState('');
   const [noBuildings, setNoBuildings] = useState(false);
+  // A purchase at an agreed price instead of the list price needs an extra confirmation.
+  const [overrideOn, setOverrideOn] = useState(false);
+  const [overridePrice, setOverridePrice] = useState('');
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
   const [mortgageId, setMortgageId] = useState(initialRedemption?.id ?? '');
   const [loanId, setLoanId] = useState(initialBankLoan?.id ?? '');
   const [ratePercent, setRatePercent] = useState<InterestRatePercent | null>(null);
@@ -236,12 +241,21 @@ export function BankingDialog({
     action === 'PAY_RENT' && board !== null && selectedTile !== null
       ? rentDue(board, views, selectedTile, diceSumValue)
       : null;
+  // The agreed price of a purchase, when it really differs from the list price on the card.
+  const purchaseOverride =
+    action === 'PROPERTY_PURCHASE' &&
+    overrideOn &&
+    selectedTile !== null &&
+    isPositiveInteger(overridePrice) &&
+    Number(overridePrice) !== selectedTile.tile.price
+      ? Number(overridePrice)
+      : undefined;
   // What the chosen tile costs or pays, from the game's board snapshot.
   const tileAmount =
     selectedTile === null
       ? 0
       : action === 'PROPERTY_PURCHASE'
-        ? selectedTile.tile.price
+        ? (purchaseOverride ?? selectedTile.tile.price)
         : action === 'MORTGAGE'
           ? selectedTile.tile.mortgage
           : (rentAmount ?? 0);
@@ -295,6 +309,7 @@ export function BankingDialog({
       : buildRequest(requestAction, player.id, effectiveTargetId, amountValue, comment, {
           exactLanding,
           ...(tileAction ? { tileId } : {}),
+          ...(purchaseOverride === undefined ? {} : { priceOverride: purchaseOverride }),
           ...(needsDiceSum && diceSumValue !== undefined ? { diceSum: diceSumValue } : {}),
           propertyName: tidyName,
           mortgageId,
@@ -332,6 +347,7 @@ export function BankingDialog({
     (!targetRequired || (target !== null && target.id !== player.id)) &&
     (!amountRequired || isPositiveInteger(amount)) &&
     (!tileAction || selectedTile !== null) &&
+    (action !== 'PROPERTY_PURCHASE' || !overrideOn || isPositiveInteger(overridePrice)) &&
     (action !== 'PAY_RENT' || (rentAmount !== null && rentAmount > 0)) &&
     (action !== 'MORTGAGE' ||
       tileAction ||
@@ -348,6 +364,9 @@ export function BankingDialog({
     setPayToPot(false);
     setPropertyName('');
     setNoBuildings(false);
+    setOverrideOn(false);
+    setOverridePrice('');
+    setOverrideConfirmed(false);
     setMortgageId('');
     setTileId('');
     setDiceSum('');
@@ -385,8 +404,23 @@ export function BankingDialog({
     commandIdRef.current = null;
   };
 
+  const changeOverrideOn = (next: boolean) => {
+    setOverrideOn(next);
+    setOverrideConfirmed(false);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeOverridePrice = (next: string) => {
+    setOverridePrice(next);
+    setOverrideConfirmed(false);
+    setError(null);
+    commandIdRef.current = null;
+  };
+
   const chooseTile = (view: TileView) => {
     setTileId(view.tile.id);
+    setOverrideConfirmed(false);
     setDiceSum('');
     setError(null);
     commandIdRef.current = null;
@@ -801,6 +835,22 @@ export function BankingDialog({
               lenderIsBank={isBankRepayment}
               reserved={reserved}
             />
+            {purchaseOverride !== undefined && selectedTile !== null && (
+              <div className="mt-(--mb-space-3) grid gap-(--mb-space-3)">
+                <Notice tone="info">
+                  {t('priceOverrideWarning', {
+                    price: money(purchaseOverride),
+                    listPrice: money(selectedTile.tile.price),
+                  })}
+                </Notice>
+                <Toggle
+                  variant="inline"
+                  label={t('priceOverrideConfirm')}
+                  checked={overrideConfirmed}
+                  onChange={setOverrideConfirmed}
+                />
+              </div>
+            )}
             {action === 'PASS_GO' && <div className="mt-(--mb-space-3)">{commentField}</div>}
           </StepBody>
           <DialogActions className={stepFooterClass}>
@@ -815,7 +865,11 @@ export function BankingDialog({
             >
               {t('back')}
             </Button>
-            <Button variant="primary" disabled={submitting} onClick={() => void submit()}>
+            <Button
+              variant="primary"
+              disabled={submitting || (purchaseOverride !== undefined && !overrideConfirmed)}
+              onClick={() => void submit()}
+            >
               {submitting
                 ? t('recording')
                 : transactionError === null
@@ -854,6 +908,24 @@ export function BankingDialog({
                 value={tileId}
                 onChange={chooseTile}
               />
+            )}
+            {board !== null && action === 'PROPERTY_PURCHASE' && selectedTile !== null && (
+              <div className="grid gap-(--mb-space-3)">
+                <Toggle
+                  variant="inline"
+                  label={t('priceOverrideToggle')}
+                  checked={overrideOn}
+                  onChange={changeOverrideOn}
+                />
+                {overrideOn && (
+                  <AmountSelector
+                    value={overridePrice}
+                    onChange={changeOverridePrice}
+                    currency={currency}
+                    presets={presets}
+                  />
+                )}
+              </div>
             )}
             {board !== null && action === 'MORTGAGE' && (
               <TilePicker
@@ -968,7 +1040,9 @@ export function BankingDialog({
             {board !== null && action === 'MORTGAGE' && (
               <FieldHint>{t('tileMortgageHint')}</FieldHint>
             )}
-            {action === 'PROPERTY_PURCHASE' && <FieldHint>{t('tilePurchaseHint')}</FieldHint>}
+            {action === 'PROPERTY_PURCHASE' && !overrideOn && (
+              <FieldHint>{t('tilePurchaseHint')}</FieldHint>
+            )}
             {requestAction === 'TO_JACKPOT' && <FieldHint>{t('payToPotHint')}</FieldHint>}
             {amountRequired &&
               action !== 'MORTGAGE_REDEMPTION' &&
