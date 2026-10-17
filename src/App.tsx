@@ -30,7 +30,7 @@ import { Dialog } from './components/Dialog';
 import {
   BankSeal,
   Button,
-  DialogActions,
+  SheetActions,
   DialogBody,
   FeedbackProvider,
   Notice,
@@ -541,7 +541,7 @@ function AppRoutes() {
           onClose={() => setLeaveTarget(null)}
         >
           <DialogBody>{t('discardDraftBody')}</DialogBody>
-          <DialogActions>
+          <SheetActions>
             <Button variant="secondary" onClick={() => setLeaveTarget(null)}>
               {t('keepEditing')}
             </Button>
@@ -557,7 +557,7 @@ function AppRoutes() {
             >
               {t('discardDraft')}
             </Button>
-          </DialogActions>
+          </SheetActions>
         </Dialog>
       )}
     </div>

@@ -1034,6 +1034,124 @@ describe('BankingDialog board mode', () => {
     expect(screen.getByRole('button', { name: 'Review transaction' })).toBeEnabled();
   });
 
+  describe('building a colour group', () => {
+    const brown = [row('zhitna'), row('nagatinska')];
+    const houseCost = tile('zhitna').houseCost!;
+    const add = (name: string) => screen.getByRole('button', { name: `Add a building to ${name}` });
+    const created = () =>
+      vi
+        .spyOn(monopolyBankApi, 'createTransaction')
+        .mockResolvedValue({ transaction: { amount: 1 }, players: [] } as never);
+
+    it('steps every street of the group, shows the live total and sends one request', async () => {
+      const createTransaction = created();
+      const { user } = renderDialog([olena, taras], boardProps(brown));
+      await user.click(screen.getByRole('button', { name: 'Build a house' }));
+      const review = screen.getByRole('button', { name: 'Review transaction' });
+      expect(review).toBeDisabled();
+      expect(screen.getByText('Change at least one street to continue.')).toBeInTheDocument();
+
+      await user.click(add(tile('zhitna').name));
+      // One street ahead of the other is still even (a difference of one).
+      expect(review).toBeEnabled();
+      await user.click(add(tile('zhitna').name));
+      expect(review).toBeDisabled();
+      expect(
+        screen.getByText('Streets of a group may differ by at most one building.'),
+      ).toBeInTheDocument();
+      await user.click(add(tile('nagatinska').name));
+      expect(review).toBeEnabled();
+      expect(screen.getByText('Buildings').nextSibling).toHaveTextContent('3');
+
+      await user.click(review);
+      await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+      expect(createTransaction).toHaveBeenCalledWith(
+        'g1',
+        { type: 'PROPERTY_BUILD', playerId: 'p1', targets: { zhitna: 2, nagatinska: 1 } },
+        expect.any(String),
+      );
+      expect(houseCost).toBeGreaterThan(0);
+      createTransaction.mockRestore();
+    });
+
+    it('adds one building to the whole group at once', async () => {
+      const createTransaction = created();
+      const { user } = renderDialog([olena, taras], boardProps(brown));
+      await user.click(screen.getByRole('button', { name: 'Build a house' }));
+      await user.click(screen.getByRole('button', { name: '+1 for the whole group' }));
+      await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+      await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+      expect(createTransaction).toHaveBeenCalledWith(
+        'g1',
+        { type: 'PROPERTY_BUILD', playerId: 'p1', targets: { zhitna: 1, nagatinska: 1 } },
+        expect.any(String),
+      );
+      createTransaction.mockRestore();
+    });
+
+    it('offers only selling once every street has a hotel', () => {
+      renderDialog(
+        [olena, taras],
+        boardProps([row('zhitna', { houses: 5 }), row('nagatinska', { houses: 5 })]),
+      );
+      // Everything is built up: nothing to build, so the action is not offered.
+      expect(screen.queryByRole('button', { name: 'Build a house' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sell a building' })).toBeInTheDocument();
+    });
+
+    it('shows the cash shortfall and keeps the button disabled', async () => {
+      const poor = player('p1', 'Olena', houseCost - 1);
+      const { user } = renderDialog([poor, taras], {
+        player: poor,
+        ...boardProps(brown),
+      });
+      await user.click(screen.getByRole('button', { name: 'Build a house' }));
+      await user.click(add(tile('zhitna').name));
+      expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+      expect(screen.getByText(/Insufficient funds/)).toBeInTheDocument();
+    });
+
+    it('starts one step on the street the sheet was opened from', async () => {
+      const createTransaction = created();
+      const { user } = renderDialog(
+        [olena, taras],
+        boardProps(brown, { initialAction: 'PROPERTY_BUILD', initialTileId: 'zhitna' }),
+      );
+      const review = screen.getByRole('button', { name: 'Review transaction' });
+      expect(review).toBeEnabled();
+      await user.click(review);
+      await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+      expect(createTransaction).toHaveBeenCalledWith(
+        'g1',
+        { type: 'PROPERTY_BUILD', playerId: 'p1', targets: { zhitna: 1 } },
+        expect.any(String),
+      );
+      createTransaction.mockRestore();
+    });
+
+    it('sells several buildings down to a lower level', async () => {
+      const createTransaction = created();
+      const { user } = renderDialog(
+        [olena, taras],
+        boardProps([row('zhitna', { houses: 2 }), row('nagatinska', { houses: 2 })]),
+      );
+      await user.click(screen.getByRole('button', { name: 'Sell a building' }));
+      await user.click(screen.getByRole('button', { name: '−1 for the whole group' }));
+      await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+      await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+      expect(createTransaction).toHaveBeenCalledWith(
+        'g1',
+        {
+          type: 'PROPERTY_SELL_BUILDING',
+          playerId: 'p1',
+          targets: { zhitna: 1, nagatinska: 1 },
+        },
+        expect.any(String),
+      );
+      createTransaction.mockRestore();
+    });
+  });
+
   it('keeps the manual name and amount flows when the game has no board', async () => {
     const { user } = renderDialog([olena, taras]);
     expect(screen.queryByRole('button', { name: 'Buy property' })).toBeNull();

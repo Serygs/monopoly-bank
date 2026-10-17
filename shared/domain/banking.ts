@@ -16,16 +16,19 @@ import { bankLoanInterest } from './bank-loan.js';
 import { buildGameSettings } from './game-rules.js';
 import { normalizePropertyName, redemptionCost } from './mortgage.js';
 import {
-  assertCanBuild,
   assertCanMortgage,
-  assertCanSellBuilding,
   buildCost,
-  buildingChange,
+  type BuildingPlan,
   DiceSumError,
   groupHasBuildings,
+  InvalidBuildTargetError,
   invertChanges,
+  MAX_BUILDINGS,
+  MaxBuildingsError,
   mortgageChange,
+  NoBuildingsError,
   ownerChange,
+  planBuildings,
   PropertyAlreadyOwnedError,
   PropertyHasBuildingsError,
   PropertyMortgagedError,
@@ -121,7 +124,10 @@ export interface PropertyPurchaseCommand extends BankingCommand {
 /** Board games: the owner adds a house (or the hotel) to a street of a full colour group. */
 export interface BuildPropertyCommand extends BankingCommand {
   playerId: string;
-  tileId: string;
+  /** One street, one building up (build) or down (sell). Give this or `targets`. */
+  tileId?: string;
+  /** Tile id -> final level (0-5) for streets of one colour group, validated as a whole. */
+  targets?: Readonly<Record<string, number>>;
   property: PropertyContext;
 }
 
@@ -844,41 +850,76 @@ export function transferProperties(command: TransferPropertiesCommand): BankingO
   };
 }
 
-/** The owner pays the bank one house cost; the fifth building is the hotel. */
+/** The final levels a build or sale command asks for; a single `tileId` means one step. */
+function buildingTargets(
+  command: BuildPropertyCommand,
+  direction: 'BUILD' | 'SELL',
+): Readonly<Record<string, number>> {
+  if (command.targets !== undefined) return command.targets;
+  if (command.tileId === undefined) throw new InvalidBuildTargetError('no street named');
+  const state = stateOf(command.property.registry, command.tileId);
+  // A single step keeps its own precise reasons.
+  if (direction === 'BUILD' && state.houses >= MAX_BUILDINGS)
+    throw new MaxBuildingsError(command.tileId);
+  if (direction === 'SELL' && state.houses === 0) throw new NoBuildingsError(command.tileId);
+  return { [command.tileId]: state.houses + (direction === 'BUILD' ? 1 : -1) };
+}
+
+/** The first changed street keeps `transactions.tile_id`; the diffs carry the rest. */
+function withBuildings(result: BankingOperationResult, plan: BuildingPlan): BankingOperationResult {
+  return withProperty(result, plan.changes[0]!.tileId, plan.changes);
+}
+
+/**
+ * The owner pays the bank one house cost per building added (the fifth building is the hotel), for
+ * one street or a whole colour group at once. One transaction, one registry diff per street.
+ */
 export function buildProperty(command: BuildPropertyCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
-  const { board, registry } = command.property;
-  assertCanBuild(command.property, command.tileId, command.playerId);
-  const cost = buildCost(board, command.tileId);
+  const { board } = command.property;
+  const plan = planBuildings(
+    command.property,
+    command.playerId,
+    buildingTargets(command, 'BUILD'),
+    'BUILD',
+  );
+  const cost = plan.changes.reduce(
+    (sum, change) =>
+      sum + (change.after.houses - change.before.houses) * buildCost(board, change.tileId),
+    0,
+  );
   validateAmount(cost);
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
   ensureSufficientFunds(player, cost);
-  const state = stateOf(registry, command.tileId);
   const result = createResult(command.game.id, 'PROPERTY_BUILD', cost, cost, null, [
     createBalanceChange(player, -cost),
   ]);
-  return withProperty(result, command.tileId, [
-    buildingChange(command.tileId, state, state.houses + 1),
-  ]);
+  return withBuildings(result, plan);
 }
 
-/** The bank pays back half the house cost for one building; a hotel goes back to four houses. */
+/** The bank pays back half the house cost per building sold; a hotel goes back to four houses. */
 export function sellBuilding(command: SellBuildingCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
-  const { board, registry } = command.property;
-  assertCanSellBuilding(command.property, command.tileId, command.playerId);
-  const refund = sellRefund(board, command.tileId);
+  const { board } = command.property;
+  const plan = planBuildings(
+    command.property,
+    command.playerId,
+    buildingTargets(command, 'SELL'),
+    'SELL',
+  );
+  const refund = plan.changes.reduce(
+    (sum, change) =>
+      sum + (change.before.houses - change.after.houses) * sellRefund(board, change.tileId),
+    0,
+  );
   validateAmount(refund);
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
-  const state = stateOf(registry, command.tileId);
   const result = createResult(command.game.id, 'PROPERTY_SELL_BUILDING', refund, refund, null, [
     createBalanceChange(player, refund),
   ]);
-  return withProperty(result, command.tileId, [
-    buildingChange(command.tileId, state, state.houses - 1),
-  ]);
+  return withBuildings(result, plan);
 }
 
 /** The payer pays the tile's owner the rent the registry and the snapshot give. */

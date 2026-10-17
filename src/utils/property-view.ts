@@ -1,5 +1,12 @@
 import type { BoardSnapshot, PropertyGroupId, PropertyTile } from '../../shared/board';
-import { canBuild, canSellBuilding } from '../../shared/domain/property';
+import {
+  buildCost,
+  canBuild,
+  canSellBuilding,
+  MAX_BUILDINGS,
+  planBuildings,
+  sellRefund,
+} from '../../shared/domain/property';
 import type { GameProperty } from '../../shared/types/monopoly';
 
 /** Fixed swatch colours of the board's colour groups (domain data, like a player colour). */
@@ -65,6 +72,47 @@ export function groupProgress(
   const tiles = views.filter((view) => view.tile.group === group);
   const owned = tiles.filter((view) => view.ownerPlayerId === ownerPlayerId).length;
   return { owned, size: tiles.length, monopoly: tiles.length > 0 && owned === tiles.length };
+}
+
+/**
+ * The colour groups from the cheapest to the dearest, by their cheapest tile (ties by board
+ * position). It follows the snapshot prices, so a scaled or custom board keeps the right order:
+ * brown, light blue, pink, utilities, orange, railways, red, yellow, green, blue on the classic one.
+ */
+export function groupOrder(views: readonly TileView[]): PropertyGroupId[] {
+  const cheapest = new Map<PropertyGroupId, { price: number; pos: number }>();
+  for (const { tile } of views) {
+    const current = cheapest.get(tile.group);
+    if (
+      current === undefined ||
+      tile.price < current.price ||
+      (tile.price === current.price && tile.pos < current.pos)
+    )
+      cheapest.set(tile.group, { price: tile.price, pos: tile.pos });
+  }
+  return [...cheapest.entries()]
+    .sort(([, a], [, b]) => a.price - b.price || a.pos - b.pos)
+    .map(([group]) => group);
+}
+
+export interface GroupCards {
+  group: PropertyGroupId;
+  cards: TileView[];
+}
+
+/** Cards split into colour groups in `order`; inside a group by price, ties by board position. */
+export function cardsByGroup(
+  cards: readonly TileView[],
+  order: readonly PropertyGroupId[],
+): GroupCards[] {
+  return order
+    .map((group) => ({
+      group,
+      cards: cards
+        .filter((card) => card.tile.group === group)
+        .sort((a, b) => a.tile.price - b.tile.price || a.tile.pos - b.tile.pos),
+    }))
+    .filter((entry) => entry.cards.length > 0);
 }
 
 /** The cards the given wallets hold, in board order. */
@@ -271,4 +319,80 @@ export function tileIntents(
       intents.push({ kind: 'PROPERTY_TRANSFER', tileId, playerId: actorPlayerId });
   }
   return intents;
+}
+
+export type BuildMode = 'BUILD' | 'SELL';
+
+/** The colour groups where the player may build (or sell) something now, in board order. */
+export function buildingGroups(
+  board: BoardSnapshot,
+  views: readonly TileView[],
+  playerId: string,
+  mode: BuildMode,
+): PropertyGroupId[] {
+  const tiles =
+    mode === 'BUILD'
+      ? buildableTiles(board, views, playerId)
+      : sellableTiles(board, views, playerId);
+  return [...new Set(tiles.map((view) => view.tile.group))];
+}
+
+/** The streets of a colour group in board order. */
+export function groupStreets(views: readonly TileView[], group: PropertyGroupId): TileView[] {
+  return views.filter((view) => view.tile.group === group);
+}
+
+export type BuildingPreview =
+  | {
+      ok: true;
+      /** Only the streets whose level changes: tile id -> final level. */
+      targets: Record<string, number>;
+      /** Buildings added or sold in total. */
+      buildings: number;
+      /** What the bank is paid (build) or pays (sell). */
+      amount: number;
+    }
+  | {
+      ok: false;
+      /** `NOTHING` while no street changed, otherwise the Worker's error code for the plan. */
+      reason: 'NOTHING' | string;
+    };
+
+/**
+ * What setting the streets of one group to `levels` (tile id -> final level) would do, validated
+ * on the final state by the same rule the Worker applies. Streets without an entry keep their level.
+ */
+export function previewBuildings(
+  board: BoardSnapshot,
+  views: readonly TileView[],
+  playerId: string,
+  levels: Readonly<Record<string, number>>,
+  mode: BuildMode,
+): BuildingPreview {
+  const targets: Record<string, number> = {};
+  for (const [tileId, level] of Object.entries(levels)) {
+    const current = views.find((view) => view.tile.id === tileId)?.houses ?? 0;
+    if (level !== current) targets[tileId] = level;
+  }
+  if (Object.keys(targets).length === 0) return { ok: false, reason: 'NOTHING' };
+  try {
+    const plan = planBuildings({ board, registry: registryOf(views) }, playerId, targets, mode);
+    const amount = plan.changes.reduce(
+      (sum, change) =>
+        sum +
+        Math.abs(change.after.houses - change.before.houses) *
+          (mode === 'BUILD' ? buildCost(board, change.tileId) : sellRefund(board, change.tileId)),
+      0,
+    );
+    return { ok: true, targets, buildings: plan.buildings, amount };
+  } catch (error) {
+    // The plan's errors carry a stable `code`; anything else is reported as invalid.
+    const code = (error as { code?: unknown }).code;
+    return { ok: false, reason: typeof code === 'string' ? code : 'INVALID' };
+  }
+}
+
+/** The lowest and highest level a street may be set to in the given mode. */
+export function levelBounds(view: TileView, mode: BuildMode): { min: number; max: number } {
+  return mode === 'BUILD' ? { min: view.houses, max: MAX_BUILDINGS } : { min: 0, max: view.houses };
 }
