@@ -80,3 +80,20 @@ describe('calculateBalanceSeries', () => {
     expect(player.balances.at(-1)).toBe(500);
   });
 });
+
+describe('trades in the awards', () => {
+  it('never makes a zero-money trade the biggest operation', () => {
+    expect(
+      calculateGameAwards([
+        row('t1', 'PROPERTY_TRANSFER', 0, 'a', 0),
+        row('t1', 'PROPERTY_TRANSFER', 0, 'b', 0),
+      ]).biggestOperation,
+    ).toBeNull();
+    expect(
+      calculateGameAwards([
+        row('t1', 'PROPERTY_TRANSFER', 0, 'a', 0),
+        row('t2', 'PLAYER_TO_BANK', 40, 'a', -40),
+      ]).biggestOperation,
+    ).toEqual({ type: 'PLAYER_TO_BANK', amount: 40, playerId: 'a' });
+  });
+});

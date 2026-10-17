@@ -8,6 +8,7 @@ import {
   REVERSAL_WINDOW_MS,
   reversalAvailability,
   reversalInitiatorPlayerId,
+  reversibleTransaction,
   transactionTimeMs,
 } from './reversal.js';
 
@@ -84,12 +85,37 @@ describe('reversal window', () => {
     expect(isReversibleType('PASS_GO')).toBe(true);
     expect(isReversibleType('REVERSAL')).toBe(false);
     expect(isReversibleType('BANKRUPTCY_TRANSFER')).toBe(false);
-    expect(isReversibleType('MORTGAGE')).toBe(false);
-    expect(isReversibleType('MORTGAGE_REDEMPTION')).toBe(false);
     expect(isReversibleType('LOAN_ISSUE')).toBe(false);
     expect(isReversibleType('LOAN_REPAYMENT')).toBe(false);
     expect(isReversibleType('TO_JACKPOT')).toBe(false);
     expect(isReversibleType('JACKPOT_PAYOUT')).toBe(false);
+  });
+});
+
+describe('reversibleTransaction', () => {
+  it('lets a board mortgage and redemption be undone but not a free-text one', () => {
+    for (const type of ['MORTGAGE', 'MORTGAGE_REDEMPTION'] as const) {
+      expect(reversibleTransaction({ type, tileId: 'zhitna' })).toBe(true);
+      expect(reversibleTransaction({ type })).toBe(false);
+      expect(reversibleTransaction({ type, tileId: null })).toBe(false);
+    }
+  });
+
+  it('follows the type for everything else', () => {
+    expect(reversibleTransaction({ type: 'PROPERTY_PURCHASE', tileId: 'zhitna' })).toBe(true);
+    expect(reversibleTransaction({ type: 'LOAN_ISSUE', tileId: 'zhitna' })).toBe(false);
+  });
+
+  it('names the player who mortgaged or redeemed as the initiator', () => {
+    expect(
+      reversalInitiatorPlayerId({ type: 'MORTGAGE', participants: participants(['a', 5]) }),
+    ).toBe('a');
+    expect(
+      reversalInitiatorPlayerId({
+        type: 'MORTGAGE_REDEMPTION',
+        participants: participants(['a', -5]),
+      }),
+    ).toBe('a');
   });
 });
 

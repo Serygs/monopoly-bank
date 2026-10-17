@@ -27,6 +27,21 @@ export function transactionDescription(
       return withTile(
         `${nameOf(negative?.playerId)} · ${translate(language, 'propertyPurchaseLabel')}`,
       );
+    case 'PROPERTY_TRANSFER': {
+      const initiator = transaction.initiatorPlayerId ?? negative?.playerId;
+      const other = transaction.participants.find((item) => item.playerId !== initiator);
+      return withTile(
+        `${nameOf(initiator ?? undefined)} ⇄ ${nameOf(other?.playerId)} · ${translate(language, 'propertyTradeLabel')}`,
+      );
+    }
+    case 'PROPERTY_BUILD':
+      return withTile(
+        `${nameOf(negative?.playerId)} · ${translate(language, 'propertyBuildLabel')}`,
+      );
+    case 'PROPERTY_SELL_BUILDING':
+      return withTile(
+        `${nameOf(positive?.playerId)} · ${translate(language, 'propertySellBuildingLabel')}`,
+      );
     case 'PLAYER_TO_BANK':
       return `${nameOf(negative?.playerId)} → ${translate(language, 'transactionBank')}`;
     case 'BANK_TO_PLAYER':
@@ -132,6 +147,7 @@ export function transactionAmount(
   if (
     transaction.type === 'PASS_GO' ||
     transaction.type === 'MORTGAGE' ||
+    transaction.type === 'PROPERTY_SELL_BUILDING' ||
     transaction.type === 'JACKPOT_PAYOUT'
   )
     return `+${money(transaction.amount)}`;

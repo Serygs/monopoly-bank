@@ -93,7 +93,6 @@ describe('0029 property actions migration', () => {
     'PROPERTY_PURCHASE',
     'PROPERTY_BUILD',
     'PROPERTY_SELL_BUILDING',
-    'PROPERTY_TRADE',
     'PLAYER_TO_PLAYER',
     'AUCTION_PAYMENT',
   ])('accepts the transaction type %s', (type) => {

@@ -258,7 +258,7 @@ export interface TileMortgageTransactionRequest extends Omit<TransactionRequestB
   tileId: string;
 }
 
-/** Board games: buys an unowned tile from the bank at the snapshot price. */
+/** Board games: buys an unowned tile from the bank at the snapshot price (or `priceOverride`). */
 export interface PropertyPurchaseTransactionRequest extends Omit<
   TransactionRequestBase,
   'comment'
@@ -266,6 +266,51 @@ export interface PropertyPurchaseTransactionRequest extends Omit<
   type: 'PROPERTY_PURCHASE';
   playerId: string;
   tileId: string;
+  /**
+   * Pays this price instead of the list price (an agreed deal). The review screen asks for an
+   * extra confirmation and the ledger marks the purchase as overridden.
+   */
+  priceOverride?: number;
+}
+
+/** Board games: the owner adds a house (or the hotel) to a street; the bank is paid one house cost. */
+export interface PropertyBuildTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
+  type: 'PROPERTY_BUILD';
+  playerId: string;
+  tileId: string;
+}
+
+/** Board games: the owner sells a building back; the bank pays half the house cost. */
+export interface PropertySellBuildingTransactionRequest extends Omit<
+  TransactionRequestBase,
+  'comment'
+> {
+  type: 'PROPERTY_SELL_BUILDING';
+  playerId: string;
+  tileId: string;
+}
+
+/**
+ * Board games: a trade. `playerId` (the wallet that makes it) and `counterpartyPlayerId` swap tiles
+ * and optionally cash. Each side pays the bank 10% of the mortgage value of every mortgaged tile
+ * it receives (the tile stays mortgaged). Recorded at once, in one batch; in a game with payment
+ * confirmation the caller must control both wallets.
+ */
+export interface PropertyTransferTransactionRequest extends Omit<
+  TransactionRequestBase,
+  'comment'
+> {
+  type: 'PROPERTY_TRANSFER';
+  playerId: string;
+  counterpartyPlayerId: string;
+  /** Tiles that leave `playerId` for the counterparty. */
+  giveTileIds: string[];
+  /** Tiles that come from the counterparty to `playerId`. */
+  takeTileIds: string[];
+  /** Paid by `playerId` to the counterparty; 0 or absent for none. */
+  cashGive?: number;
+  /** Paid by the counterparty to `playerId`; 0 or absent for none. */
+  cashTake?: number;
 }
 
 /**
@@ -494,6 +539,9 @@ export type CreateTransactionRequest =
   | MortgageTransactionRequest
   | TileMortgageTransactionRequest
   | PropertyPurchaseTransactionRequest
+  | PropertyBuildTransactionRequest
+  | PropertySellBuildingTransactionRequest
+  | PropertyTransferTransactionRequest
   | PayRentTransactionRequest
   | RedeemMortgageTransactionRequest
   | LoanIssueTransactionRequest

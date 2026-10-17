@@ -195,3 +195,52 @@ describe('auction payments', () => {
     expect(transactionDescription(payment, players, 'uk')).toContain('Park Place');
   });
 });
+
+describe('building transactions in the history', () => {
+  const base = { id: 't', gameId: 'game', comment: null, createdAt: '' };
+  it('names the player and the tile, and shows a sale as income', () => {
+    const built: Transaction = {
+      ...base,
+      type: 'PROPERTY_BUILD',
+      amount: 500,
+      totalAmount: 500,
+      participants: [{ playerId: 'john', balanceDelta: -500 }],
+    };
+    const sold: Transaction = {
+      ...base,
+      type: 'PROPERTY_SELL_BUILDING',
+      amount: 250,
+      totalAmount: 250,
+      participants: [{ playerId: 'john', balanceDelta: 250 }],
+    };
+    expect(transactionDescription(built, players, 'en', 'Zhitna')).toBe('John · Building · Zhitna');
+    expect(transactionDescription(sold, players, 'en', 'Zhitna')).toBe(
+      'John · Building sold · Zhitna',
+    );
+    expect(transactionAmount(sold, 'K', 'en').startsWith('+')).toBe(true);
+    expect(transactionAmount(built, 'K', 'en').startsWith('+')).toBe(false);
+  });
+});
+
+describe('trades in the history', () => {
+  it('shows who traded with whom and which tiles changed hands', () => {
+    const trade: Transaction = {
+      id: 't',
+      gameId: 'game',
+      type: 'PROPERTY_TRANSFER',
+      amount: 0,
+      totalAmount: 0,
+      comment: null,
+      createdAt: '',
+      initiatorPlayerId: 'alex',
+      tileIds: ['zhitna', 'riga_rail'],
+      participants: [
+        { playerId: 'john', balanceDelta: 0 },
+        { playerId: 'alex', balanceDelta: 0 },
+      ],
+    };
+    expect(transactionDescription(trade, players, 'en', 'Zhitna, Riga')).toBe(
+      'Alex ⇄ John · Trade · Zhitna, Riga',
+    );
+  });
+});

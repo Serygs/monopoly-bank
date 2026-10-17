@@ -43,6 +43,7 @@ import { ReverseTransactionDialog } from './game/ReverseTransactionDialog';
 import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
 import { StartAuctionDialog } from './game/StartAuctionDialog';
+import { TradeDialog } from './game/TradeDialog';
 import { WalletsSection } from './game/WalletsSection';
 import {
   applyLiveEvent,
@@ -108,6 +109,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
   const lastAppliedVersion = useRef(0);
   // The wallet putting a property up for auction, with the suggested name.
+  const [tradePrompt, setTradePrompt] = useState<{ player: Player; tileId: string } | null>(null);
   const [auctionPrompt, setAuctionPrompt] = useState<{
     player: Player;
     lotName: string;
@@ -340,6 +342,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     setPropertyOpen(false);
     if (intent.kind === 'AUCTION') {
       setAuctionPrompt({ player: wallet, lotName: '', tileId: intent.tileId });
+      return;
+    }
+    if (intent.kind === 'PROPERTY_TRANSFER') {
+      setTradePrompt({ player: wallet, tileId: intent.tileId });
       return;
     }
     setWalletIntent({ action: intent.kind, tileId: intent.tileId });
@@ -613,6 +619,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               setAuctionPrompt({ player: selectedPlayer, lotName });
               setSelectedPlayer(null);
             }}
+            onStartTrade={() => {
+              setTradePrompt({ player: selectedPlayer, tileId: '' });
+              setSelectedPlayer(null);
+            }}
             favoriteAmounts={details.favoriteAmounts ?? []}
             recentAmounts={details.recentAmounts ?? []}
             onToggleFavorite={(amount) =>
@@ -671,19 +681,23 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                 message: t(
                   action === 'PROPERTY_PURCHASE'
                     ? 'propertyBought'
-                    : action === 'PAY_RENT'
-                      ? 'rentPaid'
-                      : action === 'MORTGAGE'
-                        ? 'mortgageRecorded'
-                        : action === 'MORTGAGE_REDEMPTION'
-                          ? 'redemptionRecorded'
-                          : action === 'LOAN_REPAYMENT'
-                            ? 'loanRepaid'
-                            : action === 'BANK_LOAN'
-                              ? 'bankLoanRecorded'
-                              : action === 'JACKPOT_PAYOUT'
-                                ? 'jackpotCollected'
-                                : 'paymentSent',
+                    : action === 'PROPERTY_BUILD'
+                      ? 'buildingBuilt'
+                      : action === 'PROPERTY_SELL_BUILDING'
+                        ? 'buildingSold'
+                        : action === 'PAY_RENT'
+                          ? 'rentPaid'
+                          : action === 'MORTGAGE'
+                            ? 'mortgageRecorded'
+                            : action === 'MORTGAGE_REDEMPTION'
+                              ? 'redemptionRecorded'
+                              : action === 'LOAN_REPAYMENT'
+                                ? 'loanRepaid'
+                                : action === 'BANK_LOAN'
+                                  ? 'bankLoanRecorded'
+                                  : action === 'JACKPOT_PAYOUT'
+                                    ? 'jackpotCollected'
+                                    : 'paymentSent',
                 ),
               });
             }}
@@ -714,8 +728,22 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                   loan.borrowerPlayerId === bankruptPlayer.id,
               )
             }
+            board={board}
+            properties={properties}
+            currency={details.game.currency}
+            onOpenWallet={(wallet) => {
+              setBankruptPlayer(null);
+              setSelectedPlayer(wallet);
+            }}
             onClose={() => setBankruptPlayer(null)}
-            onCompleted={(players, mortgages, loans, bankLoanCooldowns, jackpot) => {
+            onCompleted={(
+              players,
+              mortgages,
+              loans,
+              bankLoanCooldowns,
+              jackpot,
+              changedProperties,
+            ) => {
               setDetails({
                 ...details,
                 players,
@@ -723,6 +751,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                 ...(loans === undefined ? {} : { loans }),
                 ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
                 ...(jackpot === undefined ? {} : { jackpot }),
+                ...(changedProperties === undefined ? {} : { properties: changedProperties }),
               });
               setBankruptPlayer(null);
             }}
@@ -738,6 +767,32 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               </Button>
             </Notice>
           )}
+        {tradePrompt !== null && board !== null && (
+          <TradeDialog
+            gameId={gameId}
+            player={tradePrompt.player}
+            players={details.players}
+            currency={details.game.currency}
+            board={board}
+            properties={properties}
+            initialTileId={tradePrompt.tileId}
+            onClose={() => setTradePrompt(null)}
+            onCompleted={(result) => {
+              playPaymentFeedback(preferences.sound);
+              vibrate(35, preferences.vibration);
+              setDetails({
+                ...details,
+                players: result.players,
+                ...(result.mortgages === undefined ? {} : { mortgages: result.mortgages }),
+                ...(result.properties === undefined
+                  ? {}
+                  : { properties: mergeProperties(details.properties, result.properties) }),
+              });
+              setTradePrompt(null);
+              notify({ tone: 'success', message: t('tradeRecorded') });
+            }}
+          />
+        )}
         {auctionPrompt !== null && (
           <StartAuctionDialog
             gameId={gameId}

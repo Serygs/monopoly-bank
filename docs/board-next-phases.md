@@ -5,14 +5,18 @@ Skip `npm run test:visual` (decision of 2026-10-17). Checks per PR: `npm run lin
 
 ## Where things stand
 
-| PR  | Content                                                                                        | State                                                  |
-| --- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| #57 | Preset, snapshot (`Game.settings.board`), `game_properties`, read-only Property tab            | merged                                                 |
-| #58 | Buy / mortgage / redeem / auction by tile, automatic rent, registry diffs (`property_changes`) | ready for review, branch `feat/board-property-actions` |
+| PR  | Content                                                                                                                     | State                                                        |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| #57 | Preset, snapshot (`Game.settings.board`), `game_properties`, read-only Property tab                                         | merged                                                       |
+| #58 | Buy / mortgage / redeem / auction by tile, automatic rent, registry diffs (`property_changes`)                              | merged                                                       |
+| A   | #58 cleanup, `priceOverride`, auction settles as `PROPERTY_PURCHASE`, reversible board mortgage / redeem (migration `0030`) | PR open, branch `feat/board-purchase-reversibility`          |
+| B   | `PROPERTY_BUILD` / `PROPERTY_SELL_BUILDING`, even building, hotel, group-wide reversal blocks, UI                           | PR open, stacked on A, branch `feat/board-property-building` |
+| C   | `PROPERTY_TRANSFER` trades: tiles + cash each way, mortgage fee, reversal, UI (migration `0031`)                            | PR open, stacked on B, branch `feat/board-property-trades`   |
+| D   | Bankruptcy with asset transfer: buildings sold, mortgage fees, creditor shortfall flow                                      | PR open, stacked on C, branch `feat/board-bankruptcy-assets` |
 
-Start the next work from `main` after #58 is merged (or from `feat/board-property-actions` if it is not). Migration `0029_property_actions.sql` already allows the transaction types `PROPERTY_BUILD`, `PROPERTY_SELL_BUILDING`, `PROPERTY_TRADE` (reserved, never written). Next migration number: `0030`.
+PRs A to D are done (stacked: each is based on the previous branch). The board registry roadmap is complete once they are merged. Migration `0029_property_actions.sql` already allows the transaction types `PROPERTY_BUILD`, `PROPERTY_SELL_BUILDING`, `PROPERTY_TRADE` (reserved, never written). Next migration number: `0032`.
 
-Known leftovers from the #58 review (fix in PR A below):
+Leftovers from the #58 review were fixed in PR A (kept for reference):
 
 - A rent payment on a tile whose rent was doubled by a full colour group does not block reversing the purchase of another tile of that group.
 - Missing tests: guarded `UPDATE game_properties` with a stale before-state rolling everything back in SQLite; service paths `BOARD_DISABLED`, `TILE_REQUIRED`, `PROPERTY_IN_AUCTION`, `PROPERTY_CHANGED` on reversal; tile auction start on an owned tile and a tile auction that ends `NO_SALE`.

@@ -14,6 +14,9 @@ interface TransactionRow {
   created_at: string;
   reverses_transaction_id: string | null;
   tile_id: string | null;
+  price_overridden: number;
+  initiator_player_id: string | null;
+  changed_tile_ids: string | null;
   reversed_by_transaction_id: string | null;
   player_id: string | null;
   balance_delta: number | null;
@@ -182,6 +185,11 @@ const transactionSelect = `SELECT
   transactions.created_at,
   transactions.reverses_transaction_id,
   transactions.tile_id,
+  transactions.price_overridden,
+  transactions.initiator_player_id,
+  CASE WHEN transactions.type = 'PROPERTY_TRANSFER' THEN (
+    SELECT group_concat(tile_id) FROM property_changes WHERE property_changes.transaction_id = transactions.id
+  ) END AS changed_tile_ids,
   reversal.id AS reversed_by_transaction_id,
   transaction_participants.player_id,
   transaction_participants.balance_delta
@@ -205,6 +213,9 @@ function mapTransactions(rows: TransactionRow[]): Transaction[] {
         createdAt: row.created_at,
         participants: [],
         ...(row.tile_id == null ? {} : { tileId: row.tile_id }),
+        ...(row.price_overridden === 1 ? { priceOverridden: true } : {}),
+        ...(row.initiator_player_id == null ? {} : { initiatorPlayerId: row.initiator_player_id }),
+        ...(row.changed_tile_ids == null ? {} : { tileIds: row.changed_tile_ids.split(',') }),
         reversesTransactionId: row.reverses_transaction_id ?? null,
         reversedByTransactionId: row.reversed_by_transaction_id ?? null,
       };

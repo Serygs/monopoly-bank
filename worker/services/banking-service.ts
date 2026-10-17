@@ -12,7 +12,10 @@ import type {
   PaymentRequest,
   MortgageTransactionRequest,
   PlayerTransactionRequest,
+  PropertyBuildTransactionRequest,
   PropertyPurchaseTransactionRequest,
+  PropertySellBuildingTransactionRequest,
+  PropertyTransferTransactionRequest,
   RedeemMortgageTransactionRequest,
   TileMortgageTransactionRequest,
   ReversalTransactionRequest,
@@ -43,7 +46,10 @@ import {
   mortgageProperty,
   mortgageTile,
   payRent,
+  buildProperty,
   propertyPurchase,
+  sellBuilding,
+  transferProperties,
   redeemMortgage,
   repayBankLoan,
   repayLoan,
@@ -63,7 +69,7 @@ import type {
   GameProperty,
   Transaction,
 } from '../../shared/types/monopoly.js';
-import { requireTile, type PropertyContext } from '../../shared/domain/property.js';
+import { groupTiles, requireTile, type PropertyContext } from '../../shared/domain/property.js';
 import type { AuctionRepository } from '../repositories/auction-repository.js';
 import type { BankingOperationRepository } from '../repositories/banking-operation-repository.js';
 import type { GameRepository } from '../repositories/game-repository.js';
@@ -198,6 +204,9 @@ export class DefaultBankingService implements BankingService {
         request.type === 'LOAN_REPAYMENT' ||
         request.type === 'JACKPOT_PAYOUT' ||
         request.type === 'PROPERTY_PURCHASE' ||
+        request.type === 'PROPERTY_BUILD' ||
+        request.type === 'PROPERTY_SELL_BUILDING' ||
+        request.type === 'PROPERTY_TRANSFER' ||
         request.type === 'PAY_RENT'
           ? {}
           : { recentAmount: result.transaction.amount }),
@@ -238,7 +247,12 @@ export class DefaultBankingService implements BankingService {
     return {
       transaction,
       players: updatedPlayers,
-      ...(await this.mortgagesFor(gameId, transaction.type)),
+      ...(await this.mortgagesFor(
+        gameId,
+        transaction.type,
+        result.transaction.mortgageReversal !== undefined ||
+          mortgagesMoved(result.transaction.registryChanges),
+      )),
       ...(await this.loansFor(game, updatedPlayers, transaction.type)),
       ...(await this.jackpotFor(game)),
       ...(await this.propertiesFor(game, transactionId)),
@@ -267,6 +281,11 @@ export class DefaultBankingService implements BankingService {
         return this.collectJackpot(game, players, request);
       case 'PROPERTY_PURCHASE':
         return this.purchase(game, players, request);
+      case 'PROPERTY_BUILD':
+      case 'PROPERTY_SELL_BUILDING':
+        return this.building(game, players, request);
+      case 'PROPERTY_TRANSFER':
+        return this.transfer(game, players, request);
       case 'PAY_RENT':
         return this.rent(game, players, request);
       default:
@@ -340,6 +359,36 @@ export class DefaultBankingService implements BankingService {
       playerId: request.playerId,
       tileId: request.tileId,
       property,
+      ...(request.priceOverride === undefined ? {} : { priceOverride: request.priceOverride }),
+    });
+  }
+
+  private async building(
+    game: Game,
+    players: Player[],
+    request: PropertyBuildTransactionRequest | PropertySellBuildingTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    const property = await this.propertyContext(game, request.tileId);
+    const command = { game, players, playerId: request.playerId, tileId: request.tileId, property };
+    return request.type === 'PROPERTY_BUILD' ? buildProperty(command) : sellBuilding(command);
+  }
+
+  private async transfer(
+    game: Game,
+    players: Player[],
+    request: PropertyTransferTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    const property = await this.propertyContext(game);
+    return transferProperties({
+      game,
+      players,
+      playerId: request.playerId,
+      counterpartyPlayerId: request.counterpartyPlayerId,
+      giveTileIds: request.giveTileIds,
+      takeTileIds: request.takeTileIds,
+      cashGive: request.cashGive ?? 0,
+      cashTake: request.cashTake ?? 0,
+      property,
     });
   }
 
@@ -374,7 +423,7 @@ export class DefaultBankingService implements BankingService {
     game: Game,
     result: BankingOperationResult,
   ): Promise<void> {
-    if (result.transaction.type === 'AUCTION_PAYMENT') return;
+    if (result.transaction.settlesAuction !== undefined) return;
     assertReserveRespected(result.affectedPlayers, await this.runningAuction(game));
   }
 
@@ -556,8 +605,9 @@ export class DefaultBankingService implements BankingService {
   private async mortgagesFor(
     gameId: string,
     type: Transaction['type'],
+    reversedMortgage = false,
   ): Promise<{ mortgages: Mortgage[] } | Record<string, never>> {
-    return type === 'MORTGAGE' || type === 'MORTGAGE_REDEMPTION'
+    return type === 'MORTGAGE' || type === 'MORTGAGE_REDEMPTION' || reversedMortgage
       ? { mortgages: await this.mortgages.listActive(gameId) }
       : {};
   }
@@ -626,15 +676,32 @@ export class DefaultBankingService implements BankingService {
       (candidate) => candidate.id !== original.id,
     );
     const originalRegistryChanges =
-      this.properties !== undefined && original.tileId != null
+      this.properties !== undefined && (original.tileId != null || original.tileIds !== undefined)
         ? await this.properties.listChanges(game.id, original.id)
         : [];
+    const redeemedMortgageId =
+      original.type === 'MORTGAGE_REDEMPTION' && original.tileId != null
+        ? await this.mortgages.findRedeemedBy(game.id, original.id)
+        : null;
+    // A purchase can change the rent of its colour group (a full group doubles it).
+    const board = game.settings?.board;
+    const groupTileIds =
+      board == null
+        ? []
+        : (original.tileIds ?? (original.tileId == null ? [] : [original.tileId])).flatMap(
+            (tileId) => {
+              const tile = board.tiles.find((item) => item.id === tileId);
+              return tile === undefined ? [] : groupTiles(board, tile).map((item) => item.id);
+            },
+          );
     const result = reverseTransaction({
       game,
       players,
       original,
       later,
       originalRegistryChanges,
+      groupTileIds,
+      ...(redeemedMortgageId === null ? {} : { redeemedMortgageId }),
       comment: request.comment ?? null,
     });
     // The tiles must still be exactly as the original left them (a bankruptcy may have moved them).
@@ -813,6 +880,12 @@ export class DefaultBankingService implements BankingService {
         ...(await this.propertiesFor(game, existing.id, true)),
       };
     }
+    // The creditor may pay mortgage fees out of their own cash and must keep their leading bid
+    // covered; the bankrupt player's own bid is withdrawn in the same batch.
+    assertReserveRespected(
+      result.affectedPlayers.filter((change) => change.player.id !== request.playerId),
+      await this.runningAuction(game),
+    );
     await this.operations.persist({
       transactionId,
       transaction: result.transaction,
@@ -930,6 +1003,18 @@ export class DefaultBankingService implements BankingService {
   }
 }
 
+/** Whether a mortgaged tile changed hands, so the clients' mortgage lists have to be refreshed. */
+function mortgagesMoved(changes: readonly PropertyChange[] | undefined): boolean {
+  return (
+    changes?.some(
+      (change) =>
+        change.before.mortgaged &&
+        change.after.mortgaged &&
+        change.before.ownerPlayerId !== change.after.ownerPlayerId,
+    ) ?? false
+  );
+}
+
 /** The player's ACTIVE bank loan, if they have one. */
 function bankLoanOf(loans: readonly Loan[], playerId: string): Loan | null {
   return (
@@ -970,6 +1055,9 @@ function executeOperation(
     | MortgageTransactionRequest
     | TileMortgageTransactionRequest
     | PropertyPurchaseTransactionRequest
+    | PropertyBuildTransactionRequest
+    | PropertySellBuildingTransactionRequest
+    | PropertyTransferTransactionRequest
     | PayRentTransactionRequest
     | RedeemMortgageTransactionRequest
     | LoanIssueTransactionRequest

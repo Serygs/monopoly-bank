@@ -257,6 +257,25 @@ export function readTileId(body: Record<string, unknown>): string {
   return value;
 }
 
+/** A list of board tile ids (at most one per tile of the board), possibly empty. */
+function readTileIdList(body: Record<string, unknown>, key: string): string[] {
+  const value = body[key];
+  if (!Array.isArray(value) || value.length > 28)
+    throw new ApiValidationError(`${key} must be a list of board tile ids.`);
+  return value.map((item) => {
+    if (typeof item !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/u.test(item))
+      throw new ApiValidationError(`${key} must be a list of board tile ids.`);
+    return item;
+  });
+}
+
+function readNonNegativeInteger(body: Record<string, unknown>, key: string): number {
+  const value = body[key];
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
+    throw new ApiValidationError(`${key} must be zero or a positive integer.`);
+  return value;
+}
+
 function readPropertyName(body: Record<string, unknown>): string {
   const value = body.propertyName;
   const name = typeof value === 'string' ? normalizePropertyName(value) : null;
@@ -330,6 +349,44 @@ export async function parseCreateTransactionRequest(
         amount: readPositiveInteger(body, 'amount'),
       };
     case 'PROPERTY_PURCHASE':
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        tileId: readTileId(body),
+        ...(body.priceOverride === undefined
+          ? {}
+          : { priceOverride: readPositiveInteger(body, 'priceOverride') }),
+      };
+    case 'PROPERTY_TRANSFER': {
+      const playerId = readUuid(body, 'playerId');
+      const counterpartyPlayerId = readUuid(body, 'counterpartyPlayerId');
+      if (playerId === counterpartyPlayerId)
+        throw new ApiValidationError('counterpartyPlayerId must be another player.');
+      const giveTileIds = readTileIdList(body, 'giveTileIds');
+      const takeTileIds = readTileIdList(body, 'takeTileIds');
+      if (
+        new Set([...giveTileIds, ...takeTileIds]).size !==
+        giveTileIds.length + takeTileIds.length
+      )
+        throw new ApiValidationError('A property can only be traded once.');
+      if (giveTileIds.length + takeTileIds.length === 0)
+        throw new ApiValidationError('A trade needs at least one property.');
+      return {
+        type,
+        playerId,
+        counterpartyPlayerId,
+        giveTileIds,
+        takeTileIds,
+        ...(body.cashGive === undefined
+          ? {}
+          : { cashGive: readNonNegativeInteger(body, 'cashGive') }),
+        ...(body.cashTake === undefined
+          ? {}
+          : { cashTake: readNonNegativeInteger(body, 'cashTake') }),
+      };
+    }
+    case 'PROPERTY_BUILD':
+    case 'PROPERTY_SELL_BUILDING':
       return { type, playerId: readUuid(body, 'playerId'), tileId: readTileId(body) };
     case 'PAY_RENT':
       return {

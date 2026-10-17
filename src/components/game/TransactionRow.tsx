@@ -46,7 +46,11 @@ export function TransactionRow({
   const reversed = transaction.reversedByTransactionId != null;
   const tileName =
     transaction.tileId == null
-      ? undefined
+      ? transaction.tileIds === undefined
+        ? undefined
+        : transaction.tileIds
+            .map((id) => board?.tiles.find((tile) => tile.id === id)?.name ?? id)
+            .join(', ')
       : board?.tiles.find((tile) => tile.id === transaction.tileId)?.name;
   const title = transactionDescription(transaction, players, language, tileName);
   const timestamp = new Intl.DateTimeFormat(locale, {
@@ -68,6 +72,10 @@ export function TransactionRow({
   const comment = transaction.comment !== null && <em>{transaction.comment}</em>;
   // A reversed transaction stays visible, marked as undone; the reversal row sits above it.
   const reversedBadge = reversed && <small>{translate(language, 'reversedBadge')}</small>;
+  // A purchase paid at an agreed price instead of the card price is marked in the ledger.
+  const overriddenBadge = transaction.priceOverridden === true && (
+    <small>{translate(language, 'priceOverriddenBadge')}</small>
+  );
   if (variant === 'history')
     return (
       <li data-tone={tone} data-reversed={reversed ? 'true' : undefined}>
@@ -75,6 +83,7 @@ export function TransactionRow({
         <span className={playerId === undefined ? '' : 'player-history-amount'}>{amount}</span>
         <small>{timestamp}</small>
         {reversedBadge}
+        {overriddenBadge}
         {comment}
         {onReverse !== undefined && (
           <Button variant="quiet" className="justify-self-start" onClick={onReverse}>
@@ -88,6 +97,7 @@ export function TransactionRow({
       <Row title={title} timestamp={timestamp} />
       <span>{amount}</span>
       {reversedBadge}
+      {overriddenBadge}
       {comment}
       {onReverse !== undefined && (
         <Button variant="quiet" className="col-span-full justify-self-start" onClick={onReverse}>
