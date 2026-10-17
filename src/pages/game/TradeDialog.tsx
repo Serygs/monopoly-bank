@@ -8,7 +8,7 @@ import { AmountSelector } from '../../components/AmountSelector';
 import { Dialog } from '../../components/Dialog';
 import {
   Button,
-  DialogActions,
+  SheetActions,
   DialogBody,
   FieldHint,
   MoneyValue,
@@ -171,7 +171,7 @@ export function TradeDialog({
 
   if (confirming && counterparty !== null)
     return (
-      <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
+      <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose} sheet="flow">
         <DialogBody>{t('tradeReviewIntro')}</DialogBody>
         {errorNotice}
         <dl className="m-0 grid gap-(--mb-space-2)">
@@ -225,19 +225,19 @@ export function TradeDialog({
             </li>
           ))}
         </ul>
-        <DialogActions>
+        <SheetActions>
           <Button variant="secondary" disabled={submitting} onClick={() => setConfirming(false)}>
             {t('back')}
           </Button>
           <Button variant="primary" disabled={submitting} onClick={() => void submit()}>
             {submitting ? t('recording') : error === null ? t('confirmTransaction') : t('tryAgain')}
           </Button>
-        </DialogActions>
+        </SheetActions>
       </Dialog>
     );
 
   return (
-    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose}>
+    <Dialog title={title} closeLabel={t('closeDialog', { title })} onClose={onClose} sheet="flow">
       <DialogBody>{t('tradeIntro')}</DialogBody>
       {errorNotice}
       <PlayerPicker
@@ -311,14 +311,14 @@ export function TradeDialog({
           })}
         </Notice>
       )}
-      <DialogActions>
+      <SheetActions>
         <Button variant="secondary" type="button" onClick={onClose}>
           {t('cancel')}
         </Button>
         <Button variant="primary" disabled={!valid} onClick={() => setConfirming(true)}>
           {t('tradeReview')}
         </Button>
-      </DialogActions>
+      </SheetActions>
     </Dialog>
   );
 }

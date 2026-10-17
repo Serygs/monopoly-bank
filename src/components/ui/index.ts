@@ -3,7 +3,7 @@ export { BankSeal, type BankSealVariant } from './BankSeal';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { StepperBar, type StepperBarProps } from './StepperBar';
 export { Card, type CardProps, type CardVariant } from './Card';
-export { DialogActions, type DialogActionsProps } from './DialogActions';
+export { SheetActions, type SheetActionsProps } from './SheetActions';
 export { DialogBody, type DialogBodyProps } from './DialogBody';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
 export {
