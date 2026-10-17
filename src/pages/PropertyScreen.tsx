@@ -30,6 +30,7 @@ const intentLabelKeys = {
   PAY_RENT: 'propertyActionRent',
   PROPERTY_BUILD: 'propertyActionBuild',
   PROPERTY_SELL_BUILDING: 'propertyActionSellBuilding',
+  PROPERTY_TRANSFER: 'propertyActionTrade',
 } as const;
 
 export interface PropertyScreenProps {

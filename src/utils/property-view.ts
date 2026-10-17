@@ -217,7 +217,8 @@ export type TileIntentKind =
   | 'AUCTION'
   | 'PAY_RENT'
   | 'PROPERTY_BUILD'
-  | 'PROPERTY_SELL_BUILDING';
+  | 'PROPERTY_SELL_BUILDING'
+  | 'PROPERTY_TRANSFER';
 
 /** An action a wallet can start on one tile, with the wallet that performs it. */
 export interface TileIntent {
@@ -259,5 +260,15 @@ export function tileIntents(
   }
   if (owner !== null && actorPlayerId !== null && owner !== actorPlayerId && !view.mortgaged)
     intents.push({ kind: 'PAY_RENT', tileId, playerId: actorPlayerId });
+  // A trade starts from either side of a tile; tiles of a group with buildings cannot be traded.
+  const groupBuilt = views.some(
+    (other) => other.tile.group === view.tile.group && other.houses > 0,
+  );
+  if (owner !== null && !groupBuilt) {
+    if (controlledPlayerIds.includes(owner))
+      intents.push({ kind: 'PROPERTY_TRANSFER', tileId, playerId: owner });
+    else if (actorPlayerId !== null && owner !== actorPlayerId)
+      intents.push({ kind: 'PROPERTY_TRANSFER', tileId, playerId: actorPlayerId });
+  }
   return intents;
 }

@@ -291,6 +291,29 @@ export interface PropertySellBuildingTransactionRequest extends Omit<
 }
 
 /**
+ * Board games: a trade. `playerId` (the wallet that makes it) and `counterpartyPlayerId` swap tiles
+ * and optionally cash. Each side pays the bank 10% of the mortgage value of every mortgaged tile
+ * it receives (the tile stays mortgaged). Recorded at once, in one batch; in a game with payment
+ * confirmation the caller must control both wallets.
+ */
+export interface PropertyTransferTransactionRequest extends Omit<
+  TransactionRequestBase,
+  'comment'
+> {
+  type: 'PROPERTY_TRANSFER';
+  playerId: string;
+  counterpartyPlayerId: string;
+  /** Tiles that leave `playerId` for the counterparty. */
+  giveTileIds: string[];
+  /** Tiles that come from the counterparty to `playerId`. */
+  takeTileIds: string[];
+  /** Paid by `playerId` to the counterparty; 0 or absent for none. */
+  cashGive?: number;
+  /** Paid by the counterparty to `playerId`; 0 or absent for none. */
+  cashTake?: number;
+}
+
+/**
  * Board games: the payer pays the tile's owner the rent the server works out from the registry.
  * `diceSum` is required for a utility (entered by the payer) and rejected otherwise.
  */
@@ -518,6 +541,7 @@ export type CreateTransactionRequest =
   | PropertyPurchaseTransactionRequest
   | PropertyBuildTransactionRequest
   | PropertySellBuildingTransactionRequest
+  | PropertyTransferTransactionRequest
   | PayRentTransactionRequest
   | RedeemMortgageTransactionRequest
   | LoanIssueTransactionRequest

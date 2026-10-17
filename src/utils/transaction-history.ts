@@ -27,6 +27,13 @@ export function transactionDescription(
       return withTile(
         `${nameOf(negative?.playerId)} · ${translate(language, 'propertyPurchaseLabel')}`,
       );
+    case 'PROPERTY_TRANSFER': {
+      const initiator = transaction.initiatorPlayerId ?? negative?.playerId;
+      const other = transaction.participants.find((item) => item.playerId !== initiator);
+      return withTile(
+        `${nameOf(initiator ?? undefined)} ⇄ ${nameOf(other?.playerId)} · ${translate(language, 'propertyTradeLabel')}`,
+      );
+    }
     case 'PROPERTY_BUILD':
       return withTile(
         `${nameOf(negative?.playerId)} · ${translate(language, 'propertyBuildLabel')}`,

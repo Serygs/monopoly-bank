@@ -46,7 +46,11 @@ export function TransactionRow({
   const reversed = transaction.reversedByTransactionId != null;
   const tileName =
     transaction.tileId == null
-      ? undefined
+      ? transaction.tileIds === undefined
+        ? undefined
+        : transaction.tileIds
+            .map((id) => board?.tiles.find((tile) => tile.id === id)?.name ?? id)
+            .join(', ')
       : board?.tiles.find((tile) => tile.id === transaction.tileId)?.name;
   const title = transactionDescription(transaction, players, language, tileName);
   const timestamp = new Intl.DateTimeFormat(locale, {

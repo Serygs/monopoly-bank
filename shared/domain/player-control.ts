@@ -23,6 +23,7 @@ export function controlledPlayerIdForBankingCommand(
     case 'PROPERTY_PURCHASE':
     case 'PROPERTY_BUILD':
     case 'PROPERTY_SELL_BUILDING':
+    case 'PROPERTY_TRANSFER':
       return request.playerId;
     case 'PAY_RENT':
       return request.payerPlayerId;

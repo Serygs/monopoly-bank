@@ -2,13 +2,14 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { propertyPurchase } from '../../shared/domain/banking.js';
+import { propertyPurchase, transferProperties } from '../../shared/domain/banking.js';
 import { buildGameSettings } from '../../shared/domain/game-rules.js';
 import { defaultGameRules } from '../../shared/types/monopoly.js';
 import { DefaultAuctionService } from '../services/auction-service.js';
 import { DefaultBankingService } from '../services/banking-service.js';
 import { D1AuctionRepository } from './auction-repository.js';
 import { D1BankingOperationRepository } from './banking-operation-repository.js';
+import { D1GameStatisticsRepository } from './game-statistics-repository.js';
 import { D1GameRepository } from './game-repository.js';
 import { D1LoanRepository } from './loan-repository.js';
 import { D1MortgageRepository } from './mortgage-repository.js';
@@ -497,6 +498,239 @@ describe('board registry (real SQLite)', () => {
     it('is refused in a game without a board', async () => {
       await setup(false);
       await expect(buildOn('zhitna')).rejects.toMatchObject({ code: 'BOARD_DISABLED' });
+    });
+  });
+
+  describe('trading', () => {
+    const owner = (id: string) =>
+      (
+        database
+          .prepare('SELECT owner_player_id AS o FROM game_properties WHERE tile_id = ?')
+          .get(id) as { o: string | null }
+      ).o;
+    const trade = (
+      body: {
+        giveTileIds: string[];
+        takeTileIds: string[];
+        cashGive?: number;
+        cashTake?: number;
+      },
+      playerId = 'a',
+      counterpartyPlayerId = 'b',
+    ) =>
+      banking.createTransaction('game', {
+        type: 'PROPERTY_TRANSFER',
+        playerId,
+        counterpartyPlayerId,
+        ...body,
+      });
+    const mortgageOwner = () =>
+      (
+        database.prepare("SELECT player_id AS p FROM mortgages WHERE state = 'ACTIVE'").get() as
+          { p: string } | undefined
+      )?.p;
+
+    it('swaps two tiles for no money and lists the trade for both traders', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await buy('b', 'riga_rail');
+      const { transaction } = await trade({ giveTileIds: ['zhitna'], takeTileIds: ['riga_rail'] });
+      expect(transaction).toMatchObject({
+        type: 'PROPERTY_TRANSFER',
+        amount: 0,
+        initiatorPlayerId: 'a',
+        tileIds: expect.arrayContaining(['zhitna', 'riga_rail']),
+      });
+      expect(owner('zhitna')).toBe('b');
+      expect(owner('riga_rail')).toBe('a');
+      for (const playerId of ['a', 'b'])
+        expect(
+          (await transactions.listByPlayerId('game', playerId)).map((item) => item.id),
+        ).toContain(transaction.id);
+    });
+
+    it('gifts a tile with cash in both directions netted into one amount', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      const before = balance('a');
+      const { transaction } = await trade({
+        giveTileIds: ['zhitna'],
+        takeTileIds: [],
+        cashTake: 700_000,
+        cashGive: 100_000,
+      });
+      expect(transaction.amount).toBe(600_000);
+      expect(balance('a')).toBe(before + 600_000);
+      expect(balance('b')).toBe(BALANCE - 600_000);
+      expect(owner('zhitna')).toBe('b');
+    });
+
+    it('moves the mortgage with the tile, charges the receiver 10% and lets them redeem it', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await banking.createTransaction('game', {
+        type: 'MORTGAGE',
+        playerId: 'a',
+        tileId: 'zhitna',
+      });
+      const before = balance('b');
+      const response = await trade({ giveTileIds: ['zhitna'], takeTileIds: [] });
+      expect(balance('b')).toBe(before - 30_000);
+      expect(mortgageOwner()).toBe('b');
+      expect(tile('zhitna').mortgaged).toBe(1);
+      expect(response.mortgages?.map((item) => item.playerId)).toEqual(['b']);
+      // The receiver, not the old owner, can redeem it (value + 10%).
+      const mortgageId = (
+        database.prepare("SELECT id FROM mortgages WHERE state = 'ACTIVE'").get() as {
+          id: string;
+        }
+      ).id;
+      await expect(
+        banking.createTransaction('game', {
+          type: 'MORTGAGE_REDEMPTION',
+          playerId: 'a',
+          mortgageId,
+        }),
+      ).rejects.toMatchObject({ code: 'MORTGAGE_NOT_FOUND' });
+      await banking.createTransaction('game', {
+        type: 'MORTGAGE_REDEMPTION',
+        playerId: 'b',
+        mortgageId,
+      });
+      expect(tile('zhitna').mortgaged).toBe(0);
+    });
+
+    it('refuses a receiver who cannot pay the fee and writes nothing', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await banking.createTransaction('game', {
+        type: 'MORTGAGE',
+        playerId: 'a',
+        tileId: 'zhitna',
+      });
+      database.exec("UPDATE players SET balance = 10 WHERE id = 'b'");
+      const count_ = count('transactions');
+      await expect(trade({ giveTileIds: ['zhitna'], takeTileIds: [] })).rejects.toMatchObject({
+        code: 'INSUFFICIENT_FUNDS',
+      });
+      expect(count('transactions')).toBe(count_);
+      expect(owner('zhitna')).toBe('a');
+      expect(mortgageOwner()).toBe('a');
+    });
+
+    it("refuses tiles of a built-on colour group and tiles that are not the trader's", async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await buy('a', 'nagatinska');
+      await banking.createTransaction('game', {
+        type: 'PROPERTY_BUILD',
+        playerId: 'a',
+        tileId: 'zhitna',
+      });
+      await expect(trade({ giveTileIds: ['nagatinska'], takeTileIds: [] })).rejects.toMatchObject({
+        code: 'PROPERTY_HAS_BUILDINGS',
+      });
+      await expect(trade({ giveTileIds: ['riga_rail'], takeTileIds: [] })).rejects.toMatchObject({
+        code: 'PROPERTY_NOT_OWNED',
+      });
+    });
+
+    it('rolls everything back when a tile moved between reading and writing', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      const game_ = (await games.getById('game'))!;
+      const stale = transferProperties({
+        game: game_,
+        players: await players.listByGameId('game'),
+        playerId: 'a',
+        counterpartyPlayerId: 'b',
+        giveTileIds: ['zhitna'],
+        takeTileIds: [],
+        cashGive: 0,
+        cashTake: 100_000,
+        property: { board: settings.board!, registry: await properties.listByGame('game') },
+      });
+      database.exec("UPDATE game_properties SET owner_player_id = 'b' WHERE tile_id = 'zhitna'");
+      const count_ = count('transactions');
+      await expect(
+        operations.persist({
+          transactionId: newId(),
+          transaction: stale.transaction,
+          balanceChanges: stale.affectedPlayers,
+        }),
+      ).rejects.toMatchObject({ name: 'DatabaseError' });
+      expect(count('transactions')).toBe(count_);
+      expect(balance('b')).toBe(BALANCE);
+    });
+
+    it('is reversed by the trader: tiles, mortgage and money all return', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await banking.createTransaction('game', {
+        type: 'MORTGAGE',
+        playerId: 'a',
+        tileId: 'zhitna',
+      });
+      const balanceA = balance('a');
+      const balanceB = balance('b');
+      const { transaction } = await trade({
+        giveTileIds: ['zhitna'],
+        takeTileIds: [],
+        cashTake: 100_000,
+      });
+      await reverse(transaction.id);
+      expect(owner('zhitna')).toBe('a');
+      expect(mortgageOwner()).toBe('a');
+      expect(balance('a')).toBe(balanceA);
+      expect(balance('b')).toBe(balanceB);
+    });
+
+    it('reverses a zero-money swap even though no money moved', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await buy('b', 'riga_rail');
+      const { transaction } = await trade({ giveTileIds: ['zhitna'], takeTileIds: ['riga_rail'] });
+      await reverse(transaction.id);
+      expect(owner('zhitna')).toBe('a');
+      expect(owner('riga_rail')).toBe('b');
+    });
+
+    it('is blocked from reversal by a later operation on a traded tile', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await buy('b', 'riga_rail');
+      const { transaction } = await trade({ giveTileIds: ['zhitna'], takeTileIds: ['riga_rail'] });
+      await banking.createTransaction('game', {
+        type: 'MORTGAGE',
+        playerId: 'b',
+        tileId: 'zhitna',
+      });
+      await expect(reverse(transaction.id)).rejects.toMatchObject({
+        code: 'REVERSAL_BLOCKED_BY_LATER_OPERATION',
+      });
+      expect(owner('zhitna')).toBe('b');
+    });
+
+    it('is refused in a game without a board', async () => {
+      await setup(false);
+      await expect(trade({ giveTileIds: ['zhitna'], takeTileIds: [] })).rejects.toMatchObject({
+        code: 'BOARD_DISABLED',
+      });
+    });
+
+    it('leaves a zero-money trade out of the money statistics', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await trade({ giveTileIds: ['zhitna'], takeTileIds: [] });
+      const stats = await new D1GameStatisticsRepository(d1(database)).calculate(
+        (await games.getById('game'))!,
+        await players.listByGameId('game'),
+      );
+      // Only the purchase moved money; the trade counts as an operation but adds nothing.
+      expect(stats.totalMoneyTransferred).toBe(600_000);
+      expect(stats.largestTransaction).toBe(600_000);
+      expect(stats.totalTransactions).toBe(2);
+      expect(stats.awards.biggestOperation?.type).toBe('PROPERTY_PURCHASE');
     });
   });
 });

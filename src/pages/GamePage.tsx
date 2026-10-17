@@ -43,6 +43,7 @@ import { ReverseTransactionDialog } from './game/ReverseTransactionDialog';
 import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
 import { StartAuctionDialog } from './game/StartAuctionDialog';
+import { TradeDialog } from './game/TradeDialog';
 import { WalletsSection } from './game/WalletsSection';
 import {
   applyLiveEvent,
@@ -108,6 +109,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
   const lastAppliedVersion = useRef(0);
   // The wallet putting a property up for auction, with the suggested name.
+  const [tradePrompt, setTradePrompt] = useState<{ player: Player; tileId: string } | null>(null);
   const [auctionPrompt, setAuctionPrompt] = useState<{
     player: Player;
     lotName: string;
@@ -340,6 +342,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     setPropertyOpen(false);
     if (intent.kind === 'AUCTION') {
       setAuctionPrompt({ player: wallet, lotName: '', tileId: intent.tileId });
+      return;
+    }
+    if (intent.kind === 'PROPERTY_TRANSFER') {
+      setTradePrompt({ player: wallet, tileId: intent.tileId });
       return;
     }
     setWalletIntent({ action: intent.kind, tileId: intent.tileId });
@@ -613,6 +619,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               setAuctionPrompt({ player: selectedPlayer, lotName });
               setSelectedPlayer(null);
             }}
+            onStartTrade={() => {
+              setTradePrompt({ player: selectedPlayer, tileId: '' });
+              setSelectedPlayer(null);
+            }}
             favoriteAmounts={details.favoriteAmounts ?? []}
             recentAmounts={details.recentAmounts ?? []}
             onToggleFavorite={(amount) =>
@@ -742,6 +752,32 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               </Button>
             </Notice>
           )}
+        {tradePrompt !== null && board !== null && (
+          <TradeDialog
+            gameId={gameId}
+            player={tradePrompt.player}
+            players={details.players}
+            currency={details.game.currency}
+            board={board}
+            properties={properties}
+            initialTileId={tradePrompt.tileId}
+            onClose={() => setTradePrompt(null)}
+            onCompleted={(result) => {
+              playPaymentFeedback(preferences.sound);
+              vibrate(35, preferences.vibration);
+              setDetails({
+                ...details,
+                players: result.players,
+                ...(result.mortgages === undefined ? {} : { mortgages: result.mortgages }),
+                ...(result.properties === undefined
+                  ? {}
+                  : { properties: mergeProperties(details.properties, result.properties) }),
+              });
+              setTradePrompt(null);
+              notify({ tone: 'success', message: t('tradeRecorded') });
+            }}
+          />
+        )}
         {auctionPrompt !== null && (
           <StartAuctionDialog
             gameId={gameId}

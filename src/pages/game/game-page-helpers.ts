@@ -239,6 +239,8 @@ export function buildRequest(
               ? {}
               : { priceOverride: options.priceOverride }),
           };
+    case 'PROPERTY_TRANSFER':
+      return null; // A trade is built by its own dialog, never by the single-amount form.
     case 'PROPERTY_BUILD':
     case 'PROPERTY_SELL_BUILDING':
       return options.tileId === undefined || options.tileId === ''
@@ -376,6 +378,7 @@ export function actionLabel(type: ActionType, t: Translate): string {
     MORTGAGE: t('mortgageProperty'),
     MORTGAGE_REDEMPTION: t('redeemMortgage'),
     PROPERTY_PURCHASE: t('buyProperty'),
+    PROPERTY_TRANSFER: t('tradeAction'),
     PROPERTY_BUILD: t('buildProperty'),
     PROPERTY_SELL_BUILDING: t('sellBuilding'),
     PAY_RENT: t('payRent'),
@@ -399,6 +402,7 @@ export function actionDescription(action: ActionType, name: string, t: Translate
       MORTGAGE: 'actionMortgage',
       MORTGAGE_REDEMPTION: 'actionRedeemMortgage',
       PROPERTY_PURCHASE: 'actionBuyProperty',
+      PROPERTY_TRANSFER: 'actionTrade',
       PROPERTY_BUILD: 'actionBuildProperty',
       PROPERTY_SELL_BUILDING: 'actionSellBuilding',
       PAY_RENT: 'actionPayRent',
@@ -469,6 +473,7 @@ export function transactionLabel(type: TransactionType, t: Translate): string {
     MORTGAGE: t('mortgageLabel'),
     MORTGAGE_REDEMPTION: t('redemptionLabel'),
     PROPERTY_PURCHASE: t('propertyPurchaseLabel'),
+    PROPERTY_TRANSFER: t('propertyTradeLabel'),
     PROPERTY_BUILD: t('propertyBuildLabel'),
     PROPERTY_SELL_BUILDING: t('propertySellBuildingLabel'),
     LOAN_ISSUE: t('loanIssueLabel'),
