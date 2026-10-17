@@ -408,7 +408,10 @@ async function route(
     const gameId = parseResourceId(regenerateJoinCodeMatch[1], 'gameId');
     if ((await dependencies.access.requireMember(gameId, actor.id)) !== 'OWNER')
       throw new GameOwnerRequiredError();
-    return success(await dependencies.games.regenerateJoinCode(gameId, actor.id));
+    const regenerated = await dependencies.games.regenerateJoinCode(gameId, actor.id);
+    // Audit trail: the event carries the game id only, never the old or the new code.
+    securityEvent('join_code_regenerated', { requestId, gameId });
+    return success(regenerated);
   }
   if (summaryMatch !== null && request.method === 'GET') {
     const gameId = parseResourceId(summaryMatch[1], 'gameId');

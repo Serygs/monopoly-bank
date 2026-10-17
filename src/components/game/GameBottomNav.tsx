@@ -7,9 +7,10 @@ export interface GameBottomNavProps {
   /** The destination whose sheet is open; it is highlighted and tapping it again closes it. */
   active?: GameNavDestination | null;
   onClose?: () => void;
-  pendingRequests: number;
-  /** Show the Property item (board games only) with the viewer's card count as its badge. */
-  property?: { count: number; onOpen: () => void };
+  /** Something waits for the viewer's answer (an incoming trade, payment or loan request): a dot on Activity. */
+  hasPending: boolean;
+  /** Show the Property item (board games only). */
+  property?: { onOpen: () => void };
   payDisabled: boolean;
   activityDisabled: boolean;
   toolsDisabled: boolean;
@@ -27,7 +28,7 @@ export interface GameBottomNavProps {
 export function GameBottomNav({
   active = null,
   onClose,
-  pendingRequests,
+  hasPending,
   property,
   payDisabled,
   activityDisabled,
@@ -57,10 +58,7 @@ export function GameBottomNav({
           active: active === 'activity',
           disabled: activityDisabled,
           onPress: press('activity', onOpenActivity),
-          badge: {
-            count: pendingRequests,
-            label: t('navPendingRequests', { count: pendingRequests }),
-          },
+          dot: hasPending ? { label: t('navPendingDot') } : undefined,
         },
         {
           key: 'statistics',
@@ -88,10 +86,6 @@ export function GameBottomNav({
                 active: active === 'property',
                 disabled: activityDisabled,
                 onPress: press('property', property.onOpen),
-                badge: {
-                  count: property.count,
-                  label: t('navPropertyCards', { count: property.count }),
-                },
               },
             ]),
         {

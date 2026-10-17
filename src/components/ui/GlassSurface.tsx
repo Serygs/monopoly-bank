@@ -23,8 +23,8 @@ const variantClass: Record<GlassSurfaceVariant, string> = {
 };
 
 /**
- * The one glass surface. Liquid Glass styles come from `glass.css` tokens; Classic Bank gets a
- * plain elevated surface with the same radius vocabulary.
+ * The one glass surface. Border, fill and shadow come from the `--mb-glass-*` tokens through
+ * `glass.css`: translucent in Liquid Glass, solid and flat in Classic Bank. It never branches on the style.
  */
 export function GlassSurface({
   variant = 'card',
@@ -37,7 +37,7 @@ export function GlassSurface({
   return (
     <Element
       className={cx(
-        'border border-border bg-surface-elevated text-primary',
+        'text-primary',
         variantClass[variant],
         variant === 'card' && blur && 'glass-card-blur',
         tinted && 'glass-tint-layer',

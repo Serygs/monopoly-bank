@@ -4,7 +4,8 @@ export type SecurityEventCategory =
   | 'rate_limited'
   | 'session_revoked'
   | 'session_rejected'
-  | 'login_rejected';
+  | 'login_rejected'
+  | 'join_code_regenerated';
 export type SessionRejectionReason = 'missing_cookie' | 'expired_or_revoked' | 'account_missing';
 export type LoginRejectionReason = 'account_missing' | 'guest_account' | 'password_mismatch';
 

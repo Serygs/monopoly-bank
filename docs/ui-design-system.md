@@ -444,10 +444,20 @@ secondary text over the card, panel and popover tints and for the white label on
 button, against the most saturated mesh colours in both colour modes. Change a tint or a text
 token and that test says whether it still passes.
 
+Classic Bank: the same tokens exist in `visual-styles/classic-bank.css` with opaque values (solid
+surfaces from the colour tokens, flat borders, no rim light, `--mb-glass-blur: 0px`, a transparent
+tint layer). `glass.css` applies the same `.glass-*` rules to both styles (Classic's copy sits in
+`@layer components`, so a surface's own utilities still win). Shared components never branch on the
+style with `glass:` / `classic:` or hard-coded rgb values; they use the classes and tokens, and
+only components that predate the glass system keep their per-style variants.
+
 Navigation and sheets: the bottom navigation is a floating capsule (12px insets plus safe area,
-glass with rim light, content scrolls under it); its raised action is always the inverse brand
-style with a ring only while its sheet is open, and its label shares the tab labels' baseline. The
-count badge is a neutral accent pill, not an alert. `SheetActions` is one "Back | Primary" row on
+glass with rim light, content scrolls under it, fading out above it through a gradient to the
+canvas colour as tall as capsule + inset + safe area); its raised action is always the inverse
+brand style with a ring only while its sheet is open, and its label shares the tab labels'
+baseline. Items never show counts: `dot` is a small neutral accent dot (not red, no number, not a
+live region, with a screen-reader label) shown only while a request waits for the viewer's answer
+(an incoming trade, payment or loan request), on Activity. `SheetActions` is one "Back | Primary" row on
 phones (the primary wider; a lone button is full width) with no background strip.
 
 ### Form primitives
