@@ -12,13 +12,13 @@ import {
   type Mortgage,
   type Player,
 } from '../../../shared/types/monopoly';
+import type { PropertyGroupId } from '../../../shared/board';
 import { buildGameSettings } from '../../../shared/domain/game-rules';
 import { normalizePropertyName, redemptionCost } from '../../../shared/domain/mortgage';
-import { sellRefund } from '../../../shared/domain/property';
+import { MAX_BUILDINGS } from '../../../shared/domain/property';
 import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { AmountSelector } from '../../components/AmountSelector';
 import { Dialog } from '../../components/Dialog';
-import { useBuildingLabel } from '../../components/game/property-labels';
 import { WalletMenu } from '../../components/game/WalletMenu';
 import {
   Button,
@@ -44,14 +44,17 @@ import { formatMoney } from '../../utils/money';
 import { presetAmounts } from '../../utils/quick-amounts';
 import {
   buildableTiles,
+  buildingGroups,
   freeTiles,
   isDiceSum,
   mortgageableTiles,
   rentableTiles,
   rentDue,
   sellableTiles,
+  previewBuildings,
   tileRent,
   tileViews,
+  type BuildMode,
   type TileView,
 } from '../../utils/property-view';
 import { Confirmation } from './Confirmation';
@@ -72,6 +75,7 @@ import {
 import { InterestRatePicker, LoanPicker } from './LoanFields';
 import { MortgageDetails, RedemptionPicker } from './MortgageFields';
 import { PlayerPicker } from './PlayerPicker';
+import { BuildingStepper } from './BuildingStepper';
 import { TilePicker, type TilePickerItem } from './TilePicker';
 
 export interface BankingDialogProps {
@@ -189,7 +193,6 @@ export function BankingDialog({
   onPaymentRequested,
 }: BankingDialogProps) {
   const { t } = useLanguage();
-  const buildingLabel = useBuildingLabel();
   const initialBankLoan = rules.bankLoans && settleOnOpen ? activeBankLoan(loans, player.id) : null;
   const board = settings?.board ?? null;
   // Quick entry from a redeemable tile: the player's active mortgage on it fixes the cost.
@@ -225,6 +228,10 @@ export function BankingDialog({
   const [overrideOn, setOverrideOn] = useState(false);
   const [overridePrice, setOverridePrice] = useState('');
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  // Building and selling: the colour group being edited and the levels the player set on it.
+  // `null` levels = untouched, so a quick entry from a tile starts one step on that street.
+  const [buildGroup, setBuildGroup] = useState<PropertyGroupId | ''>('');
+  const [buildLevels, setBuildLevels] = useState<Record<string, number> | null>(null);
   const [mortgageId, setMortgageId] = useState(initialRedemption?.id ?? '');
   const [loanId, setLoanId] = useState(initialBankLoan?.id ?? '');
   const [ratePercent, setRatePercent] = useState<InterestRatePercent | null>(null);
@@ -247,6 +254,37 @@ export function BankingDialog({
       action === 'PROPERTY_BUILD' ||
       action === 'PROPERTY_SELL_BUILDING');
   const selectedTile = views.find((view) => view.tile.id === tileId) ?? null;
+  const buildMode: BuildMode | null =
+    action === 'PROPERTY_BUILD' ? 'BUILD' : action === 'PROPERTY_SELL_BUILDING' ? 'SELL' : null;
+  const buildingGroupIds =
+    board !== null && buildMode !== null ? buildingGroups(board, views, player.id, buildMode) : [];
+  // The group is the one picked, the one of the tile the sheet opened from, or the only one there is.
+  const quickGroup = selectedTile?.tile.group;
+  const activeBuildGroup: PropertyGroupId | '' =
+    buildGroup !== '' && buildingGroupIds.includes(buildGroup)
+      ? buildGroup
+      : quickGroup !== undefined && buildingGroupIds.includes(quickGroup)
+        ? quickGroup
+        : buildingGroupIds.length === 1
+          ? (buildingGroupIds[0] ?? '')
+          : '';
+  const quickLevels: Record<string, number> =
+    selectedTile === null || buildMode === null
+      ? {}
+      : {
+          [selectedTile.tile.id]: Math.min(
+            MAX_BUILDINGS,
+            Math.max(0, selectedTile.houses + (buildMode === 'BUILD' ? 1 : -1)),
+          ),
+        };
+  const effectiveBuildLevels =
+    activeBuildGroup === ''
+      ? {}
+      : (buildLevels ?? (quickGroup === activeBuildGroup ? quickLevels : {}));
+  const buildPreview =
+    board !== null && buildMode !== null && activeBuildGroup !== ''
+      ? previewBuildings(board, views, player.id, effectiveBuildLevels, buildMode)
+      : null;
   const diceSumValue = diceSum === '' ? undefined : Number(diceSum);
   const needsDiceSum = action === 'PAY_RENT' && selectedTile?.tile.type === 'utility';
   const rentAmount =
@@ -264,17 +302,17 @@ export function BankingDialog({
       : undefined;
   // What the chosen tile costs or pays, from the game's board snapshot.
   const tileAmount =
-    selectedTile === null
-      ? 0
-      : action === 'PROPERTY_PURCHASE'
-        ? (purchaseOverride ?? selectedTile.tile.price)
-        : action === 'PROPERTY_BUILD'
-          ? (selectedTile.tile.houseCost ?? 0)
-          : action === 'PROPERTY_SELL_BUILDING' && board !== null
-            ? sellRefund(board, selectedTile.tile.id)
-            : action === 'MORTGAGE'
-              ? selectedTile.tile.mortgage
-              : (rentAmount ?? 0);
+    buildMode !== null
+      ? buildPreview?.ok === true
+        ? buildPreview.amount
+        : 0
+      : selectedTile === null
+        ? 0
+        : action === 'PROPERTY_PURCHASE'
+          ? (purchaseOverride ?? selectedTile.tile.price)
+          : action === 'MORTGAGE'
+            ? selectedTile.tile.mortgage
+            : (rentAmount ?? 0);
   const targetRequired = action === 'PLAYER_TO_PLAYER' || action === 'LOAN_ISSUE';
   // A lender must still be playing; payments to anyone else are left to the Worker's checks.
   const recipients = players.filter(
@@ -324,7 +362,8 @@ export function BankingDialog({
       ? null
       : buildRequest(requestAction, player.id, effectiveTargetId, amountValue, comment, {
           exactLanding,
-          ...(tileAction ? { tileId } : {}),
+          ...(tileAction && buildMode === null ? { tileId } : {}),
+          ...(buildPreview?.ok === true ? { targets: buildPreview.targets } : {}),
           ...(purchaseOverride === undefined ? {} : { priceOverride: purchaseOverride }),
           ...(needsDiceSum && diceSumValue !== undefined ? { diceSum: diceSumValue } : {}),
           propertyName: tidyName,
@@ -362,7 +401,8 @@ export function BankingDialog({
     request !== null &&
     (!targetRequired || (target !== null && target.id !== player.id)) &&
     (!amountRequired || isPositiveInteger(amount)) &&
-    (!tileAction || selectedTile !== null) &&
+    (!tileAction || selectedTile !== null || buildMode !== null) &&
+    (buildMode === null || buildPreview?.ok === true) &&
     (action !== 'PROPERTY_PURCHASE' || !overrideOn || isPositiveInteger(overridePrice)) &&
     (action !== 'PAY_RENT' || (rentAmount !== null && rentAmount > 0)) &&
     (action !== 'MORTGAGE' ||
@@ -385,6 +425,8 @@ export function BankingDialog({
     setOverrideConfirmed(false);
     setMortgageId('');
     setTileId('');
+    setBuildGroup('');
+    setBuildLevels(null);
     setDiceSum('');
     setLoanId('');
     setRatePercent(null);
@@ -438,6 +480,19 @@ export function BankingDialog({
     setTileId(view.tile.id);
     setOverrideConfirmed(false);
     setDiceSum('');
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeBuildGroup = (group: PropertyGroupId) => {
+    setBuildGroup(group);
+    setBuildLevels({});
+    setError(null);
+    commandIdRef.current = null;
+  };
+
+  const changeBuildLevels = (levels: Record<string, number>) => {
+    setBuildLevels(levels);
     setError(null);
     commandIdRef.current = null;
   };
@@ -565,26 +620,8 @@ export function BankingDialog({
     view,
     caption: t('tilePickerMortgageFor', { amount: money(view.tile.mortgage) }),
   }));
-  const buildItems: TilePickerItem[] =
-    board === null
-      ? []
-      : buildableTiles(board, views, player.id).map((view) => ({
-          view,
-          caption: t('tilePickerBuildFor', {
-            amount: money(view.tile.houseCost ?? 0),
-            level: buildingLabel(view.houses + 1) ?? '',
-          }),
-        }));
-  const sellItems: TilePickerItem[] =
-    board === null
-      ? []
-      : sellableTiles(board, views, player.id).map((view) => ({
-          view,
-          caption: t('tilePickerSellFor', {
-            amount: money(sellRefund(board, view.tile.id)),
-            level: buildingLabel(view.houses) ?? '',
-          }),
-        }));
+  const canBuildAny = board !== null && buildableTiles(board, views, player.id).length > 0;
+  const canSellAny = board !== null && sellableTiles(board, views, player.id).length > 0;
   const redeemItems: TilePickerItem[] = tileMortgages.flatMap((item) => {
     const view = views.find((candidate) => candidate.tile.id === item.tileId);
     return view === undefined
@@ -622,11 +659,22 @@ export function BankingDialog({
     action === 'PROPERTY_SELL_BUILDING' ||
     action === 'PAY_RENT';
   const confirmedPropertyName =
-    selectedTile !== null && tileAction
-      ? selectedTile.tile.name
-      : action === 'MORTGAGE'
-        ? tidyName
-        : selectedMortgage?.propertyName;
+    buildPreview?.ok === true
+      ? views
+          .filter((view) => buildPreview.targets[view.tile.id] !== undefined)
+          .map((view) =>
+            t('buildingsSummaryLine', {
+              name: view.tile.name,
+              from: view.houses,
+              to: buildPreview.targets[view.tile.id] ?? view.houses,
+            }),
+          )
+          .join(', ')
+      : selectedTile !== null && tileAction
+        ? selectedTile.tile.name
+        : action === 'MORTGAGE'
+          ? tidyName
+          : selectedMortgage?.propertyName;
 
   const title =
     requestAction === null
@@ -734,7 +782,7 @@ export function BankingDialog({
                         },
                       ]
                     : []),
-                  ...(board !== null && buildItems.length > 0
+                  ...(canBuildAny
                     ? [
                         {
                           key: 'PROPERTY_BUILD',
@@ -744,7 +792,7 @@ export function BankingDialog({
                         },
                       ]
                     : []),
-                  ...(board !== null && sellItems.length > 0
+                  ...(canSellAny
                     ? [
                         {
                           key: 'PROPERTY_SELL_BUILDING',
@@ -999,20 +1047,19 @@ export function BankingDialog({
                 )}
               </div>
             )}
-            {board !== null && action === 'PROPERTY_BUILD' && (
-              <TilePicker
-                legend={t('tileChooseBuild')}
-                items={buildItems}
-                value={tileId}
-                onChange={chooseTile}
-              />
-            )}
-            {board !== null && action === 'PROPERTY_SELL_BUILDING' && (
-              <TilePicker
-                legend={t('tileChooseSellBuilding')}
-                items={sellItems}
-                value={tileId}
-                onChange={chooseTile}
+            {board !== null && buildMode !== null && (
+              <BuildingStepper
+                board={board}
+                views={views}
+                playerId={player.id}
+                mode={buildMode}
+                groups={buildingGroupIds}
+                group={activeBuildGroup}
+                onGroupChange={changeBuildGroup}
+                levels={effectiveBuildLevels}
+                onLevelsChange={changeBuildLevels}
+                balance={available}
+                currency={currency}
               />
             )}
             {board !== null && action === 'MORTGAGE' && (

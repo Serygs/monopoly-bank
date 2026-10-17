@@ -369,7 +369,14 @@ export class DefaultBankingService implements BankingService {
     request: PropertyBuildTransactionRequest | PropertySellBuildingTransactionRequest,
   ): Promise<BankingOperationResult> {
     const property = await this.propertyContext(game, request.tileId);
-    const command = { game, players, playerId: request.playerId, tileId: request.tileId, property };
+    const command = {
+      game,
+      players,
+      playerId: request.playerId,
+      property,
+      ...(request.tileId === undefined ? {} : { tileId: request.tileId }),
+      ...(request.targets === undefined ? {} : { targets: request.targets }),
+    };
     return request.type === 'PROPERTY_BUILD' ? buildProperty(command) : sellBuilding(command);
   }
 

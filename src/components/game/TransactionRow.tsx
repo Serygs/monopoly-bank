@@ -44,14 +44,13 @@ export function TransactionRow({
   board = null,
 }: TransactionRowProps) {
   const reversed = transaction.reversedByTransactionId != null;
-  const tileName =
-    transaction.tileId == null
-      ? transaction.tileIds === undefined
-        ? undefined
-        : transaction.tileIds
-            .map((id) => board?.tiles.find((tile) => tile.id === id)?.name ?? id)
-            .join(', ')
-      : board?.tiles.find((tile) => tile.id === transaction.tileId)?.name;
+  // A trade or a multi-street build lists every tile; anything else names its one tile.
+  const tileNames = (
+    transaction.tileIds ?? (transaction.tileId == null ? [] : [transaction.tileId])
+  )
+    .map((id) => board?.tiles.find((tile) => tile.id === id)?.name ?? id)
+    .join(', ');
+  const tileName = tileNames === '' ? undefined : tileNames;
   const title = transactionDescription(transaction, players, language, tileName);
   const timestamp = new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',

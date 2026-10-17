@@ -132,6 +132,18 @@ export class MaxBuildingsError extends AppError {
   }
 }
 
+/** A multi-building request that makes no sense (wrong tiles, levels, direction or nothing to do). */
+export class InvalidBuildTargetError extends AppError {
+  constructor(reason: string, tileId?: string) {
+    super({
+      code: 'INVALID_BUILD_TARGET',
+      message: `Invalid building request: ${reason}.`,
+      status: 400,
+      details: tileId === undefined ? { reason } : { reason, tileId },
+    });
+  }
+}
+
 /** A utility rent needs the dice sum; any other tile must not carry one. */
 export class DiceSumError extends AppError {
   constructor(required: boolean) {
@@ -300,6 +312,69 @@ export function assertCanSellBuilding(
 ): void {
   const blocker = sellBlocker(context, tileId, playerId);
   if (blocker !== null) throw blocker;
+}
+
+export interface BuildingPlan {
+  /** The registry changes, one per street whose level changes (board order). */
+  changes: PropertyChange[];
+  /** How many buildings are added (build) or sold (sell) across all streets. */
+  buildings: number;
+}
+
+/**
+ * Plans raising (`BUILD`) or lowering (`SELL`) the buildings of one colour group to the levels in
+ * `targets` (tile id -> 0..5, a hotel is 5). The FINAL state is what is validated: the player owns
+ * the whole group, no tile of it is mortgaged, every target moves in the requested direction, at
+ * least one changes, and with even building the levels end at most one apart. Streets left out of
+ * `targets` keep their level. The caller prices it and checks the cash.
+ */
+export function planBuildings(
+  context: PropertyContext,
+  playerId: string,
+  targets: Readonly<Record<string, number>>,
+  direction: 'BUILD' | 'SELL',
+): BuildingPlan {
+  const { board, registry } = context;
+  const entries = Object.entries(targets);
+  if (entries.length === 0) throw new InvalidBuildTargetError('no street named');
+  const first = requireTile(board, entries[0]![0]);
+  const group = groupTiles(board, first);
+  for (const [tileId, level] of entries) {
+    const tile = requireTile(board, tileId);
+    if (tile.type !== 'street' || tile.houseCost === undefined)
+      throw new TileNotBuildableError(tileId);
+    if (tile.group !== first.group)
+      throw new InvalidBuildTargetError('one colour group only', tileId);
+    if (!Number.isInteger(level) || level < 0 || level > MAX_BUILDINGS)
+      throw new InvalidBuildTargetError('a level is 0 to 5', tileId);
+    if (stateOf(registry, tileId).ownerPlayerId !== playerId)
+      throw new PropertyNotOwnedError(tileId);
+  }
+  if (!holdsFullGroup(board, registry, first, playerId))
+    throw new BuildRequiresFullGroupError(first.id);
+  if (group.some((tile) => stateOf(registry, tile.id).mortgaged))
+    throw new BuildMortgagedGroupError(first.id);
+
+  const changes: PropertyChange[] = [];
+  let buildings = 0;
+  const finalLevels: number[] = [];
+  for (const tile of group) {
+    const state = stateOf(registry, tile.id);
+    const level = targets[tile.id] ?? state.houses;
+    finalLevels.push(level);
+    if (level === state.houses) continue;
+    if (direction === 'BUILD' ? level < state.houses : level > state.houses)
+      throw new InvalidBuildTargetError(
+        direction === 'BUILD' ? 'a build cannot remove buildings' : 'a sale cannot add buildings',
+        tile.id,
+      );
+    buildings += Math.abs(level - state.houses);
+    changes.push(buildingChange(tile.id, state, level));
+  }
+  if (changes.length === 0) throw new InvalidBuildTargetError('nothing changes');
+  if (board.rules.buildEvenly && Math.max(...finalLevels) - Math.min(...finalLevels) > 1)
+    throw new BuildUnevenError(changes[0]!.tileId);
+  return { changes, buildings };
 }
 
 /** What one house (or the hotel, as the fifth building) costs, from the snapshot. */

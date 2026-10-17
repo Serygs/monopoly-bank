@@ -186,6 +186,8 @@ export function buildRequest(
     diceSum?: number;
     /** A purchase paid at an agreed price instead of the list price. */
     priceOverride?: number;
+    /** Building or selling: the final level of every street that changes (one colour group). */
+    targets?: Record<string, number>;
   } = {},
 ): PlayerTransactionRequest | null {
   const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
@@ -243,6 +245,8 @@ export function buildRequest(
       return null; // A trade is built by its own dialog, never by the single-amount form.
     case 'PROPERTY_BUILD':
     case 'PROPERTY_SELL_BUILDING':
+      if (options.targets !== undefined && Object.keys(options.targets).length > 0)
+        return { type: action, playerId, targets: options.targets };
       return options.tileId === undefined || options.tileId === ''
         ? null
         : { type: action, playerId, tileId: options.tileId };

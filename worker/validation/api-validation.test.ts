@@ -315,6 +315,30 @@ describe('board tile validation', () => {
     },
   );
 
+  it.each(['PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING'] as const)(
+    'parses %s targets and rejects malformed ones',
+    async (type) => {
+      const targets = { zhitna: 2, nagatinska: 1 };
+      await expect(
+        parseCreateTransactionRequest(jsonRequest({ type, playerId, targets })),
+      ).resolves.toEqual({ type, playerId, targets });
+      for (const bad of [
+        { type, playerId, targets: {} },
+        { type, playerId, targets: [] },
+        { type, playerId, targets: { zhitna: 6 } },
+        { type, playerId, targets: { zhitna: -1 } },
+        { type, playerId, targets: { zhitna: 1.5 } },
+        { type, playerId, targets: { zhitna: '1' } },
+        { type, playerId, targets: { 'Bad Id': 1 } },
+        { type, playerId, targets: { a: 1, b: 1, c: 1, d: 1, e: 1 } },
+        { type, playerId, tileId: 'zhitna', targets },
+      ])
+        await expect(parseCreateTransactionRequest(jsonRequest(bad))).rejects.toBeInstanceOf(
+          ApiValidationError,
+        );
+    },
+  );
+
   it('parses a trade with optional cash and rejects a malformed one', async () => {
     const other = '33333333-3333-4333-8333-333333333333';
     const trade = {

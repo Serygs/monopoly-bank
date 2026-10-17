@@ -269,6 +269,23 @@ function readTileIdList(body: Record<string, unknown>, key: string): string[] {
   });
 }
 
+/** Tile id -> final building level (0-5) for the streets of one colour group, at most 4 streets. */
+function readBuildTargets(value: unknown): Record<string, number> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new ApiValidationError('targets must be an object of tile ids and levels.');
+  const entries = Object.entries(value);
+  if (entries.length === 0 || entries.length > 4)
+    throw new ApiValidationError('targets must name between 1 and 4 streets.');
+  const targets: Record<string, number> = {};
+  for (const [tileId, level] of entries) {
+    readTileId({ tileId });
+    if (typeof level !== 'number' || !Number.isInteger(level) || level < 0 || level > 5)
+      throw new ApiValidationError('A target level must be a whole number from 0 to 5.');
+    targets[tileId] = level;
+  }
+  return targets;
+}
+
 function readNonNegativeInteger(body: Record<string, unknown>, key: string): number {
   const value = body[key];
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
@@ -386,8 +403,13 @@ export async function parseCreateTransactionRequest(
       };
     }
     case 'PROPERTY_BUILD':
-    case 'PROPERTY_SELL_BUILDING':
-      return { type, playerId: readUuid(body, 'playerId'), tileId: readTileId(body) };
+    case 'PROPERTY_SELL_BUILDING': {
+      const playerId = readUuid(body, 'playerId');
+      if (body.targets === undefined) return { type, playerId, tileId: readTileId(body) };
+      if (body.tileId !== undefined)
+        throw new ApiValidationError('Send either tileId or targets, not both.');
+      return { type, playerId, targets: readBuildTargets(body.targets) };
+    }
     case 'PAY_RENT':
       return {
         type,
