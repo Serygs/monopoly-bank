@@ -168,7 +168,7 @@ export function WalletsSection({
             {property !== undefined && (
               <Button
                 variant="secondary"
-                className="-mt-(--mb-space-2) w-full justify-between rounded-t-none"
+                className="mt-(--mb-space-3) w-full"
                 onClick={property.onOpen}
               >
                 {property.count === 1

@@ -285,10 +285,10 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
                   <path d="m15 15 4 4" />
                 </svg>
               </Button>
-              <div className="min-w-0 flex-1 snap-x snap-mandatory overflow-x-auto [-webkit-mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)] [mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="min-w-0 flex-[1_1_auto] snap-x snap-proximity overflow-x-auto [-webkit-mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)] [mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <SegmentedControl
                   variant="filter"
-                  className="flex flex-nowrap gap-(--mb-space-2) pe-6 whitespace-nowrap"
+                  className="flex w-max flex-nowrap gap-(--mb-space-2) pe-6 whitespace-nowrap"
                   label={t('filterGames')}
                   options={(
                     [
@@ -314,19 +314,21 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
                   onChange={setStatusFilter}
                 />
               </div>
-              <OverflowMenu
-                label={t('sortGames')}
-                items={[
-                  {
-                    label: `${sortOrder === 'updated' ? '✓ ' : ''}${t('sortUpdated')}`,
-                    onSelect: () => setSortOrder('updated'),
-                  },
-                  {
-                    label: `${sortOrder === 'name' ? '✓ ' : ''}${t('sortName')}`,
-                    onSelect: () => setSortOrder('name'),
-                  },
-                ]}
-              />
+              <div className="flex-none">
+                <OverflowMenu
+                  label={t('sortGames')}
+                  items={[
+                    {
+                      label: `${sortOrder === 'updated' ? '✓ ' : ''}${t('sortUpdated')}`,
+                      onSelect: () => setSortOrder('updated'),
+                    },
+                    {
+                      label: `${sortOrder === 'name' ? '✓ ' : ''}${t('sortName')}`,
+                      onSelect: () => setSortOrder('name'),
+                    },
+                  ]}
+                />
+              </div>
             </div>
             {(searchOpen || query !== '') && (
               <label className={searchClass}>
