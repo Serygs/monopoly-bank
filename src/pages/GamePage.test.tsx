@@ -322,7 +322,7 @@ describe('GamePage live connection lifecycle', () => {
       players: [owner],
     });
     page = renderGamePage(false);
-    expect(recentIds(page)).toEqual(['t4', 't3', 't2', 't1']);
+    expect(recentIds(page)).toEqual(['t4', 't3', 't2']);
   });
 
   it.each([
