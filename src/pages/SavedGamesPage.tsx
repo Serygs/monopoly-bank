@@ -285,10 +285,10 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
                   <path d="m15 15 4 4" />
                 </svg>
               </Button>
-              <div className="min-w-0 flex-1 overflow-x-auto">
+              <div className="min-w-0 flex-1 snap-x snap-mandatory overflow-x-auto [-webkit-mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)] [mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <SegmentedControl
                   variant="filter"
-                  className="flex flex-nowrap gap-(--mb-space-2) whitespace-nowrap"
+                  className="flex flex-nowrap gap-(--mb-space-2) pe-6 whitespace-nowrap"
                   label={t('filterGames')}
                   options={(
                     [

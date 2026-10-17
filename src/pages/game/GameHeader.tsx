@@ -10,13 +10,13 @@ export type LiveStatus = 'connecting' | 'reconnecting' | 'live' | 'offline';
 
 /** Divider under the heading, the status chip in place of the eyebrow, and the action column. */
 const headingClass = cx(
-  'border-b border-border pb-(--mb-space-6) max-md:pb-(--mb-space-4) lg:items-end',
+  'border-b border-border pb-(--mb-space-6) max-md:pb-(--mb-space-3) max-md:mb-(--mb-space-3) lg:items-end',
   '[&_.page-header-back]:mb-(--mb-space-4) [&_h1]:max-w-[24ch] [&_.lede]:mt-(--mb-space-4)',
   '[&_.eyebrow]:mb-(--mb-space-3) [&_.eyebrow]:inline-flex [&_.eyebrow]:w-fit [&_.eyebrow]:rounded-pill [&_.eyebrow]:border [&_.eyebrow]:border-border',
   '[&_.eyebrow]:bg-surface-subtle [&_.eyebrow]:px-(--mb-space-3) [&_.eyebrow]:py-(--mb-space-1) [&_.eyebrow]:tracking-[0] [&_.eyebrow]:text-secondary [&_.eyebrow]:normal-case',
   'max-md:[&_.page-header-actions]:block lg:[&_.page-header-actions]:self-end',
   // Compact: the bottom navigation owns Activity and Statistics; an empty action region is dropped.
-  'max-md:[&_h1]:text-[1.75rem] max-md:[&_.page-header-back]:mb-(--mb-space-2) max-md:[&_.lede]:mt-(--mb-space-2)',
+  'max-md:[&_h1]:text-[1.5rem] max-md:[&_h1]:leading-[1.15] max-md:[&_.page-header-back]:mb-(--mb-space-1) max-md:[&_.lede]:mt-(--mb-space-1)',
   'max-md:[&_.page-header-actions:not(:has(.button:not(.compact-hidden)))]:hidden',
 );
 
@@ -24,20 +24,18 @@ const headingClass = cx(
 const compactHiddenClass = 'compact-hidden max-md:hidden';
 
 const passGoClass =
-  'flex flex-wrap items-baseline gap-x-(--mb-space-2) gap-y-(--mb-space-1) [&>span]:text-secondary [&_strong]:font-money [&_strong]:whitespace-nowrap [&_strong]:text-primary [&_strong]:tabular-nums';
+  'flex flex-wrap items-center gap-x-(--mb-space-2) gap-y-(--mb-space-1) [&>span]:text-secondary [&_strong]:font-money [&_strong]:whitespace-nowrap [&_strong]:text-primary [&_strong]:tabular-nums';
 
 /** `!` outranks the Button primitive's own centring and inline padding. */
 const backLinkClass = 'justify-start! px-0!';
 
-const liveStatusClass = cx(
-  'mt-(--mb-space-4) max-md:mt-(--mb-space-2) inline-flex min-h-[30px] w-fit items-center gap-(--mb-space-2) rounded-pill border px-(--mb-space-3) py-(--mb-space-1) text-small font-semibold',
-  'before:size-[8px] before:flex-none before:rounded-[50%] before:bg-current',
-);
+const liveStatusClass =
+  'inline-flex min-h-[24px] items-center gap-(--mb-space-2) text-small font-semibold before:size-[8px] before:flex-none before:rounded-[50%] before:bg-current';
 const liveStatusToneClass: Record<LiveStatus, string> = {
-  connecting: 'border-strong bg-surface-elevated text-secondary',
-  reconnecting: 'border-strong bg-surface-elevated text-secondary',
-  live: 'border-status-border bg-success-soft text-status-text',
-  offline: 'border-danger-border bg-danger-soft text-danger',
+  connecting: 'text-secondary',
+  reconnecting: 'text-secondary',
+  live: 'text-status-text',
+  offline: 'text-danger',
 };
 
 export interface GameHeaderProps {
@@ -109,11 +107,24 @@ export function GameHeader({
             <span aria-hidden="true">←</span>
             {t('savedGames')}
           </Button>
-          {managerItems.length > 0 && (
-            <div className="md:hidden">
-              <OverflowMenu label={t('gameActions', { name: game.name })} items={managerItems} />
-            </div>
-          )}
+          <div className="flex items-center gap-(--mb-space-3)">
+            {game.status === 'ACTIVE' && (
+              <StatPill live className={cx(liveStatusClass, liveStatusToneClass[liveStatus])}>
+                {liveStatus === 'live'
+                  ? t('connectionLive')
+                  : liveStatus === 'connecting'
+                    ? t('connectionConnecting')
+                    : liveStatus === 'reconnecting'
+                      ? t('connectionReconnecting')
+                      : t('connectionOffline')}
+              </StatPill>
+            )}
+            {managerItems.length > 0 && (
+              <div className="md:hidden">
+                <OverflowMenu label={t('gameActions', { name: game.name })} items={managerItems} />
+              </div>
+            )}
+          </div>
         </div>
       }
       actions={
@@ -159,18 +170,6 @@ export function GameHeader({
           )}
         </Toolbar>
       }
-    >
-      {game.status === 'ACTIVE' && (
-        <StatPill live className={cx(liveStatusClass, liveStatusToneClass[liveStatus])}>
-          {liveStatus === 'live'
-            ? t('connectionLive')
-            : liveStatus === 'connecting'
-              ? t('connectionConnecting')
-              : liveStatus === 'reconnecting'
-                ? t('connectionReconnecting')
-                : t('connectionOffline')}
-        </StatPill>
-      )}
-    </PageHeader>
+    ></PageHeader>
   );
 }

@@ -43,7 +43,7 @@ const settingsOptionStateClass = {
 
 /* Filter chip on the button core; `button-filter` / `active` stay as test hooks. */
 const filterOptionClass = cx(
-  'button-filter min-h-10 justify-center rounded-pill border-border bg-surface-elevated px-(--mb-space-3) py-[10px] text-small leading-[1.15] text-secondary',
+  'button-filter min-h-10 shrink-0 snap-start justify-center whitespace-nowrap rounded-pill border-border bg-surface-elevated px-(--mb-space-3) py-[10px] text-small leading-[1.15] text-secondary',
   'aria-checked:border-accent aria-checked:bg-accent aria-checked:text-on-accent',
   glassControlClass,
   'glass:aria-checked:border-[rgb(255_255_255/0.34)] glass:aria-checked:bg-[rgb(45_65_90/0.8)] glass:aria-checked:text-white',
