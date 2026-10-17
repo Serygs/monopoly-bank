@@ -29,7 +29,7 @@ import {
   stateOf,
   type PropertyContext,
 } from './property.js';
-import { findReversalDependency, isReversibleType } from './reversal.js';
+import { findReversalDependency, reversibleTransaction } from './reversal.js';
 import { AppError } from '../../worker/services/errors.js';
 
 export interface PlayerToPlayerCommand extends BankingCommand {
@@ -106,6 +106,8 @@ export interface PropertyPurchaseCommand extends BankingCommand {
   playerId: string;
   tileId: string;
   property: PropertyContext;
+  /** Pays this price instead of the list price; the purchase is then marked as overridden. */
+  priceOverride?: number;
 }
 
 export interface PayRentCommand extends BankingCommand {
@@ -186,6 +188,10 @@ export interface ReversalCommand {
   later?: readonly Transaction[];
   /** The registry changes stored with `original` (read from property_changes), if any. */
   originalRegistryChanges?: readonly PropertyChange[];
+  /** For a MORTGAGE_REDEMPTION of a tile: the id of the mortgage it closed. */
+  redeemedMortgageId?: string;
+  /** Tiles of the original tile's colour group (from the board snapshot), see `findReversalDependency`. */
+  groupTileIds?: readonly string[];
   comment?: string | null;
 }
 
@@ -227,7 +233,15 @@ export interface PendingTransaction {
    * that changed in between rolls the whole batch back.
    */
   jackpot?: { kind: 'DEPOSIT'; amount: number } | { kind: 'COLLECT'; expected: number };
-  /** Set only on an AUCTION_PAYMENT: the auction it closes, written in the same batch. */
+  /** Set only on a PROPERTY_PURCHASE paid at a price other than the list price. */
+  priceOverridden?: boolean;
+  /**
+   * Set only on a REVERSAL of a board mortgage or redemption: the mortgage row it puts back in
+   * step. `CANCEL` releases the mortgage a reversed MORTGAGE created; `RESTORE` makes the mortgage
+   * a reversed MORTGAGE_REDEMPTION closed active again.
+   */
+  mortgageReversal?: { kind: 'CANCEL' | 'RESTORE'; mortgageId: string };
+  /** Set only on a settled auction (AUCTION_PAYMENT, or the PROPERTY_PURCHASE of a tile): the auction it closes, written in the same batch. */
   settlesAuction?: { auctionId: string; expectedVersion: number };
   /** The board tile this operation concerned (purchase, mortgage, redemption, auction, rent). */
   tileId?: string;
@@ -649,9 +663,10 @@ export function auctionPayment(command: AuctionPaymentCommand): BankingOperation
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
   ensureSufficientFunds(player, command.amount);
+  // A board tile is bought at the winning bid; only a free-text lot stays an AUCTION_PAYMENT.
   const result = createResult(
     command.game.id,
-    'AUCTION_PAYMENT',
+    command.tileId == null ? 'AUCTION_PAYMENT' : 'PROPERTY_PURCHASE',
     command.amount,
     command.amount,
     command.lotName,
@@ -703,8 +718,10 @@ export function mortgageTile(command: MortgageTileCommand): BankingOperationResu
 /** The player buys an unowned tile from the bank at the snapshot price. */
 export function propertyPurchase(command: PropertyPurchaseCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
-  const price = purchasePrice(command.property.board, command.tileId);
-  validateAmount(price);
+  const listPrice = purchasePrice(command.property.board, command.tileId);
+  validateAmount(listPrice);
+  if (command.priceOverride !== undefined) validateAmount(command.priceOverride);
+  const price = command.priceOverride ?? listPrice;
   const state = stateOf(command.property.registry, command.tileId);
   if (state.ownerPlayerId !== null)
     throw new PropertyAlreadyOwnedError(command.tileId, state.ownerPlayerId);
@@ -714,7 +731,12 @@ export function propertyPurchase(command: PropertyPurchaseCommand): BankingOpera
   const result = createResult(command.game.id, 'PROPERTY_PURCHASE', price, price, command.comment, [
     createBalanceChange(player, -price),
   ]);
-  return withProperty(result, command.tileId, [ownerChange(command.tileId, state, player.id)]);
+  const purchase = withProperty(result, command.tileId, [
+    ownerChange(command.tileId, state, player.id),
+  ]);
+  return price === listPrice
+    ? purchase
+    : { ...purchase, transaction: { ...purchase.transaction, priceOverridden: true } };
 }
 
 /** The payer pays the tile's owner the rent the registry and the snapshot give. */
@@ -1044,10 +1066,14 @@ export function reverseTransaction(command: ReversalCommand): BankingOperationRe
   const players = validateGame(command.game, command.players);
   const { original } = command;
   if (original.gameId !== command.game.id) throw new TransactionNotFoundError(original.id);
-  if (!isReversibleType(original.type)) throw new TransactionNotReversibleError(original.type);
+  if (!reversibleTransaction(original)) throw new TransactionNotReversibleError(original.type);
   if (original.reversedByTransactionId != null)
     throw new TransactionAlreadyReversedError(original.id, original.reversedByTransactionId);
-  const dependency = findReversalDependency(original, command.later ?? []);
+  const dependency = findReversalDependency(
+    original,
+    command.later ?? [],
+    command.groupTileIds ?? [],
+  );
   if (dependency !== null) throw new ReversalBlockedByLaterOperationError(original.id, dependency);
 
   // A registry-backed original moves its tiles back too; one that lost its changes cannot be undone.
@@ -1055,9 +1081,15 @@ export function reverseTransaction(command: ReversalCommand): BankingOperationRe
   if (
     registryChanges.length === 0 &&
     (original.type === 'PROPERTY_PURCHASE' ||
-      (original.tileId != null && original.type === 'AUCTION_PAYMENT'))
+      (original.tileId != null &&
+        (original.type === 'AUCTION_PAYMENT' ||
+          original.type === 'MORTGAGE' ||
+          original.type === 'MORTGAGE_REDEMPTION')))
   )
     throw new TransactionNotReversibleError(original.type);
+  // A board mortgage row follows its transaction: a reversed MORTGAGE releases it, a reversed
+  // redemption makes it active again (the Worker names the row, which only it can look up).
+  const mortgageReversal = mortgageReversalOf(original, command.redeemedMortgageId);
 
   const changes = original.participants.map((participant) => {
     const player = findPlayer(players, participant.playerId);
@@ -1079,6 +1111,7 @@ export function reverseTransaction(command: ReversalCommand): BankingOperationRe
     transaction: {
       ...result.transaction,
       reversesTransactionId: original.id,
+      ...(mortgageReversal === undefined ? {} : { mortgageReversal }),
       ...(registryChanges.length === 0
         ? {}
         : {
@@ -1087,6 +1120,19 @@ export function reverseTransaction(command: ReversalCommand): BankingOperationRe
           }),
     },
   };
+}
+
+function mortgageReversalOf(
+  original: Pick<Transaction, 'id' | 'type' | 'tileId'>,
+  redeemedMortgageId: string | undefined,
+): PendingTransaction['mortgageReversal'] {
+  if (original.tileId == null) return undefined;
+  if (original.type === 'MORTGAGE') return { kind: 'CANCEL', mortgageId: original.id };
+  if (original.type === 'MORTGAGE_REDEMPTION') {
+    if (redeemedMortgageId === undefined) throw new TransactionNotReversibleError(original.type);
+    return { kind: 'RESTORE', mortgageId: redeemedMortgageId };
+  }
+  return undefined;
 }
 
 export function declareBankruptcy(command: BankruptcyCommand): BankingOperationResult {

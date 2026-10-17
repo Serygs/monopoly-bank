@@ -590,3 +590,17 @@ describe('applyLiveEvent auctions', () => {
     );
   });
 });
+
+describe('buildRequest for a board purchase', () => {
+  it('sends the tile and, only when given, the agreed price', () => {
+    expect(buildRequest('PROPERTY_PURCHASE', 'p1', '', 0, '', { tileId: 'arbat' })).toEqual({
+      type: 'PROPERTY_PURCHASE',
+      playerId: 'p1',
+      tileId: 'arbat',
+    });
+    expect(
+      buildRequest('PROPERTY_PURCHASE', 'p1', '', 0, '', { tileId: 'arbat', priceOverride: 250 }),
+    ).toEqual({ type: 'PROPERTY_PURCHASE', playerId: 'p1', tileId: 'arbat', priceOverride: 250 });
+    expect(buildRequest('PROPERTY_PURCHASE', 'p1', '', 0, '', { priceOverride: 250 })).toBeNull();
+  });
+});

@@ -248,6 +248,8 @@ export interface Transaction {
   participants: TransactionParticipant[];
   /** The board tile this operation concerned (purchase, mortgage, redemption, auction, rent). */
   tileId?: string | null;
+  /** Set on a PROPERTY_PURCHASE paid at a price other than the list price. */
+  priceOverridden?: boolean;
   /** Set on a REVERSAL: the transaction it moved back. */
   reversesTransactionId?: string | null;
   /** Set on a reversed transaction: the REVERSAL that moved it back. */

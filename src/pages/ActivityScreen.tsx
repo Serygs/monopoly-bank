@@ -9,6 +9,7 @@ import type {
 import type { BoardSnapshot } from '../../shared/board';
 import type { Currency, Player, Transaction } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { groupTiles } from '../../shared/domain/property';
 import { REVERSAL_WINDOW_MS, reversalAvailability } from '../../shared/domain/reversal';
 import { Dialog } from '../components/Dialog';
 import { TransactionRow } from '../components/game/TransactionRow';
@@ -192,6 +193,7 @@ export function ActivityScreen({
       controlledPlayerIds: reversal.controlledPlayerIds,
       now,
       later: newer.filter((item): item is Transaction => !('state' in item)),
+      groupTileIds: groupTileIdsOf(board, transaction),
     });
     if (availability.status === 'allowed')
       return { onReverse: () => reversal.onReverse(transaction) };
@@ -349,4 +351,13 @@ function mergeRequests(
   return [...first, ...second].filter(
     (item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index,
   );
+}
+
+/** The tiles of the colour group of the tile a transaction concerned (see `findReversalDependency`). */
+function groupTileIdsOf(board: BoardSnapshot | null, transaction: Transaction): string[] {
+  const tile =
+    board === null || transaction.tileId == null
+      ? undefined
+      : board.tiles.find((item) => item.id === transaction.tileId);
+  return board === null || tile === undefined ? [] : groupTiles(board, tile).map((item) => item.id);
 }

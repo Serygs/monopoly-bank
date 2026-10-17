@@ -81,6 +81,7 @@ describe('D1BankingOperationRepository', () => {
       null,
       null,
       null,
+      0,
     ]);
   });
 
@@ -139,6 +140,7 @@ describe('D1BankingOperationRepository', () => {
       null,
       null,
       null,
+      0,
     ]);
     expect(database.batches[0][4].values).toEqual(['bankrupt-player', 'game-1']);
   });
@@ -187,6 +189,7 @@ describe('D1BankingOperationRepository', () => {
       'wrong player',
       'transaction-1',
       null,
+      0,
     ]);
   });
 });
