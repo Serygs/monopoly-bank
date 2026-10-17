@@ -671,19 +671,23 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                 message: t(
                   action === 'PROPERTY_PURCHASE'
                     ? 'propertyBought'
-                    : action === 'PAY_RENT'
-                      ? 'rentPaid'
-                      : action === 'MORTGAGE'
-                        ? 'mortgageRecorded'
-                        : action === 'MORTGAGE_REDEMPTION'
-                          ? 'redemptionRecorded'
-                          : action === 'LOAN_REPAYMENT'
-                            ? 'loanRepaid'
-                            : action === 'BANK_LOAN'
-                              ? 'bankLoanRecorded'
-                              : action === 'JACKPOT_PAYOUT'
-                                ? 'jackpotCollected'
-                                : 'paymentSent',
+                    : action === 'PROPERTY_BUILD'
+                      ? 'buildingBuilt'
+                      : action === 'PROPERTY_SELL_BUILDING'
+                        ? 'buildingSold'
+                        : action === 'PAY_RENT'
+                          ? 'rentPaid'
+                          : action === 'MORTGAGE'
+                            ? 'mortgageRecorded'
+                            : action === 'MORTGAGE_REDEMPTION'
+                              ? 'redemptionRecorded'
+                              : action === 'LOAN_REPAYMENT'
+                                ? 'loanRepaid'
+                                : action === 'BANK_LOAN'
+                                  ? 'bankLoanRecorded'
+                                  : action === 'JACKPOT_PAYOUT'
+                                    ? 'jackpotCollected'
+                                    : 'paymentSent',
                 ),
               });
             }}

@@ -47,6 +47,7 @@ export function reversalInitiatorPlayerId(
     case 'PAY_RENT':
     case 'PLAYER_TO_BANK':
     case 'MORTGAGE_REDEMPTION':
+    case 'PROPERTY_BUILD':
     case 'AUCTION_PAYMENT':
     case 'PROPERTY_PURCHASE':
     case 'PLAYER_TO_ALL':
@@ -54,6 +55,7 @@ export function reversalInitiatorPlayerId(
     case 'BANK_TO_PLAYER':
     case 'PASS_GO':
     case 'MORTGAGE':
+    case 'PROPERTY_SELL_BUILDING':
     case 'ALL_TO_PLAYER':
       return credited.length === 1 ? (credited[0]?.playerId ?? null) : null;
     case 'BANKRUPTCY_TRANSFER':
@@ -100,7 +102,22 @@ const registryTypes: readonly TransactionType[] = [
   'MORTGAGE_REDEMPTION',
   'AUCTION_PAYMENT',
   'PAY_RENT',
+  'PROPERTY_BUILD',
+  'PROPERTY_SELL_BUILDING',
 ];
+
+/**
+ * Later operations on any tile of the colour group that invalidate an original's effect on it:
+ * a purchase can complete the group (rent doubling, building), a building changes the rent of its
+ * group mates and what may be mortgaged, a redemption allows building.
+ */
+const groupBlockers: Partial<Record<TransactionType, readonly TransactionType[]>> = {
+  PROPERTY_PURCHASE: ['PAY_RENT', 'PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING'],
+  AUCTION_PAYMENT: ['PAY_RENT', 'PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING'],
+  PROPERTY_BUILD: ['PAY_RENT', 'PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING', 'MORTGAGE'],
+  PROPERTY_SELL_BUILDING: ['PAY_RENT', 'PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING', 'MORTGAGE'],
+  MORTGAGE_REDEMPTION: ['PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING'],
+};
 
 /**
  * The first later transaction that depends on `original`, or null. `later` is every transaction
@@ -125,10 +142,9 @@ export function findReversalDependency(
           (original.tileId != null &&
             candidate.tileId === original.tileId &&
             registryTypes.includes(candidate.type)) ||
-          (original.type === 'PROPERTY_PURCHASE' &&
-            candidate.type === 'PAY_RENT' &&
-            candidate.tileId != null &&
-            groupTileIds.includes(candidate.tileId))),
+          (candidate.tileId != null &&
+            groupTileIds.includes(candidate.tileId) &&
+            (groupBlockers[original.type]?.includes(candidate.type) ?? false))),
     ) ?? null
   );
 }

@@ -15,7 +15,11 @@ import { bankLoanInterest } from './bank-loan.js';
 import { buildGameSettings } from './game-rules.js';
 import { normalizePropertyName, redemptionCost } from './mortgage.js';
 import {
+  assertCanBuild,
   assertCanMortgage,
+  assertCanSellBuilding,
+  buildCost,
+  buildingChange,
   DiceSumError,
   invertChanges,
   mortgageChange,
@@ -26,6 +30,7 @@ import {
   purchasePrice,
   rentFor,
   requireTile,
+  sellRefund,
   stateOf,
   type PropertyContext,
 } from './property.js';
@@ -109,6 +114,16 @@ export interface PropertyPurchaseCommand extends BankingCommand {
   /** Pays this price instead of the list price; the purchase is then marked as overridden. */
   priceOverride?: number;
 }
+
+/** Board games: the owner adds a house (or the hotel) to a street of a full colour group. */
+export interface BuildPropertyCommand extends BankingCommand {
+  playerId: string;
+  tileId: string;
+  property: PropertyContext;
+}
+
+/** Board games: the owner sells a building back to the bank. */
+export type SellBuildingCommand = BuildPropertyCommand;
 
 export interface PayRentCommand extends BankingCommand {
   payerPlayerId: string;
@@ -739,6 +754,43 @@ export function propertyPurchase(command: PropertyPurchaseCommand): BankingOpera
     : { ...purchase, transaction: { ...purchase.transaction, priceOverridden: true } };
 }
 
+/** The owner pays the bank one house cost; the fifth building is the hotel. */
+export function buildProperty(command: BuildPropertyCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const { board, registry } = command.property;
+  assertCanBuild(command.property, command.tileId, command.playerId);
+  const cost = buildCost(board, command.tileId);
+  validateAmount(cost);
+  const player = findPlayer(players, command.playerId);
+  ensureActive(player);
+  ensureSufficientFunds(player, cost);
+  const state = stateOf(registry, command.tileId);
+  const result = createResult(command.game.id, 'PROPERTY_BUILD', cost, cost, null, [
+    createBalanceChange(player, -cost),
+  ]);
+  return withProperty(result, command.tileId, [
+    buildingChange(command.tileId, state, state.houses + 1),
+  ]);
+}
+
+/** The bank pays back half the house cost for one building; a hotel goes back to four houses. */
+export function sellBuilding(command: SellBuildingCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const { board, registry } = command.property;
+  assertCanSellBuilding(command.property, command.tileId, command.playerId);
+  const refund = sellRefund(board, command.tileId);
+  validateAmount(refund);
+  const player = findPlayer(players, command.playerId);
+  ensureActive(player);
+  const state = stateOf(registry, command.tileId);
+  const result = createResult(command.game.id, 'PROPERTY_SELL_BUILDING', refund, refund, null, [
+    createBalanceChange(player, refund),
+  ]);
+  return withProperty(result, command.tileId, [
+    buildingChange(command.tileId, state, state.houses - 1),
+  ]);
+}
+
 /** The payer pays the tile's owner the rent the registry and the snapshot give. */
 export function payRent(command: PayRentCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
@@ -1083,6 +1135,8 @@ export function reverseTransaction(command: ReversalCommand): BankingOperationRe
     (original.type === 'PROPERTY_PURCHASE' ||
       (original.tileId != null &&
         (original.type === 'AUCTION_PAYMENT' ||
+          original.type === 'PROPERTY_BUILD' ||
+          original.type === 'PROPERTY_SELL_BUILDING' ||
           original.type === 'MORTGAGE' ||
           original.type === 'MORTGAGE_REDEMPTION')))
   )

@@ -70,6 +70,8 @@ export const transactionTypes = [
   'JACKPOT_PAYOUT',
   'AUCTION_PAYMENT',
   'PROPERTY_PURCHASE',
+  'PROPERTY_BUILD',
+  'PROPERTY_SELL_BUILDING',
 ] as const;
 
 export type TransactionType = (typeof transactionTypes)[number];

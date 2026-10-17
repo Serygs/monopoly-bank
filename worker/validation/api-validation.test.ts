@@ -303,6 +303,18 @@ describe('board tile validation', () => {
     },
   );
 
+  it.each(['PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING'] as const)(
+    'accepts %s by tile id and rejects it without one',
+    async (type) => {
+      await expect(
+        parseCreateTransactionRequest(jsonRequest({ type, playerId, tileId: 'zhitna' })),
+      ).resolves.toEqual({ type, playerId, tileId: 'zhitna' });
+      await expect(
+        parseCreateTransactionRequest(jsonRequest({ type, playerId })),
+      ).rejects.toBeInstanceOf(ApiValidationError);
+    },
+  );
+
   it('rejects a purchase without a tile id', async () => {
     await expect(
       parseCreateTransactionRequest(jsonRequest({ type: 'PROPERTY_PURCHASE', playerId })),

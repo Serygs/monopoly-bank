@@ -195,3 +195,29 @@ describe('auction payments', () => {
     expect(transactionDescription(payment, players, 'uk')).toContain('Park Place');
   });
 });
+
+describe('building transactions in the history', () => {
+  const base = { id: 't', gameId: 'game', comment: null, createdAt: '' };
+  it('names the player and the tile, and shows a sale as income', () => {
+    const built: Transaction = {
+      ...base,
+      type: 'PROPERTY_BUILD',
+      amount: 500,
+      totalAmount: 500,
+      participants: [{ playerId: 'john', balanceDelta: -500 }],
+    };
+    const sold: Transaction = {
+      ...base,
+      type: 'PROPERTY_SELL_BUILDING',
+      amount: 250,
+      totalAmount: 250,
+      participants: [{ playerId: 'john', balanceDelta: 250 }],
+    };
+    expect(transactionDescription(built, players, 'en', 'Zhitna')).toBe('John · Building · Zhitna');
+    expect(transactionDescription(sold, players, 'en', 'Zhitna')).toBe(
+      'John · Building sold · Zhitna',
+    );
+    expect(transactionAmount(sold, 'K', 'en').startsWith('+')).toBe(true);
+    expect(transactionAmount(built, 'K', 'en').startsWith('+')).toBe(false);
+  });
+});

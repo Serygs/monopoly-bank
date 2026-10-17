@@ -388,4 +388,115 @@ describe('board registry (real SQLite)', () => {
       expect(balance('b')).toBe(BALANCE);
     });
   });
+
+  describe('building', () => {
+    const houses = (id: string) =>
+      (
+        database.prepare('SELECT houses FROM game_properties WHERE tile_id = ?').get(id) as {
+          houses: number;
+        }
+      ).houses;
+    const buildOn = (
+      tileId: string,
+      type: 'PROPERTY_BUILD' | 'PROPERTY_SELL_BUILDING' = 'PROPERTY_BUILD',
+    ) => banking.createTransaction('game', { type, playerId: 'a', tileId });
+    const ownBrown = async () => {
+      await buy('a', 'zhitna');
+      await buy('a', 'nagatinska');
+    };
+
+    it('builds, pays the bank, stores the diff and returns the changed row', async () => {
+      await setup();
+      await ownBrown();
+      const before = balance('a');
+      const response = await buildOn('zhitna');
+      expect(response.transaction).toMatchObject({ type: 'PROPERTY_BUILD', amount: 500_000 });
+      expect(houses('zhitna')).toBe(1);
+      expect(balance('a')).toBe(before - 500_000);
+      expect(response.properties).toEqual([
+        expect.objectContaining({ tileId: 'zhitna', houses: 1 }),
+      ]);
+      expect(count('property_changes')).toBe(3);
+    });
+
+    it('refuses an uneven build and a build without the full group, writing nothing', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await expect(buildOn('zhitna')).rejects.toMatchObject({ code: 'BUILD_REQUIRES_FULL_GROUP' });
+      await buy('a', 'nagatinska');
+      await buildOn('zhitna');
+      const transactions_ = count('transactions');
+      await expect(buildOn('zhitna')).rejects.toMatchObject({ code: 'BUILD_UNEVEN' });
+      expect(count('transactions')).toBe(transactions_);
+      expect(houses('zhitna')).toBe(1);
+    });
+
+    it('refuses to build without the money and writes nothing', async () => {
+      await setup();
+      await ownBrown();
+      database.exec("UPDATE players SET balance = 100 WHERE id = 'a'");
+      await expect(buildOn('zhitna')).rejects.toMatchObject({ code: 'INSUFFICIENT_FUNDS' });
+      expect(houses('zhitna')).toBe(0);
+      expect(balance('a')).toBe(100);
+    });
+
+    it('cannot mortgage a group with buildings, then sells back at half price', async () => {
+      await setup();
+      await ownBrown();
+      await buildOn('zhitna');
+      await expect(
+        banking.createTransaction('game', {
+          type: 'MORTGAGE',
+          playerId: 'a',
+          tileId: 'nagatinska',
+        }),
+      ).rejects.toMatchObject({ code: 'PROPERTY_HAS_BUILDINGS' });
+      const before = balance('a');
+      await buildOn('zhitna', 'PROPERTY_SELL_BUILDING');
+      expect(houses('zhitna')).toBe(0);
+      expect(balance('a')).toBe(before + 250_000);
+      await expect(buildOn('zhitna', 'PROPERTY_SELL_BUILDING')).rejects.toMatchObject({
+        code: 'NO_BUILDINGS',
+      });
+    });
+
+    it('reverses a build and a sale; a later build on the group blocks the earlier one', async () => {
+      await setup();
+      await ownBrown();
+      const first = await buildOn('zhitna');
+      const second = await buildOn('nagatinska');
+      await expect(reverse(first.transaction.id)).rejects.toMatchObject({
+        code: 'REVERSAL_BLOCKED_BY_LATER_OPERATION',
+      });
+      await reverse(second.transaction.id);
+      expect(houses('nagatinska')).toBe(0);
+      await reverse(first.transaction.id);
+      expect(houses('zhitna')).toBe(0);
+      expect(balance('a')).toBe(BALANCE - 1_200_000);
+    });
+
+    it('reverses a sale: the building returns and the refund is taken back', async () => {
+      await setup();
+      await ownBrown();
+      await buildOn('zhitna');
+      const sold = await buildOn('zhitna', 'PROPERTY_SELL_BUILDING');
+      await reverse(sold.transaction.id);
+      expect(houses('zhitna')).toBe(1);
+    });
+
+    it('blocks reversing the purchase that completed a group once a house stands', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      const completing = await buy('a', 'nagatinska');
+      await buildOn('zhitna');
+      await expect(reverse(completing.transaction.id)).rejects.toMatchObject({
+        code: 'REVERSAL_BLOCKED_BY_LATER_OPERATION',
+      });
+    });
+
+    it('is refused in a game without a board', async () => {
+      await setup(false);
+      await expect(buildOn('zhitna')).rejects.toMatchObject({ code: 'BOARD_DISABLED' });
+    });
+  });
 });

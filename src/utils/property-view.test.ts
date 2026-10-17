@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { buildBoardSnapshot, getBoardPreset } from '../../shared/board';
 import type { GameProperty } from '../../shared/types/monopoly';
-import { cardsOwnedBy, cardsValue, groupProgress, tileRent, tileViews } from './property-view';
+import {
+  buildableTiles,
+  cardsOwnedBy,
+  cardsValue,
+  groupProgress,
+  sellableTiles,
+  tileIntents,
+  tileRent,
+  tileViews,
+} from './property-view';
 
 const board = buildBoardSnapshot(getBoardPreset('monopoly-ru-2012'), 100_000);
 const row = (tileId: string, over: Partial<GameProperty> = {}): GameProperty => ({
@@ -75,5 +84,46 @@ describe('property view', () => {
     expect(rentOf([row('power_plant'), row('waterworks')], 'power_plant')).toMatchObject({
       multiplier: 10,
     });
+  });
+});
+
+describe('building intents', () => {
+  const brown = (a = 0, b = 0, over: Partial<GameProperty> = {}) => [
+    row('zhitna', { houses: a, ...over }),
+    row('nagatinska', { houses: b }),
+  ];
+  const ids = (views: { tile: { id: string } }[]) => views.map((view) => view.tile.id);
+
+  it('offers building only on streets of a full group, evenly', () => {
+    expect(ids(buildableTiles(board, tileViews(board, brown()), 'a'))).toEqual([
+      'zhitna',
+      'nagatinska',
+    ]);
+    expect(ids(buildableTiles(board, tileViews(board, brown(1, 0)), 'a'))).toEqual(['nagatinska']);
+    expect(buildableTiles(board, tileViews(board, [row('zhitna')]), 'a')).toEqual([]);
+    expect(buildableTiles(board, tileViews(board, brown()), 'b')).toEqual([]);
+    expect(buildableTiles(board, tileViews(board, brown(0, 0, { mortgaged: true })), 'a')).toEqual(
+      [],
+    );
+  });
+
+  it('offers selling only where a building stands and the group is even', () => {
+    expect(sellableTiles(board, tileViews(board, brown()), 'a')).toEqual([]);
+    expect(ids(sellableTiles(board, tileViews(board, brown(2, 1)), 'a'))).toEqual(['zhitna']);
+  });
+
+  it('adds Build and Sell building to the owner sheet of a controlled wallet', () => {
+    const views = tileViews(board, brown(1, 1));
+    const view = views.find((candidate) => candidate.tile.id === 'zhitna')!;
+    const kinds = (controlled: string[]) =>
+      tileIntents(board, views, view, {
+        controlledPlayerIds: controlled,
+        actorPlayerId: 'a',
+        auctionsAvailable: false,
+      }).map((intent) => intent.kind);
+    expect(kinds(['a'])).toEqual(
+      expect.arrayContaining(['PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING']),
+    );
+    expect(kinds(['b'])).not.toContain('PROPERTY_BUILD');
   });
 });

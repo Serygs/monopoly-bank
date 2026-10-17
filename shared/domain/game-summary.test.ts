@@ -89,3 +89,15 @@ describe('loans in the final summary', () => {
     expect(summary.players.find((metric) => metric.playerId === 'a')?.transactionCount).toBe(2);
   });
 });
+
+describe('building in the final summary', () => {
+  it('counts a build as paid to the bank and a sale as received from it', () => {
+    const summary = calculateFinalGameSummary(players, [
+      transaction('PROPERTY_BUILD', 500, [{ playerId: 'a', balanceDelta: -500 }]),
+      transaction('PROPERTY_SELL_BUILDING', 250, [{ playerId: 'a', balanceDelta: 250 }]),
+    ]);
+    expect(summary.paidToBank).toBe(500);
+    expect(summary.receivedFromBank).toBe(250);
+    expect(summary.playerToPlayerTotal).toBe(0);
+  });
+});

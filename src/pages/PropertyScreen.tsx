@@ -28,6 +28,8 @@ const intentLabelKeys = {
   MORTGAGE_REDEMPTION: 'propertyActionRedeem',
   AUCTION: 'propertyActionAuction',
   PAY_RENT: 'propertyActionRent',
+  PROPERTY_BUILD: 'propertyActionBuild',
+  PROPERTY_SELL_BUILDING: 'propertyActionSellBuilding',
 } as const;
 
 export interface PropertyScreenProps {
@@ -234,7 +236,7 @@ export function PropertyScreen({
           actions={
             onIntent === undefined
               ? []
-              : tileIntents(views, openTile, {
+              : tileIntents(board, views, openTile, {
                   controlledPlayerIds,
                   actorPlayerId,
                   auctionsAvailable,

@@ -21,6 +21,8 @@ export function controlledPlayerIdForBankingCommand(
     case 'TO_JACKPOT':
     case 'JACKPOT_PAYOUT':
     case 'PROPERTY_PURCHASE':
+    case 'PROPERTY_BUILD':
+    case 'PROPERTY_SELL_BUILDING':
       return request.playerId;
     case 'PAY_RENT':
       return request.payerPlayerId;
