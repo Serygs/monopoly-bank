@@ -60,7 +60,7 @@ describe('ReverseTransactionDialog', () => {
     expect(effects).toHaveTextContent('Ada');
     expect(effects).toHaveTextContent('+$100');
     expect(effects).toHaveTextContent('Bo');
-    expect(effects).toHaveTextContent('-$100');
+    expect(effects).toHaveTextContent('\u2212$100');
   });
 
   it('records a reversal of that transaction with the note and reports the new balances', async () => {
