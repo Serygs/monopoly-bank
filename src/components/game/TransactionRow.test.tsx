@@ -52,7 +52,7 @@ describe('TransactionRow', () => {
     const { container } = renderRow({ variant: 'history', playerId: 'p1' });
     const amount = screen.getByText(formatMoneyDelta(-250_000, 'USD'));
     expect(amount).toHaveClass('player-history-amount');
-    expect(amount.textContent?.startsWith('-')).toBe(true);
+    expect(amount.textContent?.startsWith('\u2212')).toBe(true);
     expect(container.querySelector('.activity-transaction')).toBeNull();
   });
 
@@ -75,5 +75,44 @@ describe('TransactionRow', () => {
   it('omits the tone attribute unless a tone is given', () => {
     renderRow();
     expect(screen.getByRole('listitem')).not.toHaveAttribute('data-tone');
+  });
+
+  it('never renders a tile id when the board has no such tile', () => {
+    const purchase: Transaction = {
+      ...payment,
+      id: 't2',
+      type: 'PROPERTY_PURCHASE',
+      tileId: 'rostovska',
+      comment: null,
+      participants: [{ playerId: 'p1', balanceDelta: -250_000 }],
+    };
+    const { container } = renderRow({ transaction: purchase, board: null });
+    expect(container.textContent).not.toContain('rostovska');
+  });
+
+  it('renders the compact row with a signed amount, the time only and the note', () => {
+    const { container } = renderRow({ variant: 'compact', playerId: 'p1' });
+    const amount = screen.getByText(formatMoneyDelta(-250_000, 'USD'));
+    expect(amount).toHaveClass('text-danger', 'tabular-nums');
+    expect(container.textContent).toContain('Rent on Boardwalk');
+    expect(container.textContent).not.toMatch(/2026|Sep/);
+    expect(screen.getByRole('listitem')).toHaveAttribute('data-tone', 'expense');
+  });
+
+  it('says there is no surcharge for a trade without cash', () => {
+    const trade: Transaction = {
+      ...payment,
+      id: 't3',
+      type: 'PROPERTY_TRANSFER',
+      amount: 0,
+      totalAmount: 0,
+      comment: null,
+      participants: [
+        { playerId: 'p1', balanceDelta: 0 },
+        { playerId: 'p2', balanceDelta: 0 },
+      ],
+    };
+    renderRow({ variant: 'compact', transaction: trade, playerId: 'p1' });
+    expect(screen.getByText('no surcharge')).toBeInTheDocument();
   });
 });

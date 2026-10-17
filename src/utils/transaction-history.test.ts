@@ -39,7 +39,7 @@ describe('transaction history formatting', () => {
       totalAmount: 200,
     };
     expect(transactionAmount(transaction, 'K')).toBe('50k each · 200k total');
-    expect(playerTransactionAmount(rent, 'john', 'K')).toBe('-120k');
+    expect(playerTransactionAmount(rent, 'john', 'K')).toBe('\u2212120k');
     expect(playerTransactionAmount(rent, 'alex', 'K')).toBe('+120k');
   });
 });
