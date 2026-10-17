@@ -1,4 +1,5 @@
 import type { Currency, Player } from '../../../shared/types/monopoly';
+import { Notice } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney, formatMoneyDelta } from '../../utils/money';
@@ -19,6 +20,14 @@ export interface ConfirmationProps {
   currency: Currency;
   preview: BalancePreview[];
   comment: string;
+  /** The mortgaged property, shown for a mortgage or a redemption. */
+  propertyName?: string;
+  /** Interest paid to the bank on top of the amount when a bank loan is repaid. */
+  interest?: number;
+  /** The loan being repaid is the bank's, so the money goes to the bank rather than a player. */
+  lenderIsBank?: boolean;
+  /** Cash held back for the payer's leading auction bid; it is not available after the payment. */
+  reserved?: number;
 }
 
 /** Summary rows (label left, value right) and the resulting-balances list with colour dots. */
@@ -54,6 +63,10 @@ export function Confirmation({
   currency,
   preview,
   comment,
+  propertyName,
+  interest = 0,
+  lenderIsBank = false,
+  reserved = 0,
 }: ConfirmationProps) {
   const { t } = useLanguage();
   const total =
@@ -61,11 +74,13 @@ export function Confirmation({
       ? amount * (preview.length - 1)
       : action === 'PASS_GO'
         ? passGoReward
-        : amount;
-  const shownAmount = action === 'PASS_GO' ? passGoReward : amount;
+        : amount + interest;
+  const shownAmount = action === 'PASS_GO' ? passGoReward : amount + interest;
   const repeatsAmount = total === shownAmount;
+  const isLoanRequest = action === 'LOAN_ISSUE';
   const resultingBalance =
-    preview.find(({ player: affected }) => affected.id === player.id)?.after ?? player.balance;
+    (preview.find(({ player: affected }) => affected.id === player.id)?.after ?? player.balance) -
+    reserved;
   return (
     <section className={confirmationClass}>
       <p className={leadClass}>
@@ -74,9 +89,15 @@ export function Confirmation({
           {action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? ` ${t('perPlayer')}` : ''}
         </strong>
         <span>
-          {sourceFor(action, player, t)} → {destinationFor(action, player, target, t)}
+          {sourceFor(action, player, t, target)} →{' '}
+          {destinationFor(action, player, target, t, lenderIsBank)}
         </span>
       </p>
+      {isLoanRequest && (
+        <Notice tone="info">
+          {t('loanRequestNotice', { name: target?.name ?? t('selectedPlayer') })}
+        </Notice>
+      )}
       <dl>
         <div className={compactHidden}>
           <dt>{t('actor')}</dt>
@@ -84,16 +105,32 @@ export function Confirmation({
         </div>
         <div className={compactHidden}>
           <dt>{t('operation')}</dt>
-          <dd>{transactionLabel(action, t)}</dd>
+          <dd>{transactionLabel(action === 'BANK_LOAN' ? 'LOAN_ISSUE' : action, t)}</dd>
         </div>
         <div className={compactHidden}>
           <dt>{t('source')}</dt>
-          <dd>{sourceFor(action, player, t)}</dd>
+          <dd>{sourceFor(action, player, t, target)}</dd>
         </div>
         <div className={compactHidden}>
           <dt>{t('destination')}</dt>
-          <dd>{destinationFor(action, player, target, t)}</dd>
+          <dd>{destinationFor(action, player, target, t, lenderIsBank)}</dd>
         </div>
+        {propertyName !== undefined && propertyName !== '' && (
+          <div>
+            <dt>{t('property')}</dt>
+            <dd>
+              {propertyName.includes('\n') ? (
+                <ul className="m-0 grid list-none gap-(--mb-space-1) p-0">
+                  {propertyName.split('\n').map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              ) : (
+                propertyName
+              )}
+            </dd>
+          </div>
+        )}
         <div className={compactHidden}>
           <dt>{t('amount')}</dt>
           <dd>
@@ -101,14 +138,22 @@ export function Confirmation({
             {action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER' ? ` ${t('perPlayer')}` : ''}
           </dd>
         </div>
+        {interest > 0 && (
+          <div>
+            <dt>{t('interest')}</dt>
+            <dd>{formatMoney(interest, currency)}</dd>
+          </div>
+        )}
         <div className={repeatsAmount ? compactHidden : undefined}>
           <dt>{t('total')}</dt>
           <dd>{formatMoney(total, currency)}</dd>
         </div>
-        <div className={availableClass}>
-          <dt>{t('resultingAvailableBalance')}</dt>
-          <dd>{formatMoney(resultingBalance, currency)}</dd>
-        </div>
+        {!isLoanRequest && (
+          <div className={availableClass}>
+            <dt>{t('resultingAvailableBalance')}</dt>
+            <dd>{formatMoney(resultingBalance, currency)}</dd>
+          </div>
+        )}
         {comment.trim() !== '' && (
           <div>
             <dt>{t('comment')}</dt>
@@ -116,23 +161,26 @@ export function Confirmation({
           </div>
         )}
       </dl>
-      <details className={balancesClass}>
-        <summary>{t('resultingBalances')}</summary>
-        <h3>{t('resultingBalances')}</h3>
-        <ul>
-          {preview.map(({ player: affected, after, delta }) => (
-            <li key={affected.id}>
-              <span>
-                <i style={{ backgroundColor: affected.color }} />
-                {affected.name}
-              </span>
-              <strong>
-                {formatMoney(after, currency)} <small>({formatMoneyDelta(delta, currency)})</small>
-              </strong>
-            </li>
-          ))}
-        </ul>
-      </details>
+      {!isLoanRequest && (
+        <details className={balancesClass}>
+          <summary>{t('resultingBalances')}</summary>
+          <h3>{t('resultingBalances')}</h3>
+          <ul>
+            {preview.map(({ player: affected, after, delta }) => (
+              <li key={affected.id}>
+                <span>
+                  <i style={{ backgroundColor: affected.color }} />
+                  {affected.name}
+                </span>
+                <strong>
+                  {formatMoney(after, currency)}{' '}
+                  <small>({formatMoneyDelta(delta, currency)})</small>
+                </strong>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </section>
   );
 }

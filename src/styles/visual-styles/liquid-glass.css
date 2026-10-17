@@ -51,14 +51,17 @@
   --mb-layout-header-height-medium: 68px;
   --mb-layout-header-height-wide: 72px;
 
-  --mb-radius-sm: 12px;
-  --mb-radius-md: 15px;
-  --mb-radius-lg: 18px;
-  --mb-radius-xl: 24px;
+  /* Three-token radius vocabulary: pill (buttons, chips, badges), surface (cards, sheets), compact. */
   --mb-radius-pill: 999px;
-  --mb-radius-control: 14px;
-  --mb-radius-card: 18px;
-  --mb-radius-card-large: 24px;
+  --mb-radius-surface: 26px;
+  --mb-radius-compact: 16px;
+  --mb-radius-sm: var(--mb-radius-compact);
+  --mb-radius-md: var(--mb-radius-compact);
+  --mb-radius-lg: var(--mb-radius-compact);
+  --mb-radius-xl: var(--mb-radius-surface);
+  --mb-radius-control: var(--mb-radius-compact);
+  --mb-radius-card: var(--mb-radius-surface);
+  --mb-radius-card-large: var(--mb-radius-surface);
   --mb-control-height-md: 44px;
   --mb-control-height-lg: 48px;
   --mb-duration-fast: 140ms;
@@ -94,6 +97,7 @@
   --mb-color-focus-ring: #466b96;
   --mb-color-inverse-hover: rgb(255 255 255 / 0.22);
   --mb-color-qr-background: #fff;
+  --mb-color-qr-modules: #000;
 
   --mb-color-player-red: #d83f55;
   --mb-color-player-blue: #2878d0;
@@ -109,11 +113,11 @@
   --mb-shadow-hover: 0 18px 42px rgb(40 60 90 / 0.13), inset 0 1px 0 rgb(255 255 255 / 0.72);
 
   --mb-background-shell:
-    radial-gradient(circle at 12% 8%, rgb(201 220 244 / 0.88), transparent 30%),
-    radial-gradient(circle at 88% 18%, rgb(231 226 244 / 0.82), transparent 30%),
-    radial-gradient(circle at 38% 94%, rgb(220 237 232 / 0.86), transparent 36%),
-    radial-gradient(circle at 68% 76%, rgb(255 244 232 / 0.62), transparent 28%),
-    linear-gradient(135deg, #f5f7fa, #eef2f7);
+    radial-gradient(circle at 10% 6%, rgb(138 182 244 / 0.98), transparent 42%),
+    radial-gradient(circle at 92% 16%, rgb(204 178 246 / 0.95), transparent 40%),
+    radial-gradient(circle at 34% 96%, rgb(148 222 196 / 0.95), transparent 46%),
+    radial-gradient(circle at 74% 72%, rgb(255 214 176 / 0.7), transparent 34%),
+    linear-gradient(135deg, #f1f5fb, #e9eff7);
   --mb-background-header: rgb(247 250 255 / 0.48);
   --mb-background-hero: linear-gradient(135deg, rgb(255 255 255 / 0.44), rgb(220 235 250 / 0.36));
   --mb-background-invitation: var(--mb-color-surface-subtle);
@@ -128,6 +132,42 @@
   --mb-shadow-balance-inset: inset 0 1px 0 rgb(255 255 255 / 0.45);
   --mb-shadow-player-inset: inset 0 -4px 8px rgb(0 0 0 / 0.1);
   --mb-focus-ring: 3px solid var(--mb-color-focus-ring);
+
+  /* Glass surface tokens: panel, sheet, popover, scrim. Consumed only by `src/styles/glass.css`. */
+  --mb-glass-blur: 28px;
+  --mb-glass-saturate: 170%;
+  --mb-glass-tint: rgb(255 255 255 / 0.58);
+  --mb-glass-tint-solid: #f4f7fb;
+  --mb-glass-border: rgb(255 255 255 / 0.72);
+  --mb-glass-specular: linear-gradient(180deg, rgb(255 255 255 / 0.7), rgb(255 255 255 / 0) 42%);
+  --mb-glass-rim: inset 0 1px 0 rgb(255 255 255 / 0.8), inset 0 -1px 0 rgb(255 255 255 / 0.2);
+  --mb-glass-shadow: 0 14px 40px rgb(50 70 100 / 0.12), var(--mb-glass-rim);
+  /* Card inside a sheet: tint and rim only. Never blur here, a backdrop-filter nested in another one renders wrong in WebKit. */
+  --mb-glass-card-tint: rgb(255 255 255 / 0.58);
+  --mb-glass-card-tint-solid: #f7f9fc;
+  --mb-glass-card-border: rgb(255 255 255 / 0.6);
+  --mb-glass-card-blur: 12px;
+  --mb-glass-card-shadow: 0 6px 18px rgb(40 60 90 / 0.08), var(--mb-glass-rim);
+  /* Thin tint under text-heavy content so page content never shows through behind text or numbers. */
+  --mb-glass-tint-layer: rgb(255 255 255 / 0.38);
+  --mb-glass-button-primary-bg:
+    linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0) 55%),
+    rgb(46 94 164 / 0.94);
+  --mb-glass-button-primary-hover-bg:
+    linear-gradient(180deg, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0) 55%), rgb(38 80 146 / 0.96);
+  --mb-glass-button-primary-border: rgb(255 255 255 / 0.3);
+  --mb-glass-button-primary-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.34), 0 8px 20px rgb(32 49 73 / 0.16);
+  --mb-glass-control-tint: rgb(255 255 255 / 0.5);
+  --mb-glass-control-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55), 0 6px 18px rgb(40 60 90 / 0.08);
+  --mb-popover-blur: 24px;
+  --mb-popover-tint: rgb(255 255 255 / 0.9);
+  --mb-popover-tint-solid: #fbfcfe;
+  --mb-popover-border: rgb(120 138 162 / 0.28);
+  --mb-popover-shadow: 0 18px 48px rgb(30 45 70 / 0.26), 0 2px 8px rgb(30 45 70 / 0.12);
+  --mb-scrim-tint: rgb(20 32 51 / 0.12);
+  --mb-scrim-blur: 10px;
+  --mb-background-pattern-opacity: 0.05;
 
   --mb-ui-canvas: var(--mb-color-canvas);
   --mb-ui-surface: var(--mb-color-surface-elevated);
@@ -197,6 +237,35 @@
   --mb-shadow-lg: 0 26px 68px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.14);
   --mb-shadow-hover: 0 20px 48px rgb(0 0 0 / 0.34), inset 0 1px 0 rgb(255 255 255 / 0.2);
   --mb-shadow-header: 0 8px 30px rgb(0 0 0 / 0.2), inset 0 -1px 0 rgb(255 255 255 / 0.09);
+
+  --mb-glass-tint: rgb(40 49 62 / 0.62);
+  --mb-glass-tint-solid: #202a37;
+  --mb-glass-border: rgb(255 255 255 / 0.2);
+  --mb-glass-specular: linear-gradient(180deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0) 42%);
+  --mb-glass-rim: inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -1px 0 rgb(255 255 255 / 0.04);
+  --mb-glass-shadow: 0 16px 42px rgb(0 0 0 / 0.32), var(--mb-glass-rim);
+  --mb-glass-card-tint: rgb(255 255 255 / 0.08);
+  --mb-glass-card-tint-solid: #26313f;
+  --mb-glass-card-border: rgb(255 255 255 / 0.14);
+  --mb-glass-card-shadow: 0 6px 18px rgb(0 0 0 / 0.2), var(--mb-glass-rim);
+  --mb-glass-tint-layer: rgb(20 27 37 / 0.36);
+  --mb-glass-button-primary-bg:
+    linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0) 55%),
+    rgb(58 108 184 / 0.94);
+  --mb-glass-button-primary-hover-bg:
+    linear-gradient(180deg, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0) 55%),
+    rgb(48 94 168 / 0.96);
+  --mb-glass-button-primary-border: rgb(255 255 255 / 0.28);
+  --mb-glass-button-primary-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.3), 0 8px 20px rgb(0 0 0 / 0.28);
+  --mb-glass-control-tint: rgb(255 255 255 / 0.1);
+  --mb-glass-control-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 6px 18px rgb(0 0 0 / 0.2);
+  --mb-popover-tint: rgb(30 38 50 / 0.92);
+  --mb-popover-tint-solid: #1b2431;
+  --mb-popover-border: rgb(255 255 255 / 0.22);
+  --mb-popover-shadow: 0 20px 52px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.3);
+  --mb-scrim-tint: rgb(4 8 13 / 0.34);
+  --mb-background-pattern-opacity: 0.07;
 }
 
 /*

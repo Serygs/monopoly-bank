@@ -10,9 +10,7 @@ for (const visualStyle of ['classic-bank', 'liquid-glass'] as const) {
         await prepareVisualPage(page, { visualStyle, colorMode: 'dark', language });
       });
 
-      test('suggestions remain editable alongside Headless UI colour controls', async ({
-        page,
-      }) => {
+      test('suggestions stay editable on the first create step', async ({ page }) => {
         await page.goto('/games/new');
         const name = page.getByLabel(translate(language, 'gameName'), { exact: true });
         const trigger = page.getByRole('button', { name: translate(language, 'suggestGameName') });
@@ -26,7 +24,6 @@ for (const visualStyle of ['classic-bank', 'liquid-glass'] as const) {
         await expect(name).toBeFocused();
         await name.fill('Edited game');
         await expect(name).toHaveValue('Edited game');
-        await expect(page.getByRole('radio')).toHaveCount(6);
         await trigger.click();
         await page.keyboard.press('Escape');
         await expect(suggestions).toBeHidden();
@@ -48,7 +45,7 @@ for (const visualStyle of ['classic-bank', 'liquid-glass'] as const) {
           name: translate(language, 'settings'),
           exact: true,
         });
-        await expect(dialog.getByRole('switch')).toHaveCount(2);
+        await expect(dialog.getByRole('switch')).toHaveCount(3);
         await expect(dialog.getByRole('radiogroup')).toHaveCount(2);
         await expect(
           dialog.getByRole('button', {

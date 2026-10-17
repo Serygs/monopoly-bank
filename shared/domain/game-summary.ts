@@ -32,25 +32,57 @@ export function calculateFinalGameSummary(
     string,
     { payerId: string; recipientId: string; amount: number; transactionCount: number }
   >();
+  const reversedIds = new Set(
+    transactions.flatMap((transaction) =>
+      transaction.reversesTransactionId == null ? [] : [transaction.reversesTransactionId],
+    ),
+  );
   let totalMoneyTransferred = 0;
   let playerToPlayerTotal = 0;
   let paidToBank = 0;
   let receivedFromBank = 0;
   let largestTransaction = 0;
   for (const transaction of transactions) {
+    // A reversed transaction and its reversal cancel out; the game did not move that money.
+    if (
+      transaction.type === 'REVERSAL' ||
+      transaction.reversedByTransactionId != null ||
+      reversedIds.has(transaction.id)
+    )
+      continue;
     totalMoneyTransferred += transaction.totalAmount;
     largestTransaction = Math.max(largestTransaction, transaction.totalAmount);
+    // Borrowed and repaid money is a debt, not spending or income, so loan transactions count
+    // toward the totals and each player's transaction count but not toward sent/received.
+    // TO_JACKPOT counts as money the player sent and JACKPOT_PAYOUT as money received; neither is
+    // paid to / received from the bank, nor player-to-player (the pot is neither).
+    const isLoan = transaction.type === 'LOAN_ISSUE' || transaction.type === 'LOAN_REPAYMENT';
     for (const participant of transaction.participants) {
       const metric = metrics.get(participant.playerId);
       if (metric !== undefined) {
         metric.transactionCount += 1;
+        if (isLoan) continue;
         if (participant.balanceDelta < 0) metric.sent -= participant.balanceDelta;
         else metric.received += participant.balanceDelta;
       }
     }
-    if (transaction.type === 'PLAYER_TO_BANK') paidToBank += transaction.totalAmount;
-    if (transaction.type === 'BANK_TO_PLAYER' || transaction.type === 'PASS_GO')
+    if (
+      transaction.type === 'PLAYER_TO_BANK' ||
+      transaction.type === 'MORTGAGE_REDEMPTION' ||
+      transaction.type === 'PROPERTY_PURCHASE' ||
+      transaction.type === 'PROPERTY_BUILD' ||
+      transaction.type === 'AUCTION_PAYMENT'
+    )
+      paidToBank += transaction.totalAmount;
+    if (
+      transaction.type === 'BANK_TO_PLAYER' ||
+      transaction.type === 'PASS_GO' ||
+      transaction.type === 'PROPERTY_SELL_BUILDING' ||
+      transaction.type === 'MORTGAGE'
+    )
       receivedFromBank += transaction.totalAmount;
+    // The cash of a trade is player-to-player money; who paid whom is not worked out for it.
+    if (transaction.type === 'PROPERTY_TRANSFER') playerToPlayerTotal += transaction.totalAmount;
     if (
       transaction.type === 'PLAYER_TO_PLAYER' ||
       transaction.type === 'PAY_RENT' ||

@@ -6,7 +6,7 @@ import { GameBottomNav, type GameBottomNavProps } from './GameBottomNav';
 
 function renderNav(overrides: Partial<GameBottomNavProps> = {}) {
   const props: GameBottomNavProps = {
-    pendingRequests: 0,
+    hasPending: false,
     payDisabled: false,
     activityDisabled: false,
     toolsDisabled: false,
@@ -34,6 +34,22 @@ describe('GameBottomNav', () => {
     expect(buttons).toEqual(['Activity', 'Statistics', 'Tools', 'Pay']);
   });
 
+  it('adds the Property item without a count badge only for board games', async () => {
+    const onOpen = vi.fn();
+    const { user } = renderNav({ property: { onOpen } });
+    const nav = screen.getByRole('navigation', { name: 'Game navigation' });
+    expect(nav.querySelectorAll('button')).toHaveLength(5);
+    expect(nav.textContent).not.toMatch(/\d/);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Property/ }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps four items when the game has no board', () => {
+    renderNav();
+    expect(screen.queryByRole('button', { name: /Property/ })).toBeNull();
+  });
+
   it('opens Tools as a sheet', async () => {
     const { props, user } = renderNav();
     await user.click(screen.getByRole('button', { name: 'Tools' }));
@@ -58,13 +74,13 @@ describe('GameBottomNav', () => {
     expect(screen.getByRole('button', { name: 'Tools' })).toBeDisabled();
   });
 
-  it('shows a pending-request count only when there are requests', () => {
-    const first = renderNav({ pendingRequests: 0 });
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  it('shows a neutral dot on Activity only while something waits for the viewer', () => {
+    const first = renderNav({ hasPending: false });
+    expect(screen.queryByText('A request is waiting for your answer')).not.toBeInTheDocument();
     first.unmount();
-    renderNav({ pendingRequests: 2 });
-    expect(screen.getByRole('status', { name: '2 pending payment requests' })).toHaveTextContent(
-      '2',
-    );
+    renderNav({ hasPending: true });
+    expect(screen.getByText('A request is waiting for your answer')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('navigation').textContent).not.toMatch(/\d/);
   });
 });

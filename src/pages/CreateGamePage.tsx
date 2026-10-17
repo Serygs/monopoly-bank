@@ -1,6 +1,7 @@
 import { Radio, RadioGroup } from '@headlessui/react';
 import {
   Fragment,
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -10,20 +11,45 @@ import {
   type ReactNode,
 } from 'react';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import type { BoardMode } from '../../shared/board';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { AmountInput } from '../components/AmountInput';
 import { useAmountInput } from '../components/amount-input-state';
-import { PageHeader } from '../components/PageHeader';
-import { Button, Field, FieldError, FieldHint, Notice, PageShell, Toolbar } from '../components/ui';
+import {
+  Button,
+  AnchoredPopover,
+  Field,
+  FieldError,
+  FieldHint,
+  FormSection,
+  Lede,
+  Notice,
+  PageShell,
+  SegmentedControl,
+  StepperBar,
+  Toggle,
+} from '../components/ui';
 import { cx } from '../components/ui/class-names';
 import { keepEnterInRadio } from '../components/ui/radio-keys';
-import type { Translate } from '../i18n/translations';
+import type { Translate, TranslationKey } from '../i18n/translations';
+import { buildRulesValues, ruleSummaries } from '../content/game-rules';
 import { formatMoney } from '../utils/money';
+import {
+  clearDraft,
+  defaultPassGoReward,
+  defaultStartingBalance,
+  isDraftDirty,
+  readDraft,
+  writeDraft,
+  type CreateGameDraft,
+} from './create-game-draft';
 import { getGameNameSuggestions, randomSuggestionStart } from '../utils/game-name-suggestions';
 import {
   selectableCurrencies,
   type Currency,
+  type GameRuleKey,
+  type GameRules,
   type PaymentMode,
   type SelectableCurrency,
 } from '../../shared/types/monopoly';
@@ -55,7 +81,6 @@ const sectionTitleClass = cx(
   'flex min-w-0 items-center justify-between gap-(--mb-space-3) [&_.field-hint]:m-0 [&_.field-hint]:min-w-0',
   'max-md:flex-col max-md:items-stretch max-md:[&_.button]:w-full',
 );
-const actionsClass = 'pt-(--mb-space-2) md:col-span-full [&_.button]:min-w-[min(100%,15rem)]';
 /* `!` outranks the unlayered `.game-form fieldset` / `.game-form legend` rules in `primitives.css`. */
 const colorPickerClass = cx(
   'border-0! bg-transparent! p-0! shadow-none!',
@@ -77,59 +102,63 @@ const colorOptionStateClass = {
   ),
   idle: '[box-shadow:0_0_0_1px_var(--mb-color-border-strong),var(--mb-shadow-player-inset)]',
 };
-const defaultStartingBalance = 15_000_000;
-const defaultPassGoReward = 2_000_000;
-interface PlayerForm {
-  key: number;
-  name: string;
-  color: string;
-}
+/** The optional rules offered with a new game, in the order they are listed. */
+const houseRuleOptions: { key: GameRuleKey; label: TranslationKey }[] = [
+  { key: 'doubleRewardOnExactGo', label: 'ruleDoubleGo' },
+  { key: 'playerLoans', label: 'rulePlayerLoans' },
+  { key: 'bankLoans', label: 'ruleBankLoans' },
+  { key: 'freeParkingJackpot', label: 'ruleFreeParkingJackpot' },
+  { key: 'auctions', label: 'ruleAuctions' },
+];
+type PlayerForm = CreateGameDraft['players'][number];
+const stepCount = 3;
 interface Props {
   profile: UserProfile;
-  onCancel: () => void;
+  /** The header's X; the shell decides whether leaving needs a confirmation. */
+  onClose: () => void;
+  /** Tells the shell whether the draft holds input, so it can guard leaving the screen. */
+  onDirtyChange?: (dirty: boolean) => void;
   onCreated: (gameId: string) => void;
 }
 
-export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
+export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: Props) {
   const { language, t } = useLanguage();
-  const nextKey = useRef(3);
+  const [initial] = useState(() => readDraft(profile.id, profile.nickname));
+  const nextKey = useRef(Math.max(2, ...initial.players.map((player) => player.key + 1)));
   const gameNameInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const suggestionsRootRef = useRef<HTMLDivElement>(null);
   const gameNameInputId = useId();
   const suggestionsId = useId();
-  const [name, setName] = useState('');
+  const [step, setStep] = useState(initial.step);
+  const [name, setName] = useState(initial.name);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionStart, setSuggestionStart] = useState(0);
-  const [startingBalance, setStartingBalance] = useState(String(defaultStartingBalance));
-  const [passGoReward, setPassGoReward] = useState(String(defaultPassGoReward));
-  const [currency, setCurrency] = useState<SelectableCurrency>('USD');
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('FAST');
+  const [startingBalance, setStartingBalance] = useState(initial.startingBalance);
+  const [passGoReward, setPassGoReward] = useState(initial.passGoReward);
+  const [currency, setCurrency] = useState<SelectableCurrency>(initial.currency);
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>(initial.paymentMode);
+  const [rules, setRules] = useState<GameRules>(initial.rules);
+  const [board, setBoard] = useState<BoardMode>(initial.board);
   const [gameAccessPassword, setGameAccessPassword] = useState('');
-  const [players, setPlayers] = useState<PlayerForm[]>([
-    { key: 1, name: profile.nickname, color: colors[0].value },
-  ]);
+  const [isPublic, setIsPublic] = useState(initial.isPublic);
+  const [players, setPlayers] = useState<PlayerForm[]>(initial.players);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<unknown | null>(null);
   const suggestions = getGameNameSuggestions(language, suggestionStart);
-
-  useEffect(() => {
-    if (!suggestionsOpen) return;
-    const closeFromOutside = (event: PointerEvent) => {
-      if (!suggestionsRootRef.current?.contains(event.target as Node)) setSuggestionsOpen(false);
-    };
-    const closeFromEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setSuggestionsOpen(false);
-      gameNameInputRef.current?.focus();
-    };
-    document.addEventListener('pointerdown', closeFromOutside);
-    document.addEventListener('keydown', closeFromEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeFromOutside);
-      document.removeEventListener('keydown', closeFromEscape);
-    };
-  }, [suggestionsOpen]);
+  const closeSuggestions = useCallback(() => {
+    setSuggestionsOpen(false);
+    gameNameInputRef.current?.focus();
+  }, []);
+  const summaries = ruleSummaries(
+    language,
+    buildRulesValues(
+      Number(startingBalance) > 0 ? Number(startingBalance) : defaultStartingBalance,
+      Number(passGoReward) > 0 ? Number(passGoReward) : defaultPassGoReward,
+      currency,
+    ),
+  );
 
   const toggleSuggestions = () => {
     setSuggestionsOpen((open) => {
@@ -147,14 +176,76 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
       setPlayers([...players, { key: nextKey.current++, name: '', color }]);
     }
   };
+  const draft: CreateGameDraft = {
+    userId: profile.id,
+    step,
+    name,
+    currency,
+    paymentMode,
+    isPublic,
+    startingBalance,
+    passGoReward,
+    rules,
+    board,
+    players,
+  };
+  /* The password is not part of the draft, but it still counts as input worth confirming. */
+  const dirty = isDraftDirty(draft, gameAccessPassword, profile.nickname);
+  useEffect(() => {
+    writeDraft(draft);
+    // `draft` is rebuilt every render from the fields below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    step,
+    name,
+    currency,
+    paymentMode,
+    isPublic,
+    startingBalance,
+    passGoReward,
+    rules,
+    board,
+    players,
+  ]);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [step]);
+  const goTo = (target: number) => {
+    setSubmitError(null);
+    setStep(target);
+  };
+  /** Validates one step; the first failing step is where a final submit sends the user back. */
+  const errorsForStep = (target: number) => {
+    const found = validateStep(target, { name, startingBalance, passGoReward, players }, t);
+    if (target === 0 && !isPublic && gameAccessPassword !== '' && gameAccessPassword.length < 4)
+      found.gameAccessPassword = t('gamePasswordMinLength');
+    return found;
+  };
+  const next = () => {
+    const found = errorsForStep(step);
+    setErrors(found);
+    if (Object.keys(found).length === 0) goTo(Math.min(step + 1, stepCount - 1));
+  };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const nextErrors = validate(name, startingBalance, passGoReward, players, t);
-    if (gameAccessPassword !== '' && gameAccessPassword.length < 4)
-      nextErrors.gameAccessPassword = t('gamePasswordMinLength');
-    setErrors(nextErrors);
+    if (step < stepCount - 1) {
+      next();
+      return;
+    }
+    for (let target = 0; target < stepCount; target += 1) {
+      const found = errorsForStep(target);
+      if (Object.keys(found).length > 0) {
+        setErrors(found);
+        goTo(target);
+        return;
+      }
+    }
+    setErrors({});
     setSubmitError(null);
-    if (Object.keys(nextErrors).length > 0) return;
     setSubmitting(true);
     try {
       const details = await monopolyBankApi.createGame({
@@ -163,9 +254,13 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
         passGoReward: Number(passGoReward),
         currency,
         paymentMode,
-        ...(gameAccessPassword === '' ? {} : { gameAccessPassword }),
+        rules,
+        ...(board === 'none' ? {} : { board }),
+        ...(isPublic ? { isPublic } : {}),
+        ...(isPublic || gameAccessPassword === '' ? {} : { gameAccessPassword }),
         players: players.map((player) => ({ name: player.name.trim(), color: player.color })),
       });
+      clearDraft();
       onCreated(details.game.id);
     } catch (caught) {
       setSubmitError(caught);
@@ -173,211 +268,369 @@ export function CreateGamePage({ profile, onCancel, onCreated }: Props) {
       setSubmitting(false);
     }
   };
+  const stepTitles = [t('stepBasics'), t('houseRules'), t('stepPlayers')];
+  const stepSubtitles = [t('lobbyLede'), t('houseRulesHint'), t('localPlayersHint')];
   return (
     <PageShell>
-      <PageHeader
-        eyebrow={t('newBank')}
-        title={t('createLobby')}
-        description={t('lobbyLede')}
-        backAction={
-          <Button variant="quiet" onClick={onCancel}>
-            {t('cancel')}
-          </Button>
-        }
-      />
-      <form className={formClass} onSubmit={(event) => void submit(event)} noValidate>
-        <fieldset>
-          <legend>{t('gameBasics')}</legend>
-          <FieldStack>
-            <div className="game-name-field grid gap-[7px] font-medium text-primary">
-              <label htmlFor={gameNameInputId}>{t('gameName')}</label>
-              <div className="game-name-control relative" ref={suggestionsRootRef}>
-                <input
-                  ref={gameNameInputRef}
-                  id={gameNameInputId}
-                  className="pr-[8.75rem]! max-[24rem]:pr-[4rem]!"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  aria-invalid={errors.name !== undefined}
-                  aria-errormessage={
-                    errors.name === undefined ? undefined : `${gameNameInputId}-error`
-                  }
-                />
-                <Button
-                  className="game-name-suggest-trigger absolute min-h-11 justify-center inset-[2px_2px_auto_auto] gap-(--mb-space-2) rounded-[calc(var(--mb-radius-control)_-_2px)] border-0 bg-accent-soft px-(--mb-space-3) text-small text-accent enabled:active:text-accent-pressed fine-pointer:enabled:hover:text-accent-hover max-[24rem]:w-11 max-[24rem]:px-0"
-                  aria-haspopup="dialog"
-                  aria-expanded={suggestionsOpen}
-                  aria-controls={suggestionsId}
-                  onClick={toggleSuggestions}
-                >
-                  <SparklesIcon />
-                  <span className="max-[24rem]:sr-only">{t('suggestGameName')}</span>
-                </Button>
-                {suggestionsOpen && (
-                  <div
-                    className="game-name-suggestions absolute z-20 inset-[calc(100%_+_var(--mb-space-2))_0_auto_auto] w-[min(22rem,100%)] rounded-card border border-border bg-surface-elevated p-(--mb-space-2) text-primary shadow-lg"
-                    id={suggestionsId}
-                    role="dialog"
-                    aria-label={t('suggestedGameNames')}
-                  >
-                    <div className="flex min-h-10 items-center gap-(--mb-space-2) px-(--mb-space-3) text-small font-semibold text-secondary [&_svg]:text-highlight">
-                      <SparklesIcon />
-                      <span>{t('suggestedGameNames')}</span>
-                    </div>
-                    <div className="grid" role="group">
-                      {suggestions.map((suggestion) => (
-                        <Button
-                          className="game-name-suggestion grid! min-h-(--mb-control-height-md) grid-cols-[1.5rem_minmax(0,1fr)] justify-start gap-(--mb-space-2) rounded-[calc(var(--mb-radius-control)_-_3px)] border-0 bg-transparent px-(--mb-space-3) text-start text-small font-medium text-primary active:bg-accent-soft fine-pointer:hover:bg-surface-subtle"
-                          key={suggestion.name}
-                          onClick={() => {
-                            setName(suggestion.name);
-                            setSuggestionsOpen(false);
-                            gameNameInputRef.current?.focus();
-                          }}
-                        >
-                          <span aria-hidden="true">{suggestion.icon}</span>
-                          <span>{suggestion.name}</span>
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {errors.name !== undefined && (
-                <FieldError id={`${gameNameInputId}-error`}>{errors.name}</FieldError>
-              )}
-            </div>
-            <Field label={t('currency')}>
-              <select
-                value={currency}
-                onChange={(event) => setCurrency(event.target.value as SelectableCurrency)}
-              >
-                {selectableCurrencies.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </FieldStack>
-        </fieldset>
-        <fieldset>
-          <legend>{t('bankingRules')}</legend>
-          <FieldStack>
-            <Field label={t('paymentMode')} hint={t('paymentModeLocked')}>
-              <select
-                value={paymentMode}
-                onChange={(event) => setPaymentMode(event.target.value as PaymentMode)}
-              >
-                <option value="FAST">{t('paymentModeFast')}</option>
-                <option value="CONFIRMATION">{t('paymentModeConfirmation')}</option>
-              </select>
-            </Field>
-            <Field
-              label={t('optionalPassword')}
-              hint={t('optionalPasswordHint')}
-              error={errors.gameAccessPassword}
-            >
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={gameAccessPassword}
-                onChange={(event) => setGameAccessPassword(event.target.value)}
-                aria-invalid={errors.gameAccessPassword !== undefined}
-              />
-            </Field>
-            <div className="field-grid">
-              <MoneyField
-                label={t('startingBalance')}
-                value={startingBalance}
-                currency={currency}
-                onChange={setStartingBalance}
-                error={errors.startingBalance}
-              />
-              <MoneyField
-                label={t('passGoReward')}
-                value={passGoReward}
-                currency={currency}
-                onChange={setPassGoReward}
-                error={errors.passGoReward}
-              />
-            </div>
-          </FieldStack>
-        </fieldset>
-        <PlayersFieldset column={1} legend={t('ownerPlayer')}>
-          {players.slice(0, 1).map((player) => (
-            <section key={player.key}>
-              <Field label={t('playerName', { number: 1 })} error={errors[`player-${player.key}`]}>
-                <input
-                  value={player.name}
-                  onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
-                  aria-invalid={errors[`player-${player.key}`] !== undefined}
-                />
-              </Field>
-              <ColorPicker
-                player={player}
-                players={players}
-                onChange={(color) => updatePlayer(player.key, { color })}
-              />
-            </section>
-          ))}
-        </PlayersFieldset>
-        <PlayersFieldset
-          column={2}
-          legend={t('localPlayers')}
-          intro={
-            <>
-              <div className={sectionTitleClass}>
-                <FieldHint as="p">{t('localPlayersHint')}</FieldHint>
-                <Button variant="secondary" onClick={addPlayer} disabled={players.length >= 6}>
-                  {t('addPlayer')}
-                </Button>
-              </div>
-              {errors.players !== undefined && <FieldError>{errors.players}</FieldError>}
-            </>
-          }
+      <header className="mb-(--mb-layout-section-gap-compact) flex items-start justify-between gap-(--mb-space-4)">
+        <div className="min-w-0 pt-(--mb-space-1)">
+          <h1 className="m-0 font-display text-display leading-tight font-bold tracking-display text-primary wrap-anywhere">
+            {stepTitles[step]}
+          </h1>
+          <Lede as="p">{stepSubtitles[step]}</Lede>
+        </div>
+        <Button
+          variant="quiet"
+          className="icon-button min-h-11 min-w-11 shrink-0 justify-center rounded-pill p-0"
+          aria-label={t('closeCreateLobby')}
+          onClick={onClose}
         >
-          {players.slice(1).map((player, index) => (
-            <section key={player.key}>
-              <Field
-                label={t('playerName', { number: index + 2 })}
-                error={errors[`player-${player.key}`]}
-              >
-                <input
-                  value={player.name}
-                  onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
-                  aria-invalid={errors[`player-${player.key}`] !== undefined}
-                />
-              </Field>
-              <ColorPicker
-                player={player}
-                players={players}
-                onChange={(color) => updatePlayer(player.key, { color })}
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </Button>
+      </header>
+      <form ref={formRef} className={formClass} onSubmit={(event) => void submit(event)} noValidate>
+        {step === 0 && (
+          <>
+            <FormSection legend={t('gameBasics')} className="[&>legend]:sr-only">
+              <FieldStack>
+                <div className="game-name-field grid gap-[7px] font-medium text-primary">
+                  <label htmlFor={gameNameInputId}>{t('gameName')}</label>
+                  <div className="game-name-control relative" ref={suggestionsRootRef}>
+                    <input
+                      ref={gameNameInputRef}
+                      id={gameNameInputId}
+                      className="pr-[8.75rem]! max-[24rem]:pr-[4rem]!"
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      aria-invalid={errors.name !== undefined}
+                      aria-errormessage={
+                        errors.name === undefined ? undefined : `${gameNameInputId}-error`
+                      }
+                    />
+                    <Button
+                      className="game-name-suggest-trigger absolute min-h-11 justify-center inset-[2px_2px_auto_auto] gap-(--mb-space-2) rounded-[calc(var(--mb-radius-control)_-_2px)] border-0 bg-accent-soft px-(--mb-space-3) text-small text-accent enabled:active:text-accent-pressed fine-pointer:enabled:hover:text-accent-hover max-[24rem]:w-11 max-[24rem]:px-0"
+                      aria-haspopup="dialog"
+                      aria-expanded={suggestionsOpen}
+                      aria-controls={suggestionsId}
+                      onClick={toggleSuggestions}
+                    >
+                      <SparklesIcon />
+                      <span className="max-[24rem]:sr-only">{t('suggestGameName')}</span>
+                    </Button>
+                    {suggestionsOpen && (
+                      <AnchoredPopover
+                        anchorRef={suggestionsRootRef}
+                        id={suggestionsId}
+                        label={t('suggestedGameNames')}
+                        onClose={closeSuggestions}
+                        className="game-name-suggestions"
+                      >
+                        <div className="flex min-h-10 items-center gap-(--mb-space-2) px-(--mb-space-3) text-small font-semibold text-secondary [&_svg]:text-highlight">
+                          <SparklesIcon />
+                          <span>{t('suggestedGameNames')}</span>
+                        </div>
+                        <div className="grid" role="group">
+                          {suggestions.map((suggestion) => (
+                            <Button
+                              className="game-name-suggestion grid! min-h-(--mb-control-height-md) grid-cols-[1.5rem_minmax(0,1fr)] justify-start gap-(--mb-space-2) rounded-[calc(var(--mb-radius-control)_-_3px)] border-0 bg-transparent px-(--mb-space-3) text-start text-small font-medium text-primary active:bg-accent-soft fine-pointer:hover:bg-surface-subtle"
+                              key={suggestion.name}
+                              onClick={() => {
+                                setName(suggestion.name);
+                                closeSuggestions();
+                              }}
+                            >
+                              <span aria-hidden="true">{suggestion.icon}</span>
+                              <span>{suggestion.name}</span>
+                            </Button>
+                          ))}
+                        </div>
+                      </AnchoredPopover>
+                    )}
+                  </div>
+                  {errors.name !== undefined && (
+                    <FieldError id={`${gameNameInputId}-error`}>{errors.name}</FieldError>
+                  )}
+                </div>
+                <Field label={t('currency')}>
+                  <select
+                    value={currency}
+                    onChange={(event) => setCurrency(event.target.value as SelectableCurrency)}
+                  >
+                    {selectableCurrencies.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </FieldStack>
+            </FormSection>
+            <FormSection legend={t('boardSection')}>
+              <SegmentedControl
+                label={t('boardPlayChoice')}
+                value={board}
+                onChange={setBoard}
+                options={[
+                  { value: 'none', label: t('boardNone') },
+                  { value: 'monopoly-ru-2012', label: t('boardMonopolyRu2012') },
+                ]}
               />
-              <Button
-                variant="quiet"
-                className="justify-self-start"
-                onClick={() =>
-                  setPlayers(players.filter((candidate) => candidate.key !== player.key))
-                }
-              >
-                {t('remove')}
-              </Button>
-            </section>
-          ))}
-        </PlayersFieldset>
-        {submitError !== null && (
-          <Notice tone="error" className="md:col-span-full">
-            {apiErrorMessage(submitError, t, 'unableCreateGame')}
-          </Notice>
+              <FieldHint as="p">{t('boardHint')}</FieldHint>
+            </FormSection>
+            <FormSection legend={t('bankingRules')}>
+              <FieldStack>
+                <Field label={t('paymentMode')} hint={t('paymentModeLocked')}>
+                  <select
+                    value={paymentMode}
+                    onChange={(event) => setPaymentMode(event.target.value as PaymentMode)}
+                  >
+                    <option value="FAST">{t('paymentModeFast')}</option>
+                    <option value="CONFIRMATION">{t('paymentModeConfirmation')}</option>
+                  </select>
+                </Field>
+                <Field
+                  label={t('lobbyAccess')}
+                  hint={isPublic ? t('lobbyAccessPublicHint') : undefined}
+                >
+                  <select
+                    value={isPublic ? 'public' : 'private'}
+                    onChange={(event) => setIsPublic(event.target.value === 'public')}
+                  >
+                    <option value="private">{t('lobbyAccessPrivate')}</option>
+                    <option value="public">{t('lobbyAccessPublic')}</option>
+                  </select>
+                </Field>
+                {!isPublic && (
+                  <Field
+                    label={t('optionalPassword')}
+                    hint={t('optionalPasswordHint')}
+                    error={errors.gameAccessPassword}
+                  >
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={gameAccessPassword}
+                      onChange={(event) => setGameAccessPassword(event.target.value)}
+                      aria-invalid={errors.gameAccessPassword !== undefined}
+                    />
+                  </Field>
+                )}
+                <div className="field-grid">
+                  <MoneyField
+                    label={t('startingBalance')}
+                    value={startingBalance}
+                    currency={currency}
+                    onChange={setStartingBalance}
+                    error={errors.startingBalance}
+                  />
+                  <MoneyField
+                    label={t('passGoReward')}
+                    value={passGoReward}
+                    currency={currency}
+                    onChange={setPassGoReward}
+                    error={errors.passGoReward}
+                  />
+                </div>
+              </FieldStack>
+            </FormSection>
+          </>
         )}
-        <Toolbar variant="form" className={actionsClass}>
-          <Button variant="primary" type="submit" disabled={submitting}>
-            {submitting ? t('startingLobby') : t('createLobby')}
-          </Button>
-        </Toolbar>
+        {step === 1 && (
+          <FormSection legend={t('houseRules')} className="md:col-span-full [&>legend]:sr-only">
+            <FieldStack>
+              <div>
+                {houseRuleOptions.map(({ key, label }) => (
+                  <Toggle
+                    key={key}
+                    variant="row"
+                    label={t(label)}
+                    description={summaries[key]}
+                    checked={rules[key]}
+                    onChange={(checked) => setRules((current) => ({ ...current, [key]: checked }))}
+                  />
+                ))}
+              </div>
+            </FieldStack>
+          </FormSection>
+        )}
+        {step === 2 && (
+          <>
+            <PlayersFieldset column={1} legend={t('ownerPlayer')}>
+              {players.slice(0, 1).map((player) => (
+                <section key={player.key}>
+                  <Field
+                    label={t('playerName', { number: 1 })}
+                    error={errors[`player-${player.key}`]}
+                  >
+                    <input
+                      value={player.name}
+                      onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
+                      aria-invalid={errors[`player-${player.key}`] !== undefined}
+                    />
+                  </Field>
+                  <ColorPicker
+                    player={player}
+                    players={players}
+                    onChange={(color) => updatePlayer(player.key, { color })}
+                  />
+                </section>
+              ))}
+            </PlayersFieldset>
+            <PlayersFieldset
+              column={2}
+              legend={t('localPlayers')}
+              intro={
+                <>
+                  <div className={sectionTitleClass}>
+                    <Button variant="secondary" onClick={addPlayer} disabled={players.length >= 6}>
+                      {t('addPlayer')}
+                    </Button>
+                  </div>
+                  {errors.players !== undefined && <FieldError>{errors.players}</FieldError>}
+                </>
+              }
+            >
+              {players.slice(1).map((player, index) => (
+                <section
+                  key={player.key}
+                  className="grid gap-(--mb-space-3) rounded-surface border border-border bg-surface-subtle p-(--mb-space-4)"
+                >
+                  <div className="flex items-end gap-(--mb-space-2)">
+                    <Field
+                      label={t('playerName', { number: index + 2 })}
+                      error={errors[`player-${player.key}`]}
+                    >
+                      <input
+                        value={player.name}
+                        onChange={(event) => updatePlayer(player.key, { name: event.target.value })}
+                        aria-invalid={errors[`player-${player.key}`] !== undefined}
+                      />
+                    </Field>
+                    <Button
+                      variant="quiet"
+                      className="icon-button min-h-11 min-w-11 shrink-0 justify-center rounded-pill p-0"
+                      aria-label={t('removePlayer', {
+                        name: player.name.trim() || t('playerName', { number: index + 2 }),
+                      })}
+                      onClick={() =>
+                        setPlayers(players.filter((candidate) => candidate.key !== player.key))
+                      }
+                    >
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3" />
+                      </svg>
+                    </Button>
+                  </div>
+                  <ColorPicker
+                    player={player}
+                    players={players}
+                    onChange={(color) => updatePlayer(player.key, { color })}
+                  />
+                </section>
+              ))}
+            </PlayersFieldset>
+            {submitError !== null && (
+              <Notice tone="error" className="md:col-span-full">
+                {apiErrorMessage(submitError, t, 'unableCreateGame')}
+              </Notice>
+            )}
+            <FormSection legend={t('reviewLobby')} className="md:col-span-full">
+              <dl className="m-0 grid gap-y-(--mb-space-3)">
+                <ReviewRow label={t('gameName')} value={name.trim()} block />
+                <ReviewRow
+                  label={t('startingBalance')}
+                  value={formatMoney(Number(startingBalance), currency)}
+                />
+                <ReviewRow
+                  label={t('passGoReward')}
+                  value={formatMoney(Number(passGoReward), currency)}
+                />
+                <ReviewRow
+                  label={t('boardSection')}
+                  value={board === 'none' ? t('boardNone') : t('boardMonopolyRu2012')}
+                />
+                <ReviewRow
+                  label={t('houseRules')}
+                  value={
+                    houseRuleOptions
+                      .filter(({ key }) => rules[key])
+                      .map(({ label }) => t(label))
+                      .join(', ') || t('noneEnabled')
+                  }
+                  block
+                />
+                <ReviewRow label={t('stepPlayers')} value={String(players.length)} />
+              </dl>
+            </FormSection>
+          </>
+        )}
       </form>
+      <StepperBar
+        label={t('createLobbySteps')}
+        step={step}
+        total={stepCount}
+        indicator={t('stepIndicator', { current: step + 1, total: stepCount })}
+        backLabel={t('back')}
+        nextLabel={
+          step < stepCount - 1 ? t('stepNext') : submitting ? t('startingLobby') : t('createLobby')
+        }
+        busy={submitting}
+        onBack={() => goTo(Math.max(step - 1, 0))}
+        onNext={() => (step < stepCount - 1 ? next() : formRef.current?.requestSubmit())}
+      />
     </PageShell>
+  );
+}
+
+function ReviewRow({
+  label,
+  value,
+  block = false,
+}: {
+  label: string;
+  value: string;
+  block?: boolean;
+}) {
+  return (
+    <div
+      className={
+        block
+          ? 'grid gap-y-(--mb-space-1)'
+          : 'grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-(--mb-space-3)'
+      }
+    >
+      <dt className="text-secondary">{label}</dt>
+      <dd
+        className={
+          block
+            ? 'm-0 font-semibold wrap-anywhere'
+            : 'm-0 text-end font-semibold whitespace-nowrap tabular-nums'
+        }
+      >
+        {value}
+      </dd>
+    </div>
   );
 }
 
@@ -409,11 +662,10 @@ function PlayersFieldset({
 }) {
   const classes = playersFieldsetClass[column];
   return (
-    <fieldset className={classes.fieldset}>
-      <legend>{legend}</legend>
+    <FormSection legend={legend} className={classes.fieldset}>
       {intro}
       <div className={classes.list}>{children}</div>
-    </fieldset>
+    </FormSection>
   );
 }
 
@@ -514,19 +766,22 @@ function isPositive(value: string) {
   const number = Number(value);
   return Number.isSafeInteger(number) && number > 0;
 }
-function validate(
-  name: string,
-  starting: string,
-  reward: string,
-  players: PlayerForm[],
+function validateStep(
+  step: number,
+  values: { name: string; startingBalance: string; passGoReward: string; players: PlayerForm[] },
   t: Translate,
 ): Record<string, string> {
   const errors: Record<string, string> = {};
-  if (name.trim().length === 0) errors.name = t('enterGameName');
-  if (!isPositive(starting)) errors.startingBalance = t('enterPositiveInteger');
-  if (!isPositive(reward)) errors.passGoReward = t('enterPositiveInteger');
-  if (players.length < 1 || players.length > 6) errors.players = t('invalidLobbyPlayerCount');
-  for (const player of players)
-    if (player.name.trim().length === 0) errors[`player-${player.key}`] = t('enterPlayerName');
+  if (step === 0) {
+    if (values.name.trim().length === 0) errors.name = t('enterGameName');
+    if (!isPositive(values.startingBalance)) errors.startingBalance = t('enterPositiveInteger');
+    if (!isPositive(values.passGoReward)) errors.passGoReward = t('enterPositiveInteger');
+  }
+  if (step === 2) {
+    if (values.players.length < 1 || values.players.length > 6)
+      errors.players = t('invalidLobbyPlayerCount');
+    for (const player of values.players)
+      if (player.name.trim().length === 0) errors[`player-${player.key}`] = t('enterPlayerName');
+  }
   return errors;
 }

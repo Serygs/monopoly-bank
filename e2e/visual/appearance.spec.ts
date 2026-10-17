@@ -142,9 +142,15 @@ test('safe-area insets offset the header and the bottom sheet at 390px', async (
   expect(await css(header, 'padding-top')).toBe('47px');
   const { backdrop, panel } = await openBankingSheet(page);
   expect(await css(backdrop, 'padding-top')).toBe('47px');
-  expect(await css(panel, 'padding-bottom')).toBe('48px');
+  // The game navigation stays under the sheet and carries the bottom safe area itself.
+  expect(await css(panel, 'padding-bottom')).toBe('20px');
   const sheet = await panel.boundingBox();
+  const nav = await page.getByRole('dialog').locator('nav').first().boundingBox();
   expect(sheet).not.toBeNull();
-  expect(Math.round((sheet?.y ?? 0) + (sheet?.height ?? 0))).toBe(844);
-  expect(await css(panel, 'max-height')).toBe(`${844 - 47 - 8}px`);
+  expect(nav).not.toBeNull();
+  expect(Math.round((nav?.y ?? 0) + (nav?.height ?? 0))).toBe(844);
+  expect(Math.abs((sheet?.y ?? 0) + (sheet?.height ?? 0) - (nav?.y ?? 0))).toBeLessThan(1.5);
+  expect(
+    Math.abs(parseFloat(await css(panel, 'max-height')) - (844 - 47 - 8 - (nav?.height ?? 0))),
+  ).toBeLessThan(1.5);
 });

@@ -1,16 +1,24 @@
-import type { MutableRefObject, SetStateAction } from 'react';
+import type { SetStateAction } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { GameDetails } from '../../../shared/contracts/api';
 import type { LiveServerEvent } from '../../../shared/contracts/live';
-import type { Game, Player, Transaction } from '../../../shared/types/monopoly';
+import {
+  defaultGameRules,
+  type Game,
+  type Player,
+  type Transaction,
+} from '../../../shared/types/monopoly';
 import { MonopolyBankApiError } from '../../api/monopoly-bank-api';
 import { translate, type Translate } from '../../i18n/translations';
 import { formatMoney } from '../../utils/money';
 import {
   applyLiveEvent,
+  buildRequest,
+  lobbyNeedsMorePlayers,
   insufficientMessage,
   preflightFundsError,
   previewBalances,
+  splitPaymentRequests,
   walletActionTone,
   withClientGameDetails,
 } from './game-page-helpers';
@@ -24,6 +32,8 @@ const game: Game = {
   passGoReward: 200,
   currency: 'USD',
   paymentMode: 'FAST',
+  rules: defaultGameRules,
+  settings: null,
   status: 'ACTIVE',
   createdAt: '2026-09-28T10:00:00.000Z',
   updatedAt: '2026-09-28T10:00:00.000Z',
@@ -67,13 +77,10 @@ function stateCell<T>(initial: T) {
   return cell;
 }
 
-function liveHarness(initialDetails: GameDetails | null, initialHistory: Transaction[] | null) {
+function liveHarness(initialDetails: GameDetails | null) {
   const detailsCell = stateCell<GameDetails | null>(initialDetails);
-  const historyCell = stateCell<Transaction[] | null>(initialHistory);
-  const historyCache: MutableRefObject<Map<string, Transaction[]>> = { current: new Map() };
-  const apply = (event: LiveServerEvent, historyPlayerId: string | null = null) =>
-    applyLiveEvent(event, detailsCell.set, historyCell.set, historyCache, historyPlayerId);
-  return { detailsCell, historyCell, historyCache, apply };
+  const apply = (event: LiveServerEvent) => applyLiveEvent(event, detailsCell.set);
+  return { detailsCell, apply };
 }
 
 describe('withClientGameDetails', () => {
@@ -115,12 +122,9 @@ describe('withClientGameDetails', () => {
 });
 
 describe('applyLiveEvent', () => {
-  it('replaces details, history and the "all" cache from a snapshot', () => {
+  it('replaces details from a snapshot', () => {
     const snapshotTransactions = [transaction('t1')];
-    const { detailsCell, historyCell, historyCache, apply } = liveHarness(
-      details({ canManage: true, joinCode: 'JOIN' }),
-      null,
-    );
+    const { detailsCell, apply } = liveHarness(details({ canManage: true, joinCode: 'JOIN' }));
     apply({
       type: 'GAME_SNAPSHOT',
       state: {
@@ -132,12 +136,10 @@ describe('applyLiveEvent', () => {
     expect(detailsCell.value?.players).toEqual([alice]);
     expect(detailsCell.value?.canManage).toBe(true);
     expect(detailsCell.value?.joinCode).toBe('JOIN');
-    expect(historyCell.value).toBe(snapshotTransactions);
-    expect(historyCache.current.get('all')).toBe(snapshotTransactions);
   });
 
   it('updates only game and players on a lobby update', () => {
-    const { detailsCell, apply } = liveHarness(details({ favoriteAmounts: [100] }), null);
+    const { detailsCell, apply } = liveHarness(details({ favoriteAmounts: [100] }));
     const lobbyGame = { ...game, status: 'LOBBY' as const };
     apply({
       type: 'LOBBY_UPDATED',
@@ -150,7 +152,7 @@ describe('applyLiveEvent', () => {
   });
 
   it('ignores lobby and commit updates before the game has loaded', () => {
-    const { detailsCell, apply } = liveHarness(null, null);
+    const { detailsCell, apply } = liveHarness(null);
     apply({ type: 'LOBBY_UPDATED', stateVersion: 2, details: { game, players } });
     apply({
       type: 'GAME_COMMITTED',
@@ -161,69 +163,20 @@ describe('applyLiveEvent', () => {
     expect(detailsCell.value).toBeNull();
   });
 
-  it('applies committed balances, clears the cache and prepends the transaction once', () => {
-    const existing = transaction('t1');
-    const committed = { ...transaction('t2'), amount: 75 };
-    const { detailsCell, historyCell, historyCache, apply } = liveHarness(details(), [
-      transaction('t2'),
-      existing,
-    ]);
-    historyCache.current.set('all', [existing]);
-    historyCache.current.set('player:p1', [existing]);
+  it('applies committed balances', () => {
+    const { detailsCell, apply } = liveHarness(details());
     const nextPlayers = [player('p1', 'Alice', 925), bob, carol];
     apply({
       type: 'GAME_COMMITTED',
       stateVersion: 4,
-      transaction: committed,
+      transaction: transaction('t2'),
       players: nextPlayers,
     });
     expect(detailsCell.value?.players).toBe(nextPlayers);
-    expect(historyCache.current.size).toBe(0);
-    expect(historyCell.value).toEqual([committed, existing]);
-  });
-
-  it('leaves unloaded history untouched on commit', () => {
-    const { historyCell, apply } = liveHarness(details(), null);
-    apply({ type: 'GAME_COMMITTED', stateVersion: 4, transaction: transaction('t1'), players });
-    expect(historyCell.value).toBeNull();
-  });
-
-  it('keeps a player-scoped history filtered when a snapshot arrives', () => {
-    const own = transaction('t1');
-    const others = {
-      ...transaction('t2'),
-      participants: [{ playerId: 'p2', balanceDelta: -50 }],
-    };
-    const { historyCell, historyCache, apply } = liveHarness(details(), [own]);
-    apply(
-      {
-        type: 'GAME_SNAPSHOT',
-        state: { stateVersion: 3, details: details(), transactions: [others, own] },
-      },
-      'p1',
-    );
-    expect(historyCell.value).toEqual([own]);
-    expect(historyCache.current.get('all')).toEqual([others, own]);
-  });
-
-  it('ignores committed transactions that do not involve the scoped player', () => {
-    const own = transaction('t1');
-    const others = {
-      ...transaction('t2'),
-      participants: [{ playerId: 'p2', balanceDelta: -50 }],
-    };
-    const { historyCell, apply } = liveHarness(details(), [own]);
-    apply({ type: 'GAME_COMMITTED', stateVersion: 4, transaction: others, players }, 'p1');
-    expect(historyCell.value).toEqual([own]);
-    apply(
-      { type: 'GAME_COMMITTED', stateVersion: 5, transaction: transaction('t3'), players },
-      'p1',
-    );
-    expect(historyCell.value?.map((item) => item.id)).toEqual(['t3', 't1']);
   });
 
   it('merges finished-game details with client-only fields', () => {
-    const { detailsCell, apply } = liveHarness(details({ canManage: true }), null);
+    const { detailsCell, apply } = liveHarness(details({ canManage: true }));
     const finished = details({ game: { ...game, status: 'FINISHED' } });
     apply({ type: 'GAME_FINISHED', stateVersion: 5, details: finished });
     expect(detailsCell.value?.game.status).toBe('FINISHED');
@@ -236,13 +189,9 @@ describe('applyLiveEvent', () => {
     { type: 'HEARTBEAT', stateVersion: 6 },
   ] satisfies LiveServerEvent[])('does not touch state for $type', (event) => {
     const initial = details();
-    const history = [transaction('t1')];
-    const { detailsCell, historyCell, historyCache, apply } = liveHarness(initial, history);
-    historyCache.current.set('all', history);
+    const { detailsCell, apply } = liveHarness(initial);
     apply(event);
     expect(detailsCell.value).toBe(initial);
-    expect(historyCell.value).toBe(history);
-    expect(historyCache.current.get('all')).toBe(history);
   });
 });
 
@@ -386,5 +335,282 @@ describe('walletActionTone', () => {
     expect(walletActionTone('PLAYER_TO_PLAYER')).toBe('expense');
     expect(walletActionTone('PLAYER_TO_BANK')).toBe('expense');
     expect(walletActionTone('PLAYER_TO_ALL')).toBe('expense');
+  });
+});
+
+describe('mortgage requests and previews', () => {
+  it('builds a mortgage with the typed name and amount, and no note', () => {
+    expect(
+      buildRequest('MORTGAGE', 'p1', '', 400, 'ignored', { propertyName: 'Boardwalk' }),
+    ).toEqual({ type: 'MORTGAGE', playerId: 'p1', propertyName: 'Boardwalk', amount: 400 });
+  });
+
+  it('builds a redemption only once a mortgage is chosen', () => {
+    expect(buildRequest('MORTGAGE_REDEMPTION', 'p1', '', 0, '', {})).toBeNull();
+    expect(buildRequest('MORTGAGE_REDEMPTION', 'p1', '', 0, '', { mortgageId: 'm1' })).toEqual({
+      type: 'MORTGAGE_REDEMPTION',
+      playerId: 'p1',
+      mortgageId: 'm1',
+    });
+  });
+
+  it('previews a mortgage as money in and a redemption as the cost out', () => {
+    const [first] = players;
+    const mortgage = previewBalances(
+      { type: 'MORTGAGE', playerId: 'p1', propertyName: 'Boardwalk', amount: 400 },
+      players,
+      0,
+    );
+    expect(mortgage.find((item) => item.player.id === first?.id)?.delta).toBe(400);
+    const redemption = previewBalances(
+      { type: 'MORTGAGE_REDEMPTION', playerId: 'p1', mortgageId: 'm1' },
+      players,
+      0,
+      440,
+    );
+    expect(redemption.find((item) => item.player.id === first?.id)?.delta).toBe(-440);
+  });
+
+  it('takes the mortgage list from a committed event', () => {
+    const { detailsCell, apply } = liveHarness(details());
+    const mortgages = [
+      {
+        id: 'm1',
+        gameId: 'g1',
+        playerId: 'p1',
+        propertyName: 'Boardwalk',
+        mortgageValue: 400,
+        createdAt: '',
+      },
+    ];
+    apply({
+      type: 'GAME_COMMITTED',
+      stateVersion: 9,
+      transaction: transaction('t9'),
+      players,
+      mortgages,
+    });
+    expect(detailsCell.value?.mortgages).toEqual(mortgages);
+  });
+
+  it('leaves the mortgage list alone when an event carries none', () => {
+    const mortgages = [
+      {
+        id: 'm1',
+        gameId: 'g1',
+        playerId: 'p1',
+        propertyName: 'Boardwalk',
+        mortgageValue: 400,
+        createdAt: '',
+      },
+    ];
+    const { detailsCell, apply } = liveHarness(details({ mortgages }));
+    apply({ type: 'GAME_COMMITTED', stateVersion: 9, transaction: transaction('t9'), players });
+    expect(detailsCell.value?.mortgages).toEqual(mortgages);
+  });
+});
+
+describe('bank loan requests and previews', () => {
+  it('builds an immediate bank loan, acknowledging the cooldown only when confirmed', () => {
+    expect(buildRequest('BANK_LOAN', 'p1', '', 250, 'ignored')).toEqual({
+      type: 'LOAN_ISSUE',
+      lenderKind: 'BANK',
+      playerId: 'p1',
+      amount: 250,
+    });
+    expect(buildRequest('BANK_LOAN', 'p1', '', 250, '', { acknowledgeCooldown: true })).toEqual({
+      type: 'LOAN_ISSUE',
+      lenderKind: 'BANK',
+      playerId: 'p1',
+      amount: 250,
+      acknowledgeCooldown: true,
+    });
+  });
+
+  it('sends the confirmed rate with a bank repayment only', () => {
+    expect(
+      buildRequest('LOAN_REPAYMENT', 'p1', '', 400, '', { loanId: 'l1', interestRatePercent: 10 }),
+    ).toEqual({
+      type: 'LOAN_REPAYMENT',
+      playerId: 'p1',
+      loanId: 'l1',
+      amount: 400,
+      interestRatePercent: 10,
+    });
+    expect(buildRequest('LOAN_REPAYMENT', 'p1', '', 400, '', { loanId: 'l1' })).toEqual({
+      type: 'LOAN_REPAYMENT',
+      playerId: 'p1',
+      loanId: 'l1',
+      amount: 400,
+    });
+  });
+
+  it('previews the bank loan as money in and the repayment as principal plus interest out', () => {
+    const borrowed = previewBalances(
+      { type: 'LOAN_ISSUE', lenderKind: 'BANK', playerId: 'p1', amount: 250 },
+      players,
+      0,
+    );
+    expect(borrowed.map((entry) => entry.delta)).toEqual([250, 0, 0]);
+    const repaid = previewBalances(
+      {
+        type: 'LOAN_REPAYMENT',
+        playerId: 'p1',
+        loanId: 'l1',
+        amount: 400,
+        interestRatePercent: 10,
+      },
+      players,
+      0,
+      0,
+      [],
+      40,
+    );
+    expect(repaid.map((entry) => entry.delta)).toEqual([-440, 0, 0]);
+  });
+
+  it('adopts the loans and cooldowns of a committed transaction', () => {
+    const { detailsCell, apply } = liveHarness(details());
+    apply({
+      type: 'GAME_COMMITTED',
+      stateVersion: 4,
+      transaction: transaction('t9'),
+      players,
+      loans: [],
+      bankLoanCooldowns: [{ playerId: 'p1', roundsLeft: 2 }],
+    });
+    expect(detailsCell.value?.loans).toEqual([]);
+    expect(detailsCell.value?.bankLoanCooldowns).toEqual([{ playerId: 'p1', roundsLeft: 2 }]);
+  });
+});
+
+describe('splitPaymentRequests', () => {
+  const request = (id: string, kind: 'PAYMENT' | 'LOAN', creator: string, approver: string) =>
+    ({ id, kind, creatorPlayerId: creator, approverPlayerId: approver }) as never;
+  const incomingLoan = request('r1', 'LOAN', 'p2', 'p1');
+  const outgoingLoan = request('r2', 'LOAN', 'p1', 'p2');
+  const outgoingPayment = request('r3', 'PAYMENT', 'p1', 'p2');
+
+  it("keeps only requests to answer in the inbox and lists the viewer's own loan requests", () => {
+    expect(splitPaymentRequests([incomingLoan, outgoingLoan, outgoingPayment], ['p1'])).toEqual({
+      incoming: [incomingLoan],
+      outgoingLoans: [outgoingLoan],
+    });
+  });
+
+  it('treats everything as incoming when no wallet is known', () => {
+    expect(splitPaymentRequests([incomingLoan, outgoingLoan], []).incoming).toHaveLength(2);
+  });
+});
+
+describe('Free Parking jackpot', () => {
+  it('builds a pot payment with its note and a collection without an amount', () => {
+    expect(buildRequest('TO_JACKPOT', 'p1', '', 200, 'Income tax')).toEqual({
+      type: 'TO_JACKPOT',
+      playerId: 'p1',
+      amount: 200,
+      comment: 'Income tax',
+    });
+    expect(buildRequest('JACKPOT_PAYOUT', 'p1', '', 999, 'ignored')).toEqual({
+      type: 'JACKPOT_PAYOUT',
+      playerId: 'p1',
+      expectedAmount: 999,
+    });
+  });
+
+  it('previews the payer losing the amount and the collector receiving the whole pot', () => {
+    expect(
+      previewBalances({ type: 'TO_JACKPOT', playerId: 'p2', amount: 50 }, players, 200).map(
+        ({ delta }) => delta,
+      ),
+    ).toEqual([0, -50, 0]);
+    expect(
+      previewBalances(
+        { type: 'JACKPOT_PAYOUT', playerId: 'p3', expectedAmount: 75 },
+        players,
+        200,
+        0,
+        [],
+        0,
+        75,
+      ).map(({ delta }) => delta),
+    ).toEqual([0, 0, 75]);
+    expect(walletActionTone('JACKPOT_PAYOUT')).toBe('income');
+  });
+
+  it('replaces the pot from a commit and leaves it alone when the event carries none', () => {
+    const { detailsCell, apply } = liveHarness(details({ jackpot: 100 }));
+    apply({ type: 'GAME_COMMITTED', stateVersion: 2, transaction: transaction('t1'), players });
+    expect(detailsCell.value?.jackpot).toBe(100);
+    apply({
+      type: 'GAME_COMMITTED',
+      stateVersion: 3,
+      transaction: transaction('t2'),
+      players,
+      jackpot: 350,
+    });
+    expect(detailsCell.value?.jackpot).toBe(350);
+  });
+});
+
+describe('applyLiveEvent auctions', () => {
+  const auction = {
+    id: 'a1',
+    gameId: 'g1',
+    lotName: 'Park Place',
+    initiatorPlayerId: 'p1',
+    state: 'ACTIVE' as const,
+    currentBid: 10,
+    currentBidderId: 'p2',
+    version: 2,
+    startedAt: '2026-10-16T12:00:00.000Z',
+    endsAt: '2026-10-16T12:00:30.000Z',
+    serverTime: '2026-10-16T12:00:10.000Z',
+    settledTransactionId: null,
+  };
+
+  it('stores the auction of an update and ignores an older version', () => {
+    const { detailsCell, apply } = liveHarness(details());
+    apply({ type: 'AUCTION_UPDATED', stateVersion: 4, auction });
+    expect(detailsCell.value?.auction).toBe(auction);
+    apply({ type: 'AUCTION_UPDATED', stateVersion: 5, auction: { ...auction, version: 1 } });
+    expect(detailsCell.value?.auction).toBe(auction);
+    const closed = { ...auction, version: 3, state: 'NO_SALE' as const };
+    apply({ type: 'AUCTION_UPDATED', stateVersion: 6, auction: closed });
+    expect(detailsCell.value?.auction).toBe(closed);
+  });
+
+  it('names the shortage of reserved cash with the available amount', () => {
+    const error = new MonopolyBankApiError({
+      code: 'INSUFFICIENT_AVAILABLE_FUNDS',
+      message: 'x',
+      details: { playerId: 'p1', available: 100, required: 300 },
+    });
+    expect(insufficientMessage(error, players, 'USD', t)).toBe(
+      `Alice has insufficient funds. Current balance: ${formatMoney(100, 'USD')}. Required: ${formatMoney(300, 'USD')}.`,
+    );
+  });
+});
+
+describe('buildRequest for a board purchase', () => {
+  it('sends the tile and, only when given, the agreed price', () => {
+    expect(buildRequest('PROPERTY_PURCHASE', 'p1', '', 0, '', { tileId: 'arbat' })).toEqual({
+      type: 'PROPERTY_PURCHASE',
+      playerId: 'p1',
+      tileId: 'arbat',
+    });
+    expect(
+      buildRequest('PROPERTY_PURCHASE', 'p1', '', 0, '', { tileId: 'arbat', priceOverride: 250 }),
+    ).toEqual({ type: 'PROPERTY_PURCHASE', playerId: 'p1', tileId: 'arbat', priceOverride: 250 });
+    expect(buildRequest('PROPERTY_PURCHASE', 'p1', '', 0, '', { priceOverride: 250 })).toBeNull();
+  });
+});
+
+describe('lobbyNeedsMorePlayers', () => {
+  it('shows the hint below two players and hides it from two', () => {
+    expect(lobbyNeedsMorePlayers(0)).toBe(true);
+    expect(lobbyNeedsMorePlayers(1)).toBe(true);
+    expect(lobbyNeedsMorePlayers(2)).toBe(false);
+    expect(lobbyNeedsMorePlayers(4)).toBe(false);
   });
 });

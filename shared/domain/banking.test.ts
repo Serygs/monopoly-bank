@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   allToPlayer,
+  BANK_TO_PLAYER_MAX_AMOUNT,
+  BankToPlayerLimitExceededError,
   bankToPlayer,
   InsufficientFundsError,
   InvalidAmountError,
@@ -119,6 +121,14 @@ describe('banking domain operations', () => {
     expect(result.transaction.type).toBe('BANK_TO_PLAYER');
   });
 
+  it('pays a player exactly the bank limit but refuses more', () => {
+    const run = (amount: number) =>
+      bankToPlayer({ game, players: createPlayers(), playerId: 'player-1', amount });
+
+    expect(run(BANK_TO_PLAYER_MAX_AMOUNT).transaction.amount).toBe(4_000_000);
+    expect(() => run(BANK_TO_PLAYER_MAX_AMOUNT + 1)).toThrow(BankToPlayerLimitExceededError);
+  });
+
   it('pays every other player from one payer atomically', () => {
     const result = playerToAll({
       game,
@@ -192,6 +202,29 @@ describe('banking domain operations', () => {
       amount: 200,
       totalAmount: 200,
     });
+  });
+
+  it('pays double on an exact landing and records the doubled amount', () => {
+    const result = passGo({
+      game,
+      players: createPlayers(),
+      playerId: 'player-1',
+      exactLanding: true,
+    });
+
+    expect(balances(result)).toEqual([1900]);
+    expect(result.transaction).toMatchObject({ type: 'PASS_GO', amount: 400, totalAmount: 400 });
+  });
+
+  it('refuses a doubled reward that is not a safe integer', () => {
+    expect(() =>
+      passGo({
+        game: { ...game, passGoReward: Number.MAX_SAFE_INTEGER },
+        players: createPlayers(),
+        playerId: 'player-1',
+        exactLanding: true,
+      }),
+    ).toThrow();
   });
 
   it.each([0, -10])('rejects invalid amount %i', (amount) => {

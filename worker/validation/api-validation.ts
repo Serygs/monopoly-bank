@@ -6,6 +6,8 @@ import type {
   CreateTransactionRequest,
   DuplicateGameRequest,
   FinishGameRequest,
+  PlaceBidRequest,
+  StartAuctionRequest,
   GuestJoinGameRequest,
   JoinGameRequest,
   LoginRequest,
@@ -15,15 +17,22 @@ import type {
   UpdateProfileRequest,
   UpgradeGuestRequest,
   RecordDiceRollRequest,
+  CreateTradeRequestBody,
 } from '../../shared/contracts/api.js';
 import {
+  gameRuleKeys,
   paymentModes,
   selectableCurrencies,
   transactionTypes,
+  type GameRules,
+  type InterestRatePercent,
   type PaymentMode,
   type SelectableCurrency,
   type TransactionType,
 } from '../../shared/types/monopoly.js';
+import { isBoardMode, type BoardMode } from '../../shared/board/index.js';
+import { isInterestRatePercent } from '../../shared/domain/bank-loan.js';
+import { normalizePropertyName } from '../../shared/domain/mortgage.js';
 import { ValidationError } from '../services/errors.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -57,12 +66,21 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
     });
   }
 
+  if (body.isPublic !== undefined && typeof body.isPublic !== 'boolean')
+    throw new ApiValidationError('isPublic must be a boolean.');
+  const isPublic = body.isPublic === true;
+  if (isPublic && body.gameAccessPassword !== undefined)
+    throw new ApiValidationError('A public lobby cannot have a table password.');
+
   return {
     name: readRequiredString(body, 'name', 'name'),
     startingBalance: readPositiveInteger(body, 'startingBalance'),
     passGoReward: readPositiveInteger(body, 'passGoReward'),
     currency: readCurrency(body),
     ...(body.paymentMode === undefined ? {} : { paymentMode: readPaymentMode(body) }),
+    ...(body.rules === undefined ? {} : { rules: readGameRules(body.rules) }),
+    ...(body.board === undefined ? {} : { board: readBoardMode(body.board) }),
+    ...(isPublic ? { isPublic } : {}),
     ...(body.gameAccessPassword === undefined
       ? {}
       : { gameAccessPassword: readGamePassword(body, 'gameAccessPassword') }),
@@ -154,6 +172,66 @@ export async function parseFinishGameRequest(request: Request): Promise<FinishGa
   return { winnerPlayerIds };
 }
 
+export async function parseStartAuctionRequest(request: Request): Promise<StartAuctionRequest> {
+  const body = await parseJsonObject(request);
+  const tileId = body.tileId === undefined ? undefined : readTileId(body);
+  // A board auction takes its lot name from the tile on the server; a free-text one needs it.
+  const name =
+    tileId !== undefined && body.lotName === undefined
+      ? tileId
+      : typeof body.lotName === 'string'
+        ? normalizePropertyName(body.lotName)
+        : null;
+  if (name === null)
+    throw new ApiValidationError('lotName must be 1 to 60 characters without control characters.');
+  return {
+    initiatorPlayerId: readUuid(body, 'initiatorPlayerId'),
+    lotName: name,
+    ...(tileId === undefined ? {} : { tileId }),
+  };
+}
+
+/** The auction id comes from the URL, so the body carries everything else. */
+export async function parsePlaceBidRequest(
+  request: Request,
+  auctionId: string,
+): Promise<PlaceBidRequest> {
+  const body = await parseJsonObject(request);
+  return {
+    bidderPlayerId: readUuid(body, 'bidderPlayerId'),
+    auctionId: parseResourceId(auctionId, 'auctionId'),
+    expectedVersion: readPositiveInteger(body, 'expectedVersion'),
+    step: readPositiveInteger(body, 'step'),
+  };
+}
+
+/** A trade proposal: the same fields and rules as the trade operation, plus the request id. */
+export async function parseCreateTradeRequest(request: Request): Promise<CreateTradeRequestBody> {
+  const body = await parseJsonObject(request);
+  return { id: readUuid(body, 'id'), ...readTradeFields(body) };
+}
+
+function readTradeFields(body: Record<string, unknown>): Omit<CreateTradeRequestBody, 'id'> {
+  const playerId = readUuid(body, 'playerId');
+  const counterpartyPlayerId = readUuid(body, 'counterpartyPlayerId');
+  if (playerId === counterpartyPlayerId)
+    throw new ApiValidationError('counterpartyPlayerId must be another player.');
+  const giveTileIds = readTileIdList(body, 'giveTileIds');
+  const takeTileIds = readTileIdList(body, 'takeTileIds');
+  if (new Set([...giveTileIds, ...takeTileIds]).size !== giveTileIds.length + takeTileIds.length)
+    throw new ApiValidationError('A property can only be traded once.');
+  if (giveTileIds.length + takeTileIds.length === 0)
+    throw new ApiValidationError('A trade needs at least one property.');
+  return {
+    playerId,
+    counterpartyPlayerId,
+    giveTileIds,
+    takeTileIds,
+    ...(body.cashGive === undefined ? {} : { cashGive: readNonNegativeInteger(body, 'cashGive') }),
+    ...(body.cashTake === undefined ? {} : { cashTake: readNonNegativeInteger(body, 'cashTake') }),
+  };
+}
+
 export async function parseRecordDiceRollRequest(request: Request): Promise<RecordDiceRollRequest> {
   const body = await parseJsonObject(request);
   return {
@@ -176,6 +254,88 @@ function readCurrency(body: Record<string, unknown>): SelectableCurrency {
     throw new ApiValidationError('currency must be one of USD, EUR, or UAH.');
   }
   return value as SelectableCurrency;
+}
+
+function readBoardMode(value: unknown): BoardMode {
+  if (!isBoardMode(value))
+    throw new ApiValidationError('board must be one of none or monopoly-ru-2012.');
+  return value;
+}
+
+function readGameRules(value: unknown): GameRules {
+  const object = readObject(value, 'rules');
+  const unknownKey = Object.keys(object).find(
+    (key) => !(gameRuleKeys as readonly string[]).includes(key),
+  );
+  if (unknownKey !== undefined) throw new ApiValidationError(`rules.${unknownKey} is not a rule.`);
+  const rules = {} as GameRules;
+  for (const key of gameRuleKeys) {
+    const flag = object[key];
+    if (flag !== undefined && typeof flag !== 'boolean')
+      throw new ApiValidationError(`rules.${key} must be true or false.`);
+    rules[key] = flag === true;
+  }
+  return rules;
+}
+
+export function readTileId(body: Record<string, unknown>): string {
+  const value = body.tileId;
+  if (typeof value !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/u.test(value))
+    throw new ApiValidationError('tileId must be a board tile id.');
+  return value;
+}
+
+/** A list of board tile ids (at most one per tile of the board), possibly empty. */
+function readTileIdList(body: Record<string, unknown>, key: string): string[] {
+  const value = body[key];
+  if (!Array.isArray(value) || value.length > 28)
+    throw new ApiValidationError(`${key} must be a list of board tile ids.`);
+  return value.map((item) => {
+    if (typeof item !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/u.test(item))
+      throw new ApiValidationError(`${key} must be a list of board tile ids.`);
+    return item;
+  });
+}
+
+/** Tile id -> final building level (0-5) for the streets of one colour group, at most 4 streets. */
+function readBuildTargets(value: unknown): Record<string, number> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new ApiValidationError('targets must be an object of tile ids and levels.');
+  const entries = Object.entries(value);
+  if (entries.length === 0 || entries.length > 4)
+    throw new ApiValidationError('targets must name between 1 and 4 streets.');
+  const targets: Record<string, number> = {};
+  for (const [tileId, level] of entries) {
+    readTileId({ tileId });
+    if (typeof level !== 'number' || !Number.isInteger(level) || level < 0 || level > 5)
+      throw new ApiValidationError('A target level must be a whole number from 0 to 5.');
+    targets[tileId] = level;
+  }
+  return targets;
+}
+
+function readNonNegativeInteger(body: Record<string, unknown>, key: string): number {
+  const value = body[key];
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
+    throw new ApiValidationError(`${key} must be zero or a positive integer.`);
+  return value;
+}
+
+function readPropertyName(body: Record<string, unknown>): string {
+  const value = body.propertyName;
+  const name = typeof value === 'string' ? normalizePropertyName(value) : null;
+  if (name === null)
+    throw new ApiValidationError(
+      'propertyName must be 1 to 60 characters without control characters.',
+    );
+  return name;
+}
+
+function readInterestRatePercent(body: Record<string, unknown>): InterestRatePercent {
+  const value = body.interestRatePercent;
+  if (!isInterestRatePercent(value))
+    throw new ApiValidationError('interestRatePercent must be 0, 10 or 20.');
+  return value;
 }
 
 function readPaymentMode(body: Record<string, unknown>): PaymentMode {
@@ -223,12 +383,113 @@ export async function parseCreateTransactionRequest(
         amountPerPlayer: readPositiveInteger(body, 'amountPerPlayer'),
         ...(comment === undefined ? {} : { comment }),
       };
-    case 'PASS_GO':
+    case 'MORTGAGE':
+      // A board game names the tile; the server reads its name and mortgage value from the snapshot.
+      if (body.tileId !== undefined)
+        return { type, playerId: readUuid(body, 'playerId'), tileId: readTileId(body) };
       return {
         type,
         playerId: readUuid(body, 'playerId'),
+        propertyName: readPropertyName(body),
+        amount: readPositiveInteger(body, 'amount'),
+      };
+    case 'PROPERTY_PURCHASE':
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        tileId: readTileId(body),
+        ...(body.priceOverride === undefined
+          ? {}
+          : { priceOverride: readPositiveInteger(body, 'priceOverride') }),
+      };
+    case 'PROPERTY_TRANSFER':
+      return { type, ...readTradeFields(body) };
+    case 'PROPERTY_BUILD':
+    case 'PROPERTY_SELL_BUILDING': {
+      const playerId = readUuid(body, 'playerId');
+      if (body.targets === undefined) return { type, playerId, tileId: readTileId(body) };
+      if (body.tileId !== undefined)
+        throw new ApiValidationError('Send either tileId or targets, not both.');
+      return { type, playerId, targets: readBuildTargets(body.targets) };
+    }
+    case 'PAY_RENT':
+      return {
+        type,
+        payerPlayerId: readUuid(body, 'payerPlayerId'),
+        tileId: readTileId(body),
+        ...(body.diceSum === undefined ? {} : { diceSum: readDiceSum(body) }),
+      };
+    case 'MORTGAGE_REDEMPTION':
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        mortgageId: readUuid(body, 'mortgageId'),
+      };
+    case 'LOAN_ISSUE':
+      if (
+        body.lenderKind !== undefined &&
+        body.lenderKind !== 'PLAYER' &&
+        body.lenderKind !== 'BANK'
+      )
+        throw new ApiValidationError('lenderKind must be PLAYER or BANK.');
+      if (body.lenderKind === 'BANK') {
+        if (body.acknowledgeCooldown !== undefined && typeof body.acknowledgeCooldown !== 'boolean')
+          throw new ApiValidationError('acknowledgeCooldown must be true or false.');
+        return {
+          type,
+          lenderKind: 'BANK',
+          playerId: readUuid(body, 'playerId'),
+          amount: readPositiveInteger(body, 'amount'),
+          ...(body.acknowledgeCooldown === true ? { acknowledgeCooldown: true } : {}),
+        };
+      }
+      return {
+        type,
+        borrowerPlayerId: readUuid(body, 'borrowerPlayerId'),
+        lenderPlayerId: readUuid(body, 'lenderPlayerId'),
+        amount: readPositiveInteger(body, 'amount'),
+      };
+    case 'LOAN_REPAYMENT':
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        loanId: readUuid(body, 'loanId'),
+        amount: readPositiveInteger(body, 'amount'),
+        ...(body.interestRatePercent === undefined
+          ? {}
+          : { interestRatePercent: readInterestRatePercent(body) }),
+      };
+    case 'TO_JACKPOT':
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        amount: readPositiveInteger(body, 'amount'),
         ...(comment === undefined ? {} : { comment }),
       };
+    case 'JACKPOT_PAYOUT':
+      // The paid amount is the whole pot, read on the server; any `amount` is ignored. The client
+      // only says which pot it reviewed, so a pot that changed since is refused (JACKPOT_CHANGED).
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        expectedAmount: readPositiveInteger(body, 'expectedAmount'),
+      };
+    case 'REVERSAL':
+      return {
+        type,
+        transactionId: readUuid(body, 'transactionId'),
+        ...(comment === undefined ? {} : { comment }),
+      };
+    case 'PASS_GO': {
+      if (body.exactLanding !== undefined && typeof body.exactLanding !== 'boolean')
+        throw new ApiValidationError('exactLanding must be true or false.');
+      return {
+        type,
+        playerId: readUuid(body, 'playerId'),
+        ...(body.exactLanding === true ? { exactLanding: true } : {}),
+        ...(comment === undefined ? {} : { comment }),
+      };
+    }
   }
 }
 
@@ -302,10 +563,14 @@ function readGamePassword(body: Record<string, unknown>, field: string): string 
     throw new ApiValidationError(`${field} must be between 4 and 256 characters.`);
   return value;
 }
+/** One spelling of a join code for every lookup, rate-limit key and comparison. */
+export function normalizeJoinCode(value: string): string {
+  return value.trim().toUpperCase();
+}
 function readJoinCode(body: Record<string, unknown>): string {
-  const value = readRequiredString(body, 'joinCode', 'joinCode').toUpperCase();
-  if (!/^[A-Z0-9]{6,12}$/u.test(value))
-    throw new ApiValidationError('joinCode must contain 6 to 12 letters or digits.');
+  const value = normalizeJoinCode(readRequiredString(body, 'joinCode', 'joinCode'));
+  if (!/^[A-Z0-9]{4,12}$/u.test(value))
+    throw new ApiValidationError('joinCode must contain 4 to 12 letters or digits.');
   return value;
 }
 function readInvitationToken(body: Record<string, unknown>): string {
@@ -341,19 +606,29 @@ function readPositiveInteger(body: Record<string, unknown>, key: string): number
   return value;
 }
 
+/** Two six-sided dice: the sum is between 2 and 12. */
+function readDiceSum(body: Record<string, unknown>): number {
+  const value = readPositiveInteger(body, 'diceSum');
+  if (value < 2 || value > 12) {
+    throw new ApiValidationError('diceSum must be between 2 and 12.');
+  }
+  return value;
+}
+
 function readTransactionType(
   body: Record<string, unknown>,
-): Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'> {
+): Exclude<TransactionType, 'BANKRUPTCY_TRANSFER' | 'AUCTION_PAYMENT'> {
   const value = body.type;
   if (
     typeof value !== 'string' ||
     !transactionTypes.includes(value as TransactionType) ||
-    value === 'PAY_RENT' ||
-    value === 'BANKRUPTCY_TRANSFER'
+    value === 'BANKRUPTCY_TRANSFER' ||
+    // Written only when an auction closes; never requested by a client.
+    value === 'AUCTION_PAYMENT'
   ) {
     throw new ApiValidationError('type must be a supported transaction type.');
   }
-  return value as Exclude<TransactionType, 'PAY_RENT' | 'BANKRUPTCY_TRANSFER'>;
+  return value as Exclude<TransactionType, 'BANKRUPTCY_TRANSFER' | 'AUCTION_PAYMENT'>;
 }
 
 function readOptionalComment(body: Record<string, unknown>): string | undefined {

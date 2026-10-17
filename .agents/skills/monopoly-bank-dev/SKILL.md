@@ -24,7 +24,7 @@ description: Develop the Monopoly Bank repository efficiently and safely. Use wh
 - Validate API input at the Worker boundary. Do not expose implementation errors. Keep secrets in Cloudflare bindings/secrets, never source.
 - Treat persisted D1 data as the source of truth. Add schema changes as migrations and update Wrangler bindings deliberately.
 - Make every multi-balance operation plus its transaction record all-or-nothing. Failed validation must leave every balance unchanged. Never store a bank balance.
-- Persist explicit transaction records and support global and player-filtered history; never derive history from balances or add undo/editing of past transactions.
+- Persist explicit transaction records and support global and player-filtered history; never derive history from balances. Past transactions are never edited or deleted; a mistake is corrected only by a new linked `REVERSAL` transaction (`reverseTransaction` in `shared/domain/banking.ts`), once per transaction, never of a reversal or a bankruptcy transfer.
 
 ## Product rules
 
@@ -33,6 +33,7 @@ description: Develop the Monopoly Bank repository efficiently and safely. Use wh
 - Reject insufficient funds and negative balances without writes; return safe structured balance details where the established API contract provides them.
 - Interpret player→all amounts per recipient and all→player amounts per payer, validating every affected wallet before any write.
 - Require the established review/confirmation flow for balance changes, including source, destination, amount, relevant total, and resulting balances.
+- A mortgage (`MORTGAGE`) pays the bank amount for a free-text property and a redemption (`MORTGAGE_REDEMPTION`) costs the value plus 10%; the `mortgages` table records only what is currently mortgaged, never ownership. Both are explicit transactions, written in the same batch, and cannot be reversed.
 - Keep dice behaviour within the existing bounded dice/jail contract. Its presentation and motion follow `docs/ui-design-system.md`.
 
 ## Validation

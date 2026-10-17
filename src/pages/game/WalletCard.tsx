@@ -1,7 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
-import type { Currency, Player } from '../../../shared/types/monopoly';
+import type { Currency, Loan, Player } from '../../../shared/types/monopoly';
 import { cx, playerSwatchClass } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
+import { activeBankLoan, loanOutstanding, playerDebt } from '../../utils/loans';
 import { formatMoney } from '../../utils/money';
 import { playerNameWithGameId } from '../../utils/player-display';
 
@@ -12,6 +13,10 @@ export interface WalletCardProps {
   active: boolean;
   gameActive: boolean;
   prominent?: boolean;
+  /** Active player loans; the card shows what the player owes and is owed. */
+  loans?: Loan[];
+  /** Cash held back for this player's leading auction bid (auctions rule). */
+  auctionReserve?: number;
   onOpen: () => void;
 }
 
@@ -33,7 +38,7 @@ const readonlyCardClass = cx(
 );
 /* Hover outranks the Liquid Glass light colours; Liquid Glass dark keeps its own on hover. */
 const activeCardClass = cx(
-  'wallet-card-active w-full cursor-pointer border-accent bg-surface-inverse text-on-inverse shadow-md',
+  'wallet-card-active w-full cursor-pointer border-accent bg-surface-inverse text-on-inverse shadow-md ring-2 ring-accent',
   '[transition:transform_var(--mb-duration-normal)_var(--mb-ease-standard),box-shadow_var(--mb-duration-normal)_var(--mb-ease-standard),border-color_var(--mb-duration-fast)_var(--mb-ease-standard)]',
   'focus-visible:outline-offset-3 enabled:active:transform-[translateY(1px)] disabled:cursor-default',
   'fine-pointer:enabled:hover:transform-[translateY(-2px)] fine-pointer:enabled:hover:border-highlight fine-pointer:enabled:hover:border-s-(color:--wallet-player-color) fine-pointer:enabled:hover:shadow-hover',
@@ -61,7 +66,9 @@ const badgeToneClass = {
     'glass:bg-[color-mix(in_srgb,var(--mb-color-accent-soft)_72%,transparent)] glass:text-accent-hover',
   ),
   bankrupt: 'bg-danger-soft text-danger',
+  overdue: 'bg-danger-soft text-danger',
 };
+const debtClass = 'flex flex-wrap gap-x-(--mb-space-3) text-small font-semibold';
 const balanceClass =
   'min-w-0 font-money leading-none font-bold whitespace-nowrap text-inherit tabular-nums';
 const footerClass =
@@ -86,7 +93,7 @@ const balanceSizeClass = {
   prominent:
     'tracking-[-0.04em] text-[length:min(var(--mb-text-money-xl),calc(100cqi/var(--balance-em)))]',
   standard:
-    'tracking-[-0.04em] text-[1.0625rem] md:text-[length:min(var(--mb-text-money-lg),calc(100cqi/var(--balance-em)))]',
+    'tracking-[-0.04em] text-[1.125rem] md:text-[length:min(var(--mb-text-money-lg),calc(100cqi/var(--balance-em)))]',
 };
 const balanceEmPerCharacter = 0.56;
 
@@ -97,6 +104,8 @@ export function WalletCard({
   active,
   gameActive,
   prominent = false,
+  loans = [],
+  auctionReserve = 0,
   onOpen,
 }: WalletCardProps) {
   const { t } = useLanguage();
@@ -106,6 +115,12 @@ export function WalletCard({
   const balance = formatMoney(player.balance, currency);
   const cardStyle = { '--wallet-player-color': player.color } as CSSProperties;
   const bankrupt = player.status === 'BANKRUPT';
+  // Player loans are summed as owes/owed; the bank loan has its own line with the round.
+  const debt = playerDebt(
+    loans.filter((loan) => loan.lenderKind === 'PLAYER'),
+    player.id,
+  );
+  const bankLoan = activeBankLoan(loans, player.id);
   const content = (
     <>
       <span className={headingClass}>
@@ -120,9 +135,12 @@ export function WalletCard({
         />
         <span className={nameClass}>{playerName}</span>
         <span className={badgesClass}>
-          {active && <WalletBadge tone="active">{t('activeWallet')}</WalletBadge>}
+          {active && <WalletBadge tone="active">{t('walletYouTag')}</WalletBadge>}
           {player.status === 'BANKRUPT' && (
             <WalletBadge tone="bankrupt">{t('bankrupt')}</WalletBadge>
+          )}
+          {bankLoan?.rounds?.overdue === true && (
+            <WalletBadge tone="overdue">{t('overdue')}</WalletBadge>
           )}
         </span>
       </span>
@@ -132,6 +150,39 @@ export function WalletCard({
       >
         {balance}
       </strong>
+      {auctionReserve > 0 && (
+        <span className={debtClass}>
+          <span>
+            {t(active ? 'auctionReservedYours' : 'auctionReservedOther', {
+              amount: formatMoney(auctionReserve, currency),
+            })}
+          </span>
+        </span>
+      )}
+      {bankLoan !== null && (
+        <span className={debtClass}>
+          <span className="text-danger">
+            {t('bankLoanCard', {
+              amount: formatMoney(loanOutstanding(bankLoan), currency),
+              round: bankLoan.rounds?.round ?? 1,
+            })}
+          </span>
+        </span>
+      )}
+      {(debt.owes > 0 || debt.owed > 0) && (
+        <span className={debtClass}>
+          {debt.owes > 0 && (
+            <span className="text-danger">
+              {t('loanOwes', { amount: formatMoney(debt.owes, currency) })}
+            </span>
+          )}
+          {debt.owed > 0 && (
+            <span className="text-status-text">
+              {t('loanOwed', { amount: formatMoney(debt.owed, currency) })}
+            </span>
+          )}
+        </span>
+      )}
       <span
         className={cx(
           footerClass,

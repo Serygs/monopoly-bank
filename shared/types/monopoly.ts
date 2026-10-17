@@ -1,3 +1,5 @@
+import type { BoardSnapshot } from '../board/types.js';
+
 export const gameStatuses = ['LOBBY', 'ACTIVE', 'FINISHED'] as const;
 
 export type GameStatus = (typeof gameStatuses)[number];
@@ -13,6 +15,43 @@ export type Currency = (typeof currencies)[number];
 export const paymentModes = ['FAST', 'CONFIRMATION'] as const;
 export type PaymentMode = (typeof paymentModes)[number];
 
+/** Optional house rules, chosen with the lobby and fixed once it exists. All are off by default. */
+export const gameRuleKeys = [
+  'doubleRewardOnExactGo',
+  'playerLoans',
+  'bankLoans',
+  'freeParkingJackpot',
+  'auctions',
+] as const;
+export type GameRuleKey = (typeof gameRuleKeys)[number];
+export type GameRules = Record<GameRuleKey, boolean>;
+
+export const defaultGameRules: GameRules = {
+  doubleRewardOnExactGo: false,
+  playerLoans: false,
+  bankLoans: false,
+  freeParkingJackpot: false,
+  auctions: false,
+};
+
+/**
+ * Amounts derived once from the starting balance when the game is created, in whole currency
+ * units. Games created before the snapshot existed have none.
+ */
+export interface GameSettings {
+  /** The money unit: the starting balance divided by 150, rounded to a 1-2-5 value (minimum 10). */
+  unit: number;
+  incomeTax: number;
+  luxuryTax: number;
+  jailFine: number;
+  bankLoanMax: number;
+  auctionMinBid: number;
+  /** The auction bid buttons: 1, 2.5, 5 and 10 units. */
+  auctionBidSteps: number[];
+  /** The board catalog copied at creation; absent or null means no board (manual properties). */
+  board?: BoardSnapshot | null;
+}
+
 export const transactionTypes = [
   'PLAYER_TO_PLAYER',
   'PLAYER_TO_BANK',
@@ -22,6 +61,18 @@ export const transactionTypes = [
   'PAY_RENT',
   'PASS_GO',
   'BANKRUPTCY_TRANSFER',
+  'REVERSAL',
+  'MORTGAGE',
+  'MORTGAGE_REDEMPTION',
+  'LOAN_ISSUE',
+  'LOAN_REPAYMENT',
+  'TO_JACKPOT',
+  'JACKPOT_PAYOUT',
+  'AUCTION_PAYMENT',
+  'PROPERTY_PURCHASE',
+  'PROPERTY_BUILD',
+  'PROPERTY_SELL_BUILDING',
+  'PROPERTY_TRANSFER',
 ] as const;
 
 export type TransactionType = (typeof transactionTypes)[number];
@@ -34,6 +85,8 @@ export interface Game {
   currency: Currency;
   /** Set at lobby creation and immutable once the game starts. */
   paymentMode: PaymentMode;
+  rules: GameRules;
+  settings: GameSettings | null;
   status: GameStatus;
   createdAt: string;
   updatedAt: string;
@@ -58,6 +111,130 @@ export interface Player {
 export const playerStatuses = ['ACTIVE', 'BANKRUPT'] as const;
 export type PlayerStatus = (typeof playerStatuses)[number];
 
+/**
+ * A property a player mortgaged to the bank. Only the free-text name and the value the player
+ * entered from the property card are stored; the game does not know about ownership.
+ */
+export interface Mortgage {
+  /** The id of the MORTGAGE transaction that created it. */
+  id: string;
+  gameId: string;
+  playerId: string;
+  propertyName: string;
+  /** The board tile mortgaged; null for a free-text property. */
+  tileId?: string | null;
+  /** What the bank paid out; redeeming costs this plus 10%. */
+  mortgageValue: number;
+  createdAt: string;
+}
+
+/** One row of the property registry (board games only). */
+export interface GameProperty {
+  gameId: string;
+  /** Stable tile id from the board snapshot. */
+  tileId: string;
+  ownerPlayerId: string | null;
+  mortgaged: boolean;
+  /** 0-4 houses, 5 is a hotel. */
+  houses: number;
+}
+
+/** The mutable state of one tile in the registry. */
+export interface PropertyState {
+  ownerPlayerId: string | null;
+  mortgaged: boolean;
+  houses: number;
+}
+
+/** One registry change stored with a transaction; a reversal applies it backwards. */
+export interface PropertyChange {
+  tileId: string;
+  before: PropertyState;
+  after: PropertyState;
+}
+
+export const loanStates = ['ACTIVE', 'REPAID', 'WRITTEN_OFF'] as const;
+export type LoanState = (typeof loanStates)[number];
+export type LoanLenderKind = 'PLAYER' | 'BANK';
+
+/**
+ * Money one player lent another (or, later, the bank lent a player). It records only the debt;
+ * the cash moved by explicit LOAN_ISSUE / LOAN_REPAYMENT transactions.
+ */
+export interface Loan {
+  /** The id of the LOAN_ISSUE transaction that created it. */
+  id: string;
+  gameId: string;
+  lenderKind: LoanLenderKind;
+  /** Null when the bank is the lender. */
+  lenderPlayerId: string | null;
+  borrowerPlayerId: string;
+  principal: number;
+  /** Repaid so far; outstanding = principal - repaidAmount. */
+  repaidAmount: number;
+  state: LoanState;
+  createdAt: string;
+  closedAt: string | null;
+  /** A bank loan taken during the cooldown after repaying the previous one, after the warning. */
+  cooldownAcknowledged?: boolean;
+  /** Only for an ACTIVE bank loan: derived from the operation log on read, never stored. */
+  rounds?: LoanRoundStatus;
+}
+
+/** Bank-loan interest is charged on the principal, without compounding. */
+export const interestRatePercents = [0, 10, 20] as const;
+export type InterestRatePercent = (typeof interestRatePercents)[number];
+
+/**
+ * Where a bank loan stands, inferred from whose operations followed it (see
+ * shared/domain/round-tracking.ts). The app never stores or enforces turn order; this is a hint.
+ */
+export interface LoanRoundStatus {
+  /** 1 while the borrower is still in the turn they borrowed in, 2 after their next turn starts, ... */
+  round: number;
+  /** 0% in round 1, 10% in round 2, 20% from round 3. */
+  suggestedRatePercent: InterestRatePercent;
+  /** The loan reached round 4 without being repaid. */
+  overdue: boolean;
+}
+
+/** A player who repaid a bank loan recently; borrowing again now needs a confirmed warning. */
+export interface BankLoanCooldown {
+  playerId: string;
+  /** Rounds until a new bank loan no longer needs the warning (1 or 2). */
+  roundsLeft: number;
+}
+
+export const auctionStates = ['ACTIVE', 'SOLD', 'NO_SALE'] as const;
+export type AuctionState = (typeof auctionStates)[number];
+
+/**
+ * A live auction for a property named in free text. The app does not know who owns what: the table
+ * hands the property over by hand, the bank only records who pays. While it is ACTIVE the leading
+ * bid is reserved on the leader's wallet (see `auctionReserve`), so they cannot spend it elsewhere.
+ */
+export interface Auction {
+  id: string;
+  gameId: string;
+  lotName: string;
+  /** The board tile being sold; null for a free-text lot. */
+  tileId?: string | null;
+  initiatorPlayerId: string;
+  state: AuctionState;
+  /** 0 until the first bid. */
+  currentBid: number;
+  currentBidderId: string | null;
+  /** Increments on every change; a bid names the version it was made against. */
+  version: number;
+  startedAt: string;
+  /** Server-set: start + 30 seconds. The auction is settled at (or just after) this moment. */
+  endsAt: string;
+  /** The server's clock when this was sent, so clients can correct for a skewed device clock. */
+  serverTime: string;
+  /** The AUCTION_PAYMENT transaction of a SOLD auction. */
+  settledTransactionId: string | null;
+}
+
 export interface TransactionParticipant {
   playerId: string;
   balanceDelta: number;
@@ -72,4 +249,16 @@ export interface Transaction {
   comment: string | null;
   createdAt: string;
   participants: TransactionParticipant[];
+  /** The board tile this operation concerned (purchase, mortgage, redemption, auction, rent). */
+  tileId?: string | null;
+  /** Set on a PROPERTY_TRANSFER: the player who made the trade, and so may reverse it. */
+  initiatorPlayerId?: string | null;
+  /** Set on a PROPERTY_TRANSFER: every tile that changed hands. */
+  tileIds?: string[];
+  /** Set on a PROPERTY_PURCHASE paid at a price other than the list price. */
+  priceOverridden?: boolean;
+  /** Set on a REVERSAL: the transaction it moved back. */
+  reversesTransactionId?: string | null;
+  /** Set on a reversed transaction: the REVERSAL that moved it back. */
+  reversedByTransactionId?: string | null;
 }

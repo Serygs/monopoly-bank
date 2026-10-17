@@ -3,8 +3,20 @@ import {
   type DeletedGameSummary,
   type GameSummary,
 } from '../../shared/contracts/api.js';
-import type { Currency, Game, GameStatus, PaymentMode } from '../../shared/types/monopoly.js';
+import { normalizeGameRules } from '../../shared/domain/game-rules.js';
+import type {
+  Currency,
+  Game,
+  GameRules,
+  GameSettings,
+  GameStatus,
+  PaymentMode,
+} from '../../shared/types/monopoly.js';
 import type { CreatePlayerInput } from './player-repository.js';
+
+/** The stored house-rule flags and the derived-amounts snapshot, selected with every game. */
+const RULE_COLUMNS =
+  'rule_double_go, rule_player_loans, rule_bank_loans, rule_jackpot, rule_auctions, settings_snapshot';
 
 interface GameRow {
   id: string;
@@ -13,6 +25,12 @@ interface GameRow {
   pass_go_reward: number;
   currency: Currency;
   payment_mode: PaymentMode;
+  rule_double_go: number;
+  rule_player_loans: number;
+  rule_bank_loans: number;
+  rule_jackpot: number;
+  rule_auctions: number;
+  settings_snapshot: string | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -27,9 +45,12 @@ export interface CreateGameInput {
   passGoReward: number;
   currency: Currency;
   paymentMode?: PaymentMode;
+  rules?: GameRules;
+  settings?: GameSettings;
   status?: GameStatus;
   ownerUserId: string;
   joinCode: string;
+  isPublic?: boolean;
   gameAccessPasswordHash: string | null;
   gameAccessPasswordSalt: string | null;
 }
@@ -43,12 +64,19 @@ export interface UpdateGameMetadataInput {
 export interface GameRepository {
   createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void>;
   getById(id: string): Promise<Game | null>;
+  /** The Free Parking pot (jackpot rule); the only place it is read from. */
+  getJackpot(id: string): Promise<number>;
   list(): Promise<Game[]>;
   listSummaries(): Promise<GameSummary[]>;
   listSummariesForUser(userId: string): Promise<GameSummary[]>;
   listDeletedSummariesForUser(userId: string): Promise<DeletedGameSummary[]>;
   updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null>;
   transitionStatus(id: string, from: GameStatus, to: GameStatus): Promise<Game | null>;
+  /**
+   * Gives a lobby or running game a new join code. False when the game is not the owner's, is
+   * finished or deleted. Throws the unique-index error when the code is taken by another game.
+   */
+  replaceJoinCode(id: string, ownerUserId: string, joinCode: string): Promise<boolean>;
   delete(id: string): Promise<boolean>;
   softDelete(id: string): Promise<boolean>;
   restore(id: string, userId: string): Promise<boolean>;
@@ -67,10 +95,11 @@ export class D1GameRepository implements GameRepository {
   }
 
   async createWithPlayers(input: CreateGameInput, players: CreatePlayerInput[]): Promise<void> {
+    const rules = input.rules ?? normalizeGameRules(null);
     const gameStatement = this.database
       .prepare(
-        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, payment_mode, status, owner_user_id, join_code, game_access_password_hash, game_access_password_salt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO games (id, name, starting_balance, pass_go_reward, currency, payment_mode, ${RULE_COLUMNS}, status, owner_user_id, join_code, is_public, game_access_password_hash, game_access_password_salt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         input.id,
@@ -79,9 +108,16 @@ export class D1GameRepository implements GameRepository {
         input.passGoReward,
         input.currency,
         input.paymentMode ?? 'FAST',
+        rules.doubleRewardOnExactGo ? 1 : 0,
+        rules.playerLoans ? 1 : 0,
+        rules.bankLoans ? 1 : 0,
+        rules.freeParkingJackpot ? 1 : 0,
+        rules.auctions ? 1 : 0,
+        input.settings === undefined ? null : JSON.stringify(input.settings),
         input.status ?? 'LOBBY',
         input.ownerUserId,
         input.joinCode,
+        input.isPublic === true ? 1 : 0,
         input.gameAccessPasswordHash,
         input.gameAccessPasswordSalt,
       );
@@ -110,9 +146,18 @@ export class D1GameRepository implements GameRepository {
               )
               .bind(input.id, ownerPlayerId, input.ownerUserId),
           ];
+    // A game with a board gets one untouched property row per tile, in the same batch.
+    const propertyStatements = (input.settings?.board?.tiles ?? []).map((tile) =>
+      this.database
+        .prepare(
+          'INSERT INTO game_properties (game_id, tile_id, owner_player_id, mortgaged, houses) VALUES (?, ?, NULL, 0, 0)',
+        )
+        .bind(input.id, tile.id),
+    );
     await this.database.batch([
       gameStatement,
       ...playerStatements,
+      ...propertyStatements,
       memberStatement,
       ...controllerStatement,
     ]);
@@ -121,7 +166,7 @@ export class D1GameRepository implements GameRepository {
   async getById(id: string): Promise<Game | null> {
     const row = await this.database
       .prepare(
-        `SELECT id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at
+        `SELECT id, name, starting_balance, pass_go_reward, currency, payment_mode, ${RULE_COLUMNS}, status, created_at, updated_at, started_at, finished_at
          FROM games
          WHERE id = ? AND deleted_at IS NULL`,
       )
@@ -131,10 +176,18 @@ export class D1GameRepository implements GameRepository {
     return row === null ? null : mapGame(row);
   }
 
+  async getJackpot(id: string): Promise<number> {
+    const row = await this.database
+      .prepare('SELECT jackpot_balance FROM games WHERE id = ? AND deleted_at IS NULL')
+      .bind(id)
+      .first<{ jackpot_balance: number }>();
+    return row?.jackpot_balance ?? 0;
+  }
+
   async list(): Promise<Game[]> {
     const result = await this.database
       .prepare(
-        `SELECT id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at
+        `SELECT id, name, starting_balance, pass_go_reward, currency, payment_mode, ${RULE_COLUMNS}, status, created_at, updated_at, started_at, finished_at
          FROM games
          WHERE deleted_at IS NULL
          ORDER BY updated_at DESC, id DESC`,
@@ -147,7 +200,7 @@ export class D1GameRepository implements GameRepository {
   async listSummaries(): Promise<GameSummary[]> {
     const result = await this.database
       .prepare(
-        `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode,
+        `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode, ${RULE_COLUMNS},
                 games.status, games.created_at, games.updated_at, games.started_at, games.finished_at,
                 COUNT(players.id) AS player_count
          FROM games
@@ -167,11 +220,11 @@ export class D1GameRepository implements GameRepository {
   async listSummariesForUser(userId: string): Promise<GameSummary[]> {
     const result = await this.database
       .prepare(
-        `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode, games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, COUNT(players.id) AS player_count,
-              CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN 1 ELSE 0 END AS is_public_lobby,
-              CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.game_access_password_hash IS NULL THEN games.join_code ELSE NULL END AS public_join_code
+        `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode, ${RULE_COLUMNS}, games.status, games.created_at, games.updated_at, games.started_at, games.finished_at, COUNT(players.id) AS player_count,
+              CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.is_public = 1 THEN 1 ELSE 0 END AS is_public_lobby,
+              CASE WHEN game_members.user_id IS NULL AND games.status = 'LOBBY' AND games.is_public = 1 THEN games.join_code ELSE NULL END AS public_join_code
        FROM games LEFT JOIN game_members ON game_members.game_id = games.id AND game_members.user_id = ? LEFT JOIN players ON players.game_id = games.id
-       WHERE games.owner_user_id IS NOT NULL AND games.deleted_at IS NULL AND (game_members.user_id IS NOT NULL OR (games.status = 'LOBBY' AND games.game_access_password_hash IS NULL))
+       WHERE games.owner_user_id IS NOT NULL AND games.deleted_at IS NULL AND (game_members.user_id IS NOT NULL OR (games.status = 'LOBBY' AND games.is_public = 1))
        GROUP BY games.id ORDER BY games.updated_at DESC, games.id DESC`,
       )
       .bind(userId)
@@ -188,7 +241,7 @@ export class D1GameRepository implements GameRepository {
   async listDeletedSummariesForUser(userId: string): Promise<DeletedGameSummary[]> {
     const result = await this.database
       .prepare(
-        `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode,
+        `SELECT games.id, games.name, games.starting_balance, games.pass_go_reward, games.currency, games.payment_mode, ${RULE_COLUMNS},
                 games.status, games.created_at, games.updated_at, games.started_at, games.finished_at,
                 COUNT(players.id) AS player_count,
                 games.deleted_at AS deleted_at,
@@ -241,7 +294,7 @@ export class D1GameRepository implements GameRepository {
         `UPDATE games
          SET ${assignments.join(', ')}
          WHERE id = ?
-         RETURNING id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at`,
+         RETURNING id, name, starting_balance, pass_go_reward, currency, payment_mode, ${RULE_COLUMNS}, status, created_at, updated_at, started_at, finished_at`,
       )
       .bind(...values)
       .first<GameRow>();
@@ -259,11 +312,22 @@ export class D1GameRepository implements GameRepository {
            started_at = CASE WHEN ? = 'ACTIVE' THEN CURRENT_TIMESTAMP ELSE started_at END,
            finished_at = CASE WHEN ? = 'ARCHIVED' THEN CURRENT_TIMESTAMP ELSE finished_at END
        WHERE id = ? AND status = ?
-       RETURNING id, name, starting_balance, pass_go_reward, currency, payment_mode, status, created_at, updated_at, started_at, finished_at`,
+       RETURNING id, name, starting_balance, pass_go_reward, currency, payment_mode, ${RULE_COLUMNS}, status, created_at, updated_at, started_at, finished_at`,
       )
       .bind(storedTo, storedTo, storedTo, id, storedFrom)
       .first<GameRow>();
     return row === null ? null : mapGame(row);
+  }
+
+  async replaceJoinCode(id: string, ownerUserId: string, joinCode: string): Promise<boolean> {
+    const result = await this.database
+      .prepare(
+        `UPDATE games SET join_code = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND owner_user_id = ? AND status IN ('LOBBY', 'ACTIVE') AND deleted_at IS NULL`,
+      )
+      .bind(joinCode, id, ownerUserId)
+      .run();
+    return result.meta.changes === 1;
   }
 
   async delete(id: string): Promise<boolean> {
@@ -384,10 +448,27 @@ function mapGame(row: GameRow): Game {
     passGoReward: row.pass_go_reward,
     currency: row.currency,
     paymentMode: row.payment_mode ?? 'FAST',
+    rules: normalizeGameRules({
+      doubleRewardOnExactGo: row.rule_double_go === 1,
+      playerLoans: row.rule_player_loans === 1,
+      bankLoans: row.rule_bank_loans === 1,
+      freeParkingJackpot: row.rule_jackpot === 1,
+      auctions: row.rule_auctions === 1,
+    }),
+    settings: parseSettings(row.settings_snapshot),
     status: row.status === 'ARCHIVED' ? 'FINISHED' : row.status === 'LOBBY' ? 'LOBBY' : 'ACTIVE',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
   };
+}
+
+function parseSettings(snapshot: string | null | undefined): GameSettings | null {
+  if (snapshot === null || snapshot === undefined) return null;
+  try {
+    return JSON.parse(snapshot) as GameSettings;
+  } catch {
+    return null;
+  }
 }

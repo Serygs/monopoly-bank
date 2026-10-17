@@ -28,5 +28,13 @@ export function formatMoney(value: number, currency: Currency): string {
 }
 
 export function formatMoneyDelta(value: number, currency: Currency): string {
-  return `${value >= 0 ? '+' : '-'}${formatMoney(Math.abs(value), currency)}`;
+  return `${value >= 0 ? '+' : '\u2212'}${formatMoney(Math.abs(value), currency)}`;
+}
+
+export type MoneyTone = 'income' | 'expense' | 'neutral';
+
+export function moneyTone(value: number): MoneyTone {
+  if (value > 0) return 'income';
+  if (value < 0) return 'expense';
+  return 'neutral';
 }

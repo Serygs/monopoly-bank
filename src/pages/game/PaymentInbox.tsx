@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import type { PaymentRequest } from '../../../shared/contracts/api';
 import type { Currency, Player } from '../../../shared/types/monopoly';
-import { Button, DialogActions, Notice, StatPill } from '../../components/ui';
+import { Button, SheetActions, Notice, StatPill } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
 import { cx } from '../../components/ui/class-names';
 import { MutedText } from '../../components/ui/Text';
 
-export type PaymentRequestAction = 'accept' | 'decline';
+export type PaymentRequestAction = 'accept' | 'decline' | 'cancel';
 
 /*
  * `payment-inbox` stays as the hook for the e2e overflow checks. Below `md` each request stacks
@@ -28,13 +28,22 @@ const inboxClass = cx(
 );
 
 export interface PaymentInboxProps {
+  /** Requests waiting for one of the viewer's wallets to approve. */
   requests: PaymentRequest[];
+  /** The viewer's own pending loan requests, shown as "Waiting for <lender>" with a Cancel button. */
+  outgoing?: PaymentRequest[];
   players: Player[];
   currency: Currency;
   onAction: (request: PaymentRequest, action: PaymentRequestAction) => Promise<void>;
 }
 
-export function PaymentInbox({ requests, players, currency, onAction }: PaymentInboxProps) {
+export function PaymentInbox({
+  requests,
+  outgoing = [],
+  players,
+  currency,
+  onAction,
+}: PaymentInboxProps) {
   const { t, locale } = useLanguage();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<unknown | null>(null);
@@ -58,17 +67,18 @@ export function PaymentInbox({ requests, players, currency, onAction }: PaymentI
       {error !== null && (
         <Notice tone="error">{apiErrorMessage(error, t, 'unableRecordTransaction')}</Notice>
       )}
-      {requests.length === 0 ? (
+      {requests.length === 0 && outgoing.length === 0 ? (
         <MutedText>{t('noPaymentRequests')}</MutedText>
       ) : (
         <ol>
           {requests.map((request) => {
             const creator = players.find((player) => player.id === request.creatorPlayerId);
+            const isLoan = request.kind === 'LOAN';
             return (
               <li key={request.id}>
                 <div>
                   <strong>
-                    {t('paymentRequestFrom', {
+                    {t(isLoan ? 'loanRequestFrom' : 'paymentRequestFrom', {
                       name: creator?.name ?? t('playerFallback'),
                       amount: formatMoney(request.amount, currency),
                     })}
@@ -82,22 +92,46 @@ export function PaymentInbox({ requests, players, currency, onAction }: PaymentI
                     })}
                   </small>
                 </div>
-                <DialogActions>
+                <SheetActions>
                   <Button
                     variant="primary"
                     disabled={busyId !== null}
                     onClick={() => void act(request, 'accept')}
                   >
-                    {t('acceptPayment')}
+                    {t(isLoan ? 'acceptLoan' : 'acceptPayment')}
                   </Button>
                   <Button
                     variant="secondary"
                     disabled={busyId !== null}
                     onClick={() => void act(request, 'decline')}
                   >
-                    {t('declinePayment')}
+                    {t(isLoan ? 'declineLoan' : 'declinePayment')}
                   </Button>
-                </DialogActions>
+                </SheetActions>
+              </li>
+            );
+          })}
+          {outgoing.map((request) => {
+            const lender = players.find((player) => player.id === request.approverPlayerId);
+            return (
+              <li key={request.id}>
+                <div>
+                  <strong>
+                    {t('loanWaitingFor', {
+                      name: lender?.name ?? t('playerFallback'),
+                      amount: formatMoney(request.amount, currency),
+                    })}
+                  </strong>
+                </div>
+                <SheetActions>
+                  <Button
+                    variant="secondary"
+                    disabled={busyId !== null}
+                    onClick={() => void act(request, 'cancel')}
+                  >
+                    {t('cancelRequest')}
+                  </Button>
+                </SheetActions>
               </li>
             );
           })}

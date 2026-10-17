@@ -18,6 +18,16 @@ describe('controlledPlayerIdForBankingCommand', () => {
     [{ type: 'PLAYER_TO_ALL', payerPlayerId: 'payer', amountPerPlayer: 10 }, 'payer'],
     [{ type: 'ALL_TO_PLAYER', recipientPlayerId: 'recipient', amountPerPlayer: 10 }, 'recipient'],
     [{ type: 'PASS_GO', playerId: 'player' }, 'player'],
+    [{ type: 'MORTGAGE', playerId: 'player', propertyName: 'Boardwalk', amount: 10 }, 'player'],
+    [{ type: 'MORTGAGE_REDEMPTION', playerId: 'player', mortgageId: 'mortgage' }, 'player'],
+    [
+      { type: 'LOAN_ISSUE', borrowerPlayerId: 'borrower', lenderPlayerId: 'lender', amount: 10 },
+      'borrower',
+    ],
+    [{ type: 'LOAN_ISSUE', lenderKind: 'BANK', playerId: 'borrower', amount: 10 }, 'borrower'],
+    [{ type: 'LOAN_REPAYMENT', playerId: 'borrower', loanId: 'loan', amount: 10 }, 'borrower'],
+    [{ type: 'TO_JACKPOT', playerId: 'payer', amount: 10 }, 'payer'],
+    [{ type: 'JACKPOT_PAYOUT', playerId: 'collector' }, 'collector'],
     [{ playerId: 'bankrupt-player' }, 'bankrupt-player'],
   ] as const)('requires the actor to control %o', (request, expectedPlayerId) => {
     expect(controlledPlayerIdForBankingCommand(request)).toBe(expectedPlayerId);

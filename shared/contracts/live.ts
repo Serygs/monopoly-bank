@@ -1,11 +1,25 @@
 import type {
   BankruptcyRequest,
+  AuctionResponse,
   CreateBankingCommandResponse,
+  PlaceBidRequest,
+  StartAuctionRequest,
   CreateTransactionRequest,
   GameDetails,
   PaymentRequestActionResponse,
+  CreateTradeRequestBody,
+  CreateTradeRequestResponse,
+  TradeRequestActionResponse,
 } from './api.js';
-import type { Player, Transaction } from '../types/monopoly.js';
+import type {
+  GameProperty,
+  Auction,
+  BankLoanCooldown,
+  Loan,
+  Mortgage,
+  Player,
+  Transaction,
+} from '../types/monopoly.js';
 
 /** Commands are accepted only by the game coordinator, never peer-to-peer. */
 export type LiveMutationCommand =
@@ -13,8 +27,15 @@ export type LiveMutationCommand =
   | { type: 'ACCEPT_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
   | { type: 'DECLINE_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
   | { type: 'CANCEL_PAYMENT_REQUEST'; commandId: string; paymentRequestId: string }
+  | { type: 'CREATE_TRADE_REQUEST'; commandId: string; request: CreateTradeRequestBody }
+  | { type: 'ACCEPT_TRADE_REQUEST'; commandId: string; tradeRequestId: string }
+  | { type: 'DECLINE_TRADE_REQUEST'; commandId: string; tradeRequestId: string }
+  | { type: 'CANCEL_TRADE_REQUEST'; commandId: string; tradeRequestId: string }
   | { type: 'DECLARE_BANKRUPTCY'; commandId: string; request: BankruptcyRequest }
+  | { type: 'START_AUCTION'; commandId: string; request: StartAuctionRequest }
+  | { type: 'PLACE_BID'; commandId: string; request: PlaceBidRequest }
   | { type: 'START_GAME'; commandId: string }
+  | { type: 'REMOVE_PLAYER'; commandId: string; playerId: string }
   | {
       type: 'JOIN_LOBBY';
       commandId: string;
@@ -39,15 +60,32 @@ export type LiveServerEvent =
       transaction: Transaction;
       players: Player[];
       bankruptPlayerId?: string;
+      /** The active mortgages after a mortgage, a redemption or a bankruptcy. */
+      mortgages?: Mortgage[];
+      /** The loans still being repaid after a loan is issued or repaid, or a bankruptcy. */
+      loans?: Loan[];
+      /** With the bank-loans rule, every commit carries the loans and cooldowns (rounds may advance). */
+      bankLoanCooldowns?: BankLoanCooldown[];
+      /** The Free Parking pot after the commit; present whenever the game has the jackpot rule. */
+      jackpot?: number;
+      /** Board games: the registry rows this commit changed (merge by tileId). */
+      properties?: GameProperty[];
     }
   | { type: 'GAME_FINISHED'; stateVersion: number; details: GameDetails }
   | { type: 'LOBBY_UPDATED'; stateVersion: number; details: Pick<GameDetails, 'game' | 'players'> }
   | { type: 'PAYMENT_REQUESTS_UPDATED'; stateVersion: number }
+  /** The auction started, got a bid or closed (a closed sale also sends GAME_COMMITTED). */
+  | { type: 'AUCTION_UPDATED'; stateVersion: number; auction: Auction | null }
   | { type: 'PRESENCE_UPDATED'; stateVersion: number; connectedActors: number }
   | { type: 'HEARTBEAT'; stateVersion: number };
 
 export type LiveMutationResponse =
-  CreateBankingCommandResponse | PaymentRequestActionResponse | GameDetails;
+  | CreateBankingCommandResponse
+  | PaymentRequestActionResponse
+  | CreateTradeRequestResponse
+  | TradeRequestActionResponse
+  | AuctionResponse
+  | GameDetails;
 
 export function isLiveMutationCommand(value: unknown): value is LiveMutationCommand {
   if (value === null || typeof value !== 'object' || !('type' in value) || !('commandId' in value))
@@ -64,23 +102,43 @@ export function isLiveMutationCommand(value: unknown): value is LiveMutationComm
       command.type === 'ACCEPT_PAYMENT_REQUEST' ||
       command.type === 'DECLINE_PAYMENT_REQUEST' ||
       command.type === 'CANCEL_PAYMENT_REQUEST' ||
+      command.type === 'CREATE_TRADE_REQUEST' ||
+      command.type === 'ACCEPT_TRADE_REQUEST' ||
+      command.type === 'DECLINE_TRADE_REQUEST' ||
+      command.type === 'CANCEL_TRADE_REQUEST' ||
       command.type === 'START_GAME' ||
-      command.type === 'JOIN_LOBBY') &&
-    (command.type === 'CREATE_TRANSACTION' || command.type === 'DECLARE_BANKRUPTCY'
+      command.type === 'JOIN_LOBBY' ||
+      command.type === 'REMOVE_PLAYER' ||
+      command.type === 'START_AUCTION' ||
+      command.type === 'PLACE_BID') &&
+    (command.type === 'CREATE_TRANSACTION' ||
+    command.type === 'DECLARE_BANKRUPTCY' ||
+    command.type === 'CREATE_TRADE_REQUEST'
       ? 'request' in value
-      : command.type === 'FINISH_GAME'
-        ? Array.isArray((value as { winnerPlayerIds?: unknown }).winnerPlayerIds) &&
-          ((value as { winnerPlayerIds?: unknown[] }).winnerPlayerIds ?? []).every(
-            (id) => typeof id === 'string',
-          )
-        : command.type === 'START_GAME'
-          ? true
-          : command.type === 'JOIN_LOBBY'
-            ? typeof (value as { playerId?: unknown }).playerId === 'string' &&
-              typeof (value as { nickname?: unknown }).nickname === 'string' &&
-              typeof (value as { color?: unknown }).color === 'string' &&
-              typeof (value as { startingBalance?: unknown }).startingBalance === 'number'
-            : typeof (value as { paymentRequestId?: unknown }).paymentRequestId === 'string')
+      : command.type === 'START_AUCTION'
+        ? isStartAuctionRequest((value as { request?: unknown }).request)
+        : command.type === 'PLACE_BID'
+          ? isPlaceBidRequest((value as { request?: unknown }).request)
+          : command.type === 'FINISH_GAME'
+            ? Array.isArray((value as { winnerPlayerIds?: unknown }).winnerPlayerIds) &&
+              ((value as { winnerPlayerIds?: unknown[] }).winnerPlayerIds ?? []).every(
+                (id) => typeof id === 'string',
+              )
+            : command.type === 'START_GAME'
+              ? true
+              : command.type === 'REMOVE_PLAYER'
+                ? typeof (value as { playerId?: unknown }).playerId === 'string'
+                : command.type === 'JOIN_LOBBY'
+                  ? typeof (value as { playerId?: unknown }).playerId === 'string' &&
+                    typeof (value as { nickname?: unknown }).nickname === 'string' &&
+                    typeof (value as { color?: unknown }).color === 'string' &&
+                    typeof (value as { startingBalance?: unknown }).startingBalance === 'number'
+                  : command.type === 'ACCEPT_TRADE_REQUEST' ||
+                      command.type === 'DECLINE_TRADE_REQUEST' ||
+                      command.type === 'CANCEL_TRADE_REQUEST'
+                    ? typeof (value as { tradeRequestId?: unknown }).tradeRequestId === 'string'
+                    : typeof (value as { paymentRequestId?: unknown }).paymentRequestId ===
+                      'string')
   );
 }
 
@@ -103,10 +161,30 @@ export function isLiveServerEvent(value: unknown): value is LiveServerEvent {
       isRecord(value.details.game) &&
       Array.isArray(value.details.players)
     );
+  if (value.type === 'AUCTION_UPDATED') return value.auction === null || isRecord(value.auction);
   if (value.type === 'PRESENCE_UPDATED') return isNonNegativeInteger(value.connectedActors);
   return value.type === 'PAYMENT_REQUESTS_UPDATED' || value.type === 'HEARTBEAT';
 }
 
+function isStartAuctionRequest(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.initiatorPlayerId === 'string' &&
+    (value.tileId === undefined || typeof value.tileId === 'string') &&
+    (typeof value.lotName === 'string' || typeof value.tileId === 'string')
+  );
+}
+function isPlaceBidRequest(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.bidderPlayerId === 'string' &&
+    typeof value.auctionId === 'string' &&
+    typeof value.step === 'number' &&
+    Number.isSafeInteger(value.step) &&
+    typeof value.expectedVersion === 'number' &&
+    Number.isSafeInteger(value.expectedVersion)
+  );
+}
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }

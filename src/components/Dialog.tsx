@@ -1,6 +1,13 @@
 import { Dialog as HeadlessDialog, DialogPanel, DialogTitle, Transition } from '@headlessui/react';
-import { useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useContext,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { buttonCoreClass, buttonToneClass, cx, iconButtonShapeClass } from './ui/class-names';
+import { DialogNavContext } from './dialog-nav-context';
 import { Eyebrow } from './ui/Text';
 
 interface DialogProps {
@@ -12,6 +19,11 @@ interface DialogProps {
   className?: string;
   closeDisabled?: boolean;
   presentation?: 'modal' | 'popover';
+  /**
+   * `browse` (default) keeps the game's bottom navigation under the sheet; `flow` is a step flow
+   * (payment, build, trade, auction ...) whose sheet covers the navigation and the Pay button.
+   */
+  sheet?: 'browse' | 'flow';
   id?: string;
   popoverStyle?: CSSProperties;
 }
@@ -41,16 +53,18 @@ const panelMotion = cx(
  * suites, the unit tests and the settings-panel id lookup below.
  *
  * Below `md` the backdrop pins the panel to the bottom edge at full inline width and keeps only
- * the top safe-area gap; the panel itself pads for the side and bottom insets.
+ * the top safe-area gap; the panel itself pads for the side and bottom insets. Inside a game the
+ * bottom navigation is rendered in the backdrop too (Headless UI makes the page outside the dialog
+ * inert, so the bar must live in it to stay tappable); the sheet then stops above the bar.
  */
 const backdropClass = cx(
-  'dialog-backdrop fixed inset-0 z-100 grid place-items-center bg-overlay p-(--mb-space-6)',
-  'max-md:[place-items:end_center] max-md:px-0 max-md:pt-[max(var(--mb-space-2),var(--mb-app-safe-top))] max-md:pb-0',
+  'dialog-backdrop glass-scrim fixed inset-0 z-100 grid place-items-center bg-overlay p-(--mb-space-6)',
+  'max-md:[place-items:end_center] max-md:px-0 max-md:pt-[max(var(--mb-space-2),var(--mb-app-safe-top))] max-md:pb-(--mb-dialog-nav-offset)',
 );
 /* Liquid Glass blurs what sits behind the modal scrim; the settings scrim only below `md`. */
 const backdropPresentationClass = {
-  modal: 'glass:backdrop-blur-[8px] glass:backdrop-saturate-[0.9]',
-  popover: 'glass:max-md:backdrop-blur-[6px] glass:max-md:backdrop-saturate-[0.92]',
+  modal: '',
+  popover: '',
 };
 /*
  * Below `md` the panel is the sheet: full width, rounded top only, no side or bottom border, a
@@ -58,25 +72,22 @@ const backdropPresentationClass = {
  * handle is absolutely placed, so it never becomes a grid item of the grid-laid panels.
  */
 const sheetClass = cx(
-  'max-md:relative max-md:max-h-[calc(100dvh_-_var(--mb-app-safe-top)_-_8px)] max-md:w-full max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0',
-  'max-md:pt-[28px] max-md:pr-[max(18px,var(--mb-app-safe-right))] max-md:pb-[max(var(--mb-space-5),calc(var(--mb-app-safe-bottom)_+_14px))] max-md:pl-[max(18px,var(--mb-app-safe-left))]',
+  'max-md:relative max-md:max-h-[calc(100dvh_-_var(--mb-app-safe-top)_-_8px_-_var(--mb-dialog-nav-offset))] max-md:w-full max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0',
+  'max-md:[--mb-sheet-pad-bottom:max(var(--mb-space-5),calc(var(--mb-sheet-safe-bottom,var(--mb-app-safe-bottom))_+_14px))] max-md:pt-[24px] max-md:pr-[max(18px,var(--mb-app-safe-right))] max-md:pb-(--mb-sheet-pad-bottom) max-md:pl-[max(18px,var(--mb-app-safe-left))]',
   "max-md:before:absolute max-md:before:inset-x-0 max-md:before:top-[10px] max-md:before:mx-auto max-md:before:h-[4px] max-md:before:w-[42px] max-md:before:rounded-pill max-md:before:bg-border-strong max-md:before:content-['']",
 );
 const panelClass = cx(
   'dialog max-h-[calc(100dvh_-_48px)] overflow-auto rounded-xl border border-border bg-surface-elevated p-[clamp(var(--mb-space-5),4vw,var(--mb-space-7))] text-primary shadow-lg',
   sheetClass,
   'origin-center max-md:origin-bottom motion-reduce:transform-none!',
-  '[&>header]:flex [&>header]:items-start [&>header]:justify-between [&>header]:border-b [&>header]:border-dialog-divider [&>header]:pb-(--mb-space-4)',
-  '[&_h2]:font-display [&_h2]:text-primary [&>header_h2]:m-0 [&>header_h2]:text-heading-lg',
+  '[&>header]:flex [&>header]:items-start [&>header]:justify-between [&>header]:border-b [&>header]:border-dialog-divider [&>header]:pb-(--mb-space-4) max-md:[&>header]:pb-(--mb-space-3)',
+  '[&_h2]:font-display [&_h2]:text-primary [&>header_h2]:m-0 [&>header_h2]:text-heading-lg max-md:[&>header_h2]:text-[clamp(1.125rem,5vw,1.3125rem)]',
 );
 const presentationClass = {
   modal: cx(
     'w-[min(100%,640px)] [&>header]:gap-(--mb-space-5)',
-    '[&_h2]:m-0 [&_h2]:text-heading-lg [&_h2]:leading-[1.2] [&_h2]:tracking-[-0.025em]',
-    'glass:border-[rgb(255_255_255/0.72)] glass:bg-[rgb(255_255_255/0.76)] glass:dark:border-[rgb(255_255_255/0.2)] glass:dark:bg-[rgb(32_40_52/0.9)]',
-    'glass:shadow-[0_24px_64px_rgb(35_52_78/0.2),inset_0_1px_0_rgb(255_255_255/0.8)]',
-    'glass:backdrop-blur-[26px] glass:backdrop-saturate-[1.3] glass:max-md:backdrop-blur-[24px] glass:max-md:backdrop-saturate-[1.24]',
-    'glass:forced-colors:backdrop-filter-none',
+    '[&_h2]:m-0 [&_h2]:text-heading-lg max-md:[&_h2]:text-[clamp(1.125rem,5vw,1.3125rem)] [&_h2]:leading-[1.2] [&_h2]:tracking-[-0.025em]',
+    'glass-panel',
   ),
   // The settings panel; its Liquid Glass surface is in `App.tsx`.
   popover:
@@ -105,11 +116,14 @@ export function Dialog({
   className = '',
   closeDisabled = false,
   presentation = 'modal',
+  sheet = 'browse',
   id,
   popoverStyle,
 }: DialogProps) {
   // The dialog stays mounted for its leave transition; `onClose` runs once that has finished.
   const [open, setOpen] = useState(true);
+  const bottomNav = useContext(DialogNavContext);
+  const withNav = bottomNav !== null && presentation === 'modal' && sheet === 'browse';
   const requestClose = () => {
     if (!closeDisabled) setOpen(false);
   };
@@ -132,6 +146,14 @@ export function Dialog({
           backdropPresentationClass[presentation],
           backdropMotion,
         )}
+        style={
+          withNav
+            ? ({
+                '--mb-dialog-nav-offset': 'var(--mb-bottom-nav-height)',
+                '--mb-sheet-safe-bottom': '0px',
+              } as CSSProperties)
+            : undefined
+        }
       >
         <DialogPanel
           as="section"
@@ -157,6 +179,7 @@ export function Dialog({
           </header>
           {children}
         </DialogPanel>
+        {withNav && bottomNav}
       </HeadlessDialog>
     </Transition>
   );

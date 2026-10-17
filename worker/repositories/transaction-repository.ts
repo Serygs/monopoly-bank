@@ -12,6 +12,12 @@ interface TransactionRow {
   total_amount: number;
   comment: string | null;
   created_at: string;
+  reverses_transaction_id: string | null;
+  tile_id: string | null;
+  price_overridden: number;
+  initiator_player_id: string | null;
+  changed_tile_ids: string | null;
+  reversed_by_transaction_id: string | null;
   player_id: string | null;
   balance_delta: number | null;
 }
@@ -31,6 +37,15 @@ export interface TransactionRepository {
   getById(gameId: string, transactionId: string): Promise<Transaction | null>;
   listByGameId(gameId: string, limit?: number): Promise<Transaction[]>;
   listByPlayerId(gameId: string, playerId: string, limit?: number): Promise<Transaction[]>;
+  /**
+   * Every transaction from the earliest of the given ones onwards (that one included), oldest
+   * first, in the order they were written. Empty without anchors. Used to infer whose turn it was.
+   */
+  listChronologicalSince(
+    gameId: string,
+    anchorTransactionIds: readonly string[],
+    latest?: number,
+  ): Promise<Transaction[]>;
 }
 
 export class D1TransactionRepository implements TransactionRepository {
@@ -90,6 +105,37 @@ export class D1TransactionRepository implements TransactionRepository {
     return mapTransactions(result.results);
   }
 
+  async listChronologicalSince(
+    gameId: string,
+    anchorTransactionIds: readonly string[],
+    latest?: number,
+  ): Promise<Transaction[]> {
+    if (anchorTransactionIds.length === 0) return [];
+    // With `latest`, only the game's newest `latest` transactions are read, even if an anchor is older.
+    const window =
+      latest === undefined
+        ? ''
+        : `AND transactions.rowid >= COALESCE((
+             SELECT recent.rowid FROM transactions AS recent WHERE recent.game_id = ?1
+             ORDER BY recent.rowid DESC LIMIT 1 OFFSET ${Math.max(0, Math.floor(latest) - 1)}
+           ), 0)`;
+    const result = await this.database
+      .prepare(
+        `${transactionSelect}
+         WHERE transactions.game_id = ?1
+           AND transactions.rowid >= (
+             SELECT MIN(anchor.rowid) FROM transactions AS anchor
+             WHERE anchor.game_id = ?1 AND anchor.id IN (${anchorTransactionIds.map((_, index) => `?${index + 2}`).join(', ')})
+           )
+           ${window}
+         ORDER BY transactions.rowid ASC, transaction_participants.player_id ASC`,
+      )
+      .bind(gameId, ...anchorTransactionIds)
+      .all<TransactionRow>();
+
+    return mapTransactions(result.results);
+  }
+
   async getById(gameId: string, transactionId: string): Promise<Transaction | null> {
     const result = await this.database
       .prepare(
@@ -137,9 +183,18 @@ const transactionSelect = `SELECT
   transactions.total_amount,
   transactions.comment,
   transactions.created_at,
+  transactions.reverses_transaction_id,
+  transactions.tile_id,
+  transactions.price_overridden,
+  transactions.initiator_player_id,
+  CASE WHEN transactions.type IN ('PROPERTY_TRANSFER', 'PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING') THEN (
+    SELECT group_concat(tile_id) FROM property_changes WHERE property_changes.transaction_id = transactions.id
+  ) END AS changed_tile_ids,
+  reversal.id AS reversed_by_transaction_id,
   transaction_participants.player_id,
   transaction_participants.balance_delta
 FROM transactions
+LEFT JOIN transactions AS reversal ON reversal.reverses_transaction_id = transactions.id
 LEFT JOIN transaction_participants ON transaction_participants.transaction_id = transactions.id`;
 
 function mapTransactions(rows: TransactionRow[]): Transaction[] {
@@ -157,6 +212,12 @@ function mapTransactions(rows: TransactionRow[]): Transaction[] {
         comment: row.comment,
         createdAt: row.created_at,
         participants: [],
+        ...(row.tile_id == null ? {} : { tileId: row.tile_id }),
+        ...(row.price_overridden === 1 ? { priceOverridden: true } : {}),
+        ...(row.initiator_player_id == null ? {} : { initiatorPlayerId: row.initiator_player_id }),
+        ...(row.changed_tile_ids == null ? {} : { tileIds: row.changed_tile_ids.split(',') }),
+        reversesTransactionId: row.reverses_transaction_id ?? null,
+        reversedByTransactionId: row.reversed_by_transaction_id ?? null,
       };
       transactions.set(row.id, transaction);
     }

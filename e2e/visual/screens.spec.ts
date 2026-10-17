@@ -61,7 +61,7 @@ const screens: readonly VisualScreen[] = [
     open: async (page, language) => {
       await page.goto('/games/new');
       await expect(
-        page.getByRole('heading', { name: translate(language, 'createLobby'), exact: true }),
+        page.getByRole('heading', { name: translate(language, 'stepBasics'), exact: true }),
       ).toBeVisible();
     },
   },

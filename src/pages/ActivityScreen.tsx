@@ -6,8 +6,11 @@ import type {
   ActivityScope,
   PaymentRequest,
 } from '../../shared/contracts/api';
+import type { BoardSnapshot } from '../../shared/board';
 import type { Currency, Player, Transaction } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { groupTiles } from '../../shared/domain/property';
+import { REVERSAL_WINDOW_MS, reversalAvailability } from '../../shared/domain/reversal';
 import { Dialog } from '../components/Dialog';
 import { TransactionRow } from '../components/game/TransactionRow';
 import { useLanguage } from '../i18n/language-context';
@@ -24,7 +27,7 @@ const immediateActivityScopes: readonly ActivityScope[] = ['ALL', 'MINE'];
  */
 const dialogClass = cx(
   'grid h-[min(720px,calc(100dvh_-_48px))] grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden!',
-  'max-md:h-[calc(100dvh_-_var(--mb-app-safe-top)_-_8px)]',
+  'max-md:h-[calc(100dvh_-_var(--mb-app-safe-top)_-_8px_-_var(--mb-dialog-nav-offset))]',
   wideDialogClass,
   'glass:max-w-full glass:min-w-0',
 );
@@ -64,12 +67,24 @@ const pendingRowClass = cx(
   '[&>small]:col-span-full [&>small]:text-[0.84rem] [&>small]:font-semibold [&>small]:text-status-text',
 );
 
+/** What the Activity ledger needs to offer a reversal on the viewer's own operations. */
+export interface ActivityReversal {
+  isOwner: boolean;
+  controlledPlayerIds: readonly string[];
+  onReverse: (transaction: Transaction) => void;
+}
+
 export function ActivityScreen({
   gameId,
   players,
   currency,
   liveTransactions,
   showPending = true,
+  initialScope = 'ALL',
+  initialPlayerId = null,
+  reversal,
+  refreshKey = 0,
+  board = null,
   onClose,
 }: {
   gameId: string;
@@ -78,16 +93,35 @@ export function ActivityScreen({
   liveTransactions: Transaction[];
   /** Pending payment requests exist only when recipients must confirm payments. */
   showPending?: boolean;
+  /** The tab to open on; the wallet's history link opens "Mine". */
+  initialScope?: ActivityScope;
+  /** Opens with the ledger narrowed to the operations of one wallet (the wallet's history link). */
+  initialPlayerId?: string | null;
+  /** Omitted when the viewer cannot change the game (finished or offline). */
+  reversal?: ActivityReversal;
+  /** Changing it reloads the ledger, e.g. after a reversal was recorded. */
+  refreshKey?: number;
+  /** Board games: names the tiles in the ledger rows. */
+  board?: BoardSnapshot | null;
   onClose: () => void;
 }) {
   const { language, locale, t } = useLanguage();
   const activityScopes = showPending ? allActivityScopes : immediateActivityScopes;
-  const [scope, setScope] = useState<ActivityScope>('ALL');
+  const [scope, setScope] = useState<ActivityScope>(
+    showPending || initialScope !== 'PENDING' ? initialScope : 'ALL',
+  );
+  const [playerFilter, setPlayerFilter] = useState<string | null>(initialPlayerId);
   const [page, setPage] = useState<ActivityPage>({
     transactions: [],
     paymentRequests: [],
     nextCursor: null,
   });
+  // The reversal window runs while the ledger is open, so the clock ticks without re-rendering often.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -111,7 +145,7 @@ export function ActivityScreen({
     return () => {
       active = false;
     };
-  }, [gameId, scope]);
+  }, [gameId, scope, refreshKey]);
 
   const loadMore = async (cursor: ActivityCursor) => {
     setLoading(true);
@@ -130,11 +164,27 @@ export function ActivityScreen({
     }
   };
 
-  const transactions =
-    scope === 'PENDING'
-      ? page.transactions
-      : mergeTransactions(liveTransactions, page.transactions);
+  // A reversal that arrived live marks the original it moved back, even on an older loaded page.
+  const reversedByLive = new Map(
+    liveTransactions
+      .filter((item) => item.reversesTransactionId != null)
+      .map((item) => [item.reversesTransactionId, item.id] as const),
+  );
+  const transactions = (
+    scope === 'PENDING' ? page.transactions : mergeTransactions(liveTransactions, page.transactions)
+  ).map((item) =>
+    item.reversedByTransactionId == null && reversedByLive.has(item.id)
+      ? { ...item, reversedByTransactionId: reversedByLive.get(item.id) }
+      : item,
+  );
   const items = scope === 'PENDING' ? page.paymentRequests : transactions;
+  // The filter only hides rows: the reversal check still looks at the whole ledger above a row.
+  const shown = (item: Transaction | PaymentRequest): boolean =>
+    playerFilter === null ||
+    ('state' in item
+      ? item.creatorPlayerId === playerFilter || item.approverPlayerId === playerFilter
+      : item.participants.some((participant) => participant.playerId === playerFilter));
+  const filterName = players.find((player) => player.id === playerFilter)?.name ?? null;
   const selectScope = (index: number) => {
     const nextScope = activityScopes[index];
     if (nextScope === undefined || nextScope === scope) return;
@@ -142,12 +192,48 @@ export function ActivityScreen({
     setError(false);
     setScope(nextScope);
   };
+  /** The ledger is newest first, so the rows above one are the operations written after it. */
+  const reversalProps = (
+    transaction: Transaction,
+    newer: readonly (Transaction | PaymentRequest)[],
+  ) => {
+    if (reversal === undefined) return {};
+    const availability = reversalAvailability({
+      transaction,
+      isOwner: reversal.isOwner,
+      controlledPlayerIds: reversal.controlledPlayerIds,
+      now,
+      later: newer.filter((item): item is Transaction => !('state' in item)),
+      groupTileIds: groupTileIdsOf(board, transaction),
+    });
+    if (availability.status === 'allowed')
+      return { onReverse: () => reversal.onReverse(transaction) };
+    if (availability.status === 'blocked')
+      return {
+        reversalNote:
+          availability.reason === 'WINDOW_EXPIRED'
+            ? t('reversalBlockedWindow', { minutes: REVERSAL_WINDOW_MS / 60_000 })
+            : t('reversalBlockedLater'),
+      };
+    return {};
+  };
   const panel = (
     <>
       {error && <Notice tone="error">{t('unableLoadHistory')}</Notice>}
+      {playerFilter !== null && (
+        <button
+          type="button"
+          className="mb-(--mb-space-3) inline-flex min-h-11 cursor-pointer items-center gap-(--mb-space-2) rounded-pill border border-border bg-surface-subtle px-(--mb-space-3) text-small font-semibold text-primary focus-visible:outline-offset-2"
+          aria-label={t('activityClearPlayer', { name: filterName ?? t('selectedPlayer') })}
+          onClick={() => setPlayerFilter(null)}
+        >
+          {t('activityShowingPlayer', { name: filterName ?? t('selectedPlayer') })}
+          <span aria-hidden="true">×</span>
+        </button>
+      )}
       <ol className={ledgerClass}>
-        {items.map((item) =>
-          'state' in item ? (
+        {items.map((item, index) =>
+          !shown(item) ? null : 'state' in item ? (
             <PendingRow
               key={item.id}
               request={item}
@@ -163,11 +249,13 @@ export function ActivityScreen({
               currency={currency}
               language={language}
               locale={locale}
+              board={board}
+              {...reversalProps(item, items.slice(0, index))}
             />
           ),
         )}
       </ol>
-      {!loading && items.length === 0 && (
+      {!loading && items.filter(shown).length === 0 && (
         <MutedText>{scope === 'PENDING' ? t('noPendingActivity') : t('noActivity')}</MutedText>
       )}
       {loading && (
@@ -285,4 +373,13 @@ function mergeRequests(
   return [...first, ...second].filter(
     (item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index,
   );
+}
+
+/** The tiles of the colour group of the tile a transaction concerned (see `findReversalDependency`). */
+function groupTileIdsOf(board: BoardSnapshot | null, transaction: Transaction): string[] {
+  const tile =
+    board === null || transaction.tileId == null
+      ? undefined
+      : board.tiles.find((item) => item.id === transaction.tileId);
+  return board === null || tile === undefined ? [] : groupTiles(board, tile).map((item) => item.id);
 }

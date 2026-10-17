@@ -1,9 +1,19 @@
-import type { CreateInvitationResponse, PlayerController } from '../../shared/contracts/api.js';
+import {
+  MAX_LOBBY_PLAYERS,
+  type CreateInvitationResponse,
+  type PlayerController,
+} from '../../shared/contracts/api.js';
+import {
+  isWithinReversalWindow,
+  REVERSAL_WINDOW_MS,
+  reversalInitiatorPlayerId,
+} from '../../shared/domain/reversal.js';
+import type { Transaction } from '../../shared/types/monopoly.js';
 import type {
   GameMemberRole,
   GameAccessRepository,
 } from '../repositories/game-access-repository.js';
-import { ConflictError, ForbiddenError, ResourceNotFoundError } from './errors.js';
+import { ConflictError, ForbiddenError, LobbyFullError, ResourceNotFoundError } from './errors.js';
 import { randomToken, tokenHash, verifyPassword } from './password-security.js';
 
 export class GameAccessService {
@@ -29,6 +39,28 @@ export class GameAccessService {
       throw new ForbiddenError();
   }
 
+  /**
+   * The game owner may reverse any transaction. Anyone else must control the wallet that made it,
+   * and only for a short time afterwards, so money already spent on is not clawed back later.
+   */
+  async requireReversalAuthority(
+    gameId: string,
+    userId: string,
+    transaction: Transaction,
+    now = Date.now(),
+  ): Promise<void> {
+    if ((await this.access.getRole(gameId, userId)) === 'OWNER') return;
+    const initiator = reversalInitiatorPlayerId(transaction);
+    if (initiator === null || !(await this.access.isPlayerControlledBy(gameId, userId, initiator)))
+      throw new ForbiddenError();
+    if (!isWithinReversalWindow(transaction.createdAt, now))
+      throw new ConflictError(
+        'REVERSAL_WINDOW_EXPIRED',
+        'Only the game owner can reverse this transaction now.',
+        { windowMs: REVERSAL_WINDOW_MS },
+      );
+  }
+
   async controlledWallets(gameId: string, userId: string): Promise<PlayerController[]> {
     return this.access.listPlayerControllers(gameId, userId);
   }
@@ -45,6 +77,21 @@ export class GameAccessService {
     if ((await this.access.getRole(input.gameId, input.userId)) !== null) return;
     throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
   }
+  /** A full lobby turns new people away; someone already seated is never counted out. */
+  async requireLobbySeat(gameId: string, userId: string, playerCount: number): Promise<void> {
+    if (playerCount < MAX_LOBBY_PLAYERS) return;
+    if ((await this.access.getRole(gameId, userId)) !== null) return;
+    throw new LobbyFullError();
+  }
+  /** Only the owner removes a player, only while the game is a lobby, and never the owner's own. */
+  async removeLobbyPlayer(gameId: string, ownerUserId: string, playerId: string): Promise<void> {
+    await this.requireOwner(gameId, ownerUserId);
+    if (!(await this.access.removeLobbyPlayer(gameId, playerId)))
+      throw new ConflictError(
+        'PLAYER_NOT_REMOVABLE',
+        'Only another player can be removed, and only while the game is a lobby.',
+      );
+  }
   async getJoinCredentials(joinCode: string): Promise<{
     gameId: string;
     passwordHash: string | null;
@@ -57,6 +104,9 @@ export class GameAccessService {
     const joinCode = await this.access.getOwnerJoinCode(gameId, userId);
     if (joinCode === null) throw new ResourceNotFoundError('Game');
     return joinCode;
+  }
+  async hasAccessPassword(gameId: string): Promise<boolean> {
+    return this.access.hasAccessPassword(gameId);
   }
   async createInvitation(gameId: string, ownerUserId: string): Promise<CreateInvitationResponse> {
     const invitationToken = randomToken();
