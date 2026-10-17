@@ -139,7 +139,9 @@ export function WalletsSection({
                 className="mt-(--mb-space-3) w-full"
                 onClick={property.onOpen}
               >
-                {t('walletProperty', { count: property.count, value: property.value })}
+                {property.count === 1
+                  ? t('walletPropertyOne', { value: property.value })
+                  : t('walletProperty', { count: property.count, value: property.value })}
               </Button>
             )}
             {settleLoan !== null && (
