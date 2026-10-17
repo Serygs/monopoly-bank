@@ -85,5 +85,5 @@
 }
 
 .app-shell[data-bottom-nav] .page {
-  padding-bottom: calc(var(--mb-bottom-nav-height) + var(--mb-space-5));
+  padding-bottom: var(--mb-bottom-nav-height);
 }
