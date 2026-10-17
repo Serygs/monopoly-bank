@@ -266,6 +266,8 @@ const english = {
   bankruptcyBankLoanHint:
     'The bank is paid first: your cash covers the bank loan and its interest before the creditor receives the rest.',
   errorBankLoanLimitExceeded: 'This is more than the bank lends in this game.',
+  errorBankToPlayerLimitExceeded: 'The bank pays a player at most the limit in one operation.',
+  bankToPlayerExceedsMax: 'The bank pays at most {max} in one operation.',
   errorBankLoanAlreadyActive: 'This player already has an active bank loan.',
   errorBankLoanCooldown:
     'This player repaid a bank loan recently. Confirm the warning to borrow again.',
@@ -1141,6 +1143,8 @@ const ukrainian: TranslationCatalog = {
   bankruptcyBankLoanHint:
     'Банк отримує гроші першим: ваша готівка покриває позику банку та відсотки, а решту отримує кредитор.',
   errorBankLoanLimitExceeded: 'Це більше, ніж банк позичає в цій грі.',
+  errorBankToPlayerLimitExceeded: 'Банк виплачує гравцеві не більше ліміту за одну операцію.',
+  bankToPlayerExceedsMax: 'Банк виплачує не більше {max} за одну операцію.',
   errorBankLoanAlreadyActive: 'У цього гравця вже є активна позика банку.',
   errorBankLoanCooldown:
     'Цей гравець нещодавно повернув позику банку. Підтвердьте попередження, щоб позичити знову.',

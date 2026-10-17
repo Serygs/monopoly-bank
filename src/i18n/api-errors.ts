@@ -39,6 +39,7 @@ const errorKeys: Record<string, TranslationKey> = {
   MORTGAGE_NOT_FOUND: 'errorMortgageNotFound',
   INVALID_PROPERTY_NAME: 'errorInvalidPropertyName',
   BANK_LOAN_LIMIT_EXCEEDED: 'errorBankLoanLimitExceeded',
+  BANK_TO_PLAYER_LIMIT_EXCEEDED: 'errorBankToPlayerLimitExceeded',
   BANK_LOAN_ALREADY_ACTIVE: 'errorBankLoanAlreadyActive',
   BANK_LOAN_COOLDOWN: 'errorBankLoanCooldown',
   BANK_LOAN_FULL_REPAYMENT_REQUIRED: 'errorBankLoanFullRepayment',

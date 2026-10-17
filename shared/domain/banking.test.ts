@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   allToPlayer,
+  BANK_TO_PLAYER_MAX_AMOUNT,
+  BankToPlayerLimitExceededError,
   bankToPlayer,
   InsufficientFundsError,
   InvalidAmountError,
@@ -117,6 +119,14 @@ describe('banking domain operations', () => {
 
     expect(balances(result)).toEqual([1800]);
     expect(result.transaction.type).toBe('BANK_TO_PLAYER');
+  });
+
+  it('pays a player exactly the bank limit but refuses more', () => {
+    const run = (amount: number) =>
+      bankToPlayer({ game, players: createPlayers(), playerId: 'player-1', amount });
+
+    expect(run(BANK_TO_PLAYER_MAX_AMOUNT).transaction.amount).toBe(4_000_000);
+    expect(() => run(BANK_TO_PLAYER_MAX_AMOUNT + 1)).toThrow(BankToPlayerLimitExceededError);
   });
 
   it('pays every other player from one payer atomically', () => {
