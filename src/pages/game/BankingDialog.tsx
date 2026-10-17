@@ -1,3 +1,4 @@
+import { BANK_TO_PLAYER_MAX_AMOUNT } from '../../../shared/domain/banking';
 import { useRef, useState, type ReactNode } from 'react';
 import {
   defaultGameRules,
@@ -394,6 +395,8 @@ export function BankingDialog({
     action === 'LOAN_ISSUE' || action === 'LOAN_REPAYMENT' || action === 'BANK_LOAN';
   const exceedsBankLoanMax =
     action === 'BANK_LOAN' && bankLoanMax !== null && amountValue > bankLoanMax;
+  const exceedsBankToPlayerMax =
+    action === 'BANK_TO_PLAYER' && amountValue > BANK_TO_PLAYER_MAX_AMOUNT;
   // What leaves the wallet: for a bank loan the interest comes on top of the principal.
   const payAmount = amountValue + interest;
   // Cash held back for a leading auction bid cannot be spent elsewhere.
@@ -419,6 +422,7 @@ export function BankingDialog({
     (action !== 'MORTGAGE_REDEMPTION' || selectedMortgage !== null) &&
     (action !== 'LOAN_REPAYMENT' || (selectedLoan !== null && !overRepayment)) &&
     (action !== 'BANK_LOAN' || (bankLoan === null && !exceedsBankLoanMax)) &&
+    !exceedsBankToPlayerMax &&
     (action !== 'JACKPOT_PAYOUT' || (rules.freeParkingJackpot && jackpot > 0)) &&
     fundsError === null;
 
@@ -1239,6 +1243,13 @@ export function BankingDialog({
             {exceedsBankLoanMax && bankLoanMax !== null && (
               <FieldError as="p" announce>
                 {t('bankLoanExceedsMax', { max: formatMoney(bankLoanMax, currency) })}
+              </FieldError>
+            )}
+            {exceedsBankToPlayerMax && (
+              <FieldError as="p" announce>
+                {t('bankToPlayerExceedsMax', {
+                  max: formatMoney(BANK_TO_PLAYER_MAX_AMOUNT, currency),
+                })}
               </FieldError>
             )}
             {overRepayment && (
