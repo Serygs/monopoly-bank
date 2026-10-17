@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { JOIN_CODE_MAX_LENGTH, JOIN_CODE_MIN_LENGTH, normalizeJoinCode } from '../utils/join-code';
 import type { UserProfile } from '../../shared/contracts/api.js';
 import { MonopolyBankApiError, monopolyBankApi } from '../api/monopoly-bank-api';
 import { Button, Field, Notice, PageShell } from '../components/ui';
@@ -27,7 +28,7 @@ export function JoinGamePage({
   autoJoin = false,
 }: Props) {
   const { t } = useLanguage();
-  const [joinCode, setJoinCode] = useState(initialJoinCode.toUpperCase());
+  const [joinCode, setJoinCode] = useState(normalizeJoinCode(initialJoinCode));
   const [gameAccessPassword, setGameAccessPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const avatar = '🎩';
@@ -44,7 +45,7 @@ export function JoinGamePage({
     hasInvitation
       ? { invitationToken }
       : {
-          joinCode: joinCode.trim().toUpperCase(),
+          joinCode: normalizeJoinCode(joinCode),
           ...(gameAccessPassword === '' ? {} : { gameAccessPassword }),
         };
 
@@ -128,10 +129,10 @@ export function JoinGamePage({
                     value={joinCode}
                     autoCapitalize="characters"
                     autoComplete="off"
-                    minLength={4}
-                    maxLength={12}
+                    minLength={JOIN_CODE_MIN_LENGTH}
+                    maxLength={JOIN_CODE_MAX_LENGTH}
                     placeholder={t('invitationCodeExample')}
-                    onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+                    onChange={(event) => setJoinCode(normalizeJoinCode(event.target.value))}
                     required
                   />
                 </Field>

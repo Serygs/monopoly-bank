@@ -209,3 +209,43 @@ describe('reverting from the activity ledger', () => {
     expect(screen.queryByRole('button', { name: 'Reverse' })).toBeNull();
   });
 });
+
+describe('activity player filter', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const wallet = (id: string, name: string): Player => ({
+    id,
+    gameId: 'game-1',
+    name,
+    color: '#000',
+    balance: 0,
+    status: 'ACTIVE',
+    createdAt: '',
+  });
+  const ledgerEntry = (id: string, playerId: string): Transaction => ({
+    id,
+    gameId: 'game-1',
+    type: 'PLAYER_TO_BANK',
+    amount: 5,
+    totalAmount: 5,
+    comment: `note-${id}`,
+    createdAt: '2026-01-01T10:00:00.000Z',
+    participants: [{ playerId, balanceDelta: -5 }],
+  });
+
+  it('narrows the ledger to one wallet and clears on request', async () => {
+    vi.spyOn(monopolyBankApi, 'getActivity').mockResolvedValue({
+      transactions: [ledgerEntry('t1', 'a'), ledgerEntry('t2', 'b')],
+      paymentRequests: [],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    renderActivity('en', true, { initialPlayerId: 'a' }, [wallet('a', 'Ada'), wallet('b', 'Bo')]);
+    expect(await screen.findByText('note-t1')).toBeInTheDocument();
+    expect(screen.queryByText('note-t2')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Show everyone instead of Ada' }));
+    expect(await screen.findByText('note-t2')).toBeInTheDocument();
+  });
+});

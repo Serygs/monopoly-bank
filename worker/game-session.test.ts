@@ -617,3 +617,150 @@ describe('GameSession jackpot events', () => {
     expect(await run(undefined)).not.toHaveProperty('jackpot');
   });
 });
+
+describe('GameSession trade requests', () => {
+  const tradeRequestId = '00000000-0000-4000-8000-0000000000d1';
+  const proposer = '00000000-0000-4000-8000-0000000000d2';
+  const counterparty = '00000000-0000-4000-8000-0000000000d3';
+  const stored = {
+    id: tradeRequestId,
+    proposerPlayerId: proposer,
+    counterpartyPlayerId: counterparty,
+  };
+
+  type Internals = {
+    mutate(gameId: string, userId: string, request: Request): Promise<Response>;
+    banking(command: string): unknown;
+    access(): unknown;
+    authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
+    commandLedger(): ReturnType<typeof fakeLedger>;
+  };
+  function build() {
+    const sent: string[] = [];
+    const storage = new Map<string, unknown>();
+    const context = {
+      storage: {
+        get: async <T>(key: string) => storage.get(key) as T | undefined,
+        put: async (key: string, value: unknown) => {
+          storage.set(key, value);
+        },
+      },
+      getWebSockets: () => [{ send: (message: string) => sent.push(message) }],
+    };
+    const session = new GameSession(context as never, {} as Env) as unknown as Internals;
+    const controlled: string[] = [];
+    session.access = () => ({
+      requireMember: async () => 'PLAYER',
+      requirePlayerController: async (_gameId: string, _userId: string, playerId: string) => {
+        controlled.push(playerId);
+      },
+    });
+    return { session, sent, controlled };
+  }
+  const send = (session: Internals, command: Record<string, unknown>) =>
+    session.mutate(
+      gameId,
+      'actor',
+      new Request('https://game-session/mutation', {
+        method: 'POST',
+        body: JSON.stringify({ commandId, ...command }),
+      }),
+    );
+  const accepted = {
+    tradeRequest: { ...stored, state: 'ACCEPTED' },
+    transaction: {
+      id: commandId,
+      gameId,
+      type: 'PROPERTY_TRANSFER',
+      amount: 0,
+      totalAmount: 0,
+      comment: null,
+      createdAt: '',
+      participants: [],
+    },
+    players: [],
+  };
+
+  it('authorizes the proposer to create and cancel, the counterparty to accept and decline', async () => {
+    const { session, controlled } = build();
+    session.banking = () => ({ getTradeRequest: async () => stored });
+    await session.authorizeMutation(gameId, 'actor', {
+      type: 'CREATE_TRADE_REQUEST',
+      commandId,
+      request: { id: tradeRequestId, playerId: proposer },
+    });
+    await session.authorizeMutation(gameId, 'actor', {
+      type: 'CANCEL_TRADE_REQUEST',
+      commandId,
+      tradeRequestId,
+    });
+    await session.authorizeMutation(gameId, 'actor', {
+      type: 'ACCEPT_TRADE_REQUEST',
+      commandId,
+      tradeRequestId,
+    });
+    await session.authorizeMutation(gameId, 'actor', {
+      type: 'DECLINE_TRADE_REQUEST',
+      commandId,
+      tradeRequestId,
+    });
+    expect(controlled).toEqual([proposer, proposer, counterparty, counterparty]);
+  });
+
+  it('refuses a command for a trade request that does not exist', async () => {
+    const { session } = build();
+    session.banking = () => ({ getTradeRequest: async () => null });
+    await expect(
+      session.authorizeMutation(gameId, 'actor', {
+        type: 'ACCEPT_TRADE_REQUEST',
+        commandId,
+        tradeRequestId,
+      }),
+    ).rejects.toBeDefined();
+  });
+
+  it('settles a repeated accept command once and announces the commit and the pending update', async () => {
+    const { session, sent } = build();
+    let settlements = 0;
+    session.banking = () => ({
+      getTradeRequest: async () => stored,
+      acceptTradeRequest: async () => {
+        settlements += 1;
+        return accepted;
+      },
+    });
+    const ledger = fakeLedger();
+    session.commandLedger = () => ledger;
+    const command = { type: 'ACCEPT_TRADE_REQUEST', tradeRequestId };
+    await Promise.all([send(session, command), send(session, command)]);
+    await send(session, command);
+    expect(settlements).toBe(1);
+    const types = sent.map((message) => (JSON.parse(message) as { type: string }).type);
+    expect(types).toEqual(['GAME_COMMITTED', 'PAYMENT_REQUESTS_UPDATED']);
+  });
+
+  it('announces a created, declined or cancelled request as a pending-requests update', async () => {
+    const { session, sent } = build();
+    const response = { tradeRequest: stored, players: [] };
+    session.banking = () => ({
+      getTradeRequest: async () => stored,
+      createTradeRequest: async () => response,
+      declineTradeRequest: async () => response,
+      cancelTradeRequest: async () => response,
+    });
+    session.commandLedger = () => fakeLedger();
+    const ids = ['1', '2', '3'].map((n) => `00000000-0000-4000-8000-00000000000${n}`);
+    const commands: Array<Record<string, unknown>> = [
+      { type: 'CREATE_TRADE_REQUEST', request: { id: tradeRequestId, playerId: proposer } },
+      { type: 'DECLINE_TRADE_REQUEST', tradeRequestId },
+      { type: 'CANCEL_TRADE_REQUEST', tradeRequestId },
+    ];
+    for (const [index, command] of commands.entries())
+      await send(session, { ...command, commandId: ids[index] });
+    expect(sent.map((message) => (JSON.parse(message) as { type: string }).type)).toEqual([
+      'PAYMENT_REQUESTS_UPDATED',
+      'PAYMENT_REQUESTS_UPDATED',
+      'PAYMENT_REQUESTS_UPDATED',
+    ]);
+  });
+});

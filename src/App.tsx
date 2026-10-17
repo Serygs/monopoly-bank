@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
+import { joinCodeFromSearch } from './utils/join-code';
 import type { UserProfile } from '../shared/contracts/api';
 import { monopolyBankApi } from './api/monopoly-bank-api';
 import { loadAccountSession } from './api/account-session';
@@ -374,8 +375,7 @@ function AppRoutes() {
     );
   }
 
-  const joinCode =
-    path === '/games/join' ? (new URLSearchParams(window.location.search).get('code') ?? '') : '';
+  const joinCode = path === '/games/join' ? joinCodeFromSearch(window.location.search) : '';
   const invitationToken = path === '/games/join' ? invitationFromLocation() : '';
   return (
     <div className={appShellClass} data-bottom-nav={appTabForPath(path) === null ? undefined : ''}>

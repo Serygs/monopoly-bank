@@ -31,6 +31,7 @@ import { D1LoanRepository } from './repositories/loan-repository.js';
 import { D1MortgageRepository } from './repositories/mortgage-repository.js';
 import { D1PropertyRepository } from './repositories/property-repository.js';
 import { D1PaymentRequestRepository } from './repositories/payment-request-repository.js';
+import { D1TradeRequestRepository } from './repositories/trade-request-repository.js';
 import { D1PlayerRepository } from './repositories/player-repository.js';
 import { D1TransactionRepository } from './repositories/transaction-repository.js';
 import { DefaultAuctionService } from './services/auction-service.js';
@@ -414,6 +415,23 @@ export class GameSession {
         status: 200,
         data: await banking.cancelPaymentRequest(gameId, command.paymentRequestId),
       };
+    if (command.type === 'CREATE_TRADE_REQUEST')
+      return { status: 201, data: await banking.createTradeRequest(gameId, command.request) };
+    if (command.type === 'ACCEPT_TRADE_REQUEST')
+      return {
+        status: 200,
+        data: await banking.acceptTradeRequest(gameId, command.tradeRequestId),
+      };
+    if (command.type === 'DECLINE_TRADE_REQUEST')
+      return {
+        status: 200,
+        data: await banking.declineTradeRequest(gameId, command.tradeRequestId),
+      };
+    if (command.type === 'CANCEL_TRADE_REQUEST')
+      return {
+        status: 200,
+        data: await banking.cancelTradeRequest(gameId, command.tradeRequestId),
+      };
     if (command.type === 'DECLARE_BANKRUPTCY')
       return { status: 201, data: await banking.declareBankruptcy(gameId, command.request) };
     return { status: 200, data: await this.finishGame(gameId, command.winnerPlayerIds) };
@@ -461,7 +479,28 @@ export class GameSession {
       if (paymentRequest === null) throw new ValidationError('Payment request not found.');
       return access.requirePlayerController(gameId, userId, paymentRequest.creatorPlayerId);
     }
+    if (
+      command.type === 'ACCEPT_TRADE_REQUEST' ||
+      command.type === 'DECLINE_TRADE_REQUEST' ||
+      command.type === 'CANCEL_TRADE_REQUEST'
+    ) {
+      const tradeRequest = await this.banking(command.commandId).getTradeRequest(
+        gameId,
+        command.tradeRequestId,
+      );
+      if (tradeRequest === null) throw new ValidationError('Trade request not found.');
+      // The counterparty answers; only the proposer withdraws.
+      return access.requirePlayerController(
+        gameId,
+        userId,
+        command.type === 'CANCEL_TRADE_REQUEST'
+          ? tradeRequest.proposerPlayerId
+          : tradeRequest.counterpartyPlayerId,
+      );
+    }
     await access.requireMember(gameId, userId);
+    if (command.type === 'CREATE_TRADE_REQUEST')
+      return access.requirePlayerController(gameId, userId, command.request.playerId);
     if (command.type === 'START_AUCTION')
       return access.requirePlayerController(gameId, userId, command.request.initiatorPlayerId);
     if (command.type === 'PLACE_BID')
@@ -542,10 +581,17 @@ export class GameSession {
           ? { bankruptPlayerId: command.request.playerId }
           : {}),
       });
+    // Trade requests share the pending-requests event: clients refetch their pending items. An
+    // accepted trade also commits (GAME_COMMITTED above); a bankruptcy cancels the player's trades.
     if (
       command.type === 'ACCEPT_PAYMENT_REQUEST' ||
       command.type === 'DECLINE_PAYMENT_REQUEST' ||
-      command.type === 'CANCEL_PAYMENT_REQUEST'
+      command.type === 'CANCEL_PAYMENT_REQUEST' ||
+      command.type === 'CREATE_TRADE_REQUEST' ||
+      command.type === 'ACCEPT_TRADE_REQUEST' ||
+      command.type === 'DECLINE_TRADE_REQUEST' ||
+      command.type === 'CANCEL_TRADE_REQUEST' ||
+      command.type === 'DECLARE_BANKRUPTCY'
     )
       await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion });
     // A bankrupt leading bidder withdraws the bid, which changes the running auction.
@@ -581,6 +627,16 @@ export class GameSession {
         ...loaded,
         controlledWallets,
         controlledPlayerIds: controlledWallets.map((wallet) => wallet.playerId),
+        ...(loaded.game.settings?.board == null
+          ? {}
+          : {
+              tradeRequests: await new D1TradeRequestRepository(
+                this.env.MONOPOLY_BANK_DB,
+              ).listPendingForPlayers(
+                gameId,
+                controlledWallets.map((wallet) => wallet.playerId),
+              ),
+            }),
       },
       transactions: await this.transactions().listByGameId(gameId, 50),
     };
@@ -672,6 +728,7 @@ export class GameSession {
       transactions: new D1TransactionRepository(database),
       operations: new D1BankingOperationRepository(database),
       paymentRequests: new D1PaymentRequestRepository(database),
+      tradeRequests: new D1TradeRequestRepository(database),
       mortgages: new D1MortgageRepository(database),
       loans: new D1LoanRepository(database),
       auctions: new D1AuctionRepository(database),

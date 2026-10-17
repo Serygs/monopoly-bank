@@ -108,6 +108,7 @@ export function StartAuctionDialog({
           </Field>
         ) : (
           <TilePicker
+            currency={currency}
             legend={t('tileChooseAuction')}
             items={tiles.map((view) => ({
               view,

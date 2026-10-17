@@ -25,6 +25,7 @@ export interface GameAccessRepository {
     status: string;
   } | null>;
   getOwnerJoinCode(gameId: string, userId: string): Promise<string | null>;
+  hasAccessPassword(gameId: string): Promise<boolean>;
   createInvitation(input: {
     gameId: string;
     ownerUserId: string;
@@ -167,6 +168,13 @@ export class D1GameAccessRepository implements GameAccessRepository {
       .bind(gameId, userId)
       .first<{ join_code: string | null }>();
     return row?.join_code ?? null;
+  }
+  async hasAccessPassword(gameId: string): Promise<boolean> {
+    const row = await this.database
+      .prepare('SELECT game_access_password_hash FROM games WHERE id = ?')
+      .bind(gameId)
+      .first<{ game_access_password_hash: string | null }>();
+    return row?.game_access_password_hash != null;
   }
   async createInvitation(input: {
     gameId: string;

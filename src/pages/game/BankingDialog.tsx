@@ -19,6 +19,7 @@ import { MAX_BUILDINGS } from '../../../shared/domain/property';
 import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { AmountSelector } from '../../components/AmountSelector';
 import { Dialog } from '../../components/Dialog';
+import { useBuildingLabel } from '../../components/game/property-labels';
 import { WalletMenu } from '../../components/game/WalletMenu';
 import {
   Button,
@@ -30,7 +31,7 @@ import {
   Notice,
   Toggle,
 } from '../../components/ui';
-import { cx } from '../../components/ui/class-names';
+import { buttonCoreClass, buttonShapeClass, cx } from '../../components/ui/class-names';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import {
@@ -143,9 +144,16 @@ const balanceClass = cx(
 /* What the payer is missing, with the way out when no amount change will help. */
 const shortfallClass =
   'mt-(--mb-space-2) flex flex-wrap items-center justify-between gap-(--mb-space-3) [&>p]:m-0 [&>p]:font-semibold [&>p]:text-danger';
-const bankruptcyClass = 'w-full';
-const dangerZoneClass =
-  'mt-(--mb-space-2) rounded-control border border-danger-border bg-danger-soft/40 p-(--mb-space-3)';
+/*
+ * A solid danger button, not an outlined box. White on the darker danger fill is 7:1 in Classic
+ * light and 4.8:1 in Liquid Glass light; the two dark fills are light, so they take dark text.
+ */
+const bankruptcyClass = cx(
+  buttonCoreClass,
+  buttonShapeClass,
+  'mt-(--mb-space-2) w-full border-transparent bg-danger-hover text-on-danger shadow-sm',
+  'glass:dark:text-[#1b080a]',
+);
 
 /*
  * The form and confirmation steps: a flex column whose body alone scrolls, so the footer sits
@@ -606,6 +614,7 @@ export function BankingDialog({
     }
   };
 
+  const buildingLabel = useBuildingLabel();
   const money = (value: number) => formatMoney(value, currency);
   const ownerName = (view: TileView) =>
     players.find((candidate) => candidate.id === view.ownerPlayerId)?.name ?? '';
@@ -665,11 +674,13 @@ export function BankingDialog({
           .map((view) =>
             t('buildingsSummaryLine', {
               name: view.tile.name,
-              from: view.houses,
-              to: buildPreview.targets[view.tile.id] ?? view.houses,
+              from: buildingLabel(view.houses) ?? t('buildingNone'),
+              to:
+                buildingLabel(buildPreview.targets[view.tile.id] ?? view.houses) ??
+                t('buildingNone'),
             }),
           )
-          .join(', ')
+          .join('\n')
       : selectedTile !== null && tileAction
         ? selectedTile.tile.name
         : action === 'MORTGAGE'
@@ -770,7 +781,7 @@ export function BankingDialog({
               {
                 key: 'property',
                 label: t('walletGroupProperty'),
-                icon: '🏠',
+                icon: 'property',
                 items: [
                   ...(board !== null && buyItems.length > 0
                     ? [
@@ -844,7 +855,7 @@ export function BankingDialog({
               {
                 key: 'loans',
                 label: t('walletGroupLoans'),
-                icon: '🤝',
+                icon: 'loans',
                 items: [
                   ...(rules.playerLoans
                     ? [
@@ -879,7 +890,7 @@ export function BankingDialog({
               {
                 key: 'group',
                 label: t('walletGroupGroup'),
-                icon: '👥',
+                icon: 'group',
                 items: advancedWalletActions
                   .filter((item) => item === 'PLAYER_TO_ALL' || item === 'ALL_TO_PLAYER')
                   .map((item) => ({
@@ -892,7 +903,7 @@ export function BankingDialog({
               {
                 key: 'fund',
                 label: t('walletGroupFund'),
-                icon: '🅿️',
+                icon: 'fund',
                 items:
                   rules.freeParkingJackpot && jackpot > 0
                     ? [
@@ -912,11 +923,9 @@ export function BankingDialog({
                 {t('jackpotPotHint', { amount: formatMoney(jackpot, currency) })}
               </FieldHint>
             )}
-            <section className={dangerZoneClass} aria-label={t('walletDangerZone')}>
-              <Button variant="danger" className={bankruptcyClass} onClick={onBankrupt}>
-                {t('declareBankrupt')}
-              </Button>
-            </section>
+            <button type="button" className={bankruptcyClass} onClick={onBankrupt}>
+              {t('declareBankrupt')}
+            </button>
             <Button variant="quiet" onClick={() => onViewHistory(player)}>
               {t('viewPlayerHistory', { name: player.name })}
             </Button>
@@ -1023,6 +1032,7 @@ export function BankingDialog({
             )}
             {board !== null && action === 'PROPERTY_PURCHASE' && (
               <TilePicker
+                currency={currency}
                 legend={t('tileChooseBuy')}
                 items={buyItems}
                 value={tileId}
@@ -1064,6 +1074,7 @@ export function BankingDialog({
             )}
             {board !== null && action === 'MORTGAGE' && (
               <TilePicker
+                currency={currency}
                 legend={t('tileChooseMortgage')}
                 items={mortgageItems}
                 value={tileId}
@@ -1073,6 +1084,7 @@ export function BankingDialog({
             {board !== null && action === 'PAY_RENT' && (
               <>
                 <TilePicker
+                  currency={currency}
                   legend={t('tileChooseRent')}
                   items={rentItems}
                   value={tileId}
@@ -1118,6 +1130,7 @@ export function BankingDialog({
             )}
             {board !== null && action === 'MORTGAGE_REDEMPTION' && (
               <TilePicker
+                currency={currency}
                 legend={t('tileChooseRedeem')}
                 items={redeemItems}
                 value={selectedMortgage?.tileId ?? ''}
@@ -1274,7 +1287,12 @@ export function BankingDialog({
             <Button variant="secondary" onClick={() => selectAction(null)}>
               {t('back')}
             </Button>
-            <Button variant="primary" disabled={!valid} onClick={review}>
+            <Button
+              variant="primary"
+              disabled={!valid}
+              aria-describedby={buildMode !== null && !valid ? 'building-reason' : undefined}
+              onClick={review}
+            >
               {t('reviewTransaction')}
             </Button>
           </SheetActions>

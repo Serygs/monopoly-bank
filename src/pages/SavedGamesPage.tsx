@@ -32,11 +32,11 @@ import { cx } from '../components/ui/class-names';
 const heroClass = cx(
   'page-header--hero relative overflow-hidden rounded-xl border border-[color:color-mix(in_srgb,var(--mb-color-highlight)_45%,transparent)]',
   'text-on-inverse shadow-md [background:var(--mb-background-hero)]',
-  'min-h-[clamp(230px,20vw,280px)] p-(--mb-space-6) pb-[clamp(var(--mb-space-6),5vw,var(--mb-space-9))]',
-  'lg:p-[clamp(var(--mb-space-7),4vw,var(--mb-space-9))] lg:pb-[clamp(var(--mb-space-6),5vw,var(--mb-space-9))]',
+  'min-h-[clamp(112px,12vw,148px)] content-center p-(--mb-space-5)',
+  'lg:p-(--mb-space-6)',
   'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-0 *:relative *:z-1',
   '[&_h1]:text-inherit [&_.lede]:text-inherit [&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-highlight)_82%,white)]',
-  'max-md:[&_h1]:text-[length:clamp(2.125rem,10vw,2.875rem)]',
+  'max-md:[&_h1]:text-[length:clamp(1.75rem,8vw,2.25rem)]',
   // Only the dark Classic hero needs the inverse ring; Liquid Glass light keeps the default.
   'classic:light:[&_button:focus-visible]:outline-text-on-inverse',
   // `!` outranks PageHeader's own `lg:` columns.
@@ -235,12 +235,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
 
   return (
     <PageShell>
-      <PageHeader
-        className={heroClass}
-        eyebrow={t('appName')}
-        title={t('savedGames')}
-        description={t('savedGamesLede')}
-      />
+      <PageHeader className={heroClass} title={t('savedGames')} description={t('savedGamesLede')} />
 
       {loading && (
         <StatPill variant="status" live>
@@ -379,6 +374,9 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
                 <GameCard
                   key={summary.game.id}
                   summary={summary}
+                  sharesName={
+                    visibleGames.filter((other) => other.game.name === summary.game.name).length > 1
+                  }
                   duplicating={duplicating === summary.game.id}
                   onJoinGame={onJoinGame}
                   onOpenGame={onOpenGame}

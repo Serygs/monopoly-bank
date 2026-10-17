@@ -4,6 +4,7 @@ import type {
   GameDetails,
   LedgerStatistics,
   PaymentRequest,
+  TradeRequest,
 } from '../../shared/contracts/api';
 import type { Game, Player, Transaction } from '../../shared/types/monopoly';
 import { RulesScreen } from './RulesScreen';
@@ -44,9 +45,11 @@ import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
 import { StartAuctionDialog } from './game/StartAuctionDialog';
 import { TradeDialog } from './game/TradeDialog';
+import { TradeInbox } from './game/TradeInbox';
 import { WalletsSection } from './game/WalletsSection';
 import {
   applyLiveEvent,
+  lobbyNeedsMorePlayers,
   type ActionType,
   splitPaymentRequests,
   withClientGameDetails,
@@ -84,6 +87,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     ({ game: Game; winners: Player[] } & LedgerStatistics) | null
   >(null);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [activityPlayerId, setActivityPlayerId] = useState<string | null>(null);
   const [statisticsOpen, setStatisticsOpen] = useState(false);
   const [propertyOpen, setPropertyOpen] = useState(false);
   const [bankruptPlayer, setBankruptPlayer] = useState<Player | null>(null);
@@ -269,6 +273,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   /** Closes the sheet behind the bottom navigation, so choosing another item replaces it. */
   const closeNavSheets = () => {
     setActivityOpen(false);
+    setActivityPlayerId(null);
     setStatisticsOpen(false);
     setPropertyOpen(false);
     setToolsOpen(false);
@@ -335,6 +340,28 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const properties = details.properties ?? [];
   const controlledIds =
     details.controlledPlayerIds ?? controlledWallets.map((wallet) => wallet.playerId);
+  // Property trades wait for the counterparty: answer the incoming ones, cancel the viewer's own.
+  const pendingTrades = (details.tradeRequests ?? []).filter(
+    (request) => request.state === 'PENDING',
+  );
+  const incomingTrades = pendingTrades.filter((request) =>
+    controlledIds.includes(request.counterpartyPlayerId),
+  );
+  const outgoingTrades = pendingTrades.filter((request) =>
+    controlledIds.includes(request.proposerPlayerId),
+  );
+  const putTradeRequest = (tradeRequest: TradeRequest) =>
+    setDetails((current) =>
+      current === null
+        ? current
+        : {
+            ...current,
+            tradeRequests: [
+              ...(current.tradeRequests ?? []).filter((item) => item.id !== tradeRequest.id),
+              tradeRequest,
+            ],
+          },
+    );
   /** The property sheet's quick entry: the same wallet dialog and auction prompt as the wallet menu. */
   const startTileIntent = (intent: TileIntent) => {
     const wallet = details.players.find((candidate) => candidate.id === intent.playerId);
@@ -419,12 +446,13 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
         {details.game.status === 'LOBBY' && (
           <Notice tone="success" as="section" className={stateBannerClass}>
             <p>
-              {t('waitingForPlayers')} — {t('startGameHint')}
+              {t('waitingForPlayers')}
+              {lobbyNeedsMorePlayers(details.players.length) && <> — {t('startGameHint')}</>}
             </p>
             {details.canManage && (
               <Button
                 variant="primary"
-                disabled={offline || details.players.length < 2}
+                disabled={offline || lobbyNeedsMorePlayers(details.players.length)}
                 onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}
               >
                 {t('startGame')}
@@ -437,14 +465,33 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             {details.players
               .filter((player) => !(details.controlledPlayerIds ?? []).includes(player.id))
               .map((player) => (
-                <Button
+                <div
                   key={player.id}
-                  variant="quiet"
-                  disabled={offline}
-                  onClick={() => void removePlayer(player.id)}
+                  className="glass-card flex items-center justify-between gap-(--mb-space-3) rounded-surface border border-border bg-surface-elevated px-(--mb-space-4) py-(--mb-space-2)"
                 >
-                  {t('removePlayer', { name: player.name })}
-                </Button>
+                  <span className="min-w-0 truncate font-semibold text-primary">{player.name}</span>
+                  <Button
+                    variant="quiet"
+                    className="icon-button min-h-11 min-w-11 shrink-0 justify-center rounded-pill p-0"
+                    disabled={offline}
+                    aria-label={t('removePlayer', { name: player.name })}
+                    onClick={() => void removePlayer(player.id)}
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3" />
+                    </svg>
+                  </Button>
+                </div>
               ))}
             {removeError !== null && (
               <Notice tone="error">{apiErrorMessage(removeError, t, 'unableRemovePlayer')}</Notice>
@@ -461,6 +508,11 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           canMutate={canMutate}
           loans={visibleLoans}
           auction={rules.auctions ? (details.auction ?? null) : null}
+          recentTransactions={liveTransactions}
+          onShowActivity={() => {
+            closeNavSheets();
+            setActivityOpen(true);
+          }}
           property={
             board === null
               ? undefined
@@ -524,6 +576,42 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               }}
             />
           )}
+        {canMutate && board !== null && (
+          <TradeInbox
+            incoming={incomingTrades}
+            outgoing={outgoingTrades}
+            players={details.players}
+            currency={details.game.currency}
+            board={board}
+            properties={properties}
+            onAction={async (request, action) => {
+              const commandId = crypto.randomUUID();
+              const result =
+                action === 'accept'
+                  ? await monopolyBankApi.acceptTradeRequest(gameId, request.id, commandId)
+                  : action === 'cancel'
+                    ? await monopolyBankApi.cancelTradeRequest(gameId, request.id, commandId)
+                    : await monopolyBankApi.declineTradeRequest(gameId, request.id, commandId);
+              putTradeRequest(result.tradeRequest);
+              if (result.transaction !== undefined) {
+                playPaymentFeedback(preferences.sound);
+                vibrate(35, preferences.vibration);
+                setDetails((current) =>
+                  current === null
+                    ? current
+                    : {
+                        ...current,
+                        players: result.players,
+                        ...(result.properties === undefined
+                          ? {}
+                          : { properties: mergeProperties(current.properties, result.properties) }),
+                      },
+                );
+                notify({ tone: 'success', message: t('tradeRecorded') });
+              }
+            }}
+          />
+        )}
         {details.game.status === 'ACTIVE' && (
           <div className={cx(gameToolsClass, 'max-md:hidden')}>
             <DiceRoller
@@ -560,6 +648,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             liveTransactions={liveTransactions}
             showPending={confirmationMode}
             initialScope={activityScope}
+            initialPlayerId={activityPlayerId}
             refreshKey={activityVersion}
             board={board}
             reversal={
@@ -571,7 +660,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                   }
                 : undefined
             }
-            onClose={() => setActivityOpen(false)}
+            onClose={() => {
+              setActivityOpen(false);
+              setActivityPlayerId(null);
+            }}
           />
         )}
         {propertyOpen && board !== null && (
@@ -640,9 +732,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               setSelectedPlayer(null);
             }}
             onViewHistory={(player) => {
-              // The history now lives in the Activity ledger: "Mine" for a wallet the viewer controls.
+              // The history lives in the Activity ledger, narrowed to this wallet.
               setSelectedPlayer(null);
-              setActivityScope(details.controlledPlayerIds?.includes(player.id) ? 'MINE' : 'ALL');
+              setActivityScope('ALL');
+              setActivityPlayerId(player.id);
               setActivityOpen(true);
             }}
             onCompleted={(
@@ -777,20 +870,11 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             properties={properties}
             initialTileId={tradePrompt.tileId}
             onClose={() => setTradePrompt(null)}
-            onCompleted={(result) => {
-              playPaymentFeedback(preferences.sound);
-              vibrate(35, preferences.vibration);
-              setDetails({
-                ...details,
-                players: result.players,
-                ...(result.mortgages === undefined ? {} : { mortgages: result.mortgages }),
-                ...(result.properties === undefined
-                  ? {}
-                  : { properties: mergeProperties(details.properties, result.properties) }),
-              });
-              setTradePrompt(null);
-              notify({ tone: 'success', message: t('tradeRecorded') });
+            onRequested={(request) => {
+              putTradeRequest(request);
+              notify({ tone: 'success', message: t('tradeRequestSent') });
             }}
+            onCancelled={putTradeRequest}
           />
         )}
         {auctionPrompt !== null && (
@@ -834,7 +918,17 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
             />
           )}
         {inviteOpen && (
-          <InviteDialog joinCode={details.joinCode} onClose={() => setInviteOpen(false)} />
+          <InviteDialog
+            joinCode={details.joinCode}
+            gameId={gameId}
+            playerCount={details.players.length}
+            hasPassword={details.hasAccessPassword}
+            canRegenerate={details.canManage === true && details.game.status === 'LOBBY'}
+            onCodeChanged={(joinCode) =>
+              setDetails((current) => (current === null ? current : { ...current, joinCode }))
+            }
+            onClose={() => setInviteOpen(false)}
+          />
         )}
         {finishing && (
           <FinishGameDialog

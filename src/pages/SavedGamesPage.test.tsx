@@ -97,4 +97,12 @@ describe('SavedGamesPage deleted games', () => {
     await user.click(await screen.findByRole('radio', { name: 'Deleted' }));
     expect(screen.getByText('Old Table')).toBeInTheDocument();
   });
+
+  it('adds the creation time only to games that share a name', async () => {
+    const twin: GameSummary = { game: game('g3', 'Friday Game'), playerCount: 2 };
+    const other: GameSummary = { game: game('g4', 'Sunday Game'), playerCount: 2 };
+    setup([friday, twin, other], []);
+    await screen.findAllByText('Friday Game');
+    expect(screen.getAllByText(/^Created /)).toHaveLength(2);
+  });
 });

@@ -72,6 +72,11 @@ export interface GameRepository {
   listDeletedSummariesForUser(userId: string): Promise<DeletedGameSummary[]>;
   updateMetadata(input: UpdateGameMetadataInput): Promise<Game | null>;
   transitionStatus(id: string, from: GameStatus, to: GameStatus): Promise<Game | null>;
+  /**
+   * Gives a lobby or running game a new join code. False when the game is not the owner's, is
+   * finished or deleted. Throws the unique-index error when the code is taken by another game.
+   */
+  replaceJoinCode(id: string, ownerUserId: string, joinCode: string): Promise<boolean>;
   delete(id: string): Promise<boolean>;
   softDelete(id: string): Promise<boolean>;
   restore(id: string, userId: string): Promise<boolean>;
@@ -312,6 +317,17 @@ export class D1GameRepository implements GameRepository {
       .bind(storedTo, storedTo, storedTo, id, storedFrom)
       .first<GameRow>();
     return row === null ? null : mapGame(row);
+  }
+
+  async replaceJoinCode(id: string, ownerUserId: string, joinCode: string): Promise<boolean> {
+    const result = await this.database
+      .prepare(
+        `UPDATE games SET join_code = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND owner_user_id = ? AND status IN ('LOBBY', 'ACTIVE') AND deleted_at IS NULL`,
+      )
+      .bind(joinCode, id, ownerUserId)
+      .run();
+    return result.meta.changes === 1;
   }
 
   async delete(id: string): Promise<boolean> {

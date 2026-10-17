@@ -65,6 +65,8 @@
   --mb-radius-control: var(--mb-radius-md);
   --mb-radius-card: var(--mb-radius-lg);
   --mb-radius-card-large: var(--mb-radius-xl);
+  --mb-radius-surface: var(--mb-radius-xl);
+  --mb-radius-compact: var(--mb-radius-md);
   --mb-control-height-md: 44px;
   --mb-control-height-lg: 48px;
   --mb-duration-fast: 120ms;
@@ -101,6 +103,7 @@
   --mb-color-focus-ring: #8b6322;
   --mb-color-inverse-hover: rgb(255 255 255 / 0.09);
   --mb-color-qr-background: #fff;
+  --mb-color-qr-modules: #000;
 
   /* Stable player identity colors */
   --mb-color-player-red: #d83f55;

@@ -295,4 +295,75 @@ describe('lobby join flow against SQLite', () => {
       });
     });
   });
+
+  describe('regenerating the join code', () => {
+    const regenerate = (user: string, id: string) =>
+      call(user, 'POST', `/api/games/${id}/join-code/regenerate`);
+    const storedCode = (id: string) =>
+      (
+        database.prepare('SELECT join_code FROM games WHERE id = ?').get(id) as {
+          join_code: string;
+        }
+      ).join_code;
+
+    it('gives the owner a new code at once and the old one stops working', async () => {
+      const { id, code } = await create();
+      const response = await regenerate(owner, id);
+      expect(response.status).toBe(200);
+      const { data } = (await response.json()) as { data: { joinCode: string } };
+      expect(data.joinCode).toMatch(/^[A-HJKMNP-Z2-9]{4}$/u);
+      expect(data.joinCode).not.toBe(code);
+      expect(storedCode(id)).toBe(data.joinCode);
+      const old = await call(alice, 'POST', '/api/games/join', { joinCode: code });
+      expect(old.status).toBe(404);
+      await expect(old.json()).resolves.toMatchObject({ error: { code: 'INVALID_JOIN_CODE' } });
+      const guestOld = await call(null, 'POST', '/api/games/join/guest', {
+        joinCode: code,
+        nickname: 'Visitor',
+        avatar: '🎩',
+      });
+      expect(guestOld.status).toBe(404);
+      expect(
+        (await call(alice, 'POST', '/api/games/join', { joinCode: data.joinCode })).status,
+      ).toBe(200);
+      const details = (await (await call(owner, 'GET', `/api/games/${id}`)).json()) as {
+        data: { joinCode: string };
+      };
+      expect(details.data.joinCode).toBe(data.joinCode);
+    });
+
+    it('leaves the players already in the game alone', async () => {
+      const { id, code } = await create();
+      await join(alice, code);
+      await regenerate(owner, id);
+      expect(await listed(alice)).toEqual([id]);
+      expect((await call(alice, 'GET', `/api/games/${id}`)).status).toBe(200);
+    });
+
+    it('works while the game is running, but not once it is finished or deleted', async () => {
+      const { id } = await create();
+      database.prepare(`UPDATE games SET status = 'ACTIVE' WHERE id = ?`).run(id);
+      expect((await regenerate(owner, id)).status).toBe(200);
+      const before = storedCode(id);
+      database.prepare(`UPDATE games SET status = 'ARCHIVED' WHERE id = ?`).run(id);
+      const finished = await regenerate(owner, id);
+      expect(finished.status).toBe(409);
+      await expect(finished.json()).resolves.toMatchObject({
+        error: { code: 'JOIN_CODE_UNAVAILABLE' },
+      });
+      expect(storedCode(id)).toBe(before);
+    });
+
+    it('refuses a player who is not the owner and hides the game from strangers', async () => {
+      const { id, code } = await create();
+      await join(alice, code);
+      const denied = await regenerate(alice, id);
+      expect(denied.status).toBe(403);
+      await expect(denied.json()).resolves.toMatchObject({
+        error: { code: 'GAME_OWNER_REQUIRED' },
+      });
+      expect((await regenerate(bob, id)).status).toBe(404);
+      expect(storedCode(id)).toBe(code);
+    });
+  });
 });

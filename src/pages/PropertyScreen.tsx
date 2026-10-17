@@ -4,8 +4,8 @@ import type { Currency, GameProperty, Player } from '../../shared/types/monopoly
 import { Dialog } from '../components/Dialog';
 import { PropertyTileButton, PropertyTileSheet } from '../components/game/PropertyTile';
 import { propertyGroupKeys } from '../components/game/property-labels';
-import { SegmentedControl } from '../components/ui';
-import { cx, wideDialogClass } from '../components/ui/class-names';
+import { GroupHeader, SegmentedControl, StatTile } from '../components/ui';
+import { wideDialogClass } from '../components/ui/class-names';
 import { useLanguage } from '../i18n/language-context';
 import { noPropertyFilters, type PropertyFilterState } from '../utils/property-filters';
 import { PropertyFilters } from './PropertyFilters';
@@ -13,6 +13,7 @@ import { formatMoney } from '../utils/money';
 import {
   cardsByGroup,
   cardsOwnedBy,
+  cardsValue,
   groupOrder,
   groupProgress,
   propertyGroupColors,
@@ -54,9 +55,6 @@ export interface PropertyScreenProps {
 
 const listClass = 'm-0 grid list-none gap-(--mb-space-2) p-0';
 const sectionTitleClass = 'm-0 text-body font-semibold';
-// Sticky inside its section, so the header of the group being scrolled stays in view.
-const groupHeaderClass =
-  'sticky top-0 z-1 m-0 flex items-center gap-(--mb-space-2) bg-surface-elevated py-(--mb-space-1) text-small font-semibold';
 const emptyClass = 'm-0 text-secondary';
 
 /** Read-only property overview: the viewer's cards grouped by colour, or every tile with filters. */
@@ -113,6 +111,14 @@ export function PropertyScreen({
       />
     </li>
   );
+  const priceRange = (cards: readonly TileView[]): string => {
+    const prices = cards.map((card) => card.tile.price);
+    const low = Math.min(...prices);
+    const high = Math.max(...prices);
+    return low === high
+      ? formatMoney(low, currency)
+      : `${formatMoney(low, currency)} – ${formatMoney(high, currency)}`;
+  };
   /** Colour groups with a sticky header (colour, name, count), the cards of each below it. */
   const groupedList = (cards: readonly TileView[], progressOwner: boolean) =>
     cardsByGroup(cards, order).map(({ group, cards: inGroup }) => {
@@ -122,34 +128,25 @@ export function PropertyScreen({
         : null;
       return (
         <section key={group} className="grid gap-(--mb-space-2)" data-group={group}>
-          <h4 className={groupHeaderClass}>
-            <span
-              aria-hidden="true"
-              className="inline-block size-3 rounded-full"
-              style={{ backgroundColor: propertyGroupColors[group] }}
-            />
-            <span>{t(propertyGroupKeys[group])}</span>
-            {progress === null ? (
-              <span className="text-secondary">{inGroup.length}</span>
-            ) : (
-              <span
-                className="text-secondary"
-                aria-label={t('propertyGroupProgressAria', {
-                  owned: progress.owned,
-                  size: progress.size,
-                })}
-              >
-                {t('propertyGroupProgress', { owned: progress.owned, size: progress.size })}
-              </span>
-            )}
-            {progress?.monopoly === true && (
-              <span
-                className={cx('rounded-pill bg-accent px-(--mb-space-2) text-meta text-on-accent')}
-              >
-                {t('propertyMonopoly')}
-              </span>
-            )}
-          </h4>
+          <GroupHeader
+            sticky
+            color={propertyGroupColors[group]}
+            name={t(propertyGroupKeys[group])}
+            count={progress === null ? inGroup.length : `${progress.owned}/${progress.size}`}
+            countLabel={
+              progress === null
+                ? undefined
+                : t('propertyGroupProgressAria', { owned: progress.owned, size: progress.size })
+            }
+            priceRange={priceRange(inGroup)}
+            badge={
+              progress?.monopoly === true ? (
+                <span className="rounded-pill bg-accent px-(--mb-space-2) text-meta text-on-accent">
+                  {t('propertyMonopoly')}
+                </span>
+              ) : undefined
+            }
+          />
           <ul className={listClass}>{inGroup.map((card) => row(card, true))}</ul>
         </section>
       );
@@ -174,6 +171,15 @@ export function PropertyScreen({
         />
         {view === 'MINE' && mine.length === 0 && (
           <p className={emptyClass}>{t('propertyEmptyMine')}</p>
+        )}
+        {view === 'MINE' && mine.length > 0 && (
+          <div className="grid grid-cols-2 gap-(--mb-space-2)" data-section="mine-stats">
+            <StatTile label={t('propertyStatCards')} value={mine.length} />
+            <StatTile
+              label={t('propertyStatValue')}
+              value={formatMoney(cardsValue(mine), currency)}
+            />
+          </div>
         )}
         {view === 'MINE' && groupedList(mine, true)}
         {view === 'ALL' && (

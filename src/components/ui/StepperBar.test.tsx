@@ -21,6 +21,14 @@ describe('StepperBar', () => {
     expect(onNext).toHaveBeenCalled();
   });
 
+  it('marks completed, current and upcoming dots', () => {
+    const { container } = render(
+      <StepperBar {...base} step={1} indicator="Step 2 of 3" onBack={() => {}} onNext={() => {}} />,
+    );
+    const states = [...container.querySelectorAll('li')].map((li) => li.dataset.state);
+    expect(states).toEqual(['done', 'current', 'upcoming']);
+  });
+
   it('offers Back after the first step and disables both while busy', async () => {
     const onBack = vi.fn();
     const { rerender } = render(

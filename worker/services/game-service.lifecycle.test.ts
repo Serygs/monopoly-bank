@@ -244,3 +244,39 @@ describe('DefaultGameService Free Parking jackpot', () => {
     expect(details).not.toHaveProperty('jackpot');
   });
 });
+
+describe('regenerateJoinCode', () => {
+  const service = (
+    replaceJoinCode: (id: string, owner: string, code: string) => Promise<boolean>,
+  ) =>
+    new DefaultGameService({
+      games: { replaceJoinCode } as never,
+      players: {} as never,
+      createId: () => 'id',
+    });
+
+  it('retries on a join code collision with another game and returns the code that stuck', async () => {
+    const tried: string[] = [];
+    const result = await service(async (_id, _owner, code) => {
+      tried.push(code);
+      if (tried.length < 3)
+        throw new Error('D1_ERROR', {
+          cause: new Error('UNIQUE constraint failed: games.join_code'),
+        });
+      return true;
+    }).regenerateJoinCode('game', 'owner');
+    expect(tried).toHaveLength(3);
+    expect(result).toEqual({ joinCode: tried[2] });
+  });
+
+  it('gives up after repeated collisions and reports a game that cannot change code', async () => {
+    await expect(
+      service(async () => {
+        throw new Error('UNIQUE constraint failed: games.join_code');
+      }).regenerateJoinCode('game', 'owner'),
+    ).rejects.toThrow(/UNIQUE/u);
+    await expect(
+      service(async () => false).regenerateJoinCode('game', 'owner'),
+    ).rejects.toMatchObject({ code: 'JOIN_CODE_UNAVAILABLE' });
+  });
+});

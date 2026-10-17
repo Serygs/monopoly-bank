@@ -29,26 +29,40 @@ const identityClass = 'grid grid-cols-[auto_minmax(0,1fr)] items-end gap-(--mb-s
 const avatarButtonClass = cx(
   'relative grid size-[72px] cursor-pointer place-items-center rounded-full border-0 bg-transparent p-0',
   '[&_.avatar]:size-[72px] [&_.avatar]:text-[2rem]',
-  'after:absolute after:right-0 after:bottom-0 after:grid after:size-6 after:place-items-center after:rounded-full',
-  "after:border after:border-border after:bg-surface-elevated after:text-[0.8rem] after:content-['✎']",
 );
-const statisticsClass = cx(
-  'mx-0 mt-(--mb-space-4) mb-0 grid grid-cols-4 gap-(--mb-space-2)',
-  '*:min-w-0 *:rounded-control *:bg-surface-subtle *:px-(--mb-space-2) *:py-(--mb-space-3) *:text-center',
-  '[&_dt]:truncate [&_dt]:text-[0.72rem] [&_dt]:text-secondary',
-  '[&_dd]:mx-0 [&_dd]:mt-[2px] [&_dd]:mb-0 [&_dd]:font-money [&_dd]:text-[1.15rem] [&_dd]:leading-[1.1] [&_dd]:font-bold [&_dd]:text-primary',
+/* A glass edit badge on the avatar's lower-right edge; the button itself stays the 72px target. */
+const avatarBadgeClass = cx(
+  'absolute -right-1 -bottom-1 grid size-8 place-items-center rounded-full border border-border-strong',
+  'bg-surface-elevated text-primary shadow-md',
+  'glass:glass-card glass:border-[rgb(255_255_255/0.7)] glass:text-accent-hover glass:dark:border-[rgb(255_255_255/0.3)] glass:dark:text-primary',
 );
+const statisticsClass =
+  'mx-0 mt-(--mb-space-4) mb-0 grid grid-cols-2 gap-(--mb-space-2) sm:grid-cols-4';
+const statTileClass =
+  'grid min-w-0 content-between gap-[2px] rounded-compact bg-surface-subtle px-(--mb-space-2) py-(--mb-space-3) text-center';
 /* Sticks to the bottom edge of the scroll area, clear of the iOS home indicator. */
-const saveBarClass = cx(
-  'glass-panel sticky bottom-[calc(var(--mb-shell-nav-offset,0px)+var(--mb-space-3))] z-10 grid gap-(--mb-space-2)',
-  'rounded-card border border-border bg-surface-elevated p-(--mb-space-3) shadow-lg',
-);
+const saveBarClass =
+  'sticky bottom-[calc(var(--mb-shell-nav-offset,0px)+var(--mb-space-3))] z-10 grid gap-(--mb-space-2)';
 /* `!` outranks the unlayered `.game-form` gap in `primitives.css`. */
 const profileFormClass = 'game-form gap-(--mb-space-6)!';
 
 /** The profile, guest-upgrade and legacy-email forms share one spacing. */
 function ProfileForm(props: Omit<FormHTMLAttributes<HTMLFormElement>, 'className'>) {
   return <form className={profileFormClass} {...props} />;
+}
+
+/** One profile figure; the label wraps onto a second line instead of being cut off. */
+function ProfileStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className={statTileClass}>
+      <dt className="text-[0.75rem] leading-tight text-secondary [overflow-wrap:anywhere]">
+        {label}
+      </dt>
+      <dd className="m-0 font-money text-[1.25rem] leading-[1.1] font-bold text-primary">
+        {value}
+      </dd>
+    </div>
+  );
 }
 
 export function ProfilePage({
@@ -80,7 +94,7 @@ export function ProfilePage({
   };
   return (
     <PageShell>
-      <PageHeader eyebrow={t('playerProfile')} title={t('playerProfile')} />
+      <PageHeader title={t('playerProfile')} />
       <div className={layoutClass}>
         <form className="grid gap-(--mb-layout-gap-compact)" onSubmit={(event) => void save(event)}>
           <section className={cardClass} aria-label={t('playerProfile')}>
@@ -93,6 +107,20 @@ export function ProfilePage({
                 onClick={() => setPickerOpen(true)}
               >
                 <Avatar avatar={avatar} label={nickname} />
+                <span className={avatarBadgeClass} aria-hidden="true">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="size-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </span>
               </button>
               <div className="game-form min-w-0">
                 <Field label={t('nickname')}>
@@ -106,35 +134,28 @@ export function ProfilePage({
                 </Field>
               </div>
             </div>
-            <div className="mt-(--mb-space-2)">
-              <MutedText>
-                {profile.accountType === 'GUEST' ? t('guestAccount') : t('playerProfile')}
-              </MutedText>
-            </div>
+            {profile.accountType === 'GUEST' && (
+              <div className="mt-(--mb-space-2)">
+                <MutedText>{t('guestAccount')}</MutedText>
+              </div>
+            )}
             <dl className={statisticsClass}>
-              <div>
-                <dt>{t('gamesPlayed')}</dt>
-                <dd>{profile.gamesPlayed}</dd>
-              </div>
-              <div>
-                <dt>{t('gamesWon')}</dt>
-                <dd>{profile.gamesWon}</dd>
-              </div>
-              <div>
-                <dt>{t('gamesLost')}</dt>
-                <dd>{profile.gamesLost}</dd>
-              </div>
-              <div>
-                <dt>{t('winRate')}</dt>
-                <dd>{Math.round(profile.winRate * 100)}%</dd>
-              </div>
+              <ProfileStat label={t('gamesPlayed')} value={profile.gamesPlayed} />
+              <ProfileStat label={t('gamesWon')} value={profile.gamesWon} />
+              <ProfileStat label={t('gamesLost')} value={profile.gamesLost} />
+              <ProfileStat label={t('winRate')} value={`${Math.round(profile.winRate * 100)}%`} />
             </dl>
           </section>
+          {error !== null && (
+            <Notice tone="error">{apiErrorMessage(error, t, 'unableUpdateProfile')}</Notice>
+          )}
           <div className={saveBarClass}>
-            {error !== null && (
-              <Notice tone="error">{apiErrorMessage(error, t, 'unableUpdateProfile')}</Notice>
-            )}
-            <Button variant="primary" type="submit" className="w-full" disabled={saving}>
+            <Button
+              variant="primary"
+              type="submit"
+              className="w-full rounded-pill shadow-lg"
+              disabled={saving}
+            >
               {saving ? t('savingProfile') : t('saveProfile')}
             </Button>
           </div>
