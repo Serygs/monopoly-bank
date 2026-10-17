@@ -24,12 +24,12 @@ export interface BottomNavProps {
 
 /*
  * A floating glass capsule: inset from the sides and the bottom (plus the home indicator), so the
- * page scrolls underneath it. `--mb-bottom-nav-height` (index.css) covers capsule + inset, which is
+ * page scrolls underneath it. `--mb-bottom-nav-height` (index.css) covers capsule, inset and 16px of air, which is
  * the clearance pages and sheets keep. The raised action is a circle inside its own column, so its
  * label shares the baseline of the other labels.
  */
 const navClass = cx(
-  'fixed inset-x-(--mb-bottom-nav-inset) bottom-[calc(var(--mb-bottom-nav-inset)+var(--mb-app-safe-bottom))] z-30',
+  'fixed inset-x-(--mb-bottom-nav-inset) bottom-[max(var(--mb-bottom-nav-inset),var(--mb-app-safe-bottom))] z-30',
   'mx-auto w-[min(calc(100%-2*var(--mb-bottom-nav-inset)),var(--mb-layout-content-max))] rounded-pill',
   'glass-panel',
 );
@@ -38,14 +38,14 @@ const fadeClass =
   'pointer-events-none fixed inset-x-0 bottom-0 z-30 h-(--mb-bottom-nav-height) bg-linear-to-t from-canvas to-transparent';
 const listClass = 'm-0 grid list-none items-end p-0 px-(--mb-space-2)';
 const itemClass = cx(
-  'relative flex h-[60px] w-full min-w-0 cursor-pointer flex-col items-center justify-end gap-[2px] rounded-pill border-0 bg-transparent px-[2px] pt-(--mb-space-2) pb-(--mb-space-2)',
+  'relative flex h-[64px] w-full min-w-0 cursor-pointer flex-col items-center justify-end gap-[2px] rounded-pill border-0 bg-transparent px-[2px] pt-(--mb-space-2) pb-(--mb-space-2)',
   'font-ui text-[0.6875rem] leading-[1.15] font-semibold text-secondary max-[380px]:text-[0.625rem]',
   'focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-60',
 );
 const activeItemClass = 'bg-surface-subtle text-primary';
 const raisedItemClass = 'overflow-visible text-secondary';
 const raisedCircleClass = cx(
-  'relative -mt-[14px] grid size-[48px] place-items-center rounded-[50%]',
+  'relative -mt-[18px] grid size-[58px] place-items-center rounded-[50%] [&_svg]:size-[27px]',
   'bg-surface-inverse text-on-inverse shadow-md',
 );
 const dotClass =
@@ -73,7 +73,7 @@ export function NavIcon({ children }: { children: ReactNode }) {
 /** Bottom navigation: equal destinations plus at most one raised action, in the given order. */
 export function BottomNav({ label, items, className }: BottomNavProps) {
   const columns = items.map((item) =>
-    item.raised === true ? 'minmax(76px,1fr)' : 'minmax(0,1fr)',
+    item.raised === true ? 'minmax(88px,1fr)' : 'minmax(0,1fr)',
   );
   return (
     <>
