@@ -1,5 +1,6 @@
 import type { PlayerController } from '../../../shared/contracts/api';
-import type { Auction, Currency, Loan, Player } from '../../../shared/types/monopoly';
+import type { Auction, Currency, Loan, Player, Transaction } from '../../../shared/types/monopoly';
+import { TransactionRow } from '../../components/game/TransactionRow';
 import { Button, Notice } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
@@ -23,6 +24,10 @@ export interface WalletsSectionProps {
   auction?: Auction | null;
   /** Board games: the viewer's cards (count, formatted list value) and the entry to the Property screen. */
   property?: { count: number; value: string; onOpen: () => void };
+  /** Transactions the page already holds, newest first; the last few show under the viewer's wallet. */
+  recentTransactions?: Transaction[];
+  /** Opens the Activity tab (the "Show all" link under the recent list). */
+  onShowActivity?: () => void;
   onSelectWallet: (playerId: string) => void;
   onOpenWallet: (player: Player) => void;
   /** Opens the repay flow for the player's overdue bank loan. */
@@ -40,6 +45,8 @@ const switcherClass = cx(
   '[&>div]:flex [&>div]:flex-wrap [&>div]:gap-(--mb-space-2)',
   'classic:[&_[aria-pressed=true]]:bg-surface-elevated classic:[&_[aria-pressed=true]]:shadow-[inset_0_0_0_1px_var(--mb-color-accent)]',
 );
+
+const maxRecent = 4;
 
 /* A read-only layout drops to one column at `md` only; the `lg` columns apply to both. */
 const layoutClass = cx(
@@ -65,11 +72,13 @@ export function WalletsSection({
   loans = [],
   auction = null,
   property,
+  recentTransactions = [],
+  onShowActivity,
   onSelectWallet,
   onOpenWallet,
   onSettleLoan,
 }: WalletsSectionProps) {
-  const { t } = useLanguage();
+  const { t, language, locale } = useLanguage();
   const overdueLoan = activeWallet === null ? null : activeBankLoan(loans, activeWallet.id);
   const settleLoan =
     activeWallet !== null &&
@@ -79,6 +88,37 @@ export function WalletsSection({
     onSettleLoan !== undefined
       ? { player: activeWallet, loan: overdueLoan, onSettle: onSettleLoan }
       : null;
+  const recent = recentTransactions.slice(0, maxRecent);
+  const recentList =
+    recent.length === 0 ? null : (
+      <section
+        className="mt-(--mb-space-4) grid gap-(--mb-space-2)"
+        aria-labelledby="recent-activity-title"
+      >
+        <div className="flex items-center justify-between gap-(--mb-space-3)">
+          <h3 id="recent-activity-title" className="m-0 text-small font-semibold text-secondary">
+            {t('recentActivity')}
+          </h3>
+          {onShowActivity !== undefined && (
+            <Button variant="quiet" onClick={onShowActivity}>
+              {t('showAllActivity')}
+            </Button>
+          )}
+        </div>
+        <ol className="activity-ledger m-0 grid list-none gap-(--mb-space-2) p-0">
+          {recent.map((transaction) => (
+            <TransactionRow
+              key={transaction.id}
+              transaction={transaction}
+              players={players}
+              currency={currency}
+              language={language}
+              locale={locale}
+            />
+          ))}
+        </ol>
+      </section>
+    );
   return (
     <section
       className="wallets-section mt-(--mb-space-7) max-md:mt-(--mb-space-4)"
@@ -144,6 +184,7 @@ export function WalletsSection({
                   : t('walletProperty', { count: property.count, value: property.value })}
               </Button>
             )}
+            {recentList}
             {settleLoan !== null && (
               <Notice tone="error" className="mt-(--mb-space-3)">
                 <span className="block">
@@ -182,6 +223,7 @@ export function WalletsSection({
           </div>
         </div>
       </div>
+      {activeWallet === null && recentList}
     </section>
   );
 }

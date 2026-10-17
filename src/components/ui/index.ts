@@ -2,6 +2,8 @@ export { AuthForm, AuthHeading, type AuthFormProps, type AuthHeadingProps } from
 export { BankSeal, type BankSealVariant } from './BankSeal';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { StepperBar, type StepperBarProps } from './StepperBar';
+export { GlassButton, type GlassButtonProps, type GlassButtonVariant } from './GlassButton';
+export { GlassSurface, type GlassSurfaceProps, type GlassSurfaceVariant } from './GlassSurface';
 export { Card, type CardProps, type CardVariant } from './Card';
 export { SheetActions, type SheetActionsProps } from './SheetActions';
 export { DialogBody, type DialogBodyProps } from './DialogBody';
@@ -41,3 +43,8 @@ export { Toggle, type ToggleProps } from './Toggle';
 export { ToolPanel, type ToolPanelProps } from './ToolPanel';
 export { useFeedback, type FeedbackMessage, type Notify } from './useFeedback';
 export { Toolbar, type ToolbarProps, type ToolbarVariant } from './Toolbar';
+export { CountBadge, type CountBadgeProps } from './CountBadge';
+export { GroupHeader, type GroupHeaderProps } from './GroupHeader';
+export { SelectableRow, type SelectableRowProps } from './SelectableRow';
+export { StatTile, type StatTileProps } from './StatTile';
+export { ToggleRow, type ToggleRowProps } from './ToggleRow';

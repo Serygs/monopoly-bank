@@ -14,6 +14,7 @@ import { formatMoney } from '../../utils/money';
 import {
   applyLiveEvent,
   buildRequest,
+  lobbyNeedsMorePlayers,
   insufficientMessage,
   preflightFundsError,
   previewBalances,
@@ -602,5 +603,14 @@ describe('buildRequest for a board purchase', () => {
       buildRequest('PROPERTY_PURCHASE', 'p1', '', 0, '', { tileId: 'arbat', priceOverride: 250 }),
     ).toEqual({ type: 'PROPERTY_PURCHASE', playerId: 'p1', tileId: 'arbat', priceOverride: 250 });
     expect(buildRequest('PROPERTY_PURCHASE', 'p1', '', 0, '', { priceOverride: 250 })).toBeNull();
+  });
+});
+
+describe('lobbyNeedsMorePlayers', () => {
+  it('shows the hint below two players and hides it from two', () => {
+    expect(lobbyNeedsMorePlayers(0)).toBe(true);
+    expect(lobbyNeedsMorePlayers(1)).toBe(true);
+    expect(lobbyNeedsMorePlayers(2)).toBe(false);
+    expect(lobbyNeedsMorePlayers(4)).toBe(false);
   });
 });

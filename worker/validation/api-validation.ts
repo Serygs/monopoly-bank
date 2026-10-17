@@ -17,6 +17,7 @@ import type {
   UpdateProfileRequest,
   UpgradeGuestRequest,
   RecordDiceRollRequest,
+  CreateTradeRequestBody,
 } from '../../shared/contracts/api.js';
 import {
   gameRuleKeys,
@@ -204,6 +205,33 @@ export async function parsePlaceBidRequest(
   };
 }
 
+/** A trade proposal: the same fields and rules as the trade operation, plus the request id. */
+export async function parseCreateTradeRequest(request: Request): Promise<CreateTradeRequestBody> {
+  const body = await parseJsonObject(request);
+  return { id: readUuid(body, 'id'), ...readTradeFields(body) };
+}
+
+function readTradeFields(body: Record<string, unknown>): Omit<CreateTradeRequestBody, 'id'> {
+  const playerId = readUuid(body, 'playerId');
+  const counterpartyPlayerId = readUuid(body, 'counterpartyPlayerId');
+  if (playerId === counterpartyPlayerId)
+    throw new ApiValidationError('counterpartyPlayerId must be another player.');
+  const giveTileIds = readTileIdList(body, 'giveTileIds');
+  const takeTileIds = readTileIdList(body, 'takeTileIds');
+  if (new Set([...giveTileIds, ...takeTileIds]).size !== giveTileIds.length + takeTileIds.length)
+    throw new ApiValidationError('A property can only be traded once.');
+  if (giveTileIds.length + takeTileIds.length === 0)
+    throw new ApiValidationError('A trade needs at least one property.');
+  return {
+    playerId,
+    counterpartyPlayerId,
+    giveTileIds,
+    takeTileIds,
+    ...(body.cashGive === undefined ? {} : { cashGive: readNonNegativeInteger(body, 'cashGive') }),
+    ...(body.cashTake === undefined ? {} : { cashTake: readNonNegativeInteger(body, 'cashTake') }),
+  };
+}
+
 export async function parseRecordDiceRollRequest(request: Request): Promise<RecordDiceRollRequest> {
   const body = await parseJsonObject(request);
   return {
@@ -374,34 +402,8 @@ export async function parseCreateTransactionRequest(
           ? {}
           : { priceOverride: readPositiveInteger(body, 'priceOverride') }),
       };
-    case 'PROPERTY_TRANSFER': {
-      const playerId = readUuid(body, 'playerId');
-      const counterpartyPlayerId = readUuid(body, 'counterpartyPlayerId');
-      if (playerId === counterpartyPlayerId)
-        throw new ApiValidationError('counterpartyPlayerId must be another player.');
-      const giveTileIds = readTileIdList(body, 'giveTileIds');
-      const takeTileIds = readTileIdList(body, 'takeTileIds');
-      if (
-        new Set([...giveTileIds, ...takeTileIds]).size !==
-        giveTileIds.length + takeTileIds.length
-      )
-        throw new ApiValidationError('A property can only be traded once.');
-      if (giveTileIds.length + takeTileIds.length === 0)
-        throw new ApiValidationError('A trade needs at least one property.');
-      return {
-        type,
-        playerId,
-        counterpartyPlayerId,
-        giveTileIds,
-        takeTileIds,
-        ...(body.cashGive === undefined
-          ? {}
-          : { cashGive: readNonNegativeInteger(body, 'cashGive') }),
-        ...(body.cashTake === undefined
-          ? {}
-          : { cashTake: readNonNegativeInteger(body, 'cashTake') }),
-      };
-    }
+    case 'PROPERTY_TRANSFER':
+      return { type, ...readTradeFields(body) };
     case 'PROPERTY_BUILD':
     case 'PROPERTY_SELL_BUILDING': {
       const playerId = readUuid(body, 'playerId');
@@ -561,8 +563,12 @@ function readGamePassword(body: Record<string, unknown>, field: string): string 
     throw new ApiValidationError(`${field} must be between 4 and 256 characters.`);
   return value;
 }
+/** One spelling of a join code for every lookup, rate-limit key and comparison. */
+export function normalizeJoinCode(value: string): string {
+  return value.trim().toUpperCase();
+}
 function readJoinCode(body: Record<string, unknown>): string {
-  const value = readRequiredString(body, 'joinCode', 'joinCode').trim().toUpperCase();
+  const value = normalizeJoinCode(readRequiredString(body, 'joinCode', 'joinCode'));
   if (!/^[A-Z0-9]{4,12}$/u.test(value))
     throw new ApiValidationError('joinCode must contain 4 to 12 letters or digits.');
   return value;

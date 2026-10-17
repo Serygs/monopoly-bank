@@ -323,27 +323,53 @@ describe('API router', () => {
   });
 
   describe('trading properties', () => {
+    const tradeRequestId = '00000000-0000-4000-8000-0000000000b1';
+    const commandId = '00000000-0000-4000-8000-0000000000c1';
     const trade = {
-      type: 'PROPERTY_TRANSFER',
+      id: tradeRequestId,
       playerId: firstPlayerId,
       counterpartyPlayerId: secondPlayerId,
       giveTileIds: ['zhitna'],
       takeTileIds: ['arbat'],
     };
+    const stored = {
+      ...trade,
+      gameId,
+      proposerPlayerId: firstPlayerId,
+      cashGive: 0,
+      cashTake: 0,
+      state: 'PENDING',
+    };
 
-    function tradeRouter(paymentMode: 'FAST' | 'CONFIRMATION', controlled: string[]) {
+    function tradeRouter(controlled: string[]) {
       const checked: string[] = [];
-      let writes = 0;
+      const calls: string[] = [];
+      const live: string[] = [];
       const router = createApiRouter({
-        games: {
-          getGame: async () => ({ ...gameDetails, game: { ...gameDetails.game, paymentMode } }),
-        } as unknown as GameService,
+        games: {} as unknown as GameService,
         banking: {
           createTransaction: async () => {
-            writes += 1;
+            calls.push('createTransaction');
             return transactionResponse();
           },
-        } as BankingService,
+          getTradeRequest: async () => stored,
+          createTradeRequest: async () => {
+            calls.push('create');
+            return { tradeRequest: stored };
+          },
+          acceptTradeRequest: async () => {
+            calls.push('accept');
+            return { tradeRequest: stored };
+          },
+          declineTradeRequest: async () => {
+            calls.push('decline');
+            return { tradeRequest: stored };
+          },
+          cancelTradeRequest: async () => {
+            calls.push('cancel');
+            return { tradeRequest: stored };
+          },
+        } as unknown as BankingService,
         auth: {
           current: async () => ({
             id: '00000000-0000-4000-8000-000000000099',
@@ -363,49 +389,113 @@ describe('API router', () => {
             if (!controlled.includes(playerId)) throw new ForbiddenError();
           },
         } as never,
+        live: {
+          mutate: async (_game: string, _actor: unknown, command: { type: string }) => {
+            live.push(command.type);
+            return Response.json({ data: {} });
+          },
+        } as never,
         profileStatistics: {} as never,
       });
-      return { router, checked, writes: () => writes };
+      return { router, checked, calls, live };
     }
+    const post = (path: string, body: unknown = {}) =>
+      new Request(`https://example.test/api/games/${gameId}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-command-id': commandId },
+        body: JSON.stringify(body),
+      });
 
-    it('needs only the proposer wallet in a fast game', async () => {
-      const { router, checked, writes } = tradeRouter('FAST', [firstPlayerId]);
-      const response = await router(
-        jsonRequest('POST', `/api/games/${gameId}/transactions`, trade),
-      );
-      expect(response.status).toBe(201);
+    it('lets the proposer wallet alone start a trade request through the game object', async () => {
+      const { router, checked, live, calls } = tradeRouter([firstPlayerId]);
+      expect((await router(post('/trade-requests', trade))).status).toBe(200);
       expect(checked).toEqual([firstPlayerId]);
-      expect(writes()).toBe(1);
+      expect(live).toEqual(['CREATE_TRADE_REQUEST']);
+      expect(calls).toEqual([]);
     });
 
-    it('needs both wallets when payments need confirmation', async () => {
-      const refused = tradeRouter('CONFIRMATION', [firstPlayerId]);
-      const denied = await refused.router(
-        jsonRequest('POST', `/api/games/${gameId}/transactions`, trade),
-      );
-      expect(denied.status).toBe(403);
-      expect(refused.checked).toEqual([firstPlayerId, secondPlayerId]);
-      expect(refused.writes()).toBe(0);
+    it('refuses a trade request from a caller who does not control the proposer wallet', async () => {
+      const { router, live } = tradeRouter([secondPlayerId]);
+      expect((await router(post('/trade-requests', trade))).status).toBe(403);
+      expect(live).toEqual([]);
+    });
 
-      const allowed = tradeRouter('CONFIRMATION', [firstPlayerId, secondPlayerId]);
-      const ok = await allowed.router(
-        jsonRequest('POST', `/api/games/${gameId}/transactions`, trade),
+    it('lets only the counterparty accept or decline and only the proposer cancel', async () => {
+      const counterparty = tradeRouter([secondPlayerId]);
+      for (const action of ['accept', 'decline'])
+        expect(
+          (await counterparty.router(post(`/trade-requests/${tradeRequestId}/${action}`))).status,
+        ).toBe(200);
+      expect(
+        (await counterparty.router(post(`/trade-requests/${tradeRequestId}/cancel`))).status,
+      ).toBe(403);
+      expect(counterparty.live).toEqual(['ACCEPT_TRADE_REQUEST', 'DECLINE_TRADE_REQUEST']);
+
+      const proposer = tradeRouter([firstPlayerId]);
+      expect((await proposer.router(post(`/trade-requests/${tradeRequestId}/cancel`))).status).toBe(
+        200,
       );
-      expect(ok.status).toBe(201);
+      for (const action of ['accept', 'decline'])
+        expect(
+          (await proposer.router(post(`/trade-requests/${tradeRequestId}/${action}`))).status,
+        ).toBe(403);
+      expect(proposer.live).toEqual(['CANCEL_TRADE_REQUEST']);
+    });
+
+    it('no longer accepts a direct PROPERTY_TRANSFER as a public transaction write', async () => {
+      const { router, live, calls } = tradeRouter([firstPlayerId, secondPlayerId]);
+      const response = await router(post('/transactions', { ...trade, type: 'PROPERTY_TRANSFER' }));
+      // The game object (or service) refuses it; the router never writes it itself.
+      expect(calls).toEqual([]);
+      expect(live).toEqual(['CREATE_TRANSACTION']);
+      expect(response.status).toBe(200);
     });
 
     it('rejects a trade with itself, an empty trade and a tile offered twice', async () => {
-      const { router } = tradeRouter('FAST', [firstPlayerId]);
+      const { router, live } = tradeRouter([firstPlayerId]);
       for (const body of [
         { ...trade, counterpartyPlayerId: firstPlayerId },
         { ...trade, giveTileIds: [], takeTileIds: [] },
         { ...trade, giveTileIds: ['zhitna'], takeTileIds: ['zhitna'] },
         { ...trade, cashGive: -1 },
         { ...trade, giveTileIds: 'zhitna' },
+        { ...trade, id: 'not-a-uuid' },
       ])
-        expect(
-          (await router(jsonRequest('POST', `/api/games/${gameId}/transactions`, body))).status,
-        ).toBe(400);
+        expect((await router(post('/trade-requests', body))).status).toBe(400);
+      expect(live).toEqual([]);
+    });
+
+    it('works without the game object by calling the banking service', async () => {
+      const calls: string[] = [];
+      const router = createApiRouter({
+        games: {} as never,
+        banking: {
+          getTradeRequest: async () => stored,
+          createTradeRequest: async () => {
+            calls.push('create');
+            return { tradeRequest: stored };
+          },
+          acceptTradeRequest: async () => {
+            calls.push('accept');
+            return { tradeRequest: stored };
+          },
+          listTradeRequests: async () => [stored],
+        } as never,
+        auth: { current: async () => ({ id: '00000000-0000-4000-8000-000000000099' }) } as never,
+        access: {
+          requireMember: async () => 'PLAYER',
+          requirePlayerController: async () => undefined,
+          controlledWallets: async () => [{ playerId: firstPlayerId }],
+        } as never,
+        profileStatistics: {} as never,
+      });
+      expect((await router(post('/trade-requests', trade))).status).toBe(201);
+      expect((await router(post(`/trade-requests/${tradeRequestId}/accept`))).status).toBe(200);
+      const listed = await router(
+        new Request(`https://example.test/api/games/${gameId}/trade-requests`),
+      );
+      await expect(listed.json()).resolves.toMatchObject({ data: [{ id: tradeRequestId }] });
+      expect(calls).toEqual(['create', 'accept']);
     });
   });
 
@@ -654,6 +744,7 @@ describe('API router', () => {
       access: {
         requireMember: async () => 'OWNER',
         ownerJoinCode: async () => 'TABLE42',
+        hasAccessPassword: async () => true,
         controlledWallets: async () => [],
       } as never,
       profileStatistics: { recordCompletedGame: async () => undefined } as never,
@@ -662,7 +753,7 @@ describe('API router', () => {
     const response = await router(new Request(`https://example.test/api/games/${gameId}`));
 
     await expect(response.json()).resolves.toMatchObject({
-      data: { canManage: true, joinCode: 'TABLE42' },
+      data: { canManage: true, joinCode: 'TABLE42', hasAccessPassword: true },
     });
   });
 

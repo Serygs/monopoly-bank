@@ -6,6 +6,7 @@ import type {
   PaymentRequestKind,
   PaymentRequestState,
 } from '../../shared/contracts/api.js';
+import { D1TradeRequestRepository } from './trade-request-repository.js';
 import {
   calculateBalanceSeries,
   calculateGameAwards,
@@ -113,6 +114,15 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
     return {
       transactions: [],
       paymentRequests: requests,
+      // Pending trades are few and short-lived, so they ride along on the first page only.
+      ...(cursor === null
+        ? {
+            tradeRequests: await new D1TradeRequestRepository(this.database).listPendingForPlayers(
+              gameId,
+              playerIds,
+            ),
+          }
+        : {}),
       nextCursor:
         rows.results.length > limit && tail !== undefined
           ? { createdAt: tail.createdAt, id: tail.id }

@@ -118,6 +118,25 @@ describe('PropertyScreen', () => {
     expect(within(firstFree).queryByText('Free')).toBeNull();
   });
 
+  it('pins each group header with an opaque fill and shows the Mine totals', () => {
+    renderScreen();
+    const header = screen.getByRole('heading', { name: /Brown/ });
+    expect(header).toHaveClass('sticky', 'glass-popover', 'bg-surface-elevated');
+    const stats = document.querySelector('[data-section="mine-stats"]')!;
+    const cards = [name('zhitna'), name('riga_rail')].length;
+    expect(within(stats as HTMLElement).getByText('Cards').nextSibling).toHaveTextContent(
+      String(cards),
+    );
+    expect(within(stats as HTMLElement).getByText('Total value')).toBeInTheDocument();
+  });
+
+  it('shows the price range in each group header of the All view', async () => {
+    const { user } = renderScreen();
+    await user.click(screen.getByRole('radio', { name: 'All' }));
+    const group = document.querySelector('[data-section="free"] [data-group="lightblue"]')!;
+    expect(within(group as HTMLElement).getByRole('heading')).toHaveTextContent(/–/);
+  });
+
   it('shows rent and owner inside an owned card', () => {
     renderScreen([row('zhitna')]);
     const card = screen.getByRole('button', { name: new RegExp(name('zhitna')) });

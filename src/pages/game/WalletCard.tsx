@@ -38,7 +38,7 @@ const readonlyCardClass = cx(
 );
 /* Hover outranks the Liquid Glass light colours; Liquid Glass dark keeps its own on hover. */
 const activeCardClass = cx(
-  'wallet-card-active w-full cursor-pointer border-accent bg-surface-inverse text-on-inverse shadow-md',
+  'wallet-card-active w-full cursor-pointer border-accent bg-surface-inverse text-on-inverse shadow-md ring-2 ring-accent',
   '[transition:transform_var(--mb-duration-normal)_var(--mb-ease-standard),box-shadow_var(--mb-duration-normal)_var(--mb-ease-standard),border-color_var(--mb-duration-fast)_var(--mb-ease-standard)]',
   'focus-visible:outline-offset-3 enabled:active:transform-[translateY(1px)] disabled:cursor-default',
   'fine-pointer:enabled:hover:transform-[translateY(-2px)] fine-pointer:enabled:hover:border-highlight fine-pointer:enabled:hover:border-s-(color:--wallet-player-color) fine-pointer:enabled:hover:shadow-hover',
@@ -93,7 +93,7 @@ const balanceSizeClass = {
   prominent:
     'tracking-[-0.04em] text-[length:min(var(--mb-text-money-xl),calc(100cqi/var(--balance-em)))]',
   standard:
-    'tracking-[-0.04em] text-[1.0625rem] md:text-[length:min(var(--mb-text-money-lg),calc(100cqi/var(--balance-em)))]',
+    'tracking-[-0.04em] text-[1.125rem] md:text-[length:min(var(--mb-text-money-lg),calc(100cqi/var(--balance-em)))]',
 };
 const balanceEmPerCharacter = 0.56;
 
@@ -135,7 +135,7 @@ export function WalletCard({
         />
         <span className={nameClass}>{playerName}</span>
         <span className={badgesClass}>
-          {active && <WalletBadge tone="active">{t('activeWallet')}</WalletBadge>}
+          {active && <WalletBadge tone="active">{t('walletYouTag')}</WalletBadge>}
           {player.status === 'BANKRUPT' && (
             <WalletBadge tone="bankrupt">{t('bankrupt')}</WalletBadge>
           )}

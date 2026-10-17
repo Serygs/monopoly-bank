@@ -20,7 +20,15 @@ describe('SheetActions', () => {
     const className = screen.getByTestId('bar').className;
     expect(className).toContain('max-md:bg-linear-to-t');
     expect(className).not.toContain('max-md:bg-surface-elevated');
-    expect(className).toContain('--mb-app-safe-bottom');
+    expect(className).toContain('--mb-sheet-pad-bottom');
+  });
+
+  it('lays Back and the primary side by side on compact, the primary wider', () => {
+    render(<SheetActions data-testid="bar" />);
+    const className = screen.getByTestId('bar').className;
+    expect(className).toContain('max-md:flex-row');
+    expect(className).not.toContain('flex-col-reverse');
+    expect(className).toContain('max-md:[&>:last-child:not(:only-child)]:flex-[1.4]');
   });
 
   it('merges a caller class', () => {

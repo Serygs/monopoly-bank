@@ -10,6 +10,9 @@ import type {
   ApiResponse,
   BankruptcyRequest,
   CreateBankingCommandResponse,
+  CreateTradeRequestBody,
+  CreateTradeRequestResponse,
+  TradeRequestActionResponse,
   CreateGameRequest,
   CreateInvitationResponse,
   CreateTransactionRequest,
@@ -101,6 +104,29 @@ export interface MonopolyBankApi {
     paymentRequestId: string,
     commandId?: string,
   ): Promise<PaymentRequestActionResponse>;
+  /** Board games: proposes a property trade; nothing moves until the counterparty accepts. */
+  createTradeRequest(
+    gameId: string,
+    request: CreateTradeRequestBody,
+    commandId?: string,
+  ): Promise<CreateTradeRequestResponse>;
+  acceptTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse>;
+  declineTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse>;
+  cancelTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse>;
+  /** Owner only: replaces the game's join code; the old code stops working. */
+  regenerateJoinCode(gameId: string): Promise<{ joinCode: string }>;
   declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<CreateTransactionResponse>;
   /** The active auction, or the one that closed most recently (polling fallback). */
   getAuction(gameId: string): Promise<AuctionResponse>;
@@ -304,6 +330,54 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
     return request<PaymentRequestActionResponse>(
       `/api/games/${encodeURIComponent(gameId)}/payment-requests/${encodeURIComponent(paymentRequestId)}/cancel`,
       commandInit({ method: 'POST' }, commandId),
+    );
+  }
+  async createTradeRequest(
+    gameId: string,
+    input: CreateTradeRequestBody,
+    commandId?: string,
+  ): Promise<CreateTradeRequestResponse> {
+    return request<CreateTradeRequestResponse>(
+      `/api/games/${encodeURIComponent(gameId)}/trade-requests`,
+      commandInit({ method: 'POST', body: JSON.stringify(input) }, commandId),
+    );
+  }
+  async acceptTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse> {
+    return this.tradeRequestAction(gameId, tradeRequestId, 'accept', commandId);
+  }
+  async declineTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse> {
+    return this.tradeRequestAction(gameId, tradeRequestId, 'decline', commandId);
+  }
+  async cancelTradeRequest(
+    gameId: string,
+    tradeRequestId: string,
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse> {
+    return this.tradeRequestAction(gameId, tradeRequestId, 'cancel', commandId);
+  }
+  private async tradeRequestAction(
+    gameId: string,
+    tradeRequestId: string,
+    action: 'accept' | 'decline' | 'cancel',
+    commandId?: string,
+  ): Promise<TradeRequestActionResponse> {
+    return request<TradeRequestActionResponse>(
+      `/api/games/${encodeURIComponent(gameId)}/trade-requests/${encodeURIComponent(tradeRequestId)}/${action}`,
+      commandInit({ method: 'POST' }, commandId),
+    );
+  }
+  async regenerateJoinCode(gameId: string): Promise<{ joinCode: string }> {
+    return request<{ joinCode: string }>(
+      `/api/games/${encodeURIComponent(gameId)}/join-code/regenerate`,
+      { method: 'POST' },
     );
   }
   async declareBankruptcy(

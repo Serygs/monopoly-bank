@@ -67,6 +67,8 @@ export interface GameDetails {
    * device sees the result), or null.
    */
   auction?: Auction | null;
+  /** Board games: property trades proposed in this game (pending ones wait for the counterparty). */
+  tradeRequests?: TradeRequest[];
   favoriteAmounts?: number[];
   recentAmounts?: number[];
   /** Wallets the current actor can operate. All other wallets are read-only. */
@@ -75,6 +77,8 @@ export interface GameDetails {
   canManage?: boolean;
   /** Present only for the game's owner; never expose the password hash. */
   joinCode?: string;
+  /** Owner only: whether the table has an access password (never the password itself). */
+  hasAccessPassword?: boolean;
 }
 
 export type PlayerControllerKind = 'PRIMARY' | 'LOCAL';
@@ -303,8 +307,9 @@ export interface PropertySellBuildingTransactionRequest extends Omit<
 /**
  * Board games: a trade. `playerId` (the wallet that makes it) and `counterpartyPlayerId` swap tiles
  * and optionally cash. Each side pays the bank 10% of the mortgage value of every mortgaged tile
- * it receives (the tile stays mortgaged). Recorded at once, in one batch; in a game with payment
- * confirmation the caller must control both wallets.
+ * it receives (the tile stays mortgaged). Not a public transaction type any more: it is the
+ * operation recorded, in one batch, when the counterparty accepts a `TradeRequest`; the public
+ * `CREATE_TRANSACTION` path refuses it with `TRADE_REQUEST_REQUIRED`.
  */
 export interface PropertyTransferTransactionRequest extends Omit<
   TransactionRequestBase,
@@ -501,6 +506,7 @@ export interface ActivityCursor {
 export interface ActivityPage {
   transactions: Transaction[];
   paymentRequests: PaymentRequest[];
+  tradeRequests?: TradeRequest[];
   nextCursor: ActivityCursor | null;
 }
 export interface CashLeaderboardEntry {
@@ -607,6 +613,49 @@ export interface PaymentRequest {
   createdAt: string;
   resolvedAt: string | null;
   transactionId: string | null;
+}
+/**
+ * Board games: a property trade waits for the counterparty before anything moves, in every payment
+ * mode. Nothing is written to the ledger or the registry until the counterparty accepts; accepting
+ * runs the same single `PROPERTY_TRANSFER` operation as before (one transaction, one registry diff
+ * per tile, reversible as a unit) after re-validating the current state. Own table
+ * (`trade_requests`), because a trade may move no cash and `payment_requests.amount` must be > 0.
+ */
+export interface TradeRequest {
+  id: string;
+  gameId: string;
+  /** Wallet that proposes the trade (`playerId` of the resulting `PROPERTY_TRANSFER`). */
+  proposerPlayerId: string;
+  /** Wallet that must accept. */
+  counterpartyPlayerId: string;
+  giveTileIds: string[];
+  takeTileIds: string[];
+  cashGive: number;
+  cashTake: number;
+  state: PaymentRequestState;
+  expiresAt: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  transactionId: string | null;
+}
+export type CreateTradeRequestBody = Pick<
+  PropertyTransferTransactionRequest,
+  'playerId' | 'counterpartyPlayerId' | 'giveTileIds' | 'takeTileIds' | 'cashGive' | 'cashTake'
+> & { id: string };
+export interface CreateTradeRequestResponse {
+  tradeRequest: TradeRequest;
+}
+export interface TradeRequestActionResponse {
+  tradeRequest: TradeRequest;
+  players: Player[];
+  /** Present after accepting. */
+  transaction?: Transaction;
+  properties?: GameProperty[];
+  /** The active mortgages after accepting (a mortgaged tile's record follows the tile). */
+  mortgages?: Mortgage[];
+  loans?: Loan[];
+  bankLoanCooldowns?: BankLoanCooldown[];
+  jackpot?: number;
 }
 export interface CreatePaymentRequestResponse {
   paymentRequests: PaymentRequest[];

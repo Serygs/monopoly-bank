@@ -32,18 +32,18 @@ import { cx } from '../components/ui/class-names';
 const heroClass = cx(
   'page-header--hero relative overflow-hidden rounded-xl border border-[color:color-mix(in_srgb,var(--mb-color-highlight)_45%,transparent)]',
   'text-on-inverse shadow-md [background:var(--mb-background-hero)]',
-  'min-h-[clamp(230px,20vw,280px)] p-(--mb-space-6) pb-[clamp(var(--mb-space-6),5vw,var(--mb-space-9))]',
-  'lg:p-[clamp(var(--mb-space-7),4vw,var(--mb-space-9))] lg:pb-[clamp(var(--mb-space-6),5vw,var(--mb-space-9))]',
+  'min-h-[clamp(112px,12vw,148px)] content-center p-(--mb-space-5)',
+  'lg:p-(--mb-space-6)',
   'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-0 *:relative *:z-1',
   '[&_h1]:text-inherit [&_.lede]:text-inherit [&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-highlight)_82%,white)]',
-  'max-md:[&_h1]:text-[length:clamp(2.125rem,10vw,2.875rem)]',
+  'max-md:[&_h1]:text-[length:clamp(1.75rem,8vw,2.25rem)]',
   // Only the dark Classic hero needs the inverse ring; Liquid Glass light keeps the default.
   'classic:light:[&_button:focus-visible]:outline-text-on-inverse',
   // `!` outranks PageHeader's own `lg:` columns.
   'lg:grid-cols-[minmax(0,62%)_minmax(0,38%)]! lg:items-center',
   'max-md:[&_.page-header-actions]:grid-cols-1 max-md:[&_.page-header-actions_.button]:w-full max-md:[&_.button-primary]:-order-1',
   'lg:[&_.page-header-actions]:col-[1] lg:[&_.page-header-actions]:max-w-[28rem]',
-  'classic:after:hidden classic:max-md:bg-[position:62%_center] classic:max-md:bg-[size:auto_100%]',
+  'classic:after:hidden classic:max-md:bg-[position:62%_center] classic:max-md:bg-[size:cover]',
   'glass:isolate glass:border-[rgb(255_255_255/0.6)] glass:text-primary glass:shadow-lg',
   'glass:[&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-accent-hover)_88%,var(--mb-color-text-primary))]',
   'glass:after:w-[42%] glass:after:opacity-82',
@@ -51,7 +51,7 @@ const heroClass = cx(
 );
 /* The search field and sort select share each style's control skin. */
 const controlsClass = cx(
-  'mb-(--mb-layout-section-gap-compact) grid gap-(--mb-space-3)',
+  'mb-(--mb-layout-section-gap-compact) grid grid-cols-[minmax(0,1fr)] gap-(--mb-space-3)',
   'md:grid-cols-[minmax(0,1fr)_auto] md:items-center lg:grid-cols-[minmax(18rem,1fr)_auto_auto]',
   'classic:[&_:is(input,select)]:border-border classic:[&_:is(input,select)]:bg-[#fffcf3] classic:[&_:is(input,select)]:shadow-[0_5px_16px_rgb(42_52_39/0.05)]',
   'classic:dark:[&_:is(input,select)]:bg-surface-elevated',
@@ -235,12 +235,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
 
   return (
     <PageShell>
-      <PageHeader
-        className={heroClass}
-        eyebrow={t('appName')}
-        title={t('savedGames')}
-        description={t('savedGamesLede')}
-      />
+      <PageHeader className={heroClass} title={t('savedGames')} description={t('savedGamesLede')} />
 
       {loading && (
         <StatPill variant="status" live>
@@ -379,6 +374,9 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
                 <GameCard
                   key={summary.game.id}
                   summary={summary}
+                  sharesName={
+                    visibleGames.filter((other) => other.game.name === summary.game.name).length > 1
+                  }
                   duplicating={duplicating === summary.game.id}
                   onJoinGame={onJoinGame}
                   onOpenGame={onOpenGame}

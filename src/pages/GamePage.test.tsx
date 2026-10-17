@@ -105,6 +105,7 @@ const hooks = vi.hoisted(() => {
 const api = vi.hoisted(() => ({
   getGame: vi.fn(),
   listPaymentRequests: vi.fn(),
+  getActivity: vi.fn(),
 }));
 
 vi.mock('react', async (importOriginal) => ({
@@ -185,6 +186,9 @@ describe('GamePage live connection lifecycle', () => {
     hooks.reset();
     api.getGame.mockReset();
     api.listPaymentRequests.mockReset().mockResolvedValue([]);
+    api.getActivity
+      .mockReset()
+      .mockResolvedValue({ transactions: [], paymentRequests: [], nextCursor: null });
     FakeWebSocket.instances.length = 0;
     setTimeoutMock.mockClear();
     vi.stubGlobal('WebSocket', FakeWebSocket);
@@ -268,6 +272,57 @@ describe('GamePage live connection lifecycle', () => {
     hooks.flushEffects();
     expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
     expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it('seeds the recent list from the first activity page after a reload and merges live rows', async () => {
+    const row = (id: string, createdAt: string) => ({
+      id,
+      gameId: 'game-1',
+      type: 'BANK_TO_PLAYER' as const,
+      amount: 10,
+      totalAmount: 10,
+      comment: null,
+      createdAt,
+      participants: [{ playerId: owner.id, balanceDelta: 10 }],
+    });
+    api.getGame.mockResolvedValue(gameDetails('ACTIVE', [owner]));
+    api.getActivity.mockResolvedValue({
+      transactions: [
+        row('t3', '2026-01-03T00:00:00.000Z'),
+        row('t2', '2026-01-02T00:00:00.000Z'),
+        row('t1', '2026-01-01T00:00:00.000Z'),
+      ],
+      paymentRequests: [],
+      nextCursor: null,
+    });
+
+    renderGamePage(false);
+    hooks.flushEffects();
+    await flushPromises();
+    renderGamePage(false);
+    hooks.flushEffects();
+    await flushPromises();
+    let page = renderGamePage(false);
+    hooks.flushEffects();
+
+    expect(api.getActivity).toHaveBeenCalledTimes(1);
+    expect(api.getActivity).toHaveBeenCalledWith('game-1', 'ALL');
+    expect(recentIds(page)).toEqual(['t3', 't2', 't1']);
+
+    FakeWebSocket.instances[0].message({
+      type: 'GAME_COMMITTED',
+      stateVersion: 1,
+      transaction: row('t4', '2026-01-04T00:00:00.000Z'),
+      players: [owner],
+    });
+    FakeWebSocket.instances[0].message({
+      type: 'GAME_COMMITTED',
+      stateVersion: 2,
+      transaction: row('t3', '2026-01-03T00:00:00.000Z'),
+      players: [owner],
+    });
+    page = renderGamePage(false);
+    expect(recentIds(page)).toEqual(['t4', 't3', 't2', 't1']);
   });
 
   it.each([
@@ -392,6 +447,22 @@ function renderedPlayerNames(node: ReactNode): string[] {
       : [],
   );
   return currentNames.concat(renderedPlayerNames(props.children));
+}
+
+/** The ids `WalletsSection` receives as its recent transactions. */
+function recentIds(node: ReactNode): string[] {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = recentIds(child);
+      if (found.length > 0) return found;
+    }
+    return [];
+  }
+  if (node === null || typeof node !== 'object' || !('props' in node)) return [];
+  const props = (node as { props: { children?: ReactNode; recentTransactions?: unknown } }).props;
+  if (Array.isArray(props.recentTransactions))
+    return (props.recentTransactions as Array<{ id: string }>).map((item) => item.id);
+  return recentIds(props.children);
 }
 
 async function flushPromises(): Promise<void> {

@@ -1,4 +1,5 @@
 import type { BoardSnapshot, PropertyGroupId } from '../../../shared/board';
+import { buildCost, offendingStreets, sellRefund } from '../../../shared/domain/property';
 import { propertyGroupKeys, useBuildingLabel } from '../../components/game/property-labels';
 import { Button, FieldError, FieldHint } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
@@ -10,6 +11,7 @@ import {
   levelBounds,
   previewBuildings,
   propertyGroupColors,
+  registryOf,
   type BuildMode,
   type TileView,
 } from '../../utils/property-view';
@@ -37,7 +39,7 @@ const reasonKeys = {
 } as const;
 
 const stepButtonClass = cx(
-  'inline-flex size-10 cursor-pointer items-center justify-center rounded-full border border-border bg-surface-elevated p-0 text-heading-lg leading-none text-primary',
+  'inline-flex size-11 cursor-pointer items-center justify-center rounded-full border border-border bg-surface-elevated p-0 text-heading-lg leading-none text-primary',
   'disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-offset-2',
 );
 
@@ -81,7 +83,36 @@ export function BuildingStepper({
     : preview.reason === 'NOTHING'
       ? t('buildingReasonNothing')
       : t(reasonKeys[preview.reason as keyof typeof reasonKeys] ?? 'buildingReasonGeneric');
-  const amount = preview.ok ? preview.amount : 0;
+  const label = (level: number) => buildingLabel(level) ?? t('buildingNone');
+  // Streets that cause an invalid plan, each with its own reason under its row.
+  const offenders = new Map<string, string>();
+  if (!preview.ok && streets[0] !== undefined) {
+    const code = preview.reason;
+    for (const id of offendingStreets(
+      { board, registry: registryOf(views) },
+      streets[0].tile.id,
+      code,
+      Object.fromEntries(streets.map((view) => [view.tile.id, levelOf(view)])),
+      mode,
+    ))
+      offenders.set(
+        id,
+        t(
+          code === 'BUILD_MORTGAGED_GROUP'
+            ? 'buildingStreetMortgaged'
+            : sell
+              ? 'buildingStreetTooLow'
+              : 'buildingStreetTooHigh',
+        ),
+      );
+  }
+  // Totals follow the wanted levels even while the plan is invalid, so the cost is never hidden.
+  const unitPrice = (view: TileView) =>
+    sell ? sellRefund(board, view.tile.id) : buildCost(board, view.tile.id);
+  const changeOf = (view: TileView) => (sell ? -1 : 1) * (levelOf(view) - view.houses);
+  const changed = streets.filter((view) => changeOf(view) > 0);
+  const amount = changed.reduce((sum, view) => sum + changeOf(view) * unitPrice(view), 0);
+  const buildings = changed.reduce((sum, view) => sum + changeOf(view), 0);
   const after = sell ? balance + amount : balance - amount;
 
   return (
@@ -118,51 +149,75 @@ export function BuildingStepper({
           {streets.map((view) => {
             const { min, max } = levelBounds(view, mode);
             const level = levelOf(view);
+            const offence = offenders.get(view.tile.id);
+            const delta = changeOf(view);
             return (
-              <div
-                key={view.tile.id}
-                data-tile={view.tile.id}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-(--mb-space-3) rounded-control border border-border bg-surface-elevated p-(--mb-space-2) ps-(--mb-space-3)"
-              >
-                <span className="flex min-w-0 items-center gap-(--mb-space-2)">
-                  <span
-                    aria-hidden="true"
-                    className="inline-block size-3 shrink-0 rounded-full border border-border"
-                    style={{ backgroundColor: propertyGroupColors[view.tile.group] }}
-                  />
-                  <span className="grid min-w-0">
-                    <span className="text-small font-semibold wrap-anywhere">{view.tile.name}</span>
-                    <small className="text-secondary">
-                      {buildingLabel(level) ?? t('buildingNone')}
-                    </small>
+              <div key={view.tile.id} data-tile={view.tile.id} className="grid gap-(--mb-space-1)">
+                <div
+                  aria-invalid={offence !== undefined || undefined}
+                  className={cx(
+                    'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-(--mb-space-3) rounded-control border bg-surface-elevated p-(--mb-space-2) ps-(--mb-space-3)',
+                    offence === undefined
+                      ? 'border-border'
+                      : 'border-danger bg-danger-soft shadow-[inset_0_0_0_1px_var(--mb-color-danger)]',
+                  )}
+                >
+                  <span className="flex min-w-0 items-center gap-(--mb-space-2)">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block size-3 shrink-0 rounded-full border border-border"
+                      style={{ backgroundColor: propertyGroupColors[view.tile.group] }}
+                    />
+                    <span className="grid min-w-0">
+                      <span className="text-small font-semibold wrap-anywhere">
+                        {view.tile.name}
+                      </span>
+                      <small className="text-secondary">
+                        {level === view.houses
+                          ? label(level)
+                          : t('buildingFromTo', { from: label(view.houses), to: label(level) })}
+                      </small>
+                      {delta > 0 && (
+                        <small className="font-money font-semibold text-primary tabular-nums">
+                          {t(sell ? 'buildingStreetRefund' : 'buildingStreetCost', {
+                            amount: formatMoney(delta * unitPrice(view), currency),
+                          })}
+                        </small>
+                      )}
+                    </span>
                   </span>
-                </span>
-                <span className="flex items-center gap-(--mb-space-2)">
-                  <button
-                    type="button"
-                    className={stepButtonClass}
-                    disabled={level <= min}
-                    aria-label={t('buildingRemove', { name: view.tile.name })}
-                    onClick={() => setLevel(view, level - 1)}
-                  >
-                    −
-                  </button>
-                  <output
-                    className="min-w-6 text-center font-money text-body font-semibold tabular-nums"
-                    aria-live="polite"
-                  >
-                    {level}
-                  </output>
-                  <button
-                    type="button"
-                    className={stepButtonClass}
-                    disabled={level >= max}
-                    aria-label={t('buildingAdd', { name: view.tile.name })}
-                    onClick={() => setLevel(view, level + 1)}
-                  >
-                    +
-                  </button>
-                </span>
+                  <span className="flex items-center gap-(--mb-space-2)">
+                    <button
+                      type="button"
+                      className={stepButtonClass}
+                      disabled={level <= min}
+                      aria-label={t('buildingRemove', { name: view.tile.name })}
+                      onClick={() => setLevel(view, level - 1)}
+                    >
+                      −
+                    </button>
+                    <output
+                      className="min-w-6 text-center font-money text-body font-semibold tabular-nums"
+                      aria-live="polite"
+                    >
+                      {level}
+                    </output>
+                    <button
+                      type="button"
+                      className={stepButtonClass}
+                      disabled={level >= max}
+                      aria-label={t('buildingAdd', { name: view.tile.name })}
+                      onClick={() => setLevel(view, level + 1)}
+                    >
+                      +
+                    </button>
+                  </span>
+                </div>
+                {offence !== undefined && (
+                  <FieldError as="p" announce>
+                    {offence}
+                  </FieldError>
+                )}
               </div>
             );
           })}
@@ -171,14 +226,18 @@ export function BuildingStepper({
           </Button>
           <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-(--mb-space-4) gap-y-[2px] text-small [&_dd]:m-0 [&_dd]:text-end [&_dd]:font-semibold [&_dt]:text-secondary">
             <dt>{t('buildingSummaryCount')}</dt>
-            <dd>{preview.ok ? preview.buildings : 0}</dd>
+            <dd>{buildings}</dd>
             <dt>{t(sell ? 'buildingSummaryRefund' : 'buildingSummaryCost')}</dt>
             <dd className="font-money tabular-nums">{formatMoney(amount, currency)}</dd>
             <dt>{t('buildingSummaryBalance')}</dt>
             <dd className="font-money tabular-nums">{formatMoney(after, currency)}</dd>
           </dl>
           {reason !== null && (
-            <FieldError as="p" announce={preview.ok === false && preview.reason !== 'NOTHING'}>
+            <FieldError
+              as="p"
+              id="building-reason"
+              announce={preview.ok === false && preview.reason !== 'NOTHING'}
+            >
               {reason}
             </FieldError>
           )}

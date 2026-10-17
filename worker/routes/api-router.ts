@@ -15,6 +15,7 @@ import { TransactionNotFoundError } from '../../shared/domain/banking.js';
 import { controlledPlayerIdForBankingCommand } from '../../shared/domain/player-control.js';
 import {
   ConflictError,
+  GameOwnerRequiredError,
   InvalidJoinCodeError,
   LobbyFullError,
   NotFoundError,
@@ -51,6 +52,8 @@ import {
   parsePlaceBidRequest,
   parseStartAuctionRequest,
   parseRecordDiceRollRequest,
+  parseCreateTradeRequest,
+  normalizeJoinCode,
 } from '../validation/api-validation.js';
 
 export interface ApiRouterDependencies {
@@ -126,6 +129,10 @@ async function route(
   const paymentRequestsMatch = /^\/api\/games\/([^/]+)\/payment-requests$/.exec(pathname);
   const paymentRequestActionMatch =
     /^\/api\/games\/([^/]+)\/payment-requests\/([^/]+)\/(accept|decline|cancel)$/.exec(pathname);
+  const tradeRequestsMatch = /^\/api\/games\/([^/]+)\/trade-requests$/.exec(pathname);
+  const tradeRequestActionMatch =
+    /^\/api\/games\/([^/]+)\/trade-requests\/([^/]+)\/(accept|decline|cancel)$/.exec(pathname);
+  const regenerateJoinCodeMatch = /^\/api\/games\/([^/]+)\/join-code\/regenerate$/.exec(pathname);
   const playerTransactionMatch = /^\/api\/games\/([^/]+)\/players\/([^/]+)\/transactions$/.exec(
     pathname,
   );
@@ -175,9 +182,17 @@ async function route(
       'invitationToken' in body
         ? await dependencies.access.invitation(body.invitationToken)
         : await joinCodeAccess(dependencies.access, body.joinCode, body.gameAccessPassword);
-    if (access === null) throw new InvalidJoinCodeError();
-    if (access.status !== 'LOBBY')
+    if (access === null) {
+      if ('joinCode' in body)
+        await recordJoinFailure(dependencies.rateLimits, request, body.joinCode);
+      throw new InvalidJoinCodeError();
+    }
+    if (access.status !== 'LOBBY') {
+      // A code of a running game must not read differently from an unknown one to a guesser.
+      if ('joinCode' in body)
+        await recordJoinFailure(dependencies.rateLimits, request, body.joinCode);
       throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
+    }
     const details = await dependencies.games.getGame(access.gameId);
     if (details.players.length >= MAX_LOBBY_PLAYERS) throw new LobbyFullError();
     const profile = await dependencies.auth.createGuest(body.nickname, body.avatar);
@@ -258,9 +273,17 @@ async function route(
       'invitationToken' in body
         ? await dependencies.access.invitation(body.invitationToken)
         : await joinCodeAccess(dependencies.access, body.joinCode, body.gameAccessPassword);
-    if (access === null) throw new InvalidJoinCodeError();
-    if (access.status !== 'LOBBY')
+    if (access === null) {
+      if ('joinCode' in body)
+        await recordJoinFailure(dependencies.rateLimits, request, body.joinCode);
+      throw new InvalidJoinCodeError();
+    }
+    if (access.status !== 'LOBBY') {
+      // A code of a running game must not read differently from an unknown one to a guesser.
+      if ('joinCode' in body)
+        await recordJoinFailure(dependencies.rateLimits, request, body.joinCode);
       throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
+    }
     const details = await dependencies.games.getGame(access.gameId);
     await dependencies.access.requireLobbySeat(access.gameId, actor.id, details.players.length);
     const playerId = crypto.randomUUID();
@@ -308,13 +331,25 @@ async function route(
     const gameId = parseResourceId(gameMatch[1], 'gameId');
     const role = await dependencies.access.requireMember(gameId, actor.id);
     const controlledWallets = await dependencies.access.controlledWallets(gameId, actor.id);
+    const details = await dependencies.games.getGame(gameId);
     return success({
-      ...(await dependencies.games.getGame(gameId)),
+      ...details,
+      ...(details.game.settings?.board == null
+        ? {}
+        : {
+            tradeRequests: await dependencies.banking.listTradeRequests(
+              gameId,
+              controlledWallets.map((wallet) => wallet.playerId),
+            ),
+          }),
       controlledWallets,
       controlledPlayerIds: controlledWallets.map((wallet) => wallet.playerId),
       canManage: role === 'OWNER',
       ...(role === 'OWNER'
-        ? { joinCode: await dependencies.access.ownerJoinCode(gameId, actor.id) }
+        ? {
+            joinCode: await dependencies.access.ownerJoinCode(gameId, actor.id),
+            hasAccessPassword: await dependencies.access.hasAccessPassword(gameId),
+          }
         : {}),
     });
   }
@@ -368,6 +403,15 @@ async function route(
     await dependencies.access.requireOwner(gameId, actor.id);
     await dependencies.access.revokeInvitations(gameId, actor.id);
     return success({ revoked: true });
+  }
+  if (regenerateJoinCodeMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(regenerateJoinCodeMatch[1], 'gameId');
+    if ((await dependencies.access.requireMember(gameId, actor.id)) !== 'OWNER')
+      throw new GameOwnerRequiredError();
+    const regenerated = await dependencies.games.regenerateJoinCode(gameId, actor.id);
+    // Audit trail: the event carries the game id only, never the old or the new code.
+    securityEvent('join_code_regenerated', { requestId, gameId });
+    return success(regenerated);
   }
   if (summaryMatch !== null && request.method === 'GET') {
     const gameId = parseResourceId(summaryMatch[1], 'gameId');
@@ -546,17 +590,6 @@ async function route(
           actor.id,
           controlledPlayerIdForBankingCommand(body),
         );
-      // A trade moves the counterparty's tiles and cash too. With payment confirmation the caller
-      // must control that wallet as well, so a trade is never forced on somebody else's wallet.
-      if (
-        body.type === 'PROPERTY_TRANSFER' &&
-        (await dependencies.games.getGame(gameId)).game.paymentMode === 'CONFIRMATION'
-      )
-        await dependencies.access.requirePlayerController(
-          gameId,
-          actor.id,
-          body.counterpartyPlayerId,
-        );
       if (dependencies.live !== undefined)
         return dependencies.live.mutate(gameId, actor, {
           type: 'CREATE_TRANSACTION',
@@ -614,6 +647,64 @@ async function route(
           ? await dependencies.banking.declinePaymentRequest(gameId, paymentRequestId)
           : await dependencies.banking.cancelPaymentRequest(gameId, paymentRequestId);
     return success(result);
+  }
+
+  // A trade only happens when the counterparty accepts: the proposer's wallet starts it, the
+  // counterparty's wallet answers, and the one PROPERTY_TRANSFER is written on accept.
+  if (tradeRequestsMatch !== null && request.method === 'GET') {
+    const gameId = parseResourceId(tradeRequestsMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const wallets = await dependencies.access.controlledWallets(gameId, actor.id);
+    return success(
+      await dependencies.banking.listTradeRequests(
+        gameId,
+        wallets.map((wallet) => wallet.playerId),
+      ),
+    );
+  }
+  if (tradeRequestsMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(tradeRequestsMatch[1], 'gameId');
+    await dependencies.access.requireMember(gameId, actor.id);
+    const body = await parseCreateTradeRequest(request);
+    await dependencies.access.requirePlayerController(gameId, actor.id, body.playerId);
+    if (dependencies.live !== undefined)
+      return dependencies.live.mutate(gameId, actor, {
+        type: 'CREATE_TRADE_REQUEST',
+        commandId: readCommandId(request),
+        request: body,
+      });
+    return success(await dependencies.banking.createTradeRequest(gameId, body), 201);
+  }
+  if (tradeRequestActionMatch !== null && request.method === 'POST') {
+    const gameId = parseResourceId(tradeRequestActionMatch[1], 'gameId');
+    const tradeRequestId = parseResourceId(tradeRequestActionMatch[2], 'tradeRequestId');
+    const action = tradeRequestActionMatch[3];
+    await dependencies.access.requireMember(gameId, actor.id);
+    const tradeRequest = await dependencies.banking.getTradeRequest(gameId, tradeRequestId);
+    if (tradeRequest === null)
+      throw new NotFoundError('TRADE_REQUEST_NOT_FOUND', 'Trade request not found.');
+    await dependencies.access.requirePlayerController(
+      gameId,
+      actor.id,
+      action === 'cancel' ? tradeRequest.proposerPlayerId : tradeRequest.counterpartyPlayerId,
+    );
+    const commandId = readCommandId(request);
+    if (dependencies.live !== undefined) {
+      const type =
+        action === 'accept'
+          ? 'ACCEPT_TRADE_REQUEST'
+          : action === 'decline'
+            ? 'DECLINE_TRADE_REQUEST'
+            : 'CANCEL_TRADE_REQUEST';
+      return dependencies.live.mutate(gameId, actor, { type, commandId, tradeRequestId });
+    }
+    return success(
+      action === 'accept'
+        ? await dependencies.banking.acceptTradeRequest(gameId, tradeRequestId)
+        : action === 'decline'
+          ? await dependencies.banking.declineTradeRequest(gameId, tradeRequestId)
+          : await dependencies.banking.cancelTradeRequest(gameId, tradeRequestId),
+    );
   }
 
   if (playerTransactionMatch !== null && request.method === 'GET') {
@@ -756,9 +847,80 @@ async function enforceRateLimit(
               : undefined;
   if (rule === undefined) return;
   const bucket = `${rule.category}:${await tokenHash(source)}`;
-  if (await repository.take(bucket, rule.limit, rule.seconds)) return;
-  securityEvent('rate_limited', { requestId });
-  throw new RateLimitError();
+  if (!(await repository.take(bucket, rule.limit, rule.seconds))) {
+    securityEvent('rate_limited', { requestId });
+    throw new RateLimitError();
+  }
+  if (rule.category === 'join' || rule.category === 'guest-join') {
+    const keys = await joinFailureKeys(request, source);
+    if (keys !== null && (await joinLockedOut(repository, keys))) {
+      // The same generic answer for a code that exists and one that does not.
+      securityEvent('rate_limited', { requestId });
+      throw new RateLimitError();
+    }
+  }
+}
+
+// Failed join attempts (unknown code or wrong password, indistinguishable) are counted, never the
+// successful ones. A pair is locked after a few failures, so guessing one code from one source is
+// slow; the source-wide and per-code caps are high so one noisy source cannot lock a table out.
+const JOIN_FAILURE_WINDOW_SECONDS = 15 * 60;
+const JOIN_FAILURE_PAIR_LIMIT = 5;
+const JOIN_FAILURE_SOURCE_LIMIT = 30;
+const JOIN_FAILURE_CODE_LIMIT = 300;
+
+interface JoinFailureKeys {
+  pair: string;
+  source: string;
+  code: string;
+}
+
+/** Buckets hold hashes only: never the code, nor the address. */
+async function joinFailureKeys(request: Request, source: string): Promise<JoinFailureKeys | null> {
+  let joinCode: unknown;
+  try {
+    joinCode = ((await request.clone().json()) as { joinCode?: unknown }).joinCode;
+  } catch {
+    return null;
+  }
+  if (typeof joinCode !== 'string') return null;
+  const code = await tokenHash(normalizeJoinCode(joinCode).slice(0, 64));
+  const sourceHash = await tokenHash(source);
+  return {
+    pair: `join-fail-pair:${sourceHash}:${code}`,
+    source: `join-fail-source:${sourceHash}`,
+    code: `join-fail-code:${code}`,
+  };
+}
+
+async function joinLockedOut(
+  repository: SecurityRateLimitRepository,
+  keys: JoinFailureKeys,
+): Promise<boolean> {
+  const window = JOIN_FAILURE_WINDOW_SECONDS;
+  return (
+    (await repository.isExceeded(keys.pair, JOIN_FAILURE_PAIR_LIMIT, window)) ||
+    (await repository.isExceeded(keys.source, JOIN_FAILURE_SOURCE_LIMIT, window)) ||
+    (await repository.isExceeded(keys.code, JOIN_FAILURE_CODE_LIMIT, window))
+  );
+}
+
+async function recordJoinFailure(
+  repository: SecurityRateLimitRepository | undefined,
+  request: Request,
+  joinCode: string,
+): Promise<void> {
+  if (repository === undefined) return;
+  const source =
+    request.headers.get('cf-connecting-ip') ??
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    'unknown';
+  const sourceHash = await tokenHash(source);
+  const code = await tokenHash(normalizeJoinCode(joinCode).slice(0, 64));
+  const window = JOIN_FAILURE_WINDOW_SECONDS;
+  await repository.recordFailure(`join-fail-pair:${sourceHash}:${code}`, window);
+  await repository.recordFailure(`join-fail-source:${sourceHash}`, window);
+  await repository.recordFailure(`join-fail-code:${code}`, window);
 }
 
 function failure(
@@ -794,7 +956,7 @@ async function joinCodeAccess(
   joinCode: string,
   gameAccessPassword: string | undefined,
 ): Promise<{ gameId: string; status: string } | null> {
-  const credentials = await access.getJoinCredentials(joinCode);
+  const credentials = await access.getJoinCredentials(normalizeJoinCode(joinCode));
   if (credentials === null || !(await access.verifyGamePassword(gameAccessPassword, credentials)))
     return null;
   return { gameId: credentials.gameId, status: credentials.status };
