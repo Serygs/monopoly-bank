@@ -98,11 +98,14 @@ describe('SavedGamesPage deleted games', () => {
     expect(screen.getByText('Old Table')).toBeInTheDocument();
   });
 
-  it('adds the creation time only to games that share a name', async () => {
+  it('keeps the same meta lines on every card and adds the time only to games that share a name', async () => {
     const twin: GameSummary = { game: game('g3', 'Friday Game'), playerCount: 2 };
     const other: GameSummary = { game: game('g4', 'Sunday Game'), playerCount: 2 };
     setup([friday, twin, other], []);
     await screen.findAllByText('Friday Game');
-    expect(screen.getAllByText(/^Created /)).toHaveLength(2);
+    expect(screen.queryAllByText(/^Created /)).toHaveLength(0);
+    const updated = screen.getAllByText(/^Updated /);
+    expect(updated).toHaveLength(3);
+    expect(updated.filter((line) => /\d:\d\d/.test(line.textContent ?? ''))).toHaveLength(2);
   });
 });
