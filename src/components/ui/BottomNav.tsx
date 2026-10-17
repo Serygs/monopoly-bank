@@ -39,13 +39,13 @@ const fadeClass =
 const listClass = 'm-0 grid list-none items-end p-0 px-(--mb-space-2)';
 const itemClass = cx(
   'relative flex h-[64px] w-full min-w-0 cursor-pointer flex-col items-center justify-end gap-[2px] rounded-pill border-0 bg-transparent px-[2px] pt-(--mb-space-2) pb-(--mb-space-2)',
-  'font-ui text-[0.6875rem] leading-[1.15] font-semibold text-secondary max-[380px]:text-[0.625rem]',
+  'font-ui text-[0.6875rem] leading-[1.2] font-semibold whitespace-nowrap text-secondary max-[380px]:text-[0.625rem]',
   'focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-60',
 );
 const activeItemClass = 'bg-surface-subtle text-primary';
 const raisedItemClass = 'overflow-visible text-secondary';
 const raisedCircleClass = cx(
-  'relative -mt-[18px] grid size-[58px] place-items-center rounded-[50%] [&_svg]:size-[27px]',
+  'absolute top-[-20px] left-1/2 grid size-[58px] -translate-x-1/2 place-items-center rounded-[50%] [&_svg]:size-[27px]',
   'bg-surface-inverse text-on-inverse shadow-md',
 );
 const dotClass =
@@ -96,18 +96,23 @@ export function BottomNav({ label, items, className }: BottomNavProps) {
                   onClick={item.onPress}
                 >
                   {raised ? (
-                    <span
-                      className={cx(
-                        raisedCircleClass,
-                        item.active === true && 'ring-2 ring-accent ring-offset-2',
-                      )}
-                    >
-                      {item.icon}
-                    </span>
+                    <>
+                      <span className="size-[22px]" aria-hidden="true" />
+                      <span
+                        className={cx(
+                          raisedCircleClass,
+                          item.active === true && 'ring-2 ring-accent ring-offset-2',
+                        )}
+                      >
+                        {item.icon}
+                      </span>
+                    </>
                   ) : (
                     item.icon
                   )}
-                  <span className="max-w-full truncate">{item.label}</span>
+                  <span className="max-w-full overflow-hidden py-px text-ellipsis">
+                    {item.label}
+                  </span>
                   {item.dot !== undefined && (
                     <>
                       <span className={dotClass} aria-hidden="true" />
