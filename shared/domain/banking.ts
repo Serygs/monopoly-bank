@@ -546,6 +546,20 @@ export class LoanAmountExceedsDebtError extends BankingDomainError {
   }
 }
 
+export const BANK_TO_PLAYER_MAX_AMOUNT = 4_000_000;
+
+export class BankToPlayerLimitExceededError extends BankingDomainError {
+  readonly code = 'BANK_TO_PLAYER_LIMIT_EXCEEDED' as const;
+  constructor(amount: number, max: number) {
+    super({
+      code: 'BANK_TO_PLAYER_LIMIT_EXCEEDED',
+      message: 'The bank pays a player at most the limit in one operation.',
+      status: 400,
+      details: { field: 'amount', amount, max },
+    });
+  }
+}
+
 export class BankLoanLimitExceededError extends BankingDomainError {
   readonly code = 'BANK_LOAN_LIMIT_EXCEEDED' as const;
   constructor(amount: number, max: number) {
@@ -1164,6 +1178,8 @@ export function repayBankLoan(command: RepayBankLoanCommand): BankingOperationRe
 export function bankToPlayer(command: BankToPlayerCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
   validateAmount(command.amount);
+  if (command.amount > BANK_TO_PLAYER_MAX_AMOUNT)
+    throw new BankToPlayerLimitExceededError(command.amount, BANK_TO_PLAYER_MAX_AMOUNT);
 
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
