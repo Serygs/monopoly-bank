@@ -336,7 +336,7 @@ export async function parseCreateTransactionRequest(
         type,
         payerPlayerId: readUuid(body, 'payerPlayerId'),
         tileId: readTileId(body),
-        ...(body.diceSum === undefined ? {} : { diceSum: readPositiveInteger(body, 'diceSum') }),
+        ...(body.diceSum === undefined ? {} : { diceSum: readDiceSum(body) }),
       };
     case 'MORTGAGE_REDEMPTION':
       return {
@@ -517,6 +517,15 @@ function readPositiveInteger(body: Record<string, unknown>, key: string): number
   const value = body[key];
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
     throw new ApiValidationError(`${key} must be a positive integer.`);
+  }
+  return value;
+}
+
+/** Two six-sided dice: the sum is between 2 and 12. */
+function readDiceSum(body: Record<string, unknown>): number {
+  const value = readPositiveInteger(body, 'diceSum');
+  if (value < 2 || value > 12) {
+    throw new ApiValidationError('diceSum must be between 2 and 12.');
   }
   return value;
 }

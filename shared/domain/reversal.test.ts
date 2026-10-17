@@ -172,6 +172,33 @@ describe('reversal dependencies', () => {
       expect(findReversalDependency(payment, [tx('x', type, [['a', -1]])])?.id).toBe('x');
   });
 
+  it('blocks reversing a purchase once rent was paid on the same tile', () => {
+    const purchase = tx('buy', 'PROPERTY_PURCHASE', [['a', -50]], { tileId: 'arbat' });
+    const rent = tx(
+      'rent',
+      'PAY_RENT',
+      [
+        ['c', -5],
+        ['d', 5],
+      ],
+      { tileId: 'arbat' },
+    );
+    expect(findReversalDependency(purchase, [rent])).toBe(rent);
+    expect(
+      findReversalDependency(purchase, [
+        tx(
+          'r2',
+          'PAY_RENT',
+          [
+            ['c', -5],
+            ['d', 5],
+          ],
+          { tileId: 'zhitna' },
+        ),
+      ]),
+    ).toBeNull();
+  });
+
   it('ignores other players, ordinary payments and operations that were reversed', () => {
     expect(findReversalDependency(payment, [tx('m', 'MORTGAGE', [['c', 100]])])).toBeNull();
     expect(findReversalDependency(payment, [tx('p', 'PLAYER_TO_BANK', [['a', -1]])])).toBeNull();

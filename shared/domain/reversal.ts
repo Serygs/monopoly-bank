@@ -89,6 +89,7 @@ const registryTypes: readonly TransactionType[] = [
   'MORTGAGE',
   'MORTGAGE_REDEMPTION',
   'AUCTION_PAYMENT',
+  'PAY_RENT',
 ];
 
 /**
