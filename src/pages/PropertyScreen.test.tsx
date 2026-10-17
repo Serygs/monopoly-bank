@@ -74,23 +74,55 @@ describe('PropertyScreen', () => {
     expect(screen.getByText('You do not own any cards yet.')).toBeInTheDocument();
   });
 
-  it('lists every tile in All and filters by free, player and group', async () => {
+  it('lists every tile in All and filters from one popover', async () => {
     const { user } = renderScreen();
     await user.click(screen.getByRole('radio', { name: 'All' }));
-    const tileButtons = () =>
-      screen.getAllByRole('listitem').filter((item) => item.querySelector('button'));
+    const tileButtons = () => [...document.querySelectorAll('[data-group] li')];
     expect(tileButtons()).toHaveLength(board.tiles.length);
+    // Nothing is selected, so there are no chips and the button carries no count.
+    expect(screen.queryByRole('button', { name: /^Remove filter/ })).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Free', pressed: false }));
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    const popover = screen.getByRole('group', { name: 'Filters' });
+    await user.click(within(popover).getByRole('button', { name: 'Free' }));
     expect(tileButtons()).toHaveLength(board.tiles.length - 3);
-    await user.click(screen.getByRole('button', { name: 'Free', pressed: true }));
+    expect(screen.getByRole('button', { name: 'Filters (1)' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Bo' }));
+    await user.click(within(popover).getByRole('button', { name: 'Bo' }));
     expect(tileButtons()).toHaveLength(1);
-    await user.click(screen.getByRole('button', { name: 'Bo', pressed: true }));
-
-    await user.click(screen.getByRole('button', { name: 'Brown' }));
+    await user.click(within(popover).getByRole('button', { name: 'All' }));
+    await user.click(within(popover).getByRole('button', { name: 'Brown' }));
     expect(tileButtons()).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Filters (1)' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Remove filter Brown' }));
+    expect(tileButtons()).toHaveLength(board.tiles.length);
+    expect(screen.getByRole('button', { name: 'Filters' })).toBeInTheDocument();
+  });
+
+  it('lists free cards first, then owned ones, each by colour group from the cheapest', async () => {
+    const { user } = renderScreen();
+    await user.click(screen.getByRole('radio', { name: 'All' }));
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings).toEqual([`Free (${board.tiles.length - 3})`, 'Owned (3)']);
+    const free = document.querySelector('[data-section="free"]')!;
+    const groups = [...free.querySelectorAll('[data-group]')].map((el) =>
+      el.getAttribute('data-group'),
+    );
+    // Brown has no free card here (both are owned), so the free section starts at light blue.
+    expect(groups.slice(0, 3)).toEqual(['lightblue', 'pink', 'utility']);
+    expect(groups.at(-1)).toBe('blue');
+    // A free card shows its price and no Owned/Free badge.
+    const firstFree = within(free as HTMLElement).getAllByRole('button')[0]!;
+    expect(firstFree).toHaveTextContent(/\d/);
+    expect(within(firstFree).queryByText('Free')).toBeNull();
+  });
+
+  it('shows rent and owner inside an owned card', () => {
+    renderScreen([row('zhitna')]);
+    const card = screen.getByRole('button', { name: new RegExp(name('zhitna')) });
+    expect(within(card).getByText('Ada')).toBeInTheDocument();
+    expect(within(card).getByText(/^Rent:/)).toBeInTheDocument();
   });
 
   it('opens a read-only card with the current rent level highlighted', async () => {
