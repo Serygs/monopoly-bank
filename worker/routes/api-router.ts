@@ -546,6 +546,17 @@ async function route(
           actor.id,
           controlledPlayerIdForBankingCommand(body),
         );
+      // A trade moves the counterparty's tiles and cash too. With payment confirmation the caller
+      // must control that wallet as well, so a trade is never forced on somebody else's wallet.
+      if (
+        body.type === 'PROPERTY_TRANSFER' &&
+        (await dependencies.games.getGame(gameId)).game.paymentMode === 'CONFIRMATION'
+      )
+        await dependencies.access.requirePlayerController(
+          gameId,
+          actor.id,
+          body.counterpartyPlayerId,
+        );
       if (dependencies.live !== undefined)
         return dependencies.live.mutate(gameId, actor, {
           type: 'CREATE_TRANSACTION',

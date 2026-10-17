@@ -70,6 +70,9 @@ export const transactionTypes = [
   'JACKPOT_PAYOUT',
   'AUCTION_PAYMENT',
   'PROPERTY_PURCHASE',
+  'PROPERTY_BUILD',
+  'PROPERTY_SELL_BUILDING',
+  'PROPERTY_TRANSFER',
 ] as const;
 
 export type TransactionType = (typeof transactionTypes)[number];
@@ -248,6 +251,12 @@ export interface Transaction {
   participants: TransactionParticipant[];
   /** The board tile this operation concerned (purchase, mortgage, redemption, auction, rent). */
   tileId?: string | null;
+  /** Set on a PROPERTY_TRANSFER: the player who made the trade, and so may reverse it. */
+  initiatorPlayerId?: string | null;
+  /** Set on a PROPERTY_TRANSFER: every tile that changed hands. */
+  tileIds?: string[];
+  /** Set on a PROPERTY_PURCHASE paid at a price other than the list price. */
+  priceOverridden?: boolean;
   /** Set on a REVERSAL: the transaction it moved back. */
   reversesTransactionId?: string | null;
   /** Set on a reversed transaction: the REVERSAL that moved it back. */

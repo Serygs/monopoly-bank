@@ -279,6 +279,69 @@ describe('board tile validation', () => {
     });
   });
 
+  it('accepts a positive integer price override on a purchase', async () => {
+    await expect(
+      parseCreateTransactionRequest(
+        jsonRequest({ type: 'PROPERTY_PURCHASE', playerId, tileId: 'arbat', priceOverride: 250 }),
+      ),
+    ).resolves.toEqual({
+      type: 'PROPERTY_PURCHASE',
+      playerId,
+      tileId: 'arbat',
+      priceOverride: 250,
+    });
+  });
+
+  it.each([0, -5, 1.5, '250', null, Number.MAX_SAFE_INTEGER + 2])(
+    'rejects the price override %s',
+    async (priceOverride) => {
+      await expect(
+        parseCreateTransactionRequest(
+          jsonRequest({ type: 'PROPERTY_PURCHASE', playerId, tileId: 'arbat', priceOverride }),
+        ),
+      ).rejects.toBeInstanceOf(ApiValidationError);
+    },
+  );
+
+  it.each(['PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING'] as const)(
+    'accepts %s by tile id and rejects it without one',
+    async (type) => {
+      await expect(
+        parseCreateTransactionRequest(jsonRequest({ type, playerId, tileId: 'zhitna' })),
+      ).resolves.toEqual({ type, playerId, tileId: 'zhitna' });
+      await expect(
+        parseCreateTransactionRequest(jsonRequest({ type, playerId })),
+      ).rejects.toBeInstanceOf(ApiValidationError);
+    },
+  );
+
+  it('parses a trade with optional cash and rejects a malformed one', async () => {
+    const other = '33333333-3333-4333-8333-333333333333';
+    const trade = {
+      type: 'PROPERTY_TRANSFER',
+      playerId,
+      counterpartyPlayerId: other,
+      giveTileIds: ['zhitna'],
+      takeTileIds: ['riga_rail'],
+    };
+    await expect(parseCreateTransactionRequest(jsonRequest(trade))).resolves.toEqual(trade);
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ ...trade, cashGive: 0, cashTake: 5 })),
+    ).resolves.toMatchObject({ cashGive: 0, cashTake: 5 });
+    for (const bad of [
+      { ...trade, counterpartyPlayerId: playerId },
+      { ...trade, giveTileIds: [], takeTileIds: [] },
+      { ...trade, giveTileIds: ['zhitna'], takeTileIds: ['zhitna'] },
+      { ...trade, giveTileIds: ['Bad Id'] },
+      { ...trade, takeTileIds: 'riga_rail' },
+      { ...trade, cashGive: 1.5 },
+      { ...trade, cashTake: '5' },
+    ])
+      await expect(parseCreateTransactionRequest(jsonRequest(bad))).rejects.toBeInstanceOf(
+        ApiValidationError,
+      );
+  });
+
   it('rejects a purchase without a tile id', async () => {
     await expect(
       parseCreateTransactionRequest(jsonRequest({ type: 'PROPERTY_PURCHASE', playerId })),

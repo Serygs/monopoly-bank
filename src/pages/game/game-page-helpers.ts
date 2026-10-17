@@ -51,6 +51,7 @@ export function walletActionTone(action: ActionType): 'income' | 'expense' {
     action === 'ALL_TO_PLAYER' ||
     action === 'PASS_GO' ||
     action === 'MORTGAGE' ||
+    action === 'PROPERTY_SELL_BUILDING' ||
     action === 'BANK_LOAN' ||
     action === 'LOAN_ISSUE' ||
     action === 'JACKPOT_PAYOUT'
@@ -183,6 +184,8 @@ export function buildRequest(
     tileId?: string;
     /** Rent on a utility: the dice total the payer entered. */
     diceSum?: number;
+    /** A purchase paid at an agreed price instead of the list price. */
+    priceOverride?: number;
   } = {},
 ): PlayerTransactionRequest | null {
   const optionalComment = comment.trim() === '' ? {} : { comment: comment.trim() };
@@ -226,6 +229,20 @@ export function buildRequest(
       // The bank records the property name as the comment, so no separate note is sent.
       return { type: action, playerId, propertyName: options.propertyName ?? '', amount };
     case 'PROPERTY_PURCHASE':
+      return options.tileId === undefined || options.tileId === ''
+        ? null
+        : {
+            type: action,
+            playerId,
+            tileId: options.tileId,
+            ...(options.priceOverride === undefined
+              ? {}
+              : { priceOverride: options.priceOverride }),
+          };
+    case 'PROPERTY_TRANSFER':
+      return null; // A trade is built by its own dialog, never by the single-amount form.
+    case 'PROPERTY_BUILD':
+    case 'PROPERTY_SELL_BUILDING':
       return options.tileId === undefined || options.tileId === ''
         ? null
         : { type: action, playerId, tileId: options.tileId };
@@ -321,7 +338,11 @@ export function previewBalances(
           delta = 'amount' in request ? request.amount : tile.amount;
         break;
       case 'PROPERTY_PURCHASE':
+      case 'PROPERTY_BUILD':
         if (player.id === request.playerId) delta = -tile.amount;
+        break;
+      case 'PROPERTY_SELL_BUILDING':
+        if (player.id === request.playerId) delta = tile.amount;
         break;
       case 'PAY_RENT':
         if (player.id === request.payerPlayerId) delta = -tile.amount;
@@ -357,6 +378,9 @@ export function actionLabel(type: ActionType, t: Translate): string {
     MORTGAGE: t('mortgageProperty'),
     MORTGAGE_REDEMPTION: t('redeemMortgage'),
     PROPERTY_PURCHASE: t('buyProperty'),
+    PROPERTY_TRANSFER: t('tradeAction'),
+    PROPERTY_BUILD: t('buildProperty'),
+    PROPERTY_SELL_BUILDING: t('sellBuilding'),
     PAY_RENT: t('payRent'),
     LOAN_ISSUE: t('loanBorrow'),
     LOAN_REPAYMENT: t('loanRepay'),
@@ -378,6 +402,9 @@ export function actionDescription(action: ActionType, name: string, t: Translate
       MORTGAGE: 'actionMortgage',
       MORTGAGE_REDEMPTION: 'actionRedeemMortgage',
       PROPERTY_PURCHASE: 'actionBuyProperty',
+      PROPERTY_TRANSFER: 'actionTrade',
+      PROPERTY_BUILD: 'actionBuildProperty',
+      PROPERTY_SELL_BUILDING: 'actionSellBuilding',
       PAY_RENT: 'actionPayRent',
       LOAN_ISSUE: 'actionLoanIssue',
       LOAN_REPAYMENT: 'actionLoanRepay',
@@ -400,6 +427,7 @@ export function sourceFor(
     action === 'BANK_TO_PLAYER' ||
     action === 'PASS_GO' ||
     action === 'MORTGAGE' ||
+    action === 'PROPERTY_SELL_BUILDING' ||
     action === 'BANK_LOAN'
   )
     return t('bank');
@@ -420,6 +448,7 @@ export function destinationFor(
     action === 'PLAYER_TO_BANK' ||
     action === 'MORTGAGE_REDEMPTION' ||
     action === 'PROPERTY_PURCHASE' ||
+    action === 'PROPERTY_BUILD' ||
     (action === 'LOAN_REPAYMENT' && lenderIsBank)
   )
     return t('bank');
@@ -444,6 +473,9 @@ export function transactionLabel(type: TransactionType, t: Translate): string {
     MORTGAGE: t('mortgageLabel'),
     MORTGAGE_REDEMPTION: t('redemptionLabel'),
     PROPERTY_PURCHASE: t('propertyPurchaseLabel'),
+    PROPERTY_TRANSFER: t('propertyTradeLabel'),
+    PROPERTY_BUILD: t('propertyBuildLabel'),
+    PROPERTY_SELL_BUILDING: t('propertySellBuildingLabel'),
     LOAN_ISSUE: t('loanIssueLabel'),
     LOAN_REPAYMENT: t('loanRepaymentLabel'),
     TO_JACKPOT: t('paidFreeParking'),
@@ -487,6 +519,7 @@ export function preflightFundsError(
     action === 'PLAYER_TO_BANK' ||
     action === 'MORTGAGE_REDEMPTION' ||
     action === 'PROPERTY_PURCHASE' ||
+    action === 'PROPERTY_BUILD' ||
     action === 'PAY_RENT' ||
     action === 'LOAN_REPAYMENT'
   ) {
@@ -512,6 +545,7 @@ export function preflightShortfall(
           action === 'PLAYER_TO_BANK' ||
           action === 'MORTGAGE_REDEMPTION' ||
           action === 'PROPERTY_PURCHASE' ||
+          action === 'PROPERTY_BUILD' ||
           action === 'PAY_RENT' ||
           action === 'LOAN_REPAYMENT'
         ? amount

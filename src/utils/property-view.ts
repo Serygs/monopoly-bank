@@ -1,4 +1,5 @@
 import type { BoardSnapshot, PropertyGroupId, PropertyTile } from '../../shared/board';
+import { canBuild, canSellBuilding } from '../../shared/domain/property';
 import type { GameProperty } from '../../shared/types/monopoly';
 
 /** Fixed swatch colours of the board's colour groups (domain data, like a player colour). */
@@ -178,8 +179,46 @@ export function rentableTiles(views: readonly TileView[], payerPlayerId: string)
   );
 }
 
+/** The registry rows behind the views, for the shared building rules. */
+function registryOf(views: readonly TileView[]): GameProperty[] {
+  return views.map((view) => ({
+    gameId: '',
+    tileId: view.tile.id,
+    ownerPlayerId: view.ownerPlayerId,
+    mortgaged: view.mortgaged,
+    houses: view.houses,
+  }));
+}
+
+/** The player's streets that may take another house or the hotel now. */
+export function buildableTiles(
+  board: BoardSnapshot,
+  views: readonly TileView[],
+  playerId: string,
+): TileView[] {
+  const registry = registryOf(views);
+  return views.filter((view) => canBuild(board, registry, view.tile.id, playerId));
+}
+
+/** The player's streets with a building that may be sold now. */
+export function sellableTiles(
+  board: BoardSnapshot,
+  views: readonly TileView[],
+  playerId: string,
+): TileView[] {
+  const registry = registryOf(views);
+  return views.filter((view) => canSellBuilding(board, registry, view.tile.id, playerId));
+}
+
 export type TileIntentKind =
-  'PROPERTY_PURCHASE' | 'MORTGAGE' | 'MORTGAGE_REDEMPTION' | 'AUCTION' | 'PAY_RENT';
+  | 'PROPERTY_PURCHASE'
+  | 'MORTGAGE'
+  | 'MORTGAGE_REDEMPTION'
+  | 'AUCTION'
+  | 'PAY_RENT'
+  | 'PROPERTY_BUILD'
+  | 'PROPERTY_SELL_BUILDING'
+  | 'PROPERTY_TRANSFER';
 
 /** An action a wallet can start on one tile, with the wallet that performs it. */
 export interface TileIntent {
@@ -193,6 +232,7 @@ export interface TileIntent {
  * viewer controls); buying, bidding-off and paying rent use the viewer's acting wallet.
  */
 export function tileIntents(
+  board: BoardSnapshot,
   views: readonly TileView[],
   view: TileView,
   options: {
@@ -213,8 +253,22 @@ export function tileIntents(
     if (view.mortgaged) intents.push({ kind: 'MORTGAGE_REDEMPTION', tileId, playerId: owner });
     else if (mortgageableTiles(views, owner).some((candidate) => candidate.tile.id === tileId))
       intents.push({ kind: 'MORTGAGE', tileId, playerId: owner });
+    if (buildableTiles(board, views, owner).some((candidate) => candidate.tile.id === tileId))
+      intents.push({ kind: 'PROPERTY_BUILD', tileId, playerId: owner });
+    if (sellableTiles(board, views, owner).some((candidate) => candidate.tile.id === tileId))
+      intents.push({ kind: 'PROPERTY_SELL_BUILDING', tileId, playerId: owner });
   }
   if (owner !== null && actorPlayerId !== null && owner !== actorPlayerId && !view.mortgaged)
     intents.push({ kind: 'PAY_RENT', tileId, playerId: actorPlayerId });
+  // A trade starts from either side of a tile; tiles of a group with buildings cannot be traded.
+  const groupBuilt = views.some(
+    (other) => other.tile.group === view.tile.group && other.houses > 0,
+  );
+  if (owner !== null && !groupBuilt) {
+    if (controlledPlayerIds.includes(owner))
+      intents.push({ kind: 'PROPERTY_TRANSFER', tileId, playerId: owner });
+    else if (actorPlayerId !== null && owner !== actorPlayerId)
+      intents.push({ kind: 'PROPERTY_TRANSFER', tileId, playerId: actorPlayerId });
+  }
   return intents;
 }
