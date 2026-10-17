@@ -556,24 +556,31 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
               </Notice>
             )}
             <FormSection legend={t('reviewLobby')} className="md:col-span-full">
-              <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-(--mb-space-4) gap-y-(--mb-space-2) [&_dd]:m-0 [&_dd]:text-end [&_dd]:font-semibold [&_dt]:text-secondary">
-                <dt>{t('gameName')}</dt>
-                <dd>{name.trim()}</dd>
-                <dt>{t('startingBalance')}</dt>
-                <dd>{formatMoney(Number(startingBalance), currency)}</dd>
-                <dt>{t('passGoReward')}</dt>
-                <dd>{formatMoney(Number(passGoReward), currency)}</dd>
-                <dt>{t('boardSection')}</dt>
-                <dd>{board === 'none' ? t('boardNone') : t('boardMonopolyRu2012')}</dd>
-                <dt>{t('houseRules')}</dt>
-                <dd>
-                  {houseRuleOptions
-                    .filter(({ key }) => rules[key])
-                    .map(({ label }) => t(label))
-                    .join(', ') || t('noneEnabled')}
-                </dd>
-                <dt>{t('stepPlayers')}</dt>
-                <dd>{players.length}</dd>
+              <dl className="m-0 grid gap-y-(--mb-space-3)">
+                <ReviewRow label={t('gameName')} value={name.trim()} block />
+                <ReviewRow
+                  label={t('startingBalance')}
+                  value={formatMoney(Number(startingBalance), currency)}
+                />
+                <ReviewRow
+                  label={t('passGoReward')}
+                  value={formatMoney(Number(passGoReward), currency)}
+                />
+                <ReviewRow
+                  label={t('boardSection')}
+                  value={board === 'none' ? t('boardNone') : t('boardMonopolyRu2012')}
+                />
+                <ReviewRow
+                  label={t('houseRules')}
+                  value={
+                    houseRuleOptions
+                      .filter(({ key }) => rules[key])
+                      .map(({ label }) => t(label))
+                      .join(', ') || t('noneEnabled')
+                  }
+                  block
+                />
+                <ReviewRow label={t('stepPlayers')} value={String(players.length)} />
               </dl>
             </FormSection>
           </>
@@ -593,6 +600,37 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
         onNext={() => (step < stepCount - 1 ? next() : formRef.current?.requestSubmit())}
       />
     </PageShell>
+  );
+}
+
+function ReviewRow({
+  label,
+  value,
+  block = false,
+}: {
+  label: string;
+  value: string;
+  block?: boolean;
+}) {
+  return (
+    <div
+      className={
+        block
+          ? 'grid gap-y-(--mb-space-1)'
+          : 'grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-(--mb-space-3)'
+      }
+    >
+      <dt className="text-secondary">{label}</dt>
+      <dd
+        className={
+          block
+            ? 'm-0 font-semibold wrap-anywhere'
+            : 'm-0 text-end font-semibold whitespace-nowrap tabular-nums'
+        }
+      >
+        {value}
+      </dd>
+    </div>
   );
 }
 
