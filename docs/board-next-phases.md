@@ -12,8 +12,9 @@ Skip `npm run test:visual` (decision of 2026-10-17). Checks per PR: `npm run lin
 | A   | #58 cleanup, `priceOverride`, auction settles as `PROPERTY_PURCHASE`, reversible board mortgage / redeem (migration `0030`) | PR open, branch `feat/board-purchase-reversibility`          |
 | B   | `PROPERTY_BUILD` / `PROPERTY_SELL_BUILDING`, even building, hotel, group-wide reversal blocks, UI                           | PR open, stacked on A, branch `feat/board-property-building` |
 | C   | `PROPERTY_TRANSFER` trades: tiles + cash each way, mortgage fee, reversal, UI (migration `0031`)                            | PR open, stacked on B, branch `feat/board-property-trades`   |
+| D   | Bankruptcy with asset transfer: buildings sold, mortgage fees, creditor shortfall flow                                      | PR open, stacked on C, branch `feat/board-bankruptcy-assets` |
 
-PRs A, B and C are done (stacked: each is based on the previous branch); start PR D from `feat/board-property-trades` until they are merged. Migration `0029_property_actions.sql` already allows the transaction types `PROPERTY_BUILD`, `PROPERTY_SELL_BUILDING`, `PROPERTY_TRADE` (reserved, never written). Next migration number: `0032`.
+PRs A to D are done (stacked: each is based on the previous branch). The board registry roadmap is complete once they are merged. Migration `0029_property_actions.sql` already allows the transaction types `PROPERTY_BUILD`, `PROPERTY_SELL_BUILDING`, `PROPERTY_TRADE` (reserved, never written). Next migration number: `0032`.
 
 Leftovers from the #58 review were fixed in PR A (kept for reference):
 

@@ -2,7 +2,11 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { propertyPurchase, transferProperties } from '../../shared/domain/banking.js';
+import {
+  declareBankruptcy,
+  propertyPurchase,
+  transferProperties,
+} from '../../shared/domain/banking.js';
 import { buildGameSettings } from '../../shared/domain/game-rules.js';
 import { defaultGameRules } from '../../shared/types/monopoly.js';
 import { DefaultAuctionService } from '../services/auction-service.js';
@@ -731,6 +735,176 @@ describe('board registry (real SQLite)', () => {
       expect(stats.largestTransaction).toBe(600_000);
       expect(stats.totalTransactions).toBe(2);
       expect(stats.awards.biggestOperation?.type).toBe('PROPERTY_PURCHASE');
+    });
+  });
+
+  describe('bankruptcy with assets', () => {
+    const houses = (id: string) =>
+      (
+        database.prepare('SELECT houses FROM game_properties WHERE tile_id = ?').get(id) as {
+          houses: number;
+        }
+      ).houses;
+    const owner = (id: string) => tile(id).owner_player_id;
+    const bankrupt = (creditorPlayerId?: string) =>
+      banking.declareBankruptcy('game', {
+        playerId: 'a',
+        ...(creditorPlayerId === undefined ? {} : { creditorPlayerId }),
+      });
+    const status = (id: string) =>
+      (database.prepare('SELECT status FROM players WHERE id = ?').get(id) as { status: string })
+        .status;
+    const mortgageRows = () =>
+      database.prepare('SELECT player_id AS p, state FROM mortgages ORDER BY id').all();
+    const builtBrown = async () => {
+      await buy('a', 'zhitna');
+      await buy('a', 'nagatinska');
+      for (const tileId of ['zhitna', 'nagatinska', 'zhitna'])
+        await banking.createTransaction('game', {
+          type: 'PROPERTY_BUILD',
+          playerId: 'a',
+          tileId,
+        });
+    };
+
+    it('sells the buildings first, so the creditor gets cash plus the proceeds, and records one diff per tile', async () => {
+      await setup();
+      await builtBrown();
+      const cash = balance('a');
+      const before = balance('b');
+      const response = await bankrupt('b');
+      // Three buildings (2 + 1) at 250_000 each.
+      expect(balance('b')).toBe(before + cash + 750_000);
+      expect(response.transaction).toMatchObject({ amount: cash + 750_000 });
+      expect(houses('zhitna')).toBe(0);
+      expect(houses('nagatinska')).toBe(0);
+      expect(owner('zhitna')).toBe('b');
+      expect(owner('nagatinska')).toBe('b');
+      expect(status('a')).toBe('BANKRUPT');
+      const diffs = database
+        .prepare(
+          'SELECT tile_id, before_houses AS bh, after_houses AS ah FROM property_changes WHERE transaction_id = ? ORDER BY tile_id',
+        )
+        .all(response.transaction.id);
+      expect(diffs).toEqual([
+        { tile_id: 'nagatinska', bh: 1, ah: 0 },
+        { tile_id: 'zhitna', bh: 2, ah: 0 },
+      ]);
+      expect(response.properties?.map((row) => row.tileId).sort()).toContain('zhitna');
+    });
+
+    it('charges the creditor the mortgage fee and hands them the mortgage', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await banking.createTransaction('game', {
+        type: 'MORTGAGE',
+        playerId: 'a',
+        tileId: 'zhitna',
+      });
+      const cash = balance('a');
+      const before = balance('b');
+      await bankrupt('b');
+      expect(balance('b')).toBe(before + cash - 30_000);
+      expect(tile('zhitna').mortgaged).toBe(1);
+      expect(mortgageRows()).toEqual([{ p: 'b', state: 'ACTIVE' }]);
+    });
+
+    it('refuses with BANKRUPTCY_CREDITOR_SHORT, writes nothing, and works once the creditor has cash', async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await banking.createTransaction('game', {
+        type: 'MORTGAGE',
+        playerId: 'a',
+        tileId: 'zhitna',
+      });
+      database.exec("UPDATE players SET balance = 0 WHERE id = 'a'");
+      database.exec("UPDATE players SET balance = 10000 WHERE id = 'b'");
+      const written = count('transactions');
+      await expect(bankrupt('b')).rejects.toMatchObject({
+        code: 'BANKRUPTCY_CREDITOR_SHORT',
+        details: { creditorPlayerId: 'b', required: 30_000, shortfall: 20_000 },
+      });
+      expect(count('transactions')).toBe(written);
+      expect(status('a')).toBe('ACTIVE');
+      expect(owner('zhitna')).toBe('a');
+      database.exec("UPDATE players SET balance = 30000 WHERE id = 'b'");
+      await bankrupt('b');
+      expect(status('a')).toBe('BANKRUPT');
+      expect(balance('b')).toBe(0);
+      expect(owner('zhitna')).toBe('b');
+    });
+
+    it('returns everything to the bank, unbuilt, unmortgaged and with the mortgage released', async () => {
+      await setup();
+      await builtBrown();
+      await buy('a', 'riga_rail');
+      await banking.createTransaction('game', {
+        type: 'MORTGAGE',
+        playerId: 'a',
+        tileId: 'riga_rail',
+      });
+      const before = balance('b');
+      await bankrupt();
+      expect(balance('b')).toBe(before);
+      for (const tileId of ['zhitna', 'nagatinska', 'riga_rail']) {
+        expect(owner(tileId)).toBeNull();
+        expect(tile(tileId).mortgaged).toBe(0);
+        expect(houses(tileId)).toBe(0);
+      }
+      expect(mortgageRows()).toEqual([{ p: 'a', state: 'RELEASED' }]);
+    });
+
+    it("keeps the creditor's leading auction bid covered when the fees would eat into it", async () => {
+      await setup();
+      await buy('a', 'zhitna');
+      await banking.createTransaction('game', {
+        type: 'MORTGAGE',
+        playerId: 'a',
+        tileId: 'zhitna',
+      });
+      const { auction } = await auctions.startAuction(
+        'game',
+        { initiatorPlayerId: 'a', tileId: 'riga_rail' },
+        newId(),
+      );
+      const step = settings.auctionBidSteps[0]!;
+      await auctions.placeBid('game', {
+        bidderPlayerId: 'b',
+        auctionId: auction.id,
+        expectedVersion: auction.version,
+        step,
+      });
+      database.exec("UPDATE players SET balance = 0 WHERE id = 'a'");
+      database.exec(`UPDATE players SET balance = ${step + 10_000} WHERE id = 'b'`);
+      await expect(bankrupt('b')).rejects.toMatchObject({ code: 'INSUFFICIENT_AVAILABLE_FUNDS' });
+      expect(status('a')).toBe('ACTIVE');
+    });
+
+    it('rolls everything back when a tile moved between reading and writing', async () => {
+      await setup();
+      await builtBrown();
+      const result = declareBankruptcy({
+        game: (await games.getById('game'))!,
+        players: await players.listByGameId('game'),
+        playerId: 'a',
+        creditorPlayerId: 'b',
+        property: { board: settings.board!, registry: await properties.listByGame('game') },
+      });
+      database.exec("UPDATE game_properties SET houses = 0 WHERE tile_id = 'zhitna'");
+      const written = count('transactions');
+      await expect(
+        operations.persist({
+          transactionId: newId(),
+          transaction: result.transaction,
+          balanceChanges: result.affectedPlayers,
+          bankruptPlayerId: 'a',
+          mortgageHeirPlayerId: 'b',
+          loanHeirPlayerId: 'b',
+        }),
+      ).rejects.toMatchObject({ name: 'DatabaseError' });
+      expect(count('transactions')).toBe(written);
+      expect(status('a')).toBe('ACTIVE');
+      expect(owner('nagatinska')).toBe('a');
     });
   });
 });

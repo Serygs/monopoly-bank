@@ -27,6 +27,14 @@ const english = {
   bankruptcyToBank: 'Remaining money is returned to the Bank.',
   bankruptcyToPlayer: '{name} transfers their remaining money to {creditor}.',
   bankruptcyIrreversible: 'This cannot be undone.',
+  bankruptcyTilesToBank: '{count} properties go back to the bank, unmortgaged.',
+  bankruptcyTilesToPlayer: '{count} properties pass to {creditor}; mortgaged ones stay mortgaged.',
+  bankruptcyBuildingsSold:
+    'Buildings sold to the bank first: {count} for {amount}, added to the wallet.',
+  bankruptcyCreditorFee: '{creditor} pays the bank {amount} for the mortgaged properties.',
+  bankruptcyCreditorShort:
+    '{creditor} cannot pay the mortgage fees: {amount} short. They can mortgage properties or sell buildings first, then try again.',
+  bankruptcyOpenWallet: "Open {name}'s wallet",
   chooseBankruptcyDestination: 'Choose where {name}’s remaining balance goes.',
   toBank: 'To Bank',
   toPlayer: 'To {name}',
@@ -803,6 +811,15 @@ const ukrainian: TranslationCatalog = {
   bankruptcyToBank: 'Залишок коштів повернеться до банку.',
   bankruptcyToPlayer: '{name} передає залишок коштів гравцю {creditor}.',
   bankruptcyIrreversible: 'Цю дію неможливо скасувати.',
+  bankruptcyTilesToBank: '{count} об’єктів майна повертаються банку без застави.',
+  bankruptcyTilesToPlayer:
+    '{count} об’єктів майна переходять до {creditor}; майно в заставі лишається в заставі.',
+  bankruptcyBuildingsSold:
+    'Спочатку будівлі продаються банку: {count} за {amount}, ці гроші йдуть у гаманець.',
+  bankruptcyCreditorFee: '{creditor} платить банку {amount} за майно в заставі.',
+  bankruptcyCreditorShort:
+    '{creditor} не може сплатити комісію за заставу: бракує {amount}. Спершу можна заставити майно або продати будівлі, потім повторити.',
+  bankruptcyOpenWallet: 'Відкрити гаманець {name}',
   chooseBankruptcyDestination: 'Виберіть, куди передати залишок коштів гравця {name}.',
   toBank: 'До банку',
   toPlayer: 'До {name}',

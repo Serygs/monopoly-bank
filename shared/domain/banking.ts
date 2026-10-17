@@ -1282,6 +1282,23 @@ function mortgageReversalOf(
   return undefined;
 }
 
+/** A player creditor cannot cover the mortgage fees of the tiles they would inherit. */
+export class BankruptcyCreditorShortError extends AppError {
+  constructor(creditorPlayerId: string, required: number, available: number) {
+    super({
+      code: 'BANKRUPTCY_CREDITOR_SHORT',
+      message: 'The creditor cannot pay the mortgage fees of the inherited properties.',
+      status: 409,
+      details: {
+        creditorPlayerId,
+        required,
+        available,
+        shortfall: required - available,
+      },
+    });
+  }
+}
+
 export function declareBankruptcy(command: BankruptcyCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
   const bankruptPlayer = findPlayer(players, command.playerId);
@@ -1292,54 +1309,75 @@ export function declareBankruptcy(command: BankruptcyCommand): BankingOperationR
     ensureActive(creditor);
     ensureDifferentPlayers(bankruptPlayer, creditor);
   }
-  const cash = bankruptPlayer.balance;
-  const settlement = settleBankLoan(command, bankruptPlayer);
-  const registryChanges = bankruptcyRegistryChanges(command, bankruptPlayer, creditor);
-  if (cash === 0) {
-    return withRegistryChanges(
-      withBankLoanSettlement(
-        createResult(command.game.id, 'BANKRUPTCY_TRANSFER', 1, 1, null, []),
-        settlement,
-      ),
-      registryChanges,
-    );
-  }
+  // Board games: every building is sold back to the bank first, so the proceeds join the wallet
+  // and count toward what the bank loan and the creditor receive.
+  const assets = bankruptcyAssets(command, bankruptPlayer, creditor);
+  const balance = bankruptPlayer.balance;
+  const wallet = balance + assets.proceeds;
+  const settlement = settleBankLoan(command, bankruptPlayer, wallet);
   // The bank is owed first; a player creditor only receives what is left of the wallet.
   const bankTake = settlement === null ? 0 : settlement.paidPrincipal + settlement.paidInterest;
-  const creditorShare = cash - bankTake;
+  const creditorShare = wallet - bankTake;
+  // The creditor pays the bank 10% of the mortgage value for every mortgaged tile they inherit.
+  // If the wallet's share does not cover it, nothing is written and the creditor must raise cash.
+  const creditorNet = creditorShare - assets.creditorFee;
+  if (creditor !== null && creditor.balance + creditorNet < 0)
+    throw new BankruptcyCreditorShortError(
+      creditor.id,
+      assets.creditorFee,
+      creditor.balance + creditorShare,
+    );
+  const changes = [
+    ...(balance === 0 ? [] : [createBalanceChange(bankruptPlayer, -balance)]),
+    ...(creditor === null || creditorNet === 0 ? [] : [createBalanceChange(creditor, creditorNet)]),
+  ];
+  const amount = wallet === 0 ? 1 : wallet;
   return withRegistryChanges(
     withBankLoanSettlement(
-      createResult(command.game.id, 'BANKRUPTCY_TRANSFER', cash, cash, null, [
-        createBalanceChange(bankruptPlayer, -cash),
-        ...(creditor === null || creditorShare === 0
-          ? []
-          : [createBalanceChange(creditor, creditorShare)]),
-      ]),
+      createResult(command.game.id, 'BANKRUPTCY_TRANSFER', amount, amount, null, changes),
       settlement,
     ),
-    registryChanges,
+    assets.changes,
   );
 }
 
 /**
- * Board games: every tile of the bankrupt player passes to the creditor (mortgage flag kept, so the
- * creditor can redeem it), or goes back to the bank unmortgaged. Buildings are not handled yet.
+ * Board games: what the bankrupt player's tiles and buildings turn into. Each tile gets one
+ * registry change (before = as it stands, after = as it ends): buildings sold (a hotel counts as
+ * five, each refunded `floor(houseCost * sellBuildingRefund)`), then the tile passes to the
+ * creditor with its mortgage flag kept (so they can redeem it, paying `mortgageTransferFee` now),
+ * or goes back to the bank unowned and unmortgaged.
  */
-function bankruptcyRegistryChanges(
+function bankruptcyAssets(
   command: BankruptcyCommand,
   bankruptPlayer: Player,
   creditor: Player | null,
-): PropertyChange[] {
-  if (command.property === undefined) return [];
-  return command.property.registry
+): { changes: PropertyChange[]; proceeds: number; creditorFee: number } {
+  if (command.property === undefined) return { changes: [], proceeds: 0, creditorFee: 0 };
+  const { board, registry } = command.property;
+  let proceeds = 0;
+  let creditorFee = 0;
+  const changes = registry
     .filter((row) => row.ownerPlayerId === bankruptPlayer.id)
-    .map((row) =>
-      ownerChange(
-        row.tileId,
-        { ownerPlayerId: row.ownerPlayerId, mortgaged: row.mortgaged, houses: row.houses },
-        creditor?.id ?? null,
-      ),
-    );
+    .map((row): PropertyChange => {
+      const before = {
+        ownerPlayerId: row.ownerPlayerId,
+        mortgaged: row.mortgaged,
+        houses: row.houses,
+      };
+      proceeds += row.houses * sellRefund(board, row.tileId);
+      if (creditor !== null && row.mortgaged) creditorFee += mortgageTransferFee(board, row.tileId);
+      return {
+        tileId: row.tileId,
+        before,
+        after: {
+          ownerPlayerId: creditor?.id ?? null,
+          mortgaged: creditor === null ? false : row.mortgaged,
+          houses: 0,
+        },
+      };
+    });
+  return { changes, proceeds, creditorFee };
 }
 
 function withRegistryChanges(
@@ -1362,6 +1400,8 @@ type BankLoanSettlement = NonNullable<PendingTransaction['bankLoanSettlement']>;
 function settleBankLoan(
   command: BankruptcyCommand,
   bankruptPlayer: Player,
+  /** The cash the bank can take: the balance plus what the buildings sold for. */
+  wallet: number,
 ): BankLoanSettlement | null {
   if (command.bankLoan === undefined) return null;
   const { loan, suggestedRatePercent } = command.bankLoan;
@@ -1374,7 +1414,7 @@ function settleBankLoan(
     throw new LoanNotFoundError(loan.id);
   const outstanding = loan.principal - loan.repaidAmount;
   const debt = outstanding + bankLoanInterest(loan.principal, suggestedRatePercent);
-  const taken = Math.min(bankruptPlayer.balance, debt);
+  const taken = Math.min(wallet, debt);
   const paidPrincipal = Math.min(taken, outstanding);
   return {
     loanId: loan.id,

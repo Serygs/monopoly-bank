@@ -880,6 +880,12 @@ export class DefaultBankingService implements BankingService {
         ...(await this.propertiesFor(game, existing.id, true)),
       };
     }
+    // The creditor may pay mortgage fees out of their own cash and must keep their leading bid
+    // covered; the bankrupt player's own bid is withdrawn in the same batch.
+    assertReserveRespected(
+      result.affectedPlayers.filter((change) => change.player.id !== request.playerId),
+      await this.runningAuction(game),
+    );
     await this.operations.persist({
       transactionId,
       transaction: result.transaction,

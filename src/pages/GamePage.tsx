@@ -728,8 +728,22 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                   loan.borrowerPlayerId === bankruptPlayer.id,
               )
             }
+            board={board}
+            properties={properties}
+            currency={details.game.currency}
+            onOpenWallet={(wallet) => {
+              setBankruptPlayer(null);
+              setSelectedPlayer(wallet);
+            }}
             onClose={() => setBankruptPlayer(null)}
-            onCompleted={(players, mortgages, loans, bankLoanCooldowns, jackpot) => {
+            onCompleted={(
+              players,
+              mortgages,
+              loans,
+              bankLoanCooldowns,
+              jackpot,
+              changedProperties,
+            ) => {
               setDetails({
                 ...details,
                 players,
@@ -737,6 +751,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                 ...(loans === undefined ? {} : { loans }),
                 ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
                 ...(jackpot === undefined ? {} : { jackpot }),
+                ...(changedProperties === undefined ? {} : { properties: changedProperties }),
               });
               setBankruptPlayer(null);
             }}
