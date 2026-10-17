@@ -503,7 +503,11 @@ function AppRoutes() {
           profile={profile}
           onClose={() => navigate('/')}
           onDirtyChange={setCreateDirty}
-          onCreated={(id) => navigate(`/games/${encodeURIComponent(id)}`)}
+          onCreated={(id) => {
+            // The lobby exists now, so the form has nothing left to lose: leave without the prompt.
+            createDirty.current = false;
+            navigate(`/games/${encodeURIComponent(id)}`);
+          }}
         />
       ) : path === '/games/join' ? (
         <JoinGamePage
