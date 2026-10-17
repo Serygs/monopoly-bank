@@ -19,6 +19,7 @@ function renderDialog(props: Partial<Parameters<typeof InviteDialog>[0]> = {}) {
 afterEach(() => {
   vi.useRealTimers();
   Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
+  Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true });
 });
 
 describe('InviteDialog', () => {
@@ -58,6 +59,24 @@ describe('InviteDialog', () => {
     expect(screen.getByRole('button', { name: 'Copy invite link' })).toHaveClass(
       'button-secondary',
     );
+  });
+
+  it('does not render Share when canShare refuses the link', () => {
+    const canShare = vi.fn(() => false);
+    Object.defineProperty(navigator, 'share', { value: vi.fn(), configurable: true });
+    Object.defineProperty(navigator, 'canShare', { value: canShare, configurable: true });
+    renderDialog();
+    expect(canShare).toHaveBeenCalledWith({ url: expect.stringContaining('ABC123') });
+    expect(screen.queryByRole('button', { name: 'Share invite' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Copy invite link' })).toHaveClass('button-primary');
+  });
+
+  it('warns that old links stop working but joined players are unaffected', async () => {
+    const user = userEvent.setup();
+    renderDialog({ canRegenerate: true });
+    await user.click(screen.getByRole('button', { name: 'Regenerate code' }));
+    expect(screen.getByText(/Old QR codes and links will stop working\./)).toBeInTheDocument();
+    expect(screen.getByText(/Players already in the game are not affected/)).toBeInTheDocument();
   });
 
   it('regenerates the code only after a confirmation, for the owner', async () => {

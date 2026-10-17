@@ -61,7 +61,11 @@ export function InviteDialog({
   );
 
   const link = code === undefined ? null : joinInviteLink(window.location.origin, code);
-  const canShare = typeof navigator.share === 'function';
+  // Share is offered only where the browser can share this link; otherwise Copy is the primary action.
+  const canShare =
+    link !== null &&
+    typeof navigator.share === 'function' &&
+    (typeof navigator.canShare !== 'function' || navigator.canShare({ url: link }));
   const write = async (text: string, prompt: string) => {
     if (navigator.clipboard !== undefined) await navigator.clipboard.writeText(text);
     else window.prompt(prompt, text);

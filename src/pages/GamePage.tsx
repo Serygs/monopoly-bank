@@ -111,6 +111,8 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
+  // The first activity page, fetched once so the recent list is not empty after a reload.
+  const [seededTransactions, setSeededTransactions] = useState<Transaction[]>([]);
   const lastAppliedVersion = useRef(0);
   // The wallet putting a property up for auction, with the suggested name.
   const [tradePrompt, setTradePrompt] = useState<{ player: Player; tileId: string } | null>(null);
@@ -155,6 +157,22 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   useEffect(() => {
     if (details?.game.status === 'ACTIVE' && !offline) loadPaymentRequests();
   }, [details?.game.status, loadPaymentRequests, offline]);
+
+  const activeGame = details?.game.status === 'ACTIVE';
+  const seedRecentActivity = activeGame === true && !offline;
+  useEffect(() => {
+    if (!seedRecentActivity) return;
+    let active = true;
+    void monopolyBankApi.getActivity(gameId, 'ALL').then(
+      (page) => {
+        if (active) setSeededTransactions(page.transactions.slice(0, 4));
+      },
+      () => undefined,
+    );
+    return () => {
+      active = false;
+    };
+  }, [gameId, seedRecentActivity]);
 
   /** Applies an auction answer: the newest auction, and the balances when it settled a sale. */
   const applyAuctionResponse = useCallback((response: AuctionResponse) => {
@@ -308,6 +326,15 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     );
   }
   const controlledWallets = details.controlledWallets ?? [];
+  // Live transactions first, then the fetched page; de-duplicated by id, newest first, at most 4.
+  const recentTransactions = [
+    ...liveTransactions,
+    ...seededTransactions.filter(
+      (seeded) => !liveTransactions.some((live) => live.id === seeded.id),
+    ),
+  ]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 4);
   const activeControlledWalletId = controlledWallets.some(
     (wallet) => wallet.playerId === activeWalletId,
   )
@@ -395,12 +422,11 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     <GameBottomNav
       active={activeNav}
       onClose={closeNavSheets}
-      pendingRequests={canMutate ? inboxRequests.length : 0}
+      hasPending={canMutate && (inboxRequests.length > 0 || incomingTrades.length > 0)}
       property={
         board === null
           ? undefined
           : {
-              count: myCards.length,
               onOpen: () => {
                 closeNavSheets();
                 setPropertyOpen(true);
@@ -508,7 +534,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
           canMutate={canMutate}
           loans={visibleLoans}
           auction={rules.auctions ? (details.auction ?? null) : null}
-          recentTransactions={liveTransactions}
+          recentTransactions={recentTransactions}
           onShowActivity={() => {
             closeNavSheets();
             setActivityOpen(true);

@@ -43,7 +43,7 @@ const heroClass = cx(
   'lg:grid-cols-[minmax(0,62%)_minmax(0,38%)]! lg:items-center',
   'max-md:[&_.page-header-actions]:grid-cols-1 max-md:[&_.page-header-actions_.button]:w-full max-md:[&_.button-primary]:-order-1',
   'lg:[&_.page-header-actions]:col-[1] lg:[&_.page-header-actions]:max-w-[28rem]',
-  'classic:after:hidden classic:max-md:bg-[position:62%_center] classic:max-md:bg-[size:auto_100%]',
+  'classic:after:hidden classic:max-md:bg-[position:62%_center] classic:max-md:bg-[size:cover]',
   'glass:isolate glass:border-[rgb(255_255_255/0.6)] glass:text-primary glass:shadow-lg',
   'glass:[&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-accent-hover)_88%,var(--mb-color-text-primary))]',
   'glass:after:w-[42%] glass:after:opacity-82',
@@ -51,7 +51,7 @@ const heroClass = cx(
 );
 /* The search field and sort select share each style's control skin. */
 const controlsClass = cx(
-  'mb-(--mb-layout-section-gap-compact) grid gap-(--mb-space-3)',
+  'mb-(--mb-layout-section-gap-compact) grid grid-cols-[minmax(0,1fr)] gap-(--mb-space-3)',
   'md:grid-cols-[minmax(0,1fr)_auto] md:items-center lg:grid-cols-[minmax(18rem,1fr)_auto_auto]',
   'classic:[&_:is(input,select)]:border-border classic:[&_:is(input,select)]:bg-[#fffcf3] classic:[&_:is(input,select)]:shadow-[0_5px_16px_rgb(42_52_39/0.05)]',
   'classic:dark:[&_:is(input,select)]:bg-surface-elevated',

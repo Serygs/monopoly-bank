@@ -9,8 +9,8 @@ export interface BottomNavItem {
   /** The destination whose screen or sheet is open: highlighted and `aria-current`. */
   active?: boolean;
   disabled?: boolean;
-  /** A count shown on the item, with its accessible name. */
-  badge?: { count: number; label: string };
+  /** A neutral dot (no number, not an alert) for something waiting for the viewer, with its accessible name. */
+  dot?: { label: string };
   /** The one prominent circular action (Pay, +). */
   raised?: boolean;
 }
@@ -31,8 +31,11 @@ export interface BottomNavProps {
 const navClass = cx(
   'fixed inset-x-(--mb-bottom-nav-inset) bottom-[calc(var(--mb-bottom-nav-inset)+var(--mb-app-safe-bottom))] z-30',
   'mx-auto w-[min(calc(100%-2*var(--mb-bottom-nav-inset)),var(--mb-layout-content-max))] rounded-pill',
-  'glass-panel border border-border bg-surface-elevated shadow-lg',
+  'glass-panel',
 );
+/* Content fades out above the capsule instead of being cut: capsule + inset + safe area tall, under the nav. */
+const fadeClass =
+  'pointer-events-none fixed inset-x-0 bottom-0 z-30 h-(--mb-bottom-nav-height) bg-linear-to-t from-canvas to-transparent';
 const listClass = 'm-0 grid list-none items-end p-0 px-(--mb-space-2)';
 const itemClass = cx(
   'relative flex h-[60px] w-full min-w-0 cursor-pointer flex-col items-center justify-end gap-[2px] rounded-pill border-0 bg-transparent px-[2px] pt-(--mb-space-2) pb-(--mb-space-2)',
@@ -45,8 +48,8 @@ const raisedCircleClass = cx(
   'relative -mt-[14px] grid size-[48px] place-items-center rounded-[50%]',
   'bg-surface-inverse text-on-inverse shadow-md',
 );
-const badgeClass =
-  'absolute top-[4px] left-[calc(50%+4px)] grid min-h-[16px] min-w-[16px] place-items-center rounded-pill bg-accent px-[4px] text-[0.625rem] leading-none font-bold text-on-accent';
+const dotClass =
+  'absolute top-[8px] left-[calc(50%+6px)] size-[8px] rounded-pill bg-accent ring-2 ring-surface-elevated';
 
 /** Stroked 22px icon shell shared by every navigation destination. */
 export function NavIcon({ children }: { children: ReactNode }) {
@@ -73,49 +76,50 @@ export function BottomNav({ label, items, className }: BottomNavProps) {
     item.raised === true ? 'minmax(76px,1fr)' : 'minmax(0,1fr)',
   );
   return (
-    <nav className={cx(navClass, className)} aria-label={label}>
-      <ul className={listClass} style={{ gridTemplateColumns: columns.join(' ') }}>
-        {items.map((item) => {
-          const raised = item.raised === true;
-          return (
-            <li key={item.key} className="grid">
-              <button
-                type="button"
-                className={cx(
-                  itemClass,
-                  raised ? raisedItemClass : item.active === true && activeItemClass,
-                  raised && item.active === true && 'text-primary',
-                )}
-                aria-current={item.active === true ? 'page' : undefined}
-                disabled={item.disabled === true}
-                onClick={item.onPress}
-              >
-                {raised ? (
-                  <span
-                    className={cx(
-                      raisedCircleClass,
-                      item.active === true && 'ring-2 ring-accent ring-offset-2',
-                    )}
-                  >
-                    {item.icon}
-                  </span>
-                ) : (
-                  item.icon
-                )}
-                <span className="max-w-full truncate">{item.label}</span>
-                {item.badge !== undefined && item.badge.count > 0 && (
-                  <>
-                    <span className={badgeClass} aria-hidden="true">
-                      {item.badge.count}
+    <>
+      <div aria-hidden="true" className={fadeClass} />
+      <nav className={cx(navClass, className)} aria-label={label}>
+        <ul className={listClass} style={{ gridTemplateColumns: columns.join(' ') }}>
+          {items.map((item) => {
+            const raised = item.raised === true;
+            return (
+              <li key={item.key} className="grid">
+                <button
+                  type="button"
+                  className={cx(
+                    itemClass,
+                    raised ? raisedItemClass : item.active === true && activeItemClass,
+                    raised && item.active === true && 'text-primary',
+                  )}
+                  aria-current={item.active === true ? 'page' : undefined}
+                  disabled={item.disabled === true}
+                  onClick={item.onPress}
+                >
+                  {raised ? (
+                    <span
+                      className={cx(
+                        raisedCircleClass,
+                        item.active === true && 'ring-2 ring-accent ring-offset-2',
+                      )}
+                    >
+                      {item.icon}
                     </span>
-                    <span className="sr-only">{item.badge.label}</span>
-                  </>
-                )}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+                  ) : (
+                    item.icon
+                  )}
+                  <span className="max-w-full truncate">{item.label}</span>
+                  {item.dot !== undefined && (
+                    <>
+                      <span className={dotClass} aria-hidden="true" />
+                      <span className="sr-only">{item.dot.label}</span>
+                    </>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </>
   );
 }
