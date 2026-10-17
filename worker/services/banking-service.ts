@@ -12,7 +12,9 @@ import type {
   PaymentRequest,
   MortgageTransactionRequest,
   PlayerTransactionRequest,
+  PropertyBuildTransactionRequest,
   PropertyPurchaseTransactionRequest,
+  PropertySellBuildingTransactionRequest,
   RedeemMortgageTransactionRequest,
   TileMortgageTransactionRequest,
   ReversalTransactionRequest,
@@ -43,7 +45,9 @@ import {
   mortgageProperty,
   mortgageTile,
   payRent,
+  buildProperty,
   propertyPurchase,
+  sellBuilding,
   redeemMortgage,
   repayBankLoan,
   repayLoan,
@@ -198,6 +202,8 @@ export class DefaultBankingService implements BankingService {
         request.type === 'LOAN_REPAYMENT' ||
         request.type === 'JACKPOT_PAYOUT' ||
         request.type === 'PROPERTY_PURCHASE' ||
+        request.type === 'PROPERTY_BUILD' ||
+        request.type === 'PROPERTY_SELL_BUILDING' ||
         request.type === 'PAY_RENT'
           ? {}
           : { recentAmount: result.transaction.amount }),
@@ -271,6 +277,9 @@ export class DefaultBankingService implements BankingService {
         return this.collectJackpot(game, players, request);
       case 'PROPERTY_PURCHASE':
         return this.purchase(game, players, request);
+      case 'PROPERTY_BUILD':
+      case 'PROPERTY_SELL_BUILDING':
+        return this.building(game, players, request);
       case 'PAY_RENT':
         return this.rent(game, players, request);
       default:
@@ -346,6 +355,16 @@ export class DefaultBankingService implements BankingService {
       property,
       ...(request.priceOverride === undefined ? {} : { priceOverride: request.priceOverride }),
     });
+  }
+
+  private async building(
+    game: Game,
+    players: Player[],
+    request: PropertyBuildTransactionRequest | PropertySellBuildingTransactionRequest,
+  ): Promise<BankingOperationResult> {
+    const property = await this.propertyContext(game, request.tileId);
+    const command = { game, players, playerId: request.playerId, tileId: request.tileId, property };
+    return request.type === 'PROPERTY_BUILD' ? buildProperty(command) : sellBuilding(command);
   }
 
   private async rent(
@@ -990,6 +1009,8 @@ function executeOperation(
     | MortgageTransactionRequest
     | TileMortgageTransactionRequest
     | PropertyPurchaseTransactionRequest
+    | PropertyBuildTransactionRequest
+    | PropertySellBuildingTransactionRequest
     | PayRentTransactionRequest
     | RedeemMortgageTransactionRequest
     | LoanIssueTransactionRequest

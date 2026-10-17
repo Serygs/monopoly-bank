@@ -273,6 +273,23 @@ export interface PropertyPurchaseTransactionRequest extends Omit<
   priceOverride?: number;
 }
 
+/** Board games: the owner adds a house (or the hotel) to a street; the bank is paid one house cost. */
+export interface PropertyBuildTransactionRequest extends Omit<TransactionRequestBase, 'comment'> {
+  type: 'PROPERTY_BUILD';
+  playerId: string;
+  tileId: string;
+}
+
+/** Board games: the owner sells a building back; the bank pays half the house cost. */
+export interface PropertySellBuildingTransactionRequest extends Omit<
+  TransactionRequestBase,
+  'comment'
+> {
+  type: 'PROPERTY_SELL_BUILDING';
+  playerId: string;
+  tileId: string;
+}
+
 /**
  * Board games: the payer pays the tile's owner the rent the server works out from the registry.
  * `diceSum` is required for a utility (entered by the payer) and rejected otherwise.
@@ -499,6 +516,8 @@ export type CreateTransactionRequest =
   | MortgageTransactionRequest
   | TileMortgageTransactionRequest
   | PropertyPurchaseTransactionRequest
+  | PropertyBuildTransactionRequest
+  | PropertySellBuildingTransactionRequest
   | PayRentTransactionRequest
   | RedeemMortgageTransactionRequest
   | LoanIssueTransactionRequest

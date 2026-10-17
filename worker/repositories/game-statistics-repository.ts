@@ -125,7 +125,7 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
     // paid to / received from the bank, nor player-to-player, so the totals below list them by type.
     const totals = await this.database
       .prepare(
-        `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS moved, COALESCE(MAX(total_amount), 0) AS largest, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_PLAYER','PAY_RENT','BANKRUPTCY_TRANSFER') THEN total_amount ELSE 0 END), 0) AS p2p, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_BANK','MORTGAGE_REDEMPTION','AUCTION_PAYMENT','PROPERTY_PURCHASE') THEN total_amount ELSE 0 END), 0) AS paid_bank, COALESCE(SUM(CASE WHEN type IN ('BANK_TO_PLAYER','PASS_GO','MORTGAGE') THEN total_amount ELSE 0 END), 0) AS received_bank FROM transactions WHERE game_id = ? AND ${countedTransaction('transactions')}`,
+        `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS moved, COALESCE(MAX(total_amount), 0) AS largest, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_PLAYER','PAY_RENT','BANKRUPTCY_TRANSFER') THEN total_amount ELSE 0 END), 0) AS p2p, COALESCE(SUM(CASE WHEN type IN ('PLAYER_TO_BANK','MORTGAGE_REDEMPTION','AUCTION_PAYMENT','PROPERTY_PURCHASE','PROPERTY_BUILD') THEN total_amount ELSE 0 END), 0) AS paid_bank, COALESCE(SUM(CASE WHEN type IN ('BANK_TO_PLAYER','PASS_GO','MORTGAGE','PROPERTY_SELL_BUILDING') THEN total_amount ELSE 0 END), 0) AS received_bank FROM transactions WHERE game_id = ? AND ${countedTransaction('transactions')}`,
       )
       .bind(game.id)
       .first<TotalsRow>();

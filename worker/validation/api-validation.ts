@@ -338,6 +338,9 @@ export async function parseCreateTransactionRequest(
           ? {}
           : { priceOverride: readPositiveInteger(body, 'priceOverride') }),
       };
+    case 'PROPERTY_BUILD':
+    case 'PROPERTY_SELL_BUILDING':
+      return { type, playerId: readUuid(body, 'playerId'), tileId: readTileId(body) };
     case 'PAY_RENT':
       return {
         type,

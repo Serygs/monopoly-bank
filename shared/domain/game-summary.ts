@@ -70,12 +70,14 @@ export function calculateFinalGameSummary(
       transaction.type === 'PLAYER_TO_BANK' ||
       transaction.type === 'MORTGAGE_REDEMPTION' ||
       transaction.type === 'PROPERTY_PURCHASE' ||
+      transaction.type === 'PROPERTY_BUILD' ||
       transaction.type === 'AUCTION_PAYMENT'
     )
       paidToBank += transaction.totalAmount;
     if (
       transaction.type === 'BANK_TO_PLAYER' ||
       transaction.type === 'PASS_GO' ||
+      transaction.type === 'PROPERTY_SELL_BUILDING' ||
       transaction.type === 'MORTGAGE'
     )
       receivedFromBank += transaction.totalAmount;
