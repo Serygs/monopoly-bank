@@ -58,12 +58,9 @@ export function GameCard({
           <h2 title={summary.game.name}>{summary.game.name}</h2>
           <div className={metaClass}>
             <span>{t('playersCount', { count: summary.playerCount })}</span>
-            <span>{t('updated', { date: formatDate(summary.game.updatedAt, locale) })}</span>
-            {sharesName && (
-              <span>
-                {t('gameCreated', { date: formatDate(summary.game.createdAt, locale, true) })}
-              </span>
-            )}
+            <span>
+              {t('updated', { date: formatDate(summary.game.updatedAt, locale, sharesName) })}
+            </span>
           </div>
         </div>
       </div>
