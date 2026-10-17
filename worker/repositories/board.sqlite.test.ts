@@ -623,7 +623,7 @@ describe('board registry (real SQLite)', () => {
       playerId = 'a',
       counterpartyPlayerId = 'b',
     ) =>
-      banking.createTransaction('game', {
+      banking.executeTradeTransfer('game', {
         type: 'PROPERTY_TRANSFER',
         playerId,
         counterpartyPlayerId,

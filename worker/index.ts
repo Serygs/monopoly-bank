@@ -8,6 +8,7 @@ import { D1LoanRepository } from './repositories/loan-repository.js';
 import { D1MortgageRepository } from './repositories/mortgage-repository.js';
 import { D1PropertyRepository } from './repositories/property-repository.js';
 import { D1PaymentRequestRepository } from './repositories/payment-request-repository.js';
+import { D1TradeRequestRepository } from './repositories/trade-request-repository.js';
 import { DefaultBankingService } from './services/banking-service.js';
 import { DefaultGameService } from './services/game-service.js';
 import { D1UserRepository } from './repositories/user-repository.js';
@@ -86,6 +87,7 @@ export default {
         transactions,
         operations: new D1BankingOperationRepository(env.MONOPOLY_BANK_DB),
         paymentRequests: new D1PaymentRequestRepository(env.MONOPOLY_BANK_DB),
+        tradeRequests: new D1TradeRequestRepository(env.MONOPOLY_BANK_DB),
         mortgages: new D1MortgageRepository(env.MONOPOLY_BANK_DB),
         loans: new D1LoanRepository(env.MONOPOLY_BANK_DB),
         auctions: new D1AuctionRepository(env.MONOPOLY_BANK_DB),

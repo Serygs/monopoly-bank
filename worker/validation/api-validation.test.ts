@@ -3,7 +3,10 @@ import {
   ApiValidationError,
   parseCreateGameRequest,
   parseCreateTransactionRequest,
+  parseGuestJoinGameRequest,
   parseJoinGameRequest,
+  parseCreateTradeRequest,
+  normalizeJoinCode,
   parsePlaceBidRequest,
   parseStartAuctionRequest,
   parseRegisterRequest,
@@ -681,5 +684,70 @@ describe('auction validation', () => {
     await expect(
       parseCreateTransactionRequest(jsonRequest({ type: 'AUCTION_PAYMENT', playerId, amount: 10 })),
     ).rejects.toBeInstanceOf(ApiValidationError);
+  });
+});
+
+describe('join code normalization', () => {
+  it('trims and uppercases one spelling for every lookup', () => {
+    expect(normalizeJoinCode('  ab2k ')).toBe('AB2K');
+    expect(normalizeJoinCode('AB2K')).toBe('AB2K');
+  });
+
+  it('applies to the join and the guest join bodies', async () => {
+    await expect(parseJoinGameRequest(jsonRequest({ joinCode: ' ab2k\n' }))).resolves.toEqual({
+      joinCode: 'AB2K',
+    });
+    await expect(
+      parseGuestJoinGameRequest(jsonRequest({ joinCode: ' ab2k ', nickname: 'Ada', avatar: '🎩' })),
+    ).resolves.toMatchObject({ joinCode: 'AB2K' });
+  });
+
+  it('still accepts codes issued before L was dropped, and refuses malformed ones', async () => {
+    await expect(parseJoinGameRequest(jsonRequest({ joinCode: 'lamp' }))).resolves.toEqual({
+      joinCode: 'LAMP',
+    });
+    for (const joinCode of ['abc', 'ab c1', 'ab-c', '', 'x'.repeat(13)])
+      await expect(parseJoinGameRequest(jsonRequest({ joinCode }))).rejects.toBeInstanceOf(
+        ApiValidationError,
+      );
+  });
+});
+
+describe('trade request validation', () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const playerId = '22222222-2222-4222-8222-222222222222';
+  const counterpartyPlayerId = '33333333-3333-4333-8333-333333333333';
+  const trade = {
+    id,
+    playerId,
+    counterpartyPlayerId,
+    giveTileIds: ['zhitna'],
+    takeTileIds: ['riga_rail'],
+  };
+
+  it('parses a trade proposal with optional cash', async () => {
+    await expect(parseCreateTradeRequest(jsonRequest(trade))).resolves.toEqual(trade);
+    await expect(
+      parseCreateTradeRequest(jsonRequest({ ...trade, cashGive: 0, cashTake: 5 })),
+    ).resolves.toMatchObject({ cashGive: 0, cashTake: 5 });
+    await expect(
+      parseCreateTradeRequest(jsonRequest({ ...trade, takeTileIds: [], cashTake: 1 })),
+    ).resolves.toMatchObject({ takeTileIds: [] });
+  });
+
+  it('rejects a malformed proposal before any repository call', async () => {
+    for (const bad of [
+      { ...trade, id: 'nope' },
+      { ...trade, id: undefined },
+      { ...trade, counterpartyPlayerId: playerId },
+      { ...trade, giveTileIds: [], takeTileIds: [] },
+      { ...trade, takeTileIds: ['zhitna'] },
+      { ...trade, cashGive: -1 },
+      { ...trade, cashTake: 1.5 },
+      { ...trade, giveTileIds: 'zhitna' },
+    ])
+      await expect(parseCreateTradeRequest(jsonRequest(bad))).rejects.toBeInstanceOf(
+        ApiValidationError,
+      );
   });
 });

@@ -2,6 +2,13 @@ import { DatabaseError } from '../services/errors.js';
 
 export interface SecurityRateLimitRepository {
   take(bucket: string, limit: number, windowSeconds: number): Promise<boolean>;
+  /**
+   * Counts one failed attempt in `bucket` without deciding anything; pair with `isExceeded`, which
+   * reads the count without adding to it (a lockout that lasts until the window ends).
+   */
+  recordFailure(bucket: string, windowSeconds: number): Promise<void>;
+  /** True when `bucket` already holds `limit` failures inside its current window. */
+  isExceeded(bucket: string, limit: number, windowSeconds: number): Promise<boolean>;
   cleanup(): Promise<void>;
 }
 
@@ -26,6 +33,23 @@ export class D1SecurityRateLimitRepository implements SecurityRateLimitRepositor
       return row !== null && row.count <= limit;
     } catch (cause) {
       throw new DatabaseError({ operation: 'takeSecurityRateLimit', cause });
+    }
+  }
+  async recordFailure(bucket: string, windowSeconds: number): Promise<void> {
+    await this.take(bucket, Number.MAX_SAFE_INTEGER, windowSeconds);
+  }
+  async isExceeded(bucket: string, limit: number, windowSeconds: number): Promise<boolean> {
+    try {
+      const row = await this.database
+        .prepare(
+          `SELECT count FROM security_rate_limits
+        WHERE bucket = ? AND window_started_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
+        )
+        .bind(bucket, `-${windowSeconds} seconds`)
+        .first<{ count: number }>();
+      return row !== null && row.count >= limit;
+    } catch (cause) {
+      throw new DatabaseError({ operation: 'readSecurityRateLimit', cause });
     }
   }
   async cleanup(): Promise<void> {

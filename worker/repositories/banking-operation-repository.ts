@@ -23,6 +23,12 @@ export interface PersistBankingOperationInput {
    * leader, the floor stays) in the bankruptcy's own batch.
    */
   withdrawAuctionBid?: boolean;
+  /**
+   * With an accepted trade: the pending trade request this transaction fulfils. It turns ACCEPTED
+   * in the same batch; a request that is no longer pending (or has expired) breaks the state CHECK
+   * on purpose, so the whole batch rolls back and nothing is written.
+   */
+  acceptTradeRequestId?: string;
   recentAmount?: number;
 }
 
@@ -69,6 +75,32 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
           participant.balanceDelta,
         ),
     );
+
+    const tradeRequestStatements =
+      input.acceptTradeRequestId === undefined
+        ? []
+        : [
+            this.database
+              .prepare(
+                `UPDATE trade_requests SET
+                   state = CASE WHEN state = 'PENDING' AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN 'ACCEPTED' ELSE 'NOT_PENDING' END,
+                   resolved_at = CURRENT_TIMESTAMP, transaction_id = ?
+                 WHERE id = ? AND game_id = ?`,
+              )
+              .bind(input.transactionId, input.acceptTradeRequestId, input.transaction.gameId),
+          ];
+    // A bankrupt player's pending trades can never be accepted: cancelled in the bankruptcy's batch.
+    const bankruptTradeStatements =
+      input.bankruptPlayerId === undefined
+        ? []
+        : [
+            this.database
+              .prepare(
+                `UPDATE trade_requests SET state = 'CANCELLED', resolved_at = CURRENT_TIMESTAMP
+                 WHERE game_id = ? AND state = 'PENDING' AND (proposer_player_id = ? OR counterparty_player_id = ?)`,
+              )
+              .bind(input.transaction.gameId, input.bankruptPlayerId, input.bankruptPlayerId),
+          ];
 
     // The mortgage record is written in the same batch as its transaction. Redeeming one that is
     // no longer active turns into a CHECK failure, which rolls the whole batch back.
@@ -408,6 +440,7 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
         balanceStatement,
         transactionStatement,
         ...participantStatements,
+        ...tradeRequestStatements,
         ...registryStatements,
         ...mortgageStatements,
         ...loanStatements,
@@ -416,6 +449,7 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
         ...statusStatement,
         ...bankruptMortgageStatements,
         ...bankruptLoanStatements,
+        ...bankruptTradeStatements,
         ...recentStatements,
       ]);
     } catch (cause) {

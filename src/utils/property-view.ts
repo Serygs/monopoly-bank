@@ -228,7 +228,7 @@ export function rentableTiles(views: readonly TileView[], payerPlayerId: string)
 }
 
 /** The registry rows behind the views, for the shared building rules. */
-function registryOf(views: readonly TileView[]): GameProperty[] {
+export function registryOf(views: readonly TileView[]): GameProperty[] {
   return views.map((view) => ({
     gameId: '',
     tileId: view.tile.id,

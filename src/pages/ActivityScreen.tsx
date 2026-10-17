@@ -81,6 +81,7 @@ export function ActivityScreen({
   liveTransactions,
   showPending = true,
   initialScope = 'ALL',
+  initialPlayerId = null,
   reversal,
   refreshKey = 0,
   board = null,
@@ -94,6 +95,8 @@ export function ActivityScreen({
   showPending?: boolean;
   /** The tab to open on; the wallet's history link opens "Mine". */
   initialScope?: ActivityScope;
+  /** Opens with the ledger narrowed to the operations of one wallet (the wallet's history link). */
+  initialPlayerId?: string | null;
   /** Omitted when the viewer cannot change the game (finished or offline). */
   reversal?: ActivityReversal;
   /** Changing it reloads the ledger, e.g. after a reversal was recorded. */
@@ -107,6 +110,7 @@ export function ActivityScreen({
   const [scope, setScope] = useState<ActivityScope>(
     showPending || initialScope !== 'PENDING' ? initialScope : 'ALL',
   );
+  const [playerFilter, setPlayerFilter] = useState<string | null>(initialPlayerId);
   const [page, setPage] = useState<ActivityPage>({
     transactions: [],
     paymentRequests: [],
@@ -174,6 +178,13 @@ export function ActivityScreen({
       : item,
   );
   const items = scope === 'PENDING' ? page.paymentRequests : transactions;
+  // The filter only hides rows: the reversal check still looks at the whole ledger above a row.
+  const shown = (item: Transaction | PaymentRequest): boolean =>
+    playerFilter === null ||
+    ('state' in item
+      ? item.creatorPlayerId === playerFilter || item.approverPlayerId === playerFilter
+      : item.participants.some((participant) => participant.playerId === playerFilter));
+  const filterName = players.find((player) => player.id === playerFilter)?.name ?? null;
   const selectScope = (index: number) => {
     const nextScope = activityScopes[index];
     if (nextScope === undefined || nextScope === scope) return;
@@ -209,9 +220,20 @@ export function ActivityScreen({
   const panel = (
     <>
       {error && <Notice tone="error">{t('unableLoadHistory')}</Notice>}
+      {playerFilter !== null && (
+        <button
+          type="button"
+          className="mb-(--mb-space-3) inline-flex min-h-11 cursor-pointer items-center gap-(--mb-space-2) rounded-pill border border-border bg-surface-subtle px-(--mb-space-3) text-small font-semibold text-primary focus-visible:outline-offset-2"
+          aria-label={t('activityClearPlayer', { name: filterName ?? t('selectedPlayer') })}
+          onClick={() => setPlayerFilter(null)}
+        >
+          {t('activityShowingPlayer', { name: filterName ?? t('selectedPlayer') })}
+          <span aria-hidden="true">×</span>
+        </button>
+      )}
       <ol className={ledgerClass}>
         {items.map((item, index) =>
-          'state' in item ? (
+          !shown(item) ? null : 'state' in item ? (
             <PendingRow
               key={item.id}
               request={item}
@@ -233,7 +255,7 @@ export function ActivityScreen({
           ),
         )}
       </ol>
-      {!loading && items.length === 0 && (
+      {!loading && items.filter(shown).length === 0 && (
         <MutedText>{scope === 'PENDING' ? t('noPendingActivity') : t('noActivity')}</MutedText>
       )}
       {loading && (

@@ -6,6 +6,9 @@ import type {
 import type { PendingTransaction, PlayerBalanceChange } from '../../shared/domain/banking.js';
 import { DatabaseError } from '../services/errors.js';
 
+/** How long a payment or trade request waits for an answer. */
+export const PAYMENT_REQUEST_TTL_MS = 5 * 60 * 1000;
+
 interface PaymentRequestRow {
   id: string;
   kind: PaymentRequestKind;

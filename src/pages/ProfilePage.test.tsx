@@ -44,6 +44,13 @@ describe('ProfilePage', () => {
     expect(screen.getByRole('dialog', { name: 'Avatar' })).toBeInTheDocument();
   });
 
+  it('names the page once and keeps the stat labels short', () => {
+    setup();
+    expect(screen.getAllByText('Player profile')).toHaveLength(1);
+    expect(screen.getByText('Played')).toBeInTheDocument();
+    expect(screen.getByText('Win rate')).toBeInTheDocument();
+  });
+
   it('saves the nickname from the sticky save bar', async () => {
     const updated = { ...profile, nickname: 'Taras' };
     const updateProfile = vi.spyOn(monopolyBankApi, 'updateProfile').mockResolvedValue(updated);

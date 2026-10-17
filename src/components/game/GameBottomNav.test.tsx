@@ -39,7 +39,8 @@ describe('GameBottomNav', () => {
     const { user } = renderNav({ property: { count: 3, onOpen } });
     const nav = screen.getByRole('navigation', { name: 'Game navigation' });
     expect(nav.querySelectorAll('button')).toHaveLength(5);
-    expect(screen.getByRole('status', { name: '3 property cards' })).toBeInTheDocument();
+    expect(screen.getByText('3 property cards')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Property/ }));
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
@@ -75,11 +76,10 @@ describe('GameBottomNav', () => {
 
   it('shows a pending-request count only when there are requests', () => {
     const first = renderNav({ pendingRequests: 0 });
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText('2 pending payment requests')).not.toBeInTheDocument();
     first.unmount();
     renderNav({ pendingRequests: 2 });
-    expect(screen.getByRole('status', { name: '2 pending payment requests' })).toHaveTextContent(
-      '2',
-    );
+    expect(screen.getByText('2 pending payment requests')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });

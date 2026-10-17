@@ -1,41 +1,123 @@
+import { useEffect, useRef, useState } from 'react';
+import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { Dialog } from '../../components/Dialog';
-import { Button, SheetActions, DialogBody, StatPill, useFeedback } from '../../components/ui';
+import {
+  Button,
+  DialogBody,
+  GlassSurface,
+  Notice,
+  SheetActions,
+  StatTile,
+  useFeedback,
+} from '../../components/ui';
+import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
+import { formatJoinCode, joinInviteLink } from '../../utils/join-code';
 import { createLocalQr } from '../../utils/local-qr';
 import { LocalQr } from './LocalQr';
 
 export interface InviteDialogProps {
   /** The game's one join code: what the link and QR open, and what the manual form accepts. */
   joinCode: string | undefined;
+  /** Needed to regenerate the code. */
+  gameId?: string;
+  /** Players in the lobby now. */
+  playerCount?: number;
+  /** Whether the table has an access password; omitted when the server does not say. */
+  hasPassword?: boolean;
+  /** Owner only: shows "Regenerate code". */
+  canRegenerate?: boolean;
+  onCodeChanged?: (joinCode: string) => void;
   onClose: () => void;
 }
 
-/** Invitation ticket: code beside the QR code, stacked below `md`. */
-const ticketClass =
-  'mt-[18px] grid grid-cols-[minmax(0,1fr)_136px] items-center gap-[20px] rounded-lg border border-s-[3px] border-border border-s-highlight bg-(--mb-background-invitation) p-[18px] max-md:grid-cols-1';
-const ticketCopyClass = 'min-w-0';
-const shortCodeClass =
-  'mx-0 mt-[12px] mb-[4px] font-money text-[length:clamp(1.5rem,6vw,2.35rem)] leading-none font-bold tracking-[0.1em] text-primary';
+const COPIED_MS = 2000;
 
-function inviteLink(origin: string, joinCode: string): string {
-  return `${origin}/games/join?code=${encodeURIComponent(joinCode)}`;
-}
-
-export function InviteDialog({ joinCode, onClose }: InviteDialogProps) {
+/** Invitation card: spaced join code (tap to copy), QR code on a white tile, then share and copy. */
+export function InviteDialog({
+  joinCode,
+  gameId,
+  playerCount,
+  hasPassword,
+  canRegenerate = false,
+  onCodeChanged,
+  onClose,
+}: InviteDialogProps) {
   const { t } = useLanguage();
   const notify = useFeedback();
-  const link = joinCode === undefined ? null : inviteLink(window.location.origin, joinCode);
-  const copy = async () => {
+  // A code the owner just regenerated shows at once, before the parent has stored it.
+  const [regenerated, setRegenerated] = useState<string | null>(null);
+  const code = regenerated ?? joinCode;
+  const [copied, setCopied] = useState(false);
+  const [confirmingRegenerate, setConfirmingRegenerate] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [error, setError] = useState<unknown | null>(null);
+  const timer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  const link = code === undefined ? null : joinInviteLink(window.location.origin, code);
+  const canShare = typeof navigator.share === 'function';
+  const write = async (text: string, prompt: string) => {
+    if (navigator.clipboard !== undefined) await navigator.clipboard.writeText(text);
+    else window.prompt(prompt, text);
+  };
+  const copyLink = async () => {
     if (link === null) return;
-    if (navigator.clipboard !== undefined) await navigator.clipboard.writeText(link);
-    else window.prompt(t('copyInviteLink'), link);
+    await write(link, t('copyInviteLink'));
+    setCopied(true);
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setCopied(false), COPIED_MS);
     notify({ tone: 'success', message: t('inviteLinkCopied') });
   };
-  const share = async () => {
-    if (link !== null && typeof navigator.share === 'function')
-      await navigator.share({ title: t('invitePlayers'), text: t('inviteShareText'), url: link });
+  const copyCode = async () => {
+    if (code === undefined) return;
+    await write(code, t('inviteCodeLabel'));
+    notify({ tone: 'success', message: t('inviteCodeCopied') });
   };
-  const qr = link === null ? null : createLocalQr(link);
+  const share = async () => {
+    if (link === null || !canShare) return;
+    try {
+      await navigator.share({ title: t('invitePlayers'), text: t('inviteShareText'), url: link });
+    } catch {
+      // The person closed the share sheet; nothing to report.
+    }
+  };
+  const regenerate = async () => {
+    if (gameId === undefined || regenerating) return;
+    setRegenerating(true);
+    setError(null);
+    try {
+      const result = await monopolyBankApi.regenerateJoinCode(gameId);
+      setRegenerated(result.joinCode);
+      onCodeChanged?.(result.joinCode);
+      setConfirmingRegenerate(false);
+      notify({ tone: 'success', message: t('inviteCodeRegenerated') });
+    } catch (caught) {
+      setError(caught);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  // A link too long for the local encoder just drops the QR; copy and share still work.
+  const qr = (() => {
+    if (link === null) return null;
+    try {
+      return createLocalQr(link);
+    } catch {
+      return null;
+    }
+  })();
+  const copyButton = (
+    <Button variant={canShare ? 'secondary' : 'primary'} onClick={() => void copyLink()}>
+      <span aria-live="polite">{copied ? t('inviteCopied') : t('copyInviteLink')}</span>
+    </Button>
+  );
   return (
     <Dialog
       title={t('invitePlayers')}
@@ -43,24 +125,83 @@ export function InviteDialog({ joinCode, onClose }: InviteDialogProps) {
       onClose={onClose}
     >
       <DialogBody>{t('inviteDescription')}</DialogBody>
-      {link !== null && (
-        <section className={ticketClass}>
-          <div className={ticketCopyClass}>
-            <StatPill variant="pill">{t('inviteCodeLabel')}</StatPill>
-            <p className={shortCodeClass}>{joinCode}</p>
+      {error !== null && (
+        <Notice tone="error">{apiErrorMessage(error, t, 'inviteCodeFailed')}</Notice>
+      )}
+      {link !== null && code !== undefined && (
+        <GlassSurface
+          as="section"
+          variant="card"
+          tinted
+          className="invite-card mt-(--mb-space-4) grid justify-items-center gap-(--mb-space-4) overflow-hidden p-(--mb-space-5) text-center"
+          aria-label={t('invitePlayers')}
+        >
+          <div className="grid justify-items-center gap-(--mb-space-1)">
+            <span className="text-meta font-bold tracking-meta text-secondary uppercase">
+              {t('inviteCodeLabel')}
+            </span>
+            <button
+              type="button"
+              className="min-h-11 cursor-pointer rounded-control border-0 bg-transparent px-(--mb-space-3) font-money text-[length:clamp(1.75rem,8vw,2.5rem)] leading-tight font-bold tracking-[0.2em] text-primary focus-visible:outline-offset-2"
+              aria-label={t('inviteCopyCodeAria', { code: formatJoinCode(code) })}
+              onClick={() => void copyCode()}
+            >
+              {formatJoinCode(code)}
+            </button>
+            <small className="text-secondary">{t('inviteTapToCopy')}</small>
           </div>
           {qr !== null && <LocalQr matrix={qr} label={t('inviteQrLabel')} />}
-          <SheetActions>
-            <Button variant="primary" onClick={() => void copy()}>
-              {t('copyInviteLink')}
-            </Button>
-            {typeof navigator.share === 'function' && (
-              <Button variant="secondary" onClick={() => void share()}>
+          <div className="grid w-full grid-cols-2 gap-(--mb-space-2) text-start">
+            {playerCount !== undefined && (
+              <StatTile label={t('invitePlayersInLobby')} value={playerCount} />
+            )}
+            {hasPassword !== undefined && (
+              <StatTile
+                label={t('inviteTablePassword')}
+                value={hasPassword ? t('inviteTablePasswordSet') : t('inviteTablePasswordNone')}
+              />
+            )}
+          </div>
+        </GlassSurface>
+      )}
+      {link !== null && (
+        <SheetActions>
+          {canShare ? (
+            <>
+              {copyButton}
+              <Button variant="primary" onClick={() => void share()}>
                 {t('shareInvite')}
               </Button>
-            )}
-          </SheetActions>
-        </section>
+            </>
+          ) : (
+            copyButton
+          )}
+        </SheetActions>
+      )}
+      {canRegenerate && gameId !== undefined && link !== null && (
+        <div className="mt-(--mb-space-3) grid gap-(--mb-space-2)">
+          {confirmingRegenerate ? (
+            <Notice tone="info" as="div" className="mb-0! flex-col items-stretch">
+              <p>{t('inviteRegenerateWarning')}</p>
+              <SheetActions>
+                <Button
+                  variant="secondary"
+                  disabled={regenerating}
+                  onClick={() => setConfirmingRegenerate(false)}
+                >
+                  {t('cancel')}
+                </Button>
+                <Button variant="primary" disabled={regenerating} onClick={() => void regenerate()}>
+                  {regenerating ? t('inviteRegenerating') : t('inviteRegenerateConfirm')}
+                </Button>
+              </SheetActions>
+            </Notice>
+          ) : (
+            <Button variant="quiet" onClick={() => setConfirmingRegenerate(true)}>
+              {t('inviteRegenerate')}
+            </Button>
+          )}
+        </div>
       )}
     </Dialog>
   );

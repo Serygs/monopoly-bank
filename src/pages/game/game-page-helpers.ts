@@ -585,3 +585,9 @@ export function insufficientMessage(
     ? `${prefix} ${t('balanceRequirement', { current: formatMoney(current, currency), required: formatMoney(required, currency) })}`
     : prefix;
 }
+
+/** A lobby can be started from two players; the "at least two" hint only shows below that. */
+export const MIN_PLAYERS_TO_START = 2;
+export function lobbyNeedsMorePlayers(playerCount: number): boolean {
+  return playerCount < MIN_PLAYERS_TO_START;
+}
