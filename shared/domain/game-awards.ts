@@ -69,6 +69,8 @@ export function calculateGameAwards(entries: readonly LedgerEntry[]): GameAwards
     if (
       transaction.type !== 'LOAN_ISSUE' &&
       transaction.type !== 'LOAN_REPAYMENT' &&
+      // A gift or straight swap moves no money, so it is never the biggest operation.
+      transaction.totalAmount > 0 &&
       (biggestOperation === null || transaction.totalAmount > biggestOperation.amount)
     )
       biggestOperation = {

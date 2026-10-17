@@ -221,3 +221,26 @@ describe('building transactions in the history', () => {
     expect(transactionAmount(built, 'K', 'en').startsWith('+')).toBe(false);
   });
 });
+
+describe('trades in the history', () => {
+  it('shows who traded with whom and which tiles changed hands', () => {
+    const trade: Transaction = {
+      id: 't',
+      gameId: 'game',
+      type: 'PROPERTY_TRANSFER',
+      amount: 0,
+      totalAmount: 0,
+      comment: null,
+      createdAt: '',
+      initiatorPlayerId: 'alex',
+      tileIds: ['zhitna', 'riga_rail'],
+      participants: [
+        { playerId: 'john', balanceDelta: 0 },
+        { playerId: 'alex', balanceDelta: 0 },
+      ],
+    };
+    expect(transactionDescription(trade, players, 'en', 'Zhitna, Riga')).toBe(
+      'Alex ⇄ John · Trade · Zhitna, Riga',
+    );
+  });
+});

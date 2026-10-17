@@ -81,6 +81,8 @@ export function calculateFinalGameSummary(
       transaction.type === 'MORTGAGE'
     )
       receivedFromBank += transaction.totalAmount;
+    // The cash of a trade is player-to-player money; who paid whom is not worked out for it.
+    if (transaction.type === 'PROPERTY_TRANSFER') playerToPlayerTotal += transaction.totalAmount;
     if (
       transaction.type === 'PLAYER_TO_PLAYER' ||
       transaction.type === 'PAY_RENT' ||

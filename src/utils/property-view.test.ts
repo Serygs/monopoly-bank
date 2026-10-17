@@ -127,3 +127,44 @@ describe('building intents', () => {
     expect(kinds(['b'])).not.toContain('PROPERTY_BUILD');
   });
 });
+
+describe('trade intents', () => {
+  const kindsFor = (
+    properties: GameProperty[],
+    tileId: string,
+    options: { controlled: string[]; actor: string | null },
+  ) => {
+    const views = tileViews(board, properties);
+    const view = views.find((candidate) => candidate.tile.id === tileId)!;
+    return tileIntents(board, views, view, {
+      controlledPlayerIds: options.controlled,
+      actorPlayerId: options.actor,
+      auctionsAvailable: false,
+    }).filter((intent) => intent.kind === 'PROPERTY_TRANSFER');
+  };
+
+  it("offers a trade on an own tile (owner wallet) and on another player's tile (acting wallet)", () => {
+    expect(kindsFor([row('zhitna')], 'zhitna', { controlled: ['a'], actor: 'a' })).toEqual([
+      { kind: 'PROPERTY_TRANSFER', tileId: 'zhitna', playerId: 'a' },
+    ]);
+    expect(
+      kindsFor([row('zhitna', { ownerPlayerId: 'b' })], 'zhitna', {
+        controlled: ['a'],
+        actor: 'a',
+      }),
+    ).toEqual([{ kind: 'PROPERTY_TRANSFER', tileId: 'zhitna', playerId: 'a' }]);
+  });
+
+  it('offers nothing on a free tile, without an acting wallet, or in a group with buildings', () => {
+    expect(kindsFor([], 'zhitna', { controlled: ['a'], actor: 'a' })).toEqual([]);
+    expect(
+      kindsFor([row('zhitna', { ownerPlayerId: 'b' })], 'zhitna', { controlled: [], actor: null }),
+    ).toEqual([]);
+    expect(
+      kindsFor([row('zhitna'), row('nagatinska', { houses: 1 })], 'zhitna', {
+        controlled: ['a'],
+        actor: 'a',
+      }),
+    ).toEqual([]);
+  });
+});

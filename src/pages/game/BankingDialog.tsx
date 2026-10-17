@@ -106,6 +106,8 @@ export interface BankingDialogProps {
   auction?: Auction | null;
   /** Opens the start-auction prompt for this wallet, with a suggested property name. */
   onStartAuction?: (lotName: string) => void;
+  /** Board games: opens the trade dialog for this wallet. */
+  onStartTrade?: () => void;
   favoriteAmounts: number[];
   recentAmounts: number[];
   onToggleFavorite: (amount: number) => void;
@@ -176,6 +178,7 @@ export function BankingDialog({
   settleOnOpen = false,
   auction = null,
   onStartAuction,
+  onStartTrade,
   favoriteAmounts,
   recentAmounts,
   onToggleFavorite,
@@ -765,6 +768,15 @@ export function BankingDialog({
                           label: actionLabel('MORTGAGE_REDEMPTION', t),
                           outgoing: true,
                           onSelect: () => selectAction('MORTGAGE_REDEMPTION'),
+                        },
+                      ]
+                    : []),
+                  ...(board !== null && onStartTrade !== undefined
+                    ? [
+                        {
+                          key: 'PROPERTY_TRANSFER',
+                          label: actionLabel('PROPERTY_TRANSFER', t),
+                          onSelect: onStartTrade,
                         },
                       ]
                     : []),

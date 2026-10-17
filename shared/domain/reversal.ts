@@ -38,7 +38,9 @@ export function reversibleTransaction(transaction: Pick<Transaction, 'type' | 't
  * has no such single player.
  */
 export function reversalInitiatorPlayerId(
-  transaction: Pick<Transaction, 'type' | 'participants'>,
+  transaction: Pick<Transaction, 'type' | 'participants'> & {
+    initiatorPlayerId?: string | null;
+  },
 ): string | null {
   const debited = transaction.participants.filter((participant) => participant.balanceDelta < 0);
   const credited = transaction.participants.filter((participant) => participant.balanceDelta > 0);
@@ -58,6 +60,8 @@ export function reversalInitiatorPlayerId(
     case 'PROPERTY_SELL_BUILDING':
     case 'ALL_TO_PLAYER':
       return credited.length === 1 ? (credited[0]?.playerId ?? null) : null;
+    case 'PROPERTY_TRANSFER':
+      return transaction.initiatorPlayerId ?? null;
     case 'BANKRUPTCY_TRANSFER':
     case 'REVERSAL':
     case 'LOAN_ISSUE':
@@ -104,6 +108,7 @@ const registryTypes: readonly TransactionType[] = [
   'PAY_RENT',
   'PROPERTY_BUILD',
   'PROPERTY_SELL_BUILDING',
+  'PROPERTY_TRANSFER',
 ];
 
 /**
@@ -117,6 +122,7 @@ const groupBlockers: Partial<Record<TransactionType, readonly TransactionType[]>
   PROPERTY_BUILD: ['PAY_RENT', 'PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING', 'MORTGAGE'],
   PROPERTY_SELL_BUILDING: ['PAY_RENT', 'PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING', 'MORTGAGE'],
   MORTGAGE_REDEMPTION: ['PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING'],
+  PROPERTY_TRANSFER: ['PAY_RENT', 'PROPERTY_BUILD', 'PROPERTY_SELL_BUILDING'],
 };
 
 /**
@@ -127,10 +133,14 @@ const groupBlockers: Partial<Record<TransactionType, readonly TransactionType[]>
  * rent paid on any of them blocks the reversal of a purchase. Callers without the board omit it.
  */
 export function findReversalDependency(
-  original: Pick<Transaction, 'id' | 'participants' | 'type'> & { tileId?: string | null },
+  original: Pick<Transaction, 'id' | 'participants' | 'type'> & {
+    tileId?: string | null;
+    tileIds?: readonly string[];
+  },
   later: readonly Transaction[],
   groupTileIds: readonly string[] = [],
 ): Transaction | null {
+  const originalTiles = tilesOf(original);
   const playerIds = new Set(original.participants.map((participant) => participant.playerId));
   return (
     later.find(
@@ -139,14 +149,17 @@ export function findReversalDependency(
         candidate.reversedByTransactionId == null &&
         ((dependentTypes.includes(candidate.type) &&
           candidate.participants.some((participant) => playerIds.has(participant.playerId))) ||
-          (original.tileId != null &&
-            candidate.tileId === original.tileId &&
-            registryTypes.includes(candidate.type)) ||
-          (candidate.tileId != null &&
-            groupTileIds.includes(candidate.tileId) &&
+          (registryTypes.includes(candidate.type) &&
+            tilesOf(candidate).some((tileId) => originalTiles.includes(tileId))) ||
+          (tilesOf(candidate).some((tileId) => groupTileIds.includes(tileId)) &&
             (groupBlockers[original.type]?.includes(candidate.type) ?? false))),
     ) ?? null
   );
+}
+
+/** The tiles a transaction concerned: one (`tileId`) or, for a trade, every one that changed hands. */
+function tilesOf(item: { tileId?: string | null; tileIds?: readonly string[] }): readonly string[] {
+  return item.tileIds ?? (item.tileId == null ? [] : [item.tileId]);
 }
 
 /** Why a viewer who made a transaction cannot reverse it now. */

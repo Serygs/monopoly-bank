@@ -315,6 +315,33 @@ describe('board tile validation', () => {
     },
   );
 
+  it('parses a trade with optional cash and rejects a malformed one', async () => {
+    const other = '33333333-3333-4333-8333-333333333333';
+    const trade = {
+      type: 'PROPERTY_TRANSFER',
+      playerId,
+      counterpartyPlayerId: other,
+      giveTileIds: ['zhitna'],
+      takeTileIds: ['riga_rail'],
+    };
+    await expect(parseCreateTransactionRequest(jsonRequest(trade))).resolves.toEqual(trade);
+    await expect(
+      parseCreateTransactionRequest(jsonRequest({ ...trade, cashGive: 0, cashTake: 5 })),
+    ).resolves.toMatchObject({ cashGive: 0, cashTake: 5 });
+    for (const bad of [
+      { ...trade, counterpartyPlayerId: playerId },
+      { ...trade, giveTileIds: [], takeTileIds: [] },
+      { ...trade, giveTileIds: ['zhitna'], takeTileIds: ['zhitna'] },
+      { ...trade, giveTileIds: ['Bad Id'] },
+      { ...trade, takeTileIds: 'riga_rail' },
+      { ...trade, cashGive: 1.5 },
+      { ...trade, cashTake: '5' },
+    ])
+      await expect(parseCreateTransactionRequest(jsonRequest(bad))).rejects.toBeInstanceOf(
+        ApiValidationError,
+      );
+  });
+
   it('rejects a purchase without a tile id', async () => {
     await expect(
       parseCreateTransactionRequest(jsonRequest({ type: 'PROPERTY_PURCHASE', playerId })),

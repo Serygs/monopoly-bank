@@ -1,3 +1,4 @@
+import type { BoardSnapshot } from '../board/types.js';
 import type {
   BankLoanCooldown,
   Game,
@@ -21,10 +22,12 @@ import {
   buildCost,
   buildingChange,
   DiceSumError,
+  groupHasBuildings,
   invertChanges,
   mortgageChange,
   ownerChange,
   PropertyAlreadyOwnedError,
+  PropertyHasBuildingsError,
   PropertyMortgagedError,
   PropertyNotOwnedError,
   purchasePrice,
@@ -124,6 +127,27 @@ export interface BuildPropertyCommand extends BankingCommand {
 
 /** Board games: the owner sells a building back to the bank. */
 export type SellBuildingCommand = BuildPropertyCommand;
+
+/**
+ * Board games: `playerId` and `counterpartyPlayerId` swap tiles and optionally cash. `giveTileIds`
+ * leave `playerId` for the counterparty, `takeTileIds` come the other way; `cashGive` is paid by
+ * `playerId`, `cashTake` by the counterparty (both may be 0).
+ */
+export interface TransferPropertiesCommand extends BankingCommand {
+  playerId: string;
+  counterpartyPlayerId: string;
+  giveTileIds: readonly string[];
+  takeTileIds: readonly string[];
+  cashGive: number;
+  cashTake: number;
+  property: PropertyContext;
+}
+
+export class InvalidTradeError extends AppError {
+  constructor(reason: string) {
+    super({ code: 'INVALID_TRADE', message: reason, status: 400, details: { reason } });
+  }
+}
 
 export interface PayRentCommand extends BankingCommand {
   payerPlayerId: string;
@@ -250,6 +274,8 @@ export interface PendingTransaction {
   jackpot?: { kind: 'DEPOSIT'; amount: number } | { kind: 'COLLECT'; expected: number };
   /** Set only on a PROPERTY_PURCHASE paid at a price other than the list price. */
   priceOverridden?: boolean;
+  /** Set only on a PROPERTY_TRANSFER: the player who made the trade (the one who may reverse it). */
+  initiatorPlayerId?: string;
   /**
    * Set only on a REVERSAL of a board mortgage or redemption: the mortgage row it puts back in
    * step. `CANCEL` releases the mortgage a reversed MORTGAGE created; `RESTORE` makes the mortgage
@@ -754,6 +780,70 @@ export function propertyPurchase(command: PropertyPurchaseCommand): BankingOpera
     : { ...purchase, transaction: { ...purchase.transaction, priceOverridden: true } };
 }
 
+/**
+ * What the receiver of a mortgaged tile pays the bank at once: 10% of the mortgage value, the
+ * difference `redemptionCost` adds to it. The tile stays mortgaged.
+ */
+export function mortgageTransferFee(board: BoardSnapshot, tileId: string): number {
+  const { mortgage } = requireTile(board, tileId);
+  return redemptionCost(mortgage) - mortgage;
+}
+
+/** A trade: tiles (and cash) change hands in one operation, with the fees for mortgaged tiles. */
+export function transferProperties(command: TransferPropertiesCommand): BankingOperationResult {
+  const players = validateGame(command.game, command.players);
+  const { board, registry } = command.property;
+  const proposer = findPlayer(players, command.playerId);
+  const counterparty = findPlayer(players, command.counterpartyPlayerId);
+  ensureActive(proposer);
+  ensureActive(counterparty);
+  ensureDifferentPlayers(proposer, counterparty);
+  for (const cash of [command.cashGive, command.cashTake])
+    if (!Number.isSafeInteger(cash) || cash < 0) throw new InvalidAmountError(cash);
+  const tileIds = [...command.giveTileIds, ...command.takeTileIds];
+  if (tileIds.length === 0) throw new InvalidTradeError('a trade needs at least one property');
+  if (new Set(tileIds).size !== tileIds.length)
+    throw new InvalidTradeError('a property can only be traded once');
+
+  // Each side owes the bank 10% of the mortgage value of every mortgaged tile it receives.
+  let proposerFee = 0;
+  let counterpartyFee = 0;
+  const changes: PropertyChange[] = [];
+  const move = (tileId: string, from: Player, to: Player) => {
+    const tile = requireTile(board, tileId);
+    const state = stateOf(registry, tileId);
+    if (state.ownerPlayerId !== from.id) throw new PropertyNotOwnedError(tileId);
+    if (groupHasBuildings(board, registry, tile)) throw new PropertyHasBuildingsError(tileId);
+    if (state.mortgaged) {
+      const fee = mortgageTransferFee(board, tileId);
+      if (to.id === proposer.id) proposerFee += fee;
+      else counterpartyFee += fee;
+    }
+    changes.push(ownerChange(tileId, state, to.id));
+  };
+  for (const tileId of command.giveTileIds) move(tileId, proposer, counterparty);
+  for (const tileId of command.takeTileIds) move(tileId, counterparty, proposer);
+
+  const proposerDelta = command.cashTake - command.cashGive - proposerFee;
+  const counterpartyDelta = command.cashGive - command.cashTake - counterpartyFee;
+  if (proposerDelta < 0) ensureSufficientFunds(proposer, -proposerDelta);
+  if (counterpartyDelta < 0) ensureSufficientFunds(counterparty, -counterpartyDelta);
+  // The amount is the net cash between the two players; fees show in the balance changes only.
+  const net = Math.abs(command.cashGive - command.cashTake);
+  const result = createResult(command.game.id, 'PROPERTY_TRANSFER', net, net, null, [
+    createBalanceChange(proposer, proposerDelta),
+    createBalanceChange(counterparty, counterpartyDelta),
+  ]);
+  return {
+    ...result,
+    transaction: {
+      ...result.transaction,
+      initiatorPlayerId: proposer.id,
+      registryChanges: changes,
+    },
+  };
+}
+
 /** The owner pays the bank one house cost; the fifth building is the hotel. */
 export function buildProperty(command: BuildPropertyCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
@@ -1133,6 +1223,8 @@ export function reverseTransaction(command: ReversalCommand): BankingOperationRe
   if (
     registryChanges.length === 0 &&
     (original.type === 'PROPERTY_PURCHASE' ||
+      // A trade touches several tiles, so it has no single tile id.
+      original.type === 'PROPERTY_TRANSFER' ||
       (original.tileId != null &&
         (original.type === 'AUCTION_PAYMENT' ||
           original.type === 'PROPERTY_BUILD' ||
@@ -1148,7 +1240,8 @@ export function reverseTransaction(command: ReversalCommand): BankingOperationRe
   const changes = original.participants.map((participant) => {
     const player = findPlayer(players, participant.playerId);
     ensureActive(player);
-    const balanceDelta = -participant.balanceDelta;
+    // `0 -` rather than a unary minus: a zero delta (a swap) must not turn into -0.
+    const balanceDelta = 0 - participant.balanceDelta;
     if (balanceDelta < 0) ensureSufficientFunds(player, -balanceDelta);
     return createBalanceChange(player, balanceDelta);
   });

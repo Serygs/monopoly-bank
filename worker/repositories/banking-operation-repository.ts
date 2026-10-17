@@ -41,8 +41,8 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
     const balanceStatement = createBalanceUpdateStatement(this.database, input.balanceChanges);
     const transactionStatement = this.database
       .prepare(
-        `INSERT INTO transactions (id, game_id, type, amount, total_amount, comment, reverses_transaction_id, tile_id, price_overridden)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO transactions (id, game_id, type, amount, total_amount, comment, reverses_transaction_id, tile_id, price_overridden, initiator_player_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         input.transactionId,
@@ -54,6 +54,7 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
         input.transaction.reversesTransactionId ?? null,
         input.transaction.tileId ?? null,
         input.transaction.priceOverridden === true ? 1 : 0,
+        input.transaction.initiatorPlayerId ?? null,
       );
     const participantStatements = input.transaction.participants.map((participant) =>
       this.database
@@ -126,6 +127,26 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
           )
           .bind(mortgageReversal.mortgageId, input.transaction.gameId),
       );
+
+    // A mortgaged tile that changes hands (a trade, or the reversal of one) keeps its mortgage, which
+    // follows the tile to the new owner so they can redeem it. The registry guard below decides
+    // whether the whole batch applies. A bankruptcy moves its mortgages itself.
+    if (input.bankruptPlayerId === undefined)
+      for (const change of input.transaction.registryChanges ?? [])
+        if (
+          change.before.mortgaged &&
+          change.after.mortgaged &&
+          change.after.ownerPlayerId !== null &&
+          change.after.ownerPlayerId !== change.before.ownerPlayerId
+        )
+          mortgageStatements.push(
+            this.database
+              .prepare(
+                `UPDATE mortgages SET player_id = ?
+                 WHERE game_id = ? AND tile_id = ? AND state = 'ACTIVE'`,
+              )
+              .bind(change.after.ownerPlayerId, input.transaction.gameId, change.tileId),
+          );
 
     // Board games: each registry change is guarded by the state it read. A tile that moved on makes
     // the mortgaged flag -1, which breaks its CHECK and rolls the whole batch back (balances included).
