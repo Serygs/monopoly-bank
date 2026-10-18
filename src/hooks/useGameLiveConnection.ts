@@ -41,48 +41,63 @@ function deliver(data: unknown, socket: WebSocket, listener: LiveListener): void
   }
 }
 
+interface Connection {
+  closed: boolean;
+  retry: number | undefined;
+  heartbeat: number | undefined;
+  socket: WebSocket | null;
+  attempts: number;
+}
+
+function stopHeartbeat(state: Connection): void {
+  if (state.heartbeat === undefined) return;
+  window.clearInterval(state.heartbeat);
+  state.heartbeat = undefined;
+}
+
+function connect(state: Connection, gameId: string, listener: LiveListener): void {
+  if (state.closed) return;
+  listener.onStatus(state.attempts === 0 ? 'connecting' : 'reconnecting');
+  const socket = new WebSocket(liveUrl(gameId));
+  state.socket = socket;
+  socket.onopen = () => {
+    if (state.socket !== socket) return;
+    state.attempts = 0;
+    listener.onStatus('live');
+    state.heartbeat = startHeartbeat(socket);
+  };
+  socket.onmessage = (message) => {
+    if (state.socket === socket) deliver(message.data, socket, listener);
+  };
+  socket.onclose = () => {
+    stopHeartbeat(state);
+    if (state.closed || state.socket !== socket) return;
+    listener.onStatus('offline');
+    state.attempts += 1;
+    state.retry = window.setTimeout(
+      () => connect(state, gameId, listener),
+      reconnectDelay(state.attempts),
+    );
+  };
+  socket.onerror = () => {
+    if (state.socket === socket) socket.close();
+  };
+}
+
 function startLiveConnection(gameId: string, listener: LiveListener): () => void {
-  let closed = false;
-  let retry: number | undefined;
-  let heartbeat: number | undefined;
-  let socket: WebSocket | null = null;
-  let attempts = 0;
-  const stopHeartbeat = () => {
-    if (heartbeat === undefined) return;
-    window.clearInterval(heartbeat);
-    heartbeat = undefined;
+  const state: Connection = {
+    closed: false,
+    retry: undefined,
+    heartbeat: undefined,
+    socket: null,
+    attempts: 0,
   };
-  const connect = () => {
-    if (closed) return;
-    listener.onStatus(attempts === 0 ? 'connecting' : 'reconnecting');
-    const nextSocket = new WebSocket(liveUrl(gameId));
-    socket = nextSocket;
-    nextSocket.onopen = () => {
-      if (socket !== nextSocket) return;
-      attempts = 0;
-      listener.onStatus('live');
-      heartbeat = startHeartbeat(nextSocket);
-    };
-    nextSocket.onmessage = (message) => {
-      if (socket === nextSocket) deliver(message.data, nextSocket, listener);
-    };
-    nextSocket.onclose = () => {
-      stopHeartbeat();
-      if (closed || socket !== nextSocket) return;
-      listener.onStatus('offline');
-      attempts += 1;
-      retry = window.setTimeout(connect, reconnectDelay(attempts));
-    };
-    nextSocket.onerror = () => {
-      if (socket === nextSocket) nextSocket.close();
-    };
-  };
-  connect();
+  connect(state, gameId, listener);
   return () => {
-    closed = true;
-    if (retry !== undefined) window.clearTimeout(retry);
-    stopHeartbeat();
-    socket?.close();
+    state.closed = true;
+    if (state.retry !== undefined) window.clearTimeout(state.retry);
+    stopHeartbeat(state);
+    state.socket?.close();
   };
 }
 

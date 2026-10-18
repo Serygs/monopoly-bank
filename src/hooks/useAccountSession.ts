@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type Dispatch,
+  type MutableRefObject,
   type SetStateAction,
 } from 'react';
 import type { UserProfile } from '../../shared/contracts/api';
@@ -26,17 +27,18 @@ function useWindowListener(target: Window | Document, type: string, listener: ()
   }, [target, type, listener]);
 }
 
-export function useAccountSession(): AccountSession {
-  const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
-  const [accountError, setAccountError] = useState<unknown>(null);
-  const [accountRetry, setAccountRetry] = useState(0);
-  const [online, setOnline] = useState(() => navigator.onLine);
-  const requestVersion = useRef(0);
+function useAccountLoad(
+  online: boolean,
+  retryCount: number,
+  versionRef: MutableRefObject<number>,
+  setAccountError: (error: unknown) => void,
+  setProfile: (user: UserProfile | null) => void,
+): void {
   useEffect(() => {
     if (!online) return;
     let cancelled = false;
-    const version = ++requestVersion.current;
-    const current = () => !cancelled && version === requestVersion.current;
+    const version = ++versionRef.current;
+    const current = () => !cancelled && version === versionRef.current;
     void loadAccountSession(monopolyBankApi)
       .then((user) => {
         if (!current()) return;
@@ -49,7 +51,16 @@ export function useAccountSession(): AccountSession {
     return () => {
       cancelled = true;
     };
-  }, [accountRetry, online]);
+  }, [retryCount, online, versionRef, setAccountError, setProfile]);
+}
+
+export function useAccountSession(): AccountSession {
+  const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
+  const [accountError, setAccountError] = useState<unknown>(null);
+  const [accountRetry, setAccountRetry] = useState(0);
+  const [online, setOnline] = useState(() => navigator.onLine);
+  const requestVersion = useRef(0);
+  useAccountLoad(online, accountRetry, requestVersion, setAccountError, setProfile);
   const resumed = useCallback(() => {
     if (document.visibilityState === 'visible') setAccountRetry((attempt) => attempt + 1);
   }, []);
