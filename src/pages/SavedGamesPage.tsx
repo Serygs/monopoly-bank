@@ -5,6 +5,7 @@ import {
   type GameSummary,
 } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { useAsyncAction } from '../hooks/useAsyncAction';
 import { Dialog } from '../components/Dialog';
 import { DeletedGameCard, GameCard } from '../components/game/GameCard';
 import { OverflowMenu } from '../components/OverflowMenu';
@@ -82,8 +83,7 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown | null>(null);
   const [gameToRemove, setGameToRemove] = useState<GameSummary | null>(null);
-  const [removing, setRemoving] = useState(false);
-  const [removeError, setRemoveError] = useState<unknown | null>(null);
+  const { busy: removing, error: removeError, setError: setRemoveError, run } = useAsyncAction();
   const notify = useFeedback();
   const [duplicating, setDuplicating] = useState<string | null>(null);
   const [gameToDuplicate, setGameToDuplicate] = useState<GameSummary | null>(null);
@@ -177,19 +177,13 @@ export function SavedGamesPage({ onCreateGame, onJoinGame, onOpenGame }: Props) 
 
   const removeGame = async () => {
     if (gameToRemove === null) return;
-    setRemoving(true);
-    setRemoveError(null);
-    try {
+    await run(async () => {
       const removed = await monopolyBankApi.deleteGame(gameToRemove.game.id);
       setGames((current) => current.filter(({ game }) => game.id !== removed.gameId));
       loadDeletedGames();
       notify({ tone: 'success', message: t('gameRemoved', { name: gameToRemove.game.name }) });
       setGameToRemove(null);
-    } catch (caught) {
-      setRemoveError(caught);
-    } finally {
-      setRemoving(false);
-    }
+    });
   };
 
   const restoreGame = async (summary: DeletedGameSummary) => {

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { UserProfile } from '../../shared/contracts/api.js';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { useAsyncAction } from '../hooks/useAsyncAction';
 import { Button, Field, Notice, PageShell, StatPill } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
@@ -60,26 +61,19 @@ export function VerifyEmailPage({
 export function PasswordResetPage({ token, onBack }: { token: string; onBack: () => void }) {
   const { t } = useLanguage();
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<unknown>(null);
+  const { busy, error, setError, run } = useAsyncAction();
   const [changed, setChanged] = useState(false);
-  const [busy, setBusy] = useState(false);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (password.length < 6) {
       setError(new Error(t('accountPasswordMinLength')));
       return;
     }
-    setBusy(true);
-    setError(null);
-    try {
+    await run(async () => {
       await monopolyBankApi.confirmPasswordReset(token, password);
       window.history.replaceState({}, '', '/reset-password');
       setChanged(true);
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   return (
     <PageShell variant="auth" card="banknote">
@@ -122,20 +116,13 @@ export function PasswordRecoveryPage({ onBack }: { onBack: () => void }) {
   const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [requested, setRequested] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const { busy, error, run } = useAsyncAction();
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
+    await run(async () => {
       await monopolyBankApi.requestPasswordReset(email);
       setRequested(true);
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   return (
     <PageShell variant="auth" card="banknote">
