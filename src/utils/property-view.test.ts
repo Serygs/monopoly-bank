@@ -252,9 +252,9 @@ describe('property view helpers', () => {
     ]);
     expect(rentDue(board, list, viewOf(list, 'zhitna'))).toBe(tileOf('zhitna').rent![0]);
     expect(rentDue(board, list, viewOf(list, 'riga_rail'))).toBe(board.rules.railwayRent['1']);
-    expect(rentDue(board, list, viewOf(list, 'power_plant'), 7)).toBe(70);
-    expect(rentDue(board, list, viewOf(list, 'power_plant'), 2)).toBe(20);
-    expect(rentDue(board, list, viewOf(list, 'power_plant'), 12)).toBe(120);
+    expect(rentDue(board, list, viewOf(list, 'power_plant'), 7)).toBe(70_000);
+    expect(rentDue(board, list, viewOf(list, 'power_plant'), 2)).toBe(20_000);
+    expect(rentDue(board, list, viewOf(list, 'power_plant'), 12)).toBe(120_000);
     expect(rentDue(board, list, viewOf(list, 'power_plant'))).toBeNull();
     expect(rentDue(board, list, viewOf(list, 'power_plant'), 1)).toBeNull();
     expect(rentDue(board, list, viewOf(list, 'power_plant'), 13)).toBeNull();

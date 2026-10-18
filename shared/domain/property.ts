@@ -401,12 +401,16 @@ export function purchasePrice(board: BoardSnapshot, tileId: string): number {
   return requireTile(board, tileId).price;
 }
 
+/** What one point of a utility's dice-times-multiplier rent is worth: the card reads 4 or 10 times the dice, in thousands. */
+export const UTILITY_RENT_UNIT = 1000;
+
 /**
  * The rent for landing on a tile, worked out from the registry:
  * - street: the rent row for its houses (5 = hotel); base rent is doubled when the owner holds the
  *   whole colour group and no tile of it has buildings;
  * - railway: by the number of railways the owner holds;
- * - utility: the dice multiplier for the number of utilities held times `diceSum`.
+ * - utility: the dice multiplier for the number of utilities held times `diceSum` times
+ *   `UTILITY_RENT_UNIT`.
  * An unowned or mortgaged tile earns nothing and is refused.
  */
 export function rentFor(
@@ -441,7 +445,7 @@ export function rentFor(
   if (diceSum === undefined) throw new DiceSumError(true);
   const multiplier = board.rules.utilityDiceMultiplier[String(count)];
   if (multiplier === undefined) throw new TileNotFoundError(tileId);
-  return multiplier * diceSum;
+  return multiplier * diceSum * UTILITY_RENT_UNIT;
 }
 
 /** The change that gives an unowned tile to a player. */
