@@ -32,3 +32,4 @@ test-results
 .env*
 !.env.example
 /.mcp.json
+/.claude/worktrees/
