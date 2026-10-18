@@ -1,3 +1,4 @@
+import type { PendingTransaction } from '../../../shared/domain/banking.js';
 import type { PersistBankingOperationInput } from '../banking-operation-repository.js';
 
 export function bankruptStatusStatements(
@@ -52,15 +53,23 @@ export function bankLoanSettlementStatements(
   input: PersistBankingOperationInput,
 ): D1PreparedStatement[] {
   if (input.bankruptPlayerId === undefined) return [];
-  const statements: D1PreparedStatement[] = [];
   // The bank took its share of the wallet first. A loan that is no longer active, or whose
   // principal does not match how it ended, turns into a CHECK failure and rolls everything back.
   const settlement = input.transaction.bankLoanSettlement;
-  if (settlement !== undefined && settlement.paidPrincipal > 0)
-    statements.push(
-      database
-        .prepare(
-          `UPDATE loans
+  return settlement !== undefined && settlement.paidPrincipal > 0
+    ? settlementStatements(database, input, settlement)
+    : [];
+}
+
+function settlementStatements(
+  database: D1Database,
+  input: PersistBankingOperationInput,
+  settlement: NonNullable<PendingTransaction['bankLoanSettlement']>,
+): D1PreparedStatement[] {
+  return [
+    database
+      .prepare(
+        `UPDATE loans
                SET repaid_amount = repaid_amount + ?1,
                    state = CASE
                      WHEN state <> 'ACTIVE' OR lender_kind <> 'BANK' OR borrower_player_id <> ?4 THEN 'NOT_ACTIVE'
@@ -68,30 +77,29 @@ export function bankLoanSettlementStatements(
                      ELSE 'WRITTEN_OFF' END,
                    closed_at = CURRENT_TIMESTAMP
                WHERE id = ?2 AND game_id = ?3`,
-        )
-        .bind(
-          settlement.paidPrincipal,
-          settlement.loanId,
-          input.transaction.gameId,
-          settlement.borrowerPlayerId,
-          settlement.outcome,
-        ),
-      database
-        .prepare(
-          `INSERT INTO loan_repayments (transaction_id, game_id, loan_id, amount, interest_amount, interest_rate_percent, suggested_rate_percent)
+      )
+      .bind(
+        settlement.paidPrincipal,
+        settlement.loanId,
+        input.transaction.gameId,
+        settlement.borrowerPlayerId,
+        settlement.outcome,
+      ),
+    database
+      .prepare(
+        `INSERT INTO loan_repayments (transaction_id, game_id, loan_id, amount, interest_amount, interest_rate_percent, suggested_rate_percent)
                VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(
-          input.transactionId,
-          input.transaction.gameId,
-          settlement.loanId,
-          settlement.paidPrincipal,
-          settlement.paidInterest,
-          settlement.interestRatePercent,
-          settlement.suggestedRatePercent,
-        ),
-    );
-  return statements;
+      )
+      .bind(
+        input.transactionId,
+        input.transaction.gameId,
+        settlement.loanId,
+        settlement.paidPrincipal,
+        settlement.paidInterest,
+        settlement.interestRatePercent,
+        settlement.suggestedRatePercent,
+      ),
+  ];
 }
 
 export function bankruptDebtStatements(

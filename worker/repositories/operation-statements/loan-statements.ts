@@ -1,3 +1,4 @@
+import type { PendingTransaction } from '../../../shared/domain/banking.js';
 import type { PersistBankingOperationInput } from '../banking-operation-repository.js';
 
 export function newLoanStatements(
@@ -32,13 +33,19 @@ export function loanRepaymentStatements(
   database: D1Database,
   input: PersistBankingOperationInput,
 ): D1PreparedStatement[] {
-  const statements: D1PreparedStatement[] = [];
   const { loanRepayment } = input.transaction;
-  if (loanRepayment !== undefined) {
-    statements.push(
-      database
-        .prepare(
-          `UPDATE loans
+  return loanRepayment === undefined ? [] : repaymentStatements(database, input, loanRepayment);
+}
+
+function repaymentStatements(
+  database: D1Database,
+  input: PersistBankingOperationInput,
+  loanRepayment: NonNullable<PendingTransaction['loanRepayment']>,
+): D1PreparedStatement[] {
+  return [
+    database
+      .prepare(
+        `UPDATE loans
              SET repaid_amount = repaid_amount + ?1,
                  state = CASE
                    WHEN state <> 'ACTIVE' OR lender_player_id IS NOT ?4 OR borrower_player_id IS NOT ?5 THEN 'NOT_ACTIVE'
@@ -46,32 +53,29 @@ export function loanRepaymentStatements(
                    ELSE 'ACTIVE' END,
                  closed_at = CASE WHEN state = 'ACTIVE' AND repaid_amount + ?1 = principal THEN CURRENT_TIMESTAMP ELSE closed_at END
              WHERE id = ?2 AND game_id = ?3`,
-        )
-        .bind(
-          loanRepayment.amount,
-          loanRepayment.loanId,
-          input.transaction.gameId,
-          loanRepayment.lenderPlayerId,
-          loanRepayment.borrowerPlayerId,
-        ),
-      database
-        .prepare(
-          `INSERT INTO loan_repayments (transaction_id, game_id, loan_id, amount, interest_amount, interest_rate_percent, suggested_rate_percent)
+      )
+      .bind(
+        loanRepayment.amount,
+        loanRepayment.loanId,
+        input.transaction.gameId,
+        loanRepayment.lenderPlayerId,
+        loanRepayment.borrowerPlayerId,
+      ),
+    database
+      .prepare(
+        `INSERT INTO loan_repayments (transaction_id, game_id, loan_id, amount, interest_amount, interest_rate_percent, suggested_rate_percent)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(
-          input.transactionId,
-          input.transaction.gameId,
-          loanRepayment.loanId,
-          loanRepayment.amount,
-          loanRepayment.interestAmount ?? 0,
-          loanRepayment.interestRatePercent ?? null,
-          loanRepayment.suggestedRatePercent ?? null,
-        ),
-    );
-  }
-
-  return statements;
+      )
+      .bind(
+        input.transactionId,
+        input.transaction.gameId,
+        loanRepayment.loanId,
+        loanRepayment.amount,
+        loanRepayment.interestAmount ?? 0,
+        loanRepayment.interestRatePercent ?? null,
+        loanRepayment.suggestedRatePercent ?? null,
+      ),
+  ];
 }
 
 export function loanStatements(
