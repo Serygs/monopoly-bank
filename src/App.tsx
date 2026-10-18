@@ -9,7 +9,7 @@ import {
 import { joinCodeFromSearch } from './utils/join-code';
 import type { UserProfile } from '../shared/contracts/api';
 import { monopolyBankApi } from './api/monopoly-bank-api';
-import { loadAccountSession } from './api/account-session';
+import { useAccountSession } from './hooks/useAccountSession';
 import { Avatar } from './components/AvatarPicker';
 import { useLanguage } from './i18n/language-context';
 import { apiErrorMessage } from './i18n/api-errors';
@@ -137,10 +137,7 @@ function AppRoutes() {
   const [path, setPath] = useState(window.location.pathname);
   const [preferences, setPreferences] = useState<DevicePreferences>(() => readPreferences());
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
-  const [accountError, setAccountError] = useState<unknown>(null);
-  const [accountRetry, setAccountRetry] = useState(0);
-  const [online, setOnline] = useState(() => navigator.onLine);
+  const { profile, setProfile, accountError, online, retry, settle } = useAccountSession();
   const [updateReady, setUpdateReady] = useState(false);
   const [paymentFlowOpen, setPaymentFlowOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -153,7 +150,6 @@ function AppRoutes() {
     right: number;
   } | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
-  const accountRequestVersion = useRef(0);
   const pathRef = useRef(path);
   const scrollPositions = useRef<Record<string, number>>({});
   const createDirty = useRef(false);
@@ -213,41 +209,6 @@ function AppRoutes() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
   useEffect(() => {
-    if (!online) return;
-    let cancelled = false;
-    const version = ++accountRequestVersion.current;
-    void loadAccountSession(monopolyBankApi)
-      .then((user) => {
-        if (!cancelled && version === accountRequestVersion.current) {
-          setAccountError(null);
-          setProfile(user);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled && version === accountRequestVersion.current) setAccountError(error);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [accountRetry, online]);
-  useEffect(() => {
-    const resumed = () => {
-      if (document.visibilityState === 'visible') setAccountRetry((attempt) => attempt + 1);
-    };
-    document.addEventListener('visibilitychange', resumed);
-    return () => document.removeEventListener('visibilitychange', resumed);
-  }, []);
-  useEffect(() => {
-    const connected = () => setOnline(true);
-    const disconnected = () => setOnline(false);
-    window.addEventListener('online', connected);
-    window.addEventListener('offline', disconnected);
-    return () => {
-      window.removeEventListener('online', connected);
-      window.removeEventListener('offline', disconnected);
-    };
-  }, []);
-  useEffect(() => {
     const ready = () => setUpdateReady(true);
     window.addEventListener('pwa-update-ready', ready);
     return () => window.removeEventListener('pwa-update-ready', ready);
@@ -274,15 +235,13 @@ function AppRoutes() {
     setSignOutError(null);
     try {
       await monopolyBankApi.logout();
-      accountRequestVersion.current += 1;
-      setAccountError(null);
       setSettingsOpen(false);
       setPaymentFlowOpen(false);
       clearDraft();
       createDirty.current = false;
       window.history.replaceState({}, '', '/');
       setPath('/');
-      setProfile(null);
+      settle(null);
       setJoinChoice('choice');
     } catch (caught) {
       setSignOutError(caught);
@@ -291,9 +250,7 @@ function AppRoutes() {
     }
   };
   const authenticated = (user: UserProfile) => {
-    accountRequestVersion.current += 1;
-    setAccountError(null);
-    setProfile(user);
+    settle(user);
   };
   const emailToken = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
   if (EMAIL_FEATURES_ENABLED && path === '/verify-email')
@@ -312,13 +269,7 @@ function AppRoutes() {
         ) : (
           <>
             <Notice tone="error">{apiErrorMessage(accountError, t, 'unableLoadAccount')}</Notice>
-            <Button
-              variant="primary"
-              onClick={() => {
-                setAccountError(null);
-                setAccountRetry((attempt) => attempt + 1);
-              }}
-            >
+            <Button variant="primary" onClick={retry}>
               {t('tryAgain')}
             </Button>
           </>
