@@ -13,6 +13,7 @@ import type {
   Transaction,
   TransactionType,
 } from '../../../shared/types/monopoly';
+import { previewDeltas } from '../../../shared/domain/banking';
 import { MonopolyBankApiError } from '../../api/monopoly-bank-api';
 import type { Translate } from '../../i18n/translations';
 import { newerAuction } from '../../utils/auction';
@@ -305,68 +306,18 @@ export function previewBalances(
   /** Board games: the tile's price, mortgage value or rent, and who receives the rent. */
   tile: { amount: number; ownerPlayerId?: string | null } = { amount: 0 },
 ): BalancePreview[] {
+  const deltas = previewDeltas(request, players, {
+    passGoReward,
+    redemptionAmount,
+    loans,
+    interest,
+    jackpot,
+    tile,
+  });
   return players.map((player) => {
-    let delta = 0;
-    switch (request.type) {
-      case 'PLAYER_TO_PLAYER':
-        if (player.id === request.sourcePlayerId) delta = -request.amount;
-        if (player.id === request.destinationPlayerId) delta = request.amount;
-        break;
-      case 'PLAYER_TO_BANK':
-        if (player.id === request.playerId) delta = -request.amount;
-        break;
-      case 'BANK_TO_PLAYER':
-        if (player.id === request.playerId) delta = request.amount;
-        break;
-      case 'TO_JACKPOT':
-        if (player.id === request.playerId) delta = -request.amount;
-        break;
-      case 'JACKPOT_PAYOUT':
-        if (player.id === request.playerId) delta = jackpot;
-        break;
-      case 'PLAYER_TO_ALL':
-        if (player.id === request.payerPlayerId)
-          delta = -request.amountPerPlayer * (players.length - 1);
-        else delta = request.amountPerPlayer;
-        break;
-      case 'ALL_TO_PLAYER':
-        if (player.id === request.recipientPlayerId)
-          delta = request.amountPerPlayer * (players.length - 1);
-        else delta = -request.amountPerPlayer;
-        break;
-      case 'PASS_GO':
-        if (player.id === request.playerId) delta = passGoReward;
-        break;
-      case 'MORTGAGE':
-        if (player.id === request.playerId)
-          delta = 'amount' in request ? request.amount : tile.amount;
-        break;
-      case 'PROPERTY_PURCHASE':
-      case 'PROPERTY_BUILD':
-        if (player.id === request.playerId) delta = -tile.amount;
-        break;
-      case 'PROPERTY_SELL_BUILDING':
-        if (player.id === request.playerId) delta = tile.amount;
-        break;
-      case 'PAY_RENT':
-        if (player.id === request.payerPlayerId) delta = -tile.amount;
-        else if (player.id === tile.ownerPlayerId) delta = tile.amount;
-        break;
-      case 'MORTGAGE_REDEMPTION':
-        if (player.id === request.playerId) delta = -redemptionAmount;
-        break;
-      case 'LOAN_ISSUE':
-        // A player loan is only a request: no money moves until the lender accepts. The bank pays at once.
-        if (request.lenderKind === 'BANK' && player.id === request.playerId) delta = request.amount;
-        break;
-      case 'LOAN_REPAYMENT': {
-        const lenderId = loans.find((loan) => loan.id === request.loanId)?.lenderPlayerId;
-        if (player.id === request.playerId) delta = -(request.amount + interest);
-        if (lenderId !== null && lenderId !== undefined && player.id === lenderId)
-          delta = request.amount;
-        break;
-      }
-    }
+    const delta = deltas
+      .filter((entry) => entry.playerId === player.id)
+      .reduce((sum, entry) => sum + entry.delta, 0);
     return { player, delta, after: player.balance + delta };
   });
 }
