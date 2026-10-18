@@ -32,3 +32,8 @@ test-results
 .env*
 !.env.example
 /.mcp.json
+/.claude/worktrees/
+/.stryker-tmp/
+/tools/mutation/.stryker-tmp/
+/tools/mutation/reports/
+/reports/

@@ -33,3 +33,30 @@ describe('controlledPlayerIdForBankingCommand', () => {
     expect(controlledPlayerIdForBankingCommand(request)).toBe(expectedPlayerId);
   });
 });
+
+describe('controlledPlayerIdForBankingCommand for property and rent commands', () => {
+  it.each([
+    [{ type: 'PROPERTY_PURCHASE', playerId: 'buyer', tileId: 'zhitna' }, 'buyer'],
+    [{ type: 'PROPERTY_BUILD', playerId: 'builder', tileId: 'zhitna' }, 'builder'],
+    [{ type: 'PROPERTY_SELL_BUILDING', playerId: 'seller', tileId: 'zhitna' }, 'seller'],
+    [{ type: 'PAY_RENT', payerPlayerId: 'tenant', tileId: 'zhitna' }, 'tenant'],
+    [
+      {
+        type: 'PROPERTY_TRANSFER',
+        playerId: 'proposer',
+        counterpartyPlayerId: 'other',
+        giveTileIds: ['zhitna'],
+        takeTileIds: [],
+      },
+      'proposer',
+    ],
+  ] as const)('requires the actor to control %o', (request, expected) => {
+    expect(controlledPlayerIdForBankingCommand(request)).toBe(expected);
+  });
+
+  it('lets the bankrupt player authorize a bankruptcy in favour of a creditor', () => {
+    expect(
+      controlledPlayerIdForBankingCommand({ playerId: 'broke', creditorPlayerId: 'creditor' }),
+    ).toBe('broke');
+  });
+});

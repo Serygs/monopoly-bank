@@ -1,0 +1,13 @@
+{
+  "name": "monopoly-bank-mutation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mutate": "cd ../.. && ./tools/mutation/node_modules/.bin/stryker run tools/mutation/stryker.config.json"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/vitest-runner": "10.0.0",
+    "vitest": "4.1.12"
+  }
+}

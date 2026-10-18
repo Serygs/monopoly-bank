@@ -310,14 +310,22 @@ describe('repaying a loan', () => {
     expect(persist).not.toHaveBeenCalled();
   });
 
-  it('is the only kind of operation besides issuing that loads the loan list', async () => {
-    const { banking, listActive } = setup();
-    await banking.createTransaction('game', {
+  it('leaves the loan list out of the response of an unrelated operation', async () => {
+    const { banking, persist } = setup({ active: [loan] });
+    const response = await banking.createTransaction('game', {
       type: 'PLAYER_TO_BANK',
       playerId: lenderId,
       amount: 10,
     });
-    expect(listActive).not.toHaveBeenCalled();
+    expect(response).not.toHaveProperty('loans');
+    expect(persist).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transaction: expect.objectContaining({
+          type: 'PLAYER_TO_BANK',
+          participants: [{ playerId: lenderId, balanceDelta: -10 }],
+        }),
+      }),
+    );
   });
 });
 

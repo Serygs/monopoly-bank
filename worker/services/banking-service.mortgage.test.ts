@@ -178,14 +178,22 @@ describe('redeeming a mortgage', () => {
 });
 
 describe('other operations', () => {
-  it('do not load the mortgage list', async () => {
-    const { banking, listActive } = service({});
-    await banking.createTransaction('game', {
+  it('leave the mortgage list out of the response', async () => {
+    const { banking, persist } = service({ active: [boardwalk] });
+    const response = await banking.createTransaction('game', {
       type: 'PLAYER_TO_BANK',
       playerId,
       amount: 10,
     });
-    expect(listActive).not.toHaveBeenCalled();
+    expect(response).not.toHaveProperty('mortgages');
+    expect(persist).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transaction: expect.objectContaining({
+          type: 'PLAYER_TO_BANK',
+          participants: [{ playerId, balanceDelta: -10 }],
+        }),
+      }),
+    );
   });
 });
 

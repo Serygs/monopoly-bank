@@ -20,6 +20,7 @@ const errorKeys: Record<string, TranslationKey> = {
   TRADE_REQUEST_STALE: 'errorTradeRequestStale',
   TRADE_REQUEST_EXISTS: 'errorTradeRequestExists',
   TRADE_REQUEST_NOT_FOUND: 'errorTradeRequestNotFound',
+  NO_OTHER_ACTIVE_PLAYERS: 'errorNoOtherActivePlayers',
   JOIN_CODE_UNAVAILABLE: 'errorJoinCodeUnavailable',
   UNAUTHORIZED: 'errorSessionExpired',
   INVALID_CREDENTIALS: 'errorInvalidCredentials',

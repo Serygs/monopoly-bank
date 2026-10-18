@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readAmountUnit, readPreferences, writeAmountUnit, writePreferences } from './preferences';
+import {
+  isColorMode,
+  readAmountUnit,
+  readPreferences,
+  writeAmountUnit,
+  writePreferences,
+} from './preferences';
 
 const key = 'monopoly-bank-device-preferences';
 
@@ -163,6 +169,110 @@ describe('amount unit preference', () => {
       },
     });
     expect(() => writeAmountUnit('MILLIONS')).not.toThrow();
+    expect(readAmountUnit()).toBe('ONES');
+  });
+});
+
+describe('device preference parsing', () => {
+  let stored: string | null;
+  beforeEach(() => {
+    stored = null;
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => stored),
+      setItem: vi.fn((_key: string, value: string) => {
+        stored = value;
+      }),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const defaults = {
+    visualStyle: 'classic-bank',
+    colorMode: 'system',
+    sound: true,
+    vibration: true,
+    keepScreenAwake: true,
+  };
+
+  it('returns the defaults when nothing is stored', () => {
+    expect(readPreferences()).toEqual(defaults);
+  });
+
+  it.each(['not json', '[]', '"dark"', '5', 'true', 'null', '[{"sound":false}]'])(
+    'returns the defaults for the stored text %s',
+    (text) => {
+      stored = text;
+      expect(readPreferences()).toEqual(defaults);
+    },
+  );
+
+  it('returns a fresh copy of the defaults each time', () => {
+    const first = readPreferences();
+    first.sound = false;
+    expect(readPreferences().sound).toBe(true);
+  });
+
+  it('turns each switch off only when it is stored as exactly false', () => {
+    for (const field of ['sound', 'vibration', 'keepScreenAwake'] as const) {
+      stored = JSON.stringify({ [field]: false });
+      expect(readPreferences()[field]).toBe(false);
+      for (const value of [true, 0, null, 'false', 'no']) {
+        stored = JSON.stringify({ [field]: value });
+        expect(readPreferences()[field]).toBe(true);
+      }
+    }
+  });
+
+  it('accepts exactly the three colour modes and falls back to the legacy theme, then to system', () => {
+    for (const colorMode of ['light', 'dark', 'system']) {
+      stored = JSON.stringify({ colorMode });
+      expect(readPreferences().colorMode).toBe(colorMode);
+      expect(isColorMode(colorMode)).toBe(true);
+    }
+    for (const colorMode of ['sepia', '', null, 5]) {
+      stored = JSON.stringify({ colorMode });
+      expect(readPreferences().colorMode).toBe('system');
+      expect(isColorMode(colorMode)).toBe(false);
+    }
+    stored = JSON.stringify({ colorMode: 'sepia', theme: 'dark' });
+    expect(readPreferences().colorMode).toBe('dark');
+    stored = JSON.stringify({ colorMode: 'sepia', theme: 'sepia' });
+    expect(readPreferences().colorMode).toBe('system');
+  });
+
+  it('falls back to the default style for an unknown one', () => {
+    stored = JSON.stringify({ visualStyle: 'neon-nonsense' });
+    expect(readPreferences().visualStyle).toBe('classic-bank');
+  });
+
+  it('returns the defaults when the storage cannot be read', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+    });
+    expect(readPreferences()).toEqual(defaults);
+    expect(readAmountUnit()).toBe('ONES');
+  });
+
+  it('does not throw when the storage refuses a write', () => {
+    vi.stubGlobal('localStorage', {
+      setItem: () => {
+        throw new Error('quota');
+      },
+    });
+    expect(() => writePreferences(readPreferences())).not.toThrow();
+    expect(() => writeAmountUnit('MILLIONS')).not.toThrow();
+  });
+
+  it('reads back exactly the three amount units and defaults to ones', () => {
+    for (const unit of ['ONES', 'THOUSANDS', 'MILLIONS'] as const) {
+      writeAmountUnit(unit);
+      expect(readAmountUnit()).toBe(unit);
+    }
+    stored = 'BILLIONS';
+    expect(readAmountUnit()).toBe('ONES');
+    stored = null;
     expect(readAmountUnit()).toBe('ONES');
   });
 });

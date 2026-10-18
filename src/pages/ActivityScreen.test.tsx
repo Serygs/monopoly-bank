@@ -249,3 +249,108 @@ describe('activity player filter', () => {
     expect(await screen.findByText('note-t2')).toBeInTheDocument();
   });
 });
+
+describe('activity empty states', () => {
+  beforeEach(() => {
+    vi.spyOn(monopolyBankApi, 'getActivity').mockResolvedValue({
+      transactions: [],
+      paymentRequests: [],
+      nextCursor: null,
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('says there is no activity in All and Mine, and no pending activity in Pending', async () => {
+    const user = userEvent.setup();
+    renderActivity('en', true);
+    expect(await screen.findByText(translate('en', 'noActivity'))).toBeInTheDocument();
+    expect(screen.queryByText(translate('en', 'noPendingActivity'))).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: translate('en', 'activityMine') }));
+    expect(await screen.findByText(translate('en', 'noActivity'))).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: translate('en', 'activityPending') }));
+    expect(await screen.findByText(translate('en', 'noPendingActivity'))).toBeInTheDocument();
+    expect(screen.queryByText(translate('en', 'noActivity'))).not.toBeInTheDocument();
+  });
+
+  it('words the empty states in Ukrainian', async () => {
+    const user = userEvent.setup();
+    renderActivity('uk', true);
+    expect(await screen.findByText(translate('uk', 'noActivity'))).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: translate('uk', 'activityPending') }));
+    expect(await screen.findByText(translate('uk', 'noPendingActivity'))).toBeInTheDocument();
+    expect(translate('uk', 'noPendingActivity')).not.toBe(translate('en', 'noPendingActivity'));
+  });
+});
+
+describe('activity filtered by one player', () => {
+  const tx = (id: string, playerIds: string[], extra: Partial<Transaction> = {}): Transaction => ({
+    id,
+    gameId: 'game-1',
+    type: 'PLAYER_TO_PLAYER',
+    amount: 10,
+    totalAmount: 10,
+    comment: `note-${id}`,
+    createdAt: '2026-01-01T10:00:00.000Z',
+    participants: playerIds.map((playerId, index) => ({
+      playerId,
+      balanceDelta: index === 0 ? -10 : 10,
+    })),
+    ...extra,
+  });
+  const players: Player[] = ['p1', 'p2', 'p3'].map((id) => ({
+    id,
+    gameId: 'game-1',
+    name: `Name-${id}`,
+    color: '#000',
+    balance: 0,
+    createdAt: '',
+  }));
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('shows only the rows the player is a participant of, and not those they merely started', async () => {
+    vi.spyOn(monopolyBankApi, 'getActivity').mockResolvedValue({
+      transactions: [
+        tx('with-p1', ['p1', 'p2']),
+        tx('without-p1', ['p2', 'p3']),
+        tx('initiated-only', ['p2', 'p3'], { initiatorPlayerId: 'p1' }),
+        tx('zero-delta', ['p3'], {
+          participants: [{ playerId: 'p1', balanceDelta: 0 }],
+        }),
+      ],
+      paymentRequests: [],
+      nextCursor: null,
+    });
+    renderActivity('en', true, { initialPlayerId: 'p1' }, players);
+    expect(await screen.findByText(/note-with-p1/u)).toBeInTheDocument();
+    expect(screen.getByText(/note-zero-delta/u)).toBeInTheDocument();
+    expect(screen.queryByText(/note-without-p1/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(/note-initiated-only/u)).not.toBeInTheDocument();
+  });
+
+  it('shows every row when no player is chosen', async () => {
+    vi.spyOn(monopolyBankApi, 'getActivity').mockResolvedValue({
+      transactions: [tx('one', ['p1', 'p2']), tx('two', ['p2', 'p3'])],
+      paymentRequests: [],
+      nextCursor: null,
+    });
+    renderActivity('en', true, {}, players);
+    expect(await screen.findByText(/note-one/u)).toBeInTheDocument();
+    expect(screen.getByText(/note-two/u)).toBeInTheDocument();
+  });
+
+  it('says there is nothing for a player who took part in nothing', async () => {
+    vi.spyOn(monopolyBankApi, 'getActivity').mockResolvedValue({
+      transactions: [tx('one', ['p2', 'p3'])],
+      paymentRequests: [],
+      nextCursor: null,
+    });
+    renderActivity('en', true, { initialPlayerId: 'p1' }, players);
+    expect(await screen.findByText(translate('en', 'noActivity'))).toBeInTheDocument();
+    expect(screen.queryByText(/note-one/u)).not.toBeInTheDocument();
+  });
+});

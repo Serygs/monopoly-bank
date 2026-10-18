@@ -1,52 +1,49 @@
 import { describe, expect, it } from 'vitest';
 
 import type {
-  CreateGameRequest,
   CreateTransactionRequest,
   GameDetails,
   GameSummary,
 } from '../../shared/contracts/api.js';
+import {
+  buildGameDetails,
+  buildPlayer,
+  buildTransaction,
+  testUuid,
+} from '../../shared/test-support/fixtures.js';
+import { jsonRequest } from '../../shared/test-support/requests.js';
 import { InsufficientFundsError } from '../../shared/domain/banking.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { BankingService } from '../services/banking-service.js';
 import { ForbiddenError, ResourceNotFoundError } from '../services/errors.js';
-import type { GameService } from '../services/game-service.js';
+import type { CreateGameInput, GameService } from '../services/game-service.js';
 import { createApiRouter } from './api-router.js';
 
-const gameId = '00000000-0000-4000-8000-000000000001';
-const firstPlayerId = '00000000-0000-4000-8000-000000000002';
-const secondPlayerId = '00000000-0000-4000-8000-000000000003';
+const gameId = testUuid(1);
+const firstPlayerId = testUuid(2);
+const secondPlayerId = testUuid(3);
 
-const gameDetails: GameDetails = {
+const gameDetails: GameDetails = buildGameDetails({
   game: {
-    id: gameId,
     name: 'Friday Monopoly',
-    startingBalance: 1500,
-    passGoReward: 200,
-    currency: 'K',
-    status: 'ACTIVE',
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
   },
   players: [
-    {
+    buildPlayer({
       id: firstPlayerId,
-      gameId,
       name: 'Ada',
       color: '#123456',
-      balance: 1500,
       createdAt: '2026-01-01T00:00:00Z',
-    },
-    {
+    }),
+    buildPlayer({
       id: secondPlayerId,
-      gameId,
       name: 'Lin',
       color: '#654321',
-      balance: 1500,
       createdAt: '2026-01-01T00:00:00Z',
-    },
+    }),
   ],
-};
+});
 
 describe('API router', () => {
   it.each([false, true])(
@@ -107,7 +104,7 @@ describe('API router', () => {
   it('rejects cross-origin mutations before a service can write and attaches security headers', async () => {
     let writes = 0;
     const router = createTestRouter({
-      createGame: async () => {
+      createGameForOwner: async () => {
         writes += 1;
         return gameDetails;
       },
@@ -153,9 +150,9 @@ describe('API router', () => {
   });
 
   it('creates a valid game with server-validated input', async () => {
-    let received: CreateGameRequest | undefined;
+    let received: CreateGameInput | undefined;
     const router = createTestRouter({
-      createGame: async (request) => {
+      createGameForOwner: async (_userId, request) => {
         received = request;
         return gameDetails;
       },
@@ -273,7 +270,7 @@ describe('API router', () => {
           writes += 1;
           return transactionResponse();
         },
-      } as BankingService,
+      } as unknown as BankingService,
       auth: {
         current: async () => ({
           id: '00000000-0000-4000-8000-000000000099',
@@ -295,6 +292,7 @@ describe('API router', () => {
       profileStatistics: {} as never,
       live: {
         connect: async () => new Response(),
+        readAuction: async () => new Response(),
         mutate: async () => {
           liveMutations += 1;
           return new Response();
@@ -666,21 +664,20 @@ describe('API router', () => {
     const games: GameService = {
       listGames: async () => [],
       listGamesForUser: async () => [],
-      createGame: async () => gameDetails,
       createGameForOwner: async () => gameDetails,
       getGame: async () => gameDetails,
       deleteGame: async () => ({ gameId }),
       listDeletedGamesForUser: async () => [],
       restoreGame: async () => ({ gameId }),
-      duplicateGame: async () => gameDetails,
+      duplicateGameForOwner: async () => gameDetails,
       finishGame: async () => gameDetails,
       toggleFavoriteAmount: async () => [],
-    };
+    } as unknown as GameService;
     const banking: BankingService = {
       createTransaction: async () => transactionResponse(),
       listTransactions: async () => [],
       listPlayerTransactions: async () => [],
-    };
+    } as unknown as BankingService;
     const router = createApiRouter({
       games,
       banking,
@@ -720,12 +717,12 @@ describe('API router', () => {
       duplicateGameForOwner: async () => gameDetails,
       finishGame: async () => gameDetails,
       toggleFavoriteAmount: async () => [],
-    };
+    } as unknown as GameService;
     const banking: BankingService = {
       createTransaction: async () => transactionResponse(),
       listTransactions: async () => [],
       listPlayerTransactions: async () => [],
-    };
+    } as unknown as BankingService;
     const router = createApiRouter({
       games,
       banking,
@@ -867,7 +864,11 @@ describe('API router', () => {
       } as never,
       access: { requireMember: async () => 'PLAYER' } as never,
       profileStatistics: {} as never,
-      live: { connect: async () => upgrade, mutate: async () => new Response() },
+      live: {
+        connect: async () => upgrade,
+        readAuction: async () => new Response(),
+        mutate: async () => new Response(),
+      },
     });
 
     await expect(
@@ -953,7 +954,11 @@ describe('API router', () => {
       } as never,
       access: { requireMember: async () => 'PLAYER' } as never,
       profileStatistics: {} as never,
-      live: { connect: async () => upgrade, mutate: async () => new Response() },
+      live: {
+        connect: async () => upgrade,
+        readAuction: async () => new Response(),
+        mutate: async () => new Response(),
+      },
     });
 
     await expect(
@@ -968,7 +973,7 @@ describe('API router', () => {
   it('deletes a saved game', async () => {
     let deletedGameId: string | undefined;
     const router = createTestRouter({
-      deleteGame: async (requestedGameId) => {
+      deleteGame: async (requestedGameId: string) => {
         deletedGameId = requestedGameId;
         return { gameId: requestedGameId };
       },
@@ -1004,7 +1009,7 @@ describe('API router', () => {
   it('restores a deleted game for its owner and 404s otherwise', async () => {
     const restored: string[] = [];
     const router = createTestRouter({
-      restoreGame: async (requestedGameId) => {
+      restoreGame: async (requestedGameId: string) => {
         restored.push(requestedGameId);
         return { gameId: requestedGameId };
       },
@@ -1064,20 +1069,19 @@ function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {
   const games: GameService = {
     listGames: async (): Promise<GameSummary[]> => [],
     listGamesForUser: async (): Promise<GameSummary[]> => [],
-    createGame: async () => gameDetails,
-    createGameForOwner: async (_userId, request) => games.createGame(request),
+    createGameForOwner: async () => gameDetails,
     getGame: async () => gameDetails,
-    deleteGame: async (requestedGameId) => ({ gameId: requestedGameId }),
+    deleteGame: async (requestedGameId: string) => ({ gameId: requestedGameId }),
     listDeletedGamesForUser: async () => [],
-    restoreGame: async (requestedGameId) => ({ gameId: requestedGameId }),
+    restoreGame: async (requestedGameId: string) => ({ gameId: requestedGameId }),
     ...pickGameOverrides(overrides),
-  };
+  } as unknown as GameService;
   const banking: BankingService = {
     createTransaction: async () => transactionResponse(),
     listTransactions: async () => [],
     listPlayerTransactions: async () => [],
     ...pickBankingOverrides(overrides),
-  };
+  } as unknown as BankingService;
   const auth = {
     current: async () => ({
       id: '00000000-0000-4000-8000-000000000099',
@@ -1107,7 +1111,7 @@ function createTestRouter(overrides: Partial<TestServiceOverrides> = {}) {
 }
 
 interface TestServiceOverrides {
-  createGame: GameService['createGame'];
+  createGameForOwner: GameService['createGameForOwner'];
   getGame: GameService['getGame'];
   deleteGame: GameService['deleteGame'];
   listDeletedGamesForUser: GameService['listDeletedGamesForUser'];
@@ -1118,11 +1122,12 @@ interface TestServiceOverrides {
 }
 
 function pickGameOverrides(overrides: Partial<TestServiceOverrides>): Partial<GameService> {
-  const { createGame, getGame, deleteGame, listDeletedGamesForUser, restoreGame } = overrides;
+  const { createGameForOwner, getGame, deleteGame, listDeletedGamesForUser, restoreGame } =
+    overrides;
   return {
     ...(listDeletedGamesForUser === undefined ? {} : { listDeletedGamesForUser }),
     ...(restoreGame === undefined ? {} : { restoreGame }),
-    ...(createGame === undefined ? {} : { createGame }),
+    ...(createGameForOwner === undefined ? {} : { createGameForOwner }),
     ...(getGame === undefined ? {} : { getGame }),
     ...(deleteGame === undefined ? {} : { deleteGame }),
   };
@@ -1137,29 +1142,16 @@ function pickBankingOverrides(overrides: Partial<TestServiceOverrides>): Partial
   };
 }
 
-function jsonRequest(method: string, path: string, body: unknown): Request {
-  return new Request(`https://example.test${path}`, {
-    method,
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-}
-
 function transactionResponse() {
   return {
-    transaction: {
-      id: '00000000-0000-4000-8000-000000000004',
-      gameId,
-      type: 'PLAYER_TO_PLAYER' as const,
-      amount: 100,
-      totalAmount: 100,
-      comment: null,
+    transaction: buildTransaction({
+      type: 'PLAYER_TO_PLAYER',
       createdAt: '2026-01-01T00:00:00Z',
       participants: [
         { playerId: firstPlayerId, balanceDelta: -100 },
         { playerId: secondPlayerId, balanceDelta: 100 },
       ],
-    },
+    }),
     players: gameDetails.players,
   };
 }

@@ -60,3 +60,61 @@ describe('bank loans', () => {
     expect(loanInterest(13, 10)).toBe(1);
   });
 });
+
+describe('loan boundaries', () => {
+  it('never reports a negative amount outstanding', () => {
+    expect(loanOutstanding(loan({ principal: 100, repaidAmount: 100 }))).toBe(0);
+    expect(loanOutstanding(loan({ principal: 100, repaidAmount: 130 }))).toBe(0);
+    expect(loanOutstanding(loan({ principal: 100, repaidAmount: 99 }))).toBe(1);
+  });
+
+  it('lists as the borrower’s only active player loans that still owe something', () => {
+    const loans = [
+      loan({ id: 'owing' }),
+      loan({ id: 'settled', repaidAmount: 100 }),
+      loan({ id: 'written-off', state: 'WRITTEN_OFF' }),
+      loan({ id: 'repaid', state: 'REPAID' }),
+      loan({ id: 'bank', lenderKind: 'BANK', lenderPlayerId: null }),
+      loan({ id: 'other', borrowerPlayerId: 'c' }),
+    ];
+    expect(activeLoansAsBorrower(loans, 'b').map((item) => item.id)).toEqual(['owing']);
+  });
+
+  it('counts only active loans in the debt, including the bank’s as owed by the borrower', () => {
+    const loans = [
+      loan({ id: 'owing', principal: 100, repaidAmount: 40 }),
+      loan({ id: 'repaid', state: 'REPAID', principal: 500, repaidAmount: 500 }),
+      loan({ id: 'off', state: 'WRITTEN_OFF', principal: 700, repaidAmount: 0 }),
+      loan({
+        id: 'bank',
+        lenderKind: 'BANK',
+        lenderPlayerId: null,
+        principal: 30,
+        repaidAmount: 0,
+      }),
+    ];
+    expect(playerDebt(loans, 'b')).toEqual({ owes: 90, owed: 0 });
+    expect(playerDebt(loans, 'a')).toEqual({ owes: 0, owed: 60 });
+  });
+
+  it('does not credit the lender of a loan that is no longer the player’s lender kind', () => {
+    const bank = loan({ lenderKind: 'BANK', lenderPlayerId: 'a' });
+    expect(playerDebt([bank], 'a')).toEqual({ owes: 0, owed: 0 });
+  });
+
+  it('finds an active bank loan only while something is owed on it', () => {
+    const bank = loan({ id: 'bk', lenderKind: 'BANK', lenderPlayerId: null, repaidAmount: 100 });
+    expect(activeBankLoan([bank], 'b')).toBeNull();
+    expect(activeBankLoan([{ ...bank, repaidAmount: 99 }], 'b')?.id).toBe('bk');
+    expect(activeBankLoan([{ ...bank, repaidAmount: 0, lenderKind: 'PLAYER' }], 'b')).toBeNull();
+  });
+
+  it('charges no interest on nothing and rounds the half up otherwise', () => {
+    expect(loanInterest(0, 20)).toBe(0);
+    expect(loanInterest(-100, 20)).toBe(0);
+    expect(loanInterest(5, 10)).toBe(1);
+    expect(loanInterest(4, 10)).toBe(0);
+    expect(loanInterest(200, 0)).toBe(0);
+    expect(loanInterest(1, 20)).toBe(0);
+  });
+});

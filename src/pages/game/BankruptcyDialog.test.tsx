@@ -2,9 +2,12 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildBoardSnapshot, getBoardPreset } from '../../../shared/board';
-import type { GameProperty, Player } from '../../../shared/types/monopoly';
+import { declareBankruptcy } from '../../../shared/domain/banking';
+import { buildGameSettings } from '../../../shared/domain/game-rules';
+import { defaultGameRules, type GameProperty, type Player } from '../../../shared/types/monopoly';
 import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
+import { formatMoney } from '../../utils/money';
 import { BankruptcyDialog } from './BankruptcyDialog';
 
 const board = buildBoardSnapshot(getBoardPreset('monopoly-ru-2012'), 15_000_000);
@@ -87,5 +90,138 @@ describe('BankruptcyDialog with a board', () => {
     expect(await screen.findByText(/Bo cannot pay the mortgage fees/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Open Bo/ }));
     expect(onOpenWallet).toHaveBeenCalledWith(bo);
+  });
+});
+
+describe('BankruptcyDialog preview matches what the domain writes', () => {
+  const players = [
+    { ...ada, balance: 100_000 },
+    { ...bo, balance: 10_000_000_000 },
+  ];
+  const scenarios: Array<[string, GameProperty[]]> = [
+    ['no property at all', []],
+    ['one mortgaged tile', [row('nagatinska', { mortgaged: true })]],
+    ['two houses on one street and a mortgaged tile', properties],
+    ['a hotel', [row('zhitna', { houses: 5 }), row('nagatinska', { houses: 5 })]],
+    [
+      'several mortgaged tiles of different values',
+      [
+        row('zhitna', { mortgaged: true }),
+        row('varshavske', { mortgaged: true }),
+        row('arbat', { mortgaged: true }),
+        row('ogarova'),
+      ],
+    ],
+    [
+      'buildings on three streets',
+      [
+        row('varshavske', { houses: 1 }),
+        row('ogarova', { houses: 3 }),
+        row('persha_parkova', { houses: 2 }),
+      ],
+    ],
+    [
+      'a tile of another player',
+      [row('zhitna', { ownerPlayerId: 'p2', houses: 3 }), row('arbat', { mortgaged: true })],
+    ],
+  ];
+  const money = (value: number) => formatMoney(value, 'USD');
+
+  const domain = (registry: GameProperty[], creditorPlayerId?: string) =>
+    declareBankruptcy({
+      game: {
+        id: 'g1',
+        name: 'G',
+        startingBalance: 15_000_000,
+        passGoReward: 2_000_000,
+        currency: 'USD',
+        paymentMode: 'FAST',
+        rules: defaultGameRules,
+        settings: buildGameSettings(15_000_000, 'monopoly-ru-2012'),
+        status: 'ACTIVE',
+        createdAt: '',
+        updatedAt: '',
+      },
+      players,
+      playerId: 'p1',
+      ...(creditorPlayerId === undefined ? {} : { creditorPlayerId }),
+      property: { board, registry },
+    });
+
+  const open = (registry: GameProperty[]) => {
+    render(
+      <LanguageProvider>
+        <BankruptcyDialog
+          gameId="g1"
+          player={players[0] as Player}
+          players={players}
+          board={board}
+          properties={registry}
+          currency="USD"
+          onClose={vi.fn()}
+          onCompleted={vi.fn()}
+        />
+      </LanguageProvider>,
+    );
+    return userEvent.setup();
+  };
+
+  it.each(scenarios)(
+    'shows the proceeds and the creditor fee the domain computes for %s',
+    async (_label, registry) => {
+      const written = domain(registry, 'p2');
+      const mine = registry.filter((item) => item.ownerPlayerId === 'p1');
+      const wallet = written.transaction.totalAmount;
+      const proceeds = mine.length === 0 && wallet === 100_000 ? 0 : wallet - 100_000;
+      const creditorDelta =
+        written.affectedPlayers.find((change) => change.player.id === 'p2')?.balanceDelta ?? 0;
+      const fee = wallet - creditorDelta;
+
+      const user = open(registry);
+      await user.click(screen.getByRole('button', { name: /Bo/ }));
+      await user.click(screen.getByRole('button', { name: /review/i }));
+
+      const buildings = mine.reduce((sum, item) => sum + item.houses, 0);
+      if (mine.length === 0) {
+        expect(screen.queryByText(/properties pass to/)).not.toBeInTheDocument();
+        return;
+      }
+      if (buildings > 0)
+        expect(
+          screen.getByText(
+            `Buildings sold to the bank first: ${buildings} for ${money(proceeds)}, added to the wallet.`,
+          ),
+        ).toBeInTheDocument();
+      else expect(screen.queryByText(/Buildings sold to the bank first/)).not.toBeInTheDocument();
+      if (fee > 0)
+        expect(
+          screen.getByText(`Bo pays the bank ${money(fee)} for the mortgaged properties.`),
+        ).toBeInTheDocument();
+      else expect(screen.queryByText(/pays the bank/)).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(scenarios)(
+    'shows the same proceeds and no fee when the bank is the creditor for %s',
+    async (_label, registry) => {
+      const written = domain(registry);
+      const mine = registry.filter((item) => item.ownerPlayerId === 'p1');
+      const proceeds = written.transaction.totalAmount - 100_000;
+      const user = open(registry);
+      await user.click(screen.getByRole('button', { name: /review/i }));
+      const buildings = mine.reduce((sum, item) => sum + item.houses, 0);
+      if (buildings > 0)
+        expect(
+          screen.getByText(
+            `Buildings sold to the bank first: ${buildings} for ${money(proceeds)}, added to the wallet.`,
+          ),
+        ).toBeInTheDocument();
+      expect(screen.queryByText(/pays the bank/)).not.toBeInTheDocument();
+    },
+  );
+
+  it('counts a hotel as five buildings sold at the refund of each', async () => {
+    const written = domain([row('zhitna', { houses: 5 }), row('nagatinska', { houses: 5 })], 'p2');
+    expect(written.transaction.totalAmount).toBe(100_000 + 10 * 37_500_000);
   });
 });
