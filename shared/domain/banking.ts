@@ -1134,6 +1134,31 @@ export function declareBankruptcy(command: BankruptcyCommand): BankingOperationR
   );
 }
 
+export interface BankruptcyPreview {
+  tileCount: number;
+  buildings: number;
+  proceeds: number;
+  creditorFee: number;
+}
+
+export function bankruptcyPreview(
+  property: PropertyContext | undefined,
+  playerId: string,
+  hasCreditor: boolean,
+): BankruptcyPreview {
+  const preview: BankruptcyPreview = { tileCount: 0, buildings: 0, proceeds: 0, creditorFee: 0 };
+  if (property === undefined) return preview;
+  const { board, registry } = property;
+  for (const row of registry) {
+    if (row.ownerPlayerId !== playerId) continue;
+    preview.tileCount += 1;
+    preview.buildings += row.houses;
+    preview.proceeds += row.houses * sellRefund(board, row.tileId);
+    if (hasCreditor && row.mortgaged) preview.creditorFee += mortgageTransferFee(board, row.tileId);
+  }
+  return preview;
+}
+
 /**
  * Board games: what the bankrupt player's tiles and buildings turn into. Each tile gets one
  * registry change (before = as it stands, after = as it ends): buildings sold (a hotel counts as
@@ -1147,9 +1172,12 @@ function bankruptcyAssets(
   creditor: Player | null,
 ): { changes: PropertyChange[]; proceeds: number; creditorFee: number } {
   if (command.property === undefined) return { changes: [], proceeds: 0, creditorFee: 0 };
-  const { board, registry } = command.property;
-  let proceeds = 0;
-  let creditorFee = 0;
+  const { registry } = command.property;
+  const { proceeds, creditorFee } = bankruptcyPreview(
+    command.property,
+    bankruptPlayer.id,
+    creditor !== null,
+  );
   const changes = registry
     .filter((row) => row.ownerPlayerId === bankruptPlayer.id)
     .map((row): PropertyChange => {
@@ -1158,8 +1186,6 @@ function bankruptcyAssets(
         mortgaged: row.mortgaged,
         houses: row.houses,
       };
-      proceeds += row.houses * sellRefund(board, row.tileId);
-      if (creditor !== null && row.mortgaged) creditorFee += mortgageTransferFee(board, row.tileId);
       return {
         tileId: row.tileId,
         before,
