@@ -4,12 +4,26 @@ import type {
   Loan,
   LoanRoundStatus,
   Transaction,
+  TransactionType,
 } from '../types/monopoly.js';
+import { type ParticipantSide, soleParticipant } from './participants.js';
 
 /** A loan is overdue once it reaches this round without being repaid. */
 export const OVERDUE_ROUND = 4;
 /** After repaying a bank loan, a player waits this many rounds before borrowing without a warning. */
 export const BANK_LOAN_COOLDOWN_ROUNDS = 2;
+
+const ACTOR_SIDE: Partial<Record<TransactionType, ParticipantSide>> = {
+  PLAYER_TO_PLAYER: 'DEBIT',
+  PAY_RENT: 'DEBIT',
+  PLAYER_TO_BANK: 'DEBIT',
+  PLAYER_TO_ALL: 'DEBIT',
+  TO_JACKPOT: 'DEBIT',
+  BANK_TO_PLAYER: 'CREDIT',
+  PASS_GO: 'CREDIT',
+  ALL_TO_PLAYER: 'CREDIT',
+  JACKPOT_PAYOUT: 'CREDIT',
+};
 
 /**
  * The app never stores or enforces turn order. A "turn" is inferred from whose operations follow
@@ -21,24 +35,8 @@ export function transactionActor(
   transaction: Pick<Transaction, 'type' | 'participants' | 'reversedByTransactionId'>,
 ): string | null {
   if (transaction.reversedByTransactionId != null) return null;
-  const debited = transaction.participants.filter((participant) => participant.balanceDelta < 0);
-  const credited = transaction.participants.filter((participant) => participant.balanceDelta > 0);
-  switch (transaction.type) {
-    case 'PLAYER_TO_PLAYER':
-    case 'PAY_RENT':
-    case 'PLAYER_TO_BANK':
-    case 'PLAYER_TO_ALL':
-    case 'TO_JACKPOT':
-      return debited.length === 1 ? (debited[0]?.playerId ?? null) : null;
-    case 'BANK_TO_PLAYER':
-    case 'PASS_GO':
-    case 'ALL_TO_PLAYER':
-    case 'JACKPOT_PAYOUT':
-      return credited.length === 1 ? (credited[0]?.playerId ?? null) : null;
-    default:
-      // Loans, mortgages, auction payments, reversals and bankruptcies say nothing about whose turn it is.
-      return null;
-  }
+  const side = ACTOR_SIDE[transaction.type];
+  return side === undefined ? null : soleParticipant(transaction.participants, side);
 }
 
 /**

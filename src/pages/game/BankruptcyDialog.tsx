@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { BoardSnapshot } from '../../../shared/board';
-import { sellRefund } from '../../../shared/domain/property';
-import { redemptionCost } from '../../../shared/domain/mortgage';
+import { bankruptcyPreview } from '../../../shared/domain/banking';
 import type {
   BankLoanCooldown,
   Currency,
@@ -80,21 +79,11 @@ export function BankruptcyDialog({
   };
   const money = (value: number) => formatMoney(value, currency);
   // What the bankruptcy does to the board: tiles pass on, buildings are sold back at half price.
-  const tiles = board === null ? [] : properties.filter((row) => row.ownerPlayerId === player.id);
-  const buildings = tiles.reduce((sum, row) => sum + row.houses, 0);
-  const proceeds =
-    board === null
-      ? 0
-      : tiles.reduce((sum, row) => sum + row.houses * sellRefund(board, row.tileId), 0);
-  const fee =
-    board === null || creditor === null
-      ? 0
-      : tiles.reduce((sum, row) => {
-          const tile = board.tiles.find((item) => item.id === row.tileId);
-          return row.mortgaged && tile !== undefined
-            ? sum + redemptionCost(tile.mortgage) - tile.mortgage
-            : sum;
-        }, 0);
+  const { tileCount, buildings, proceeds, creditorFee } = bankruptcyPreview(
+    board === null ? undefined : { board, registry: properties },
+    player.id,
+    creditor !== null,
+  );
   const shortError =
     error instanceof MonopolyBankApiError && error.code === 'BANKRUPTCY_CREDITOR_SHORT'
       ? error
@@ -111,12 +100,12 @@ export function BankruptcyDialog({
               : t('bankruptcyToPlayer', { name: player.name, creditor: creditor.name })}{' '}
             {t('bankruptcyIrreversible')}
           </DialogBody>
-          {board !== null && tiles.length > 0 && (
+          {board !== null && tileCount > 0 && (
             <Notice tone="info">
               <p>
                 {creditor === null
-                  ? t('bankruptcyTilesToBank', { count: tiles.length })
-                  : t('bankruptcyTilesToPlayer', { count: tiles.length, creditor: creditor.name })}
+                  ? t('bankruptcyTilesToBank', { count: tileCount })
+                  : t('bankruptcyTilesToPlayer', { count: tileCount, creditor: creditor.name })}
               </p>
               {buildings > 0 && (
                 <p>
@@ -126,8 +115,13 @@ export function BankruptcyDialog({
                   })}
                 </p>
               )}
-              {fee > 0 && creditor !== null && (
-                <p>{t('bankruptcyCreditorFee', { creditor: creditor.name, amount: money(fee) })}</p>
+              {creditorFee > 0 && creditor !== null && (
+                <p>
+                  {t('bankruptcyCreditorFee', {
+                    creditor: creditor.name,
+                    amount: money(creditorFee),
+                  })}
+                </p>
               )}
             </Notice>
           )}

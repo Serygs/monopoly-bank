@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type FormHTMLAttributes } from 'react';
 import type { UserProfile } from '../../shared/contracts/api';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { useAsyncAction } from '../hooks/useAsyncAction';
 import { Avatar, AvatarPicker } from '../components/AvatarPicker';
 import { PageHeader } from '../components/PageHeader';
 import { Dialog } from '../components/Dialog';
@@ -76,21 +77,14 @@ export function ProfilePage({
   const [nickname, setNickname] = useState(profile.nickname);
   const [avatar, setAvatar] = useState(profile.avatar);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [error, setError] = useState<unknown>(null);
-  const [saving, setSaving] = useState(false);
+  const { busy: saving, error, run } = useAsyncAction();
   const notify = useFeedback();
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
+    await run(async () => {
       onUpdated(await monopolyBankApi.updateProfile({ nickname, avatar }));
       notify({ tone: 'success', message: t('profileUpdated') });
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setSaving(false);
-    }
+    });
   };
   return (
     <PageShell>
@@ -199,19 +193,12 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
   const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const { busy, error, run } = useAsyncAction();
   const upgrade = async (event: FormEvent) => {
     event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
+    await run(async () => {
       onUpgraded(await monopolyBankApi.upgradeGuest({ email, password }));
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   return (
     <ProfileForm onSubmit={(event) => void upgrade(event)}>
@@ -250,21 +237,13 @@ function GuestUpgradeForm({ onUpgraded }: { onUpgraded: (profile: UserProfile) =
 
 function VerificationNotice() {
   const { t } = useLanguage();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const { busy, error, run } = useAsyncAction();
   const notify = useFeedback();
-  const resend = async () => {
-    setBusy(true);
-    setError(null);
-    try {
+  const resend = () =>
+    run(async () => {
       await monopolyBankApi.resendVerification();
       notify({ tone: 'success', message: t('verificationSent') });
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   return (
     <section>
       <Notice tone="success" as="div">
@@ -283,19 +262,12 @@ function VerificationNotice() {
 function LegacyEmailForm({ onAdded }: { onAdded: (profile: UserProfile) => void }) {
   const { t } = useLanguage();
   const [email, setEmail] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const { busy, error, run } = useAsyncAction();
   const add = async (event: FormEvent) => {
     event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
+    await run(async () => {
       onAdded(await monopolyBankApi.addEmailToLegacyAccount({ email }));
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   return (
     <ProfileForm onSubmit={(event) => void add(event)}>

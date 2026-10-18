@@ -1,10 +1,12 @@
 import type { Currency } from '../../shared/types/monopoly';
 
 /** Groups the whole-unit integer amounts stored by Monopoly Bank for display. */
+export function groupThousands(digits: string): string {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
 export function formatThousands(value: number): string {
-  return Math.abs(value)
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return groupThousands(Math.abs(value).toString());
 }
 
 /** The decimal separator of a locale: `,` for uk-UA, `.` for en-US. */

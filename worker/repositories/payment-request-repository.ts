@@ -5,11 +5,12 @@ import type {
 } from '../../shared/contracts/api.js';
 import type { PendingTransaction, PlayerBalanceChange } from '../../shared/domain/banking.js';
 import { DatabaseError } from '../services/errors.js';
+import { guardedBalanceUpdate } from './balance-statements.js';
 
 /** How long a payment or trade request waits for an answer. */
 export const PAYMENT_REQUEST_TTL_MS = 5 * 60 * 1000;
 
-interface PaymentRequestRow {
+export interface PaymentRequestRow {
   id: string;
   kind: PaymentRequestKind;
   game_id: string;
@@ -137,7 +138,10 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
     transaction: PendingTransaction;
     balanceChanges: readonly PlayerBalanceChange[];
   }): Promise<void> {
-    const balanceStatement = balanceUpdate(this.database, input.balanceChanges, input.requestId);
+    const balanceStatement = guardedBalanceUpdate(this.database, input.balanceChanges, {
+      condition: `EXISTS (SELECT 1 FROM payment_requests WHERE id = ? AND state = 'PENDING' AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
+      value: input.requestId,
+    });
     const transactionStatement = this.database
       .prepare(
         `INSERT INTO transactions (id, game_id, type, amount, total_amount, comment) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -236,29 +240,7 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
   }
 }
 
-function balanceUpdate(
-  database: D1Database,
-  changes: readonly PlayerBalanceChange[],
-  requestId: string,
-): D1PreparedStatement {
-  const gameId = changes[0]?.player.gameId;
-  if (gameId === undefined) return database.prepare('SELECT 1');
-  const cases = changes.map(
-    () =>
-      `WHEN ? THEN CASE WHEN balance = ? AND EXISTS (SELECT 1 FROM payment_requests WHERE id = ? AND state = 'PENDING' AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) THEN ? ELSE -1 END`,
-  );
-  const values: Array<string | number> = [];
-  for (const change of changes)
-    values.push(change.player.id, change.balanceBefore, requestId, change.balanceAfter);
-  const ids = changes.map((change) => change.player.id);
-  return database
-    .prepare(
-      `UPDATE players SET balance = CASE id ${cases.join(' ')} ELSE balance END WHERE game_id = ? AND id IN (${ids.map(() => '?').join(', ')})`,
-    )
-    .bind(...values, gameId, ...ids);
-}
-
-function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
+export function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
   return {
     id: row.id,
     kind: row.kind,

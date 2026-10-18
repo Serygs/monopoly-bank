@@ -1,4 +1,5 @@
 import type { BoardSnapshot } from '../board/types.js';
+import type { PlayerTransactionRequest } from '../contracts/api.js';
 import type {
   BankLoanCooldown,
   Game,
@@ -13,26 +14,55 @@ import type {
   TransactionType,
 } from '../types/monopoly.js';
 import { bankLoanInterest } from './bank-loan.js';
+import {
+  BANK_TO_PLAYER_MAX_AMOUNT,
+  BankLoanAlreadyActiveError,
+  BankLoanCooldownError,
+  BankLoanFullRepaymentRequiredError,
+  BankLoanLimitExceededError,
+  BankToPlayerLimitExceededError,
+  BankruptcyCreditorShortError,
+  InsufficientFundsError,
+  InvalidAmountError,
+  InvalidGameStateError,
+  InvalidPropertyNameError,
+  InvalidTradeError,
+  JackpotChangedError,
+  JackpotEmptyError,
+  LoanAmountExceedsDebtError,
+  LoanNotFoundError,
+  MortgageNotFoundError,
+  NoOtherActivePlayersError,
+  PlayerBankruptError,
+  PlayerNotFoundError,
+  ReversalBlockedByLaterOperationError,
+  SameSourceAndDestinationError,
+  TransactionAlreadyReversedError,
+  TransactionNotFoundError,
+  TransactionNotReversibleError,
+} from './banking-errors.js';
+import {
+  DiceSumError,
+  InvalidBuildTargetError,
+  MaxBuildingsError,
+  NoBuildingsError,
+  PropertyAlreadyOwnedError,
+  PropertyHasBuildingsError,
+  PropertyMortgagedError,
+  PropertyNotOwnedError,
+} from './property-errors.js';
 import { buildGameSettings } from './game-rules.js';
 import { normalizePropertyName, redemptionCost } from './mortgage.js';
 import {
   assertCanMortgage,
   buildCost,
   type BuildingPlan,
-  DiceSumError,
   groupHasBuildings,
-  InvalidBuildTargetError,
   invertChanges,
   MAX_BUILDINGS,
-  MaxBuildingsError,
   mortgageChange,
-  NoBuildingsError,
   ownerChange,
   planBuildings,
-  PropertyAlreadyOwnedError,
-  PropertyHasBuildingsError,
-  PropertyMortgagedError,
-  PropertyNotOwnedError,
   purchasePrice,
   rentFor,
   requireTile,
@@ -41,7 +71,8 @@ import {
   type PropertyContext,
 } from './property.js';
 import { findReversalDependency, reversibleTransaction } from './reversal.js';
-import { AppError } from '../../worker/services/errors.js';
+
+export * from './banking-errors.js';
 
 export interface PlayerToPlayerCommand extends BankingCommand {
   sourcePlayerId: string;
@@ -147,12 +178,6 @@ export interface TransferPropertiesCommand extends BankingCommand {
   cashGive: number;
   cashTake: number;
   property: PropertyContext;
-}
-
-export class InvalidTradeError extends AppError {
-  constructor(reason: string) {
-    super({ code: 'INVALID_TRADE', message: reason, status: 400, details: { reason } });
-  }
 }
 
 export interface PayRentCommand extends BankingCommand {
@@ -347,291 +372,6 @@ export interface PlayerBalanceChange {
   balanceDelta: number;
 }
 
-export type BankingErrorCode =
-  | 'INVALID_AMOUNT'
-  | 'PLAYER_NOT_FOUND'
-  | 'SAME_SOURCE_AND_DESTINATION'
-  | 'INSUFFICIENT_FUNDS'
-  | 'GAME_FINISHED'
-  | 'PLAYER_BANKRUPT';
-
-export abstract class BankingDomainError extends AppError {}
-
-export class InvalidAmountError extends BankingDomainError {
-  readonly code = 'INVALID_AMOUNT' as const;
-  readonly amount: number;
-
-  constructor(amount: number) {
-    super({
-      code: 'INVALID_AMOUNT',
-      message: 'Amount must be a positive safe integer.',
-      status: 400,
-      details: { field: 'amount' },
-    });
-    this.amount = amount;
-  }
-}
-
-export class PlayerNotFoundError extends BankingDomainError {
-  readonly code = 'PLAYER_NOT_FOUND' as const;
-  readonly playerId: string;
-
-  constructor(playerId: string) {
-    super({ code: 'PLAYER_NOT_FOUND', message: 'Player not found.', status: 404 });
-    this.playerId = playerId;
-  }
-}
-
-export class SameSourceAndDestinationError extends BankingDomainError {
-  readonly code = 'SAME_SOURCE_AND_DESTINATION' as const;
-  readonly playerId: string;
-
-  constructor(playerId: string) {
-    super({
-      code: 'SAME_SOURCE_AND_DESTINATION',
-      message: 'The source and destination players must be different.',
-      status: 400,
-    });
-    this.playerId = playerId;
-  }
-}
-
-export class InsufficientFundsError extends BankingDomainError {
-  readonly code = 'INSUFFICIENT_FUNDS' as const;
-  readonly playerId: string;
-  readonly currentBalance: number;
-  readonly requiredAmount: number;
-  readonly shortfall: number;
-
-  constructor(playerId: string, currentBalance: number, requiredAmount: number) {
-    super({
-      code: 'INSUFFICIENT_FUNDS',
-      message: 'Player does not have enough funds.',
-      status: 409,
-      details: {
-        playerId,
-        currentBalance,
-        requiredAmount,
-        shortfall: requiredAmount - currentBalance,
-      },
-    });
-    this.playerId = playerId;
-    this.currentBalance = currentBalance;
-    this.requiredAmount = requiredAmount;
-    this.shortfall = requiredAmount - currentBalance;
-  }
-}
-
-export class InvalidGameStateError extends BankingDomainError {
-  readonly code = 'GAME_FINISHED' as const;
-  readonly reason: string;
-
-  constructor(reason: string) {
-    super({ code: 'GAME_FINISHED', message: 'This game is finished.', status: 409 });
-    this.reason = reason;
-  }
-}
-
-export class NoOtherActivePlayersError extends BankingDomainError {
-  readonly code = 'NO_OTHER_ACTIVE_PLAYERS' as const;
-
-  constructor() {
-    super({
-      code: 'NO_OTHER_ACTIVE_PLAYERS',
-      message: 'There is no other active player to pay or collect from.',
-      status: 409,
-    });
-  }
-}
-
-export class TransactionNotFoundError extends BankingDomainError {
-  readonly code = 'TRANSACTION_NOT_FOUND' as const;
-  constructor(transactionId: string) {
-    super({
-      code: 'TRANSACTION_NOT_FOUND',
-      message: 'Transaction not found.',
-      status: 404,
-      details: { transactionId },
-    });
-  }
-}
-
-export class TransactionNotReversibleError extends BankingDomainError {
-  readonly code = 'TRANSACTION_NOT_REVERSIBLE' as const;
-  constructor(type: TransactionType) {
-    super({
-      code: 'TRANSACTION_NOT_REVERSIBLE',
-      message: 'This kind of transaction cannot be reversed.',
-      status: 409,
-      details: { type },
-    });
-  }
-}
-
-export class TransactionAlreadyReversedError extends BankingDomainError {
-  readonly code = 'TRANSACTION_ALREADY_REVERSED' as const;
-  constructor(transactionId: string, reversalId: string) {
-    super({
-      code: 'TRANSACTION_ALREADY_REVERSED',
-      message: 'This transaction has already been reversed.',
-      status: 409,
-      details: { transactionId, reversalId },
-    });
-  }
-}
-
-export class ReversalBlockedByLaterOperationError extends BankingDomainError {
-  readonly code = 'REVERSAL_BLOCKED_BY_LATER_OPERATION' as const;
-  constructor(transactionId: string, blockedBy: Pick<Transaction, 'id' | 'type'>) {
-    super({
-      code: 'REVERSAL_BLOCKED_BY_LATER_OPERATION',
-      message: 'A later operation builds on this transaction, so it cannot be reversed.',
-      status: 409,
-      details: { transactionId, blockedBy: blockedBy.id, blockedByType: blockedBy.type },
-    });
-  }
-}
-
-export class JackpotEmptyError extends BankingDomainError {
-  readonly code = 'JACKPOT_EMPTY' as const;
-  constructor() {
-    super({
-      code: 'JACKPOT_EMPTY',
-      message: 'The Free Parking pot is empty.',
-      status: 409,
-    });
-  }
-}
-
-export class JackpotChangedError extends BankingDomainError {
-  readonly code = 'JACKPOT_CHANGED' as const;
-  constructor(jackpot: number, expectedAmount: number) {
-    super({
-      code: 'JACKPOT_CHANGED',
-      message: 'The Free Parking pot changed. Review the new amount and try again.',
-      status: 409,
-      details: { jackpot, expectedAmount },
-    });
-  }
-}
-
-export class InvalidPropertyNameError extends BankingDomainError {
-  readonly code = 'INVALID_PROPERTY_NAME' as const;
-  constructor() {
-    super({
-      code: 'INVALID_PROPERTY_NAME',
-      message: 'The property name must be 1 to 60 characters without control characters.',
-      status: 400,
-      details: { field: 'propertyName' },
-    });
-  }
-}
-
-export class MortgageNotFoundError extends BankingDomainError {
-  readonly code = 'MORTGAGE_NOT_FOUND' as const;
-  constructor(mortgageId: string) {
-    super({
-      code: 'MORTGAGE_NOT_FOUND',
-      message: 'Mortgage not found.',
-      status: 404,
-      details: { mortgageId },
-    });
-  }
-}
-
-export class LoanNotFoundError extends BankingDomainError {
-  readonly code = 'LOAN_NOT_FOUND' as const;
-  constructor(loanId: string) {
-    super({ code: 'LOAN_NOT_FOUND', message: 'Loan not found.', status: 404, details: { loanId } });
-  }
-}
-
-export class LoanAmountExceedsDebtError extends BankingDomainError {
-  readonly code = 'LOAN_AMOUNT_EXCEEDS_DEBT' as const;
-  constructor(loanId: string, outstanding: number, amount: number) {
-    super({
-      code: 'LOAN_AMOUNT_EXCEEDS_DEBT',
-      message: 'The amount is more than what is still owed on this loan.',
-      status: 409,
-      details: { loanId, outstanding, amount },
-    });
-  }
-}
-
-export const BANK_TO_PLAYER_MAX_AMOUNT = 4_000_000;
-
-export class BankToPlayerLimitExceededError extends BankingDomainError {
-  readonly code = 'BANK_TO_PLAYER_LIMIT_EXCEEDED' as const;
-  constructor(amount: number, max: number) {
-    super({
-      code: 'BANK_TO_PLAYER_LIMIT_EXCEEDED',
-      message: 'The bank pays a player at most the limit in one operation.',
-      status: 400,
-      details: { field: 'amount', amount, max },
-    });
-  }
-}
-
-export class BankLoanLimitExceededError extends BankingDomainError {
-  readonly code = 'BANK_LOAN_LIMIT_EXCEEDED' as const;
-  constructor(amount: number, max: number) {
-    super({
-      code: 'BANK_LOAN_LIMIT_EXCEEDED',
-      message: 'The amount is more than the bank lends.',
-      status: 409,
-      details: { amount, max },
-    });
-  }
-}
-
-export class BankLoanAlreadyActiveError extends BankingDomainError {
-  readonly code = 'BANK_LOAN_ALREADY_ACTIVE' as const;
-  constructor(playerId: string, loanId?: string) {
-    super({
-      code: 'BANK_LOAN_ALREADY_ACTIVE',
-      message: 'This player already has a bank loan to repay.',
-      status: 409,
-      details: { playerId, ...(loanId === undefined ? {} : { loanId }) },
-    });
-  }
-}
-
-export class BankLoanCooldownError extends BankingDomainError {
-  readonly code = 'BANK_LOAN_COOLDOWN' as const;
-  constructor(playerId: string, roundsLeft: number) {
-    super({
-      code: 'BANK_LOAN_COOLDOWN',
-      message: 'This player repaid a bank loan recently; borrowing again needs a confirmation.',
-      status: 409,
-      details: { playerId, roundsLeft },
-    });
-  }
-}
-
-export class BankLoanFullRepaymentRequiredError extends BankingDomainError {
-  readonly code = 'BANK_LOAN_FULL_REPAYMENT_REQUIRED' as const;
-  constructor(loanId: string, outstanding: number, amount: number) {
-    super({
-      code: 'BANK_LOAN_FULL_REPAYMENT_REQUIRED',
-      message: 'A bank loan is repaid in full.',
-      status: 409,
-      details: { loanId, outstanding, amount },
-    });
-  }
-}
-
-export class PlayerBankruptError extends BankingDomainError {
-  readonly code = 'PLAYER_BANKRUPT' as const;
-  constructor(playerId: string) {
-    super({
-      code: 'PLAYER_BANKRUPT',
-      message: 'This player is bankrupt.',
-      status: 409,
-      details: { playerId },
-    });
-  }
-}
-
 export function playerToPlayer(command: PlayerToPlayerCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
   validateAmount(command.amount);
@@ -649,10 +389,7 @@ export function playerToPlayer(command: PlayerToPlayerCommand): BankingOperation
     command.amount,
     command.amount,
     command.comment,
-    [
-      createBalanceChange(source, -command.amount),
-      createBalanceChange(destination, command.amount),
-    ],
+    applyDeltas(players, transferDeltas(source.id, destination.id, command.amount)),
   );
 }
 
@@ -670,7 +407,7 @@ export function playerToBank(command: PlayerToBankCommand): BankingOperationResu
     command.amount,
     command.amount,
     command.comment,
-    [createBalanceChange(player, -command.amount)],
+    applyDeltas(players, transferDeltas(player.id, null, command.amount)),
   );
 }
 
@@ -688,7 +425,7 @@ export function toJackpot(command: ToJackpotCommand): BankingOperationResult {
     command.amount,
     command.amount,
     command.comment,
-    [createBalanceChange(player, -command.amount)],
+    applyDeltas(players, transferDeltas(player.id, null, command.amount)),
   );
   return {
     ...result,
@@ -717,7 +454,7 @@ export function jackpotPayout(command: JackpotPayoutCommand): BankingOperationRe
     command.jackpot,
     command.jackpot,
     null,
-    [createBalanceChange(player, command.jackpot)],
+    applyDeltas(players, transferDeltas(null, player.id, command.jackpot)),
   );
   return {
     ...result,
@@ -743,7 +480,7 @@ export function auctionPayment(command: AuctionPaymentCommand): BankingOperation
     command.amount,
     command.amount,
     command.lotName,
-    [createBalanceChange(player, -command.amount)],
+    applyDeltas(players, transferDeltas(player.id, null, command.amount)),
   );
   if (command.tileId == null) return result;
   if (command.property === undefined)
@@ -801,9 +538,14 @@ export function propertyPurchase(command: PropertyPurchaseCommand): BankingOpera
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
   ensureSufficientFunds(player, price);
-  const result = createResult(command.game.id, 'PROPERTY_PURCHASE', price, price, command.comment, [
-    createBalanceChange(player, -price),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'PROPERTY_PURCHASE',
+    price,
+    price,
+    command.comment,
+    applyDeltas(players, transferDeltas(player.id, null, price)),
+  );
   const purchase = withProperty(result, command.tileId, [
     ownerChange(command.tileId, state, player.id),
   ]);
@@ -918,9 +660,14 @@ export function buildProperty(command: BuildPropertyCommand): BankingOperationRe
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
   ensureSufficientFunds(player, cost);
-  const result = createResult(command.game.id, 'PROPERTY_BUILD', cost, cost, null, [
-    createBalanceChange(player, -cost),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'PROPERTY_BUILD',
+    cost,
+    cost,
+    null,
+    applyDeltas(players, transferDeltas(player.id, null, cost)),
+  );
   return withBuildings(result, plan);
 }
 
@@ -942,9 +689,14 @@ export function sellBuilding(command: SellBuildingCommand): BankingOperationResu
   validateAmount(refund);
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
-  const result = createResult(command.game.id, 'PROPERTY_SELL_BUILDING', refund, refund, null, [
-    createBalanceChange(player, refund),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'PROPERTY_SELL_BUILDING',
+    refund,
+    refund,
+    null,
+    applyDeltas(players, transferDeltas(null, player.id, refund)),
+  );
   return withBuildings(result, plan);
 }
 
@@ -966,10 +718,14 @@ export function payRent(command: PayRentCommand): BankingOperationResult {
   const rent = rentFor(board, registry, command.tileId, command.diceSum);
   validateAmount(rent);
   ensureSufficientFunds(payer, rent);
-  const result = createResult(command.game.id, 'PAY_RENT', rent, rent, command.comment, [
-    createBalanceChange(payer, -rent),
-    createBalanceChange(owner, rent),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'PAY_RENT',
+    rent,
+    rent,
+    command.comment,
+    applyDeltas(players, transferDeltas(payer.id, owner.id, rent)),
+  );
   return { ...result, transaction: { ...result.transaction, tileId: command.tileId } };
 }
 
@@ -990,7 +746,7 @@ export function mortgageProperty(command: MortgagePropertyCommand): BankingOpera
     command.amount,
     command.amount,
     propertyName,
-    [createBalanceChange(player, command.amount)],
+    applyDeltas(players, transferDeltas(null, player.id, command.amount)),
   );
   return {
     ...result,
@@ -1019,7 +775,7 @@ export function redeemMortgage(command: RedeemMortgageCommand): BankingOperation
     cost,
     cost,
     mortgage.propertyName,
-    [createBalanceChange(player, -cost)],
+    applyDeltas(players, transferDeltas(player.id, null, cost)),
   );
   const redeemed: BankingOperationResult = {
     ...result,
@@ -1045,10 +801,14 @@ export function issueLoan(command: IssueLoanCommand): BankingOperationResult {
   ensureActive(borrower);
   ensureDifferentPlayers(lender, borrower);
   ensureSufficientFunds(lender, command.amount);
-  const result = createResult(command.game.id, 'LOAN_ISSUE', command.amount, command.amount, null, [
-    createBalanceChange(lender, -command.amount),
-    createBalanceChange(borrower, command.amount),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'LOAN_ISSUE',
+    command.amount,
+    command.amount,
+    null,
+    applyDeltas(players, transferDeltas(lender.id, borrower.id, command.amount)),
+  );
   return {
     ...result,
     transaction: {
@@ -1089,7 +849,7 @@ export function repayLoan(command: RepayLoanCommand): BankingOperationResult {
     command.amount,
     command.amount,
     null,
-    [createBalanceChange(borrower, -command.amount), createBalanceChange(lender, command.amount)],
+    applyDeltas(players, repaymentDeltas(borrower.id, lender.id, command.amount, 0)),
   );
   return {
     ...result,
@@ -1124,9 +884,14 @@ export function issueBankLoan(command: IssueBankLoanCommand): BankingOperationRe
   const cooldown = command.cooldown ?? null;
   if (cooldown !== null && command.acknowledgeCooldown !== true)
     throw new BankLoanCooldownError(borrower.id, cooldown.roundsLeft);
-  const result = createResult(command.game.id, 'LOAN_ISSUE', command.amount, command.amount, null, [
-    createBalanceChange(borrower, command.amount),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'LOAN_ISSUE',
+    command.amount,
+    command.amount,
+    null,
+    applyDeltas(players, transferDeltas(null, borrower.id, command.amount)),
+  );
   return {
     ...result,
     transaction: {
@@ -1167,9 +932,14 @@ export function repayBankLoan(command: RepayBankLoanCommand): BankingOperationRe
   const borrower = findPlayer(players, command.playerId);
   ensureActive(borrower);
   ensureSufficientFunds(borrower, total);
-  const result = createResult(command.game.id, 'LOAN_REPAYMENT', total, total, null, [
-    createBalanceChange(borrower, -total),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'LOAN_REPAYMENT',
+    total,
+    total,
+    null,
+    applyDeltas(players, repaymentDeltas(borrower.id, null, outstanding, interest)),
+  );
   return {
     ...result,
     transaction: {
@@ -1201,7 +971,7 @@ export function bankToPlayer(command: BankToPlayerCommand): BankingOperationResu
     command.amount,
     command.amount,
     command.comment,
-    [createBalanceChange(player, command.amount)],
+    applyDeltas(players, transferDeltas(null, player.id, command.amount)),
   );
 }
 
@@ -1224,10 +994,14 @@ export function playerToAll(command: PlayerToAllCommand): BankingOperationResult
     command.amountPerPlayer,
     totalAmount,
     command.comment,
-    [
-      createBalanceChange(payer, -totalAmount),
-      ...recipients.map((recipient) => createBalanceChange(recipient, command.amountPerPlayer)),
-    ],
+    applyDeltas(
+      players,
+      fanOutDeltas(
+        payer.id,
+        recipients.map(({ id }) => id),
+        command.amountPerPlayer,
+      ),
+    ),
   );
 }
 
@@ -1252,10 +1026,14 @@ export function allToPlayer(command: AllToPlayerCommand): BankingOperationResult
     command.amountPerPlayer,
     totalAmount,
     command.comment,
-    [
-      ...payers.map((payer) => createBalanceChange(payer, -command.amountPerPlayer)),
-      createBalanceChange(recipient, totalAmount),
-    ],
+    applyDeltas(
+      players,
+      fanInDeltas(
+        recipient.id,
+        payers.map(({ id }) => id),
+        command.amountPerPlayer,
+      ),
+    ),
   );
 }
 
@@ -1266,9 +1044,14 @@ export function passGo(command: PassGoCommand): BankingOperationResult {
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
   const reward = multiplyAmounts(command.game.passGoReward, command.exactLanding === true ? 2 : 1);
-  return createResult(command.game.id, 'PASS_GO', reward, reward, command.comment, [
-    createBalanceChange(player, reward),
-  ]);
+  return createResult(
+    command.game.id,
+    'PASS_GO',
+    reward,
+    reward,
+    command.comment,
+    applyDeltas(players, transferDeltas(null, player.id, reward)),
+  );
 }
 
 /**
@@ -1353,23 +1136,6 @@ function mortgageReversalOf(
   return undefined;
 }
 
-/** A player creditor cannot cover the mortgage fees of the tiles they would inherit. */
-export class BankruptcyCreditorShortError extends AppError {
-  constructor(creditorPlayerId: string, required: number, available: number) {
-    super({
-      code: 'BANKRUPTCY_CREDITOR_SHORT',
-      message: 'The creditor cannot pay the mortgage fees of the inherited properties.',
-      status: 409,
-      details: {
-        creditorPlayerId,
-        required,
-        available,
-        shortfall: required - available,
-      },
-    });
-  }
-}
-
 export function declareBankruptcy(command: BankruptcyCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
   const bankruptPlayer = findPlayer(players, command.playerId);
@@ -1412,6 +1178,31 @@ export function declareBankruptcy(command: BankruptcyCommand): BankingOperationR
   );
 }
 
+export interface BankruptcyPreview {
+  tileCount: number;
+  buildings: number;
+  proceeds: number;
+  creditorFee: number;
+}
+
+export function bankruptcyPreview(
+  property: PropertyContext | undefined,
+  playerId: string,
+  hasCreditor: boolean,
+): BankruptcyPreview {
+  const preview: BankruptcyPreview = { tileCount: 0, buildings: 0, proceeds: 0, creditorFee: 0 };
+  if (property === undefined) return preview;
+  const { board, registry } = property;
+  for (const row of registry) {
+    if (row.ownerPlayerId !== playerId) continue;
+    preview.tileCount += 1;
+    preview.buildings += row.houses;
+    preview.proceeds += row.houses * sellRefund(board, row.tileId);
+    if (hasCreditor && row.mortgaged) preview.creditorFee += mortgageTransferFee(board, row.tileId);
+  }
+  return preview;
+}
+
 /**
  * Board games: what the bankrupt player's tiles and buildings turn into. Each tile gets one
  * registry change (before = as it stands, after = as it ends): buildings sold (a hotel counts as
@@ -1425,9 +1216,12 @@ function bankruptcyAssets(
   creditor: Player | null,
 ): { changes: PropertyChange[]; proceeds: number; creditorFee: number } {
   if (command.property === undefined) return { changes: [], proceeds: 0, creditorFee: 0 };
-  const { board, registry } = command.property;
-  let proceeds = 0;
-  let creditorFee = 0;
+  const { registry } = command.property;
+  const { proceeds, creditorFee } = bankruptcyPreview(
+    command.property,
+    bankruptPlayer.id,
+    creditor !== null,
+  );
   const changes = registry
     .filter((row) => row.ownerPlayerId === bankruptPlayer.id)
     .map((row): PropertyChange => {
@@ -1436,8 +1230,6 @@ function bankruptcyAssets(
         mortgaged: row.mortgaged,
         houses: row.houses,
       };
-      proceeds += row.houses * sellRefund(board, row.tileId);
-      if (creditor !== null && row.mortgaged) creditorFee += mortgageTransferFee(board, row.tileId);
       return {
         tileId: row.tileId,
         before,
@@ -1571,6 +1363,137 @@ function multiplyAmounts(amount: number, multiplier: number): number {
     throw new InvalidAmountError(totalAmount);
   }
   return totalAmount;
+}
+
+export interface PlayerDelta {
+  playerId: string;
+  delta: number;
+}
+
+function transferDeltas(from: string | null, to: string | null, amount: number): PlayerDelta[] {
+  return [
+    ...(from === null ? [] : [{ playerId: from, delta: -amount }]),
+    ...(to === null ? [] : [{ playerId: to, delta: amount }]),
+  ];
+}
+
+function fanOutDeltas(
+  payerId: string,
+  recipientIds: readonly string[],
+  amountPerPlayer: number,
+): PlayerDelta[] {
+  return [
+    { playerId: payerId, delta: -amountPerPlayer * recipientIds.length },
+    ...recipientIds.map((playerId) => ({ playerId, delta: amountPerPlayer })),
+  ];
+}
+
+function fanInDeltas(
+  recipientId: string,
+  payerIds: readonly string[],
+  amountPerPlayer: number,
+): PlayerDelta[] {
+  return [
+    ...payerIds.map((playerId) => ({ playerId, delta: -amountPerPlayer })),
+    { playerId: recipientId, delta: amountPerPlayer * payerIds.length },
+  ];
+}
+
+function repaymentDeltas(
+  borrowerId: string,
+  lenderId: string | null,
+  amount: number,
+  interest: number,
+): PlayerDelta[] {
+  return [
+    { playerId: borrowerId, delta: -(amount + interest) },
+    ...(lenderId === null ? [] : [{ playerId: lenderId, delta: amount }]),
+  ];
+}
+
+function applyDeltas(
+  players: readonly Player[],
+  deltas: readonly PlayerDelta[],
+): PlayerBalanceChange[] {
+  return deltas.map(({ playerId, delta }) =>
+    createBalanceChange(findPlayer(players, playerId), delta),
+  );
+}
+
+export interface PreviewContext {
+  passGoReward: number;
+  redemptionAmount: number;
+  loans: readonly Pick<Loan, 'id' | 'lenderPlayerId'>[];
+  interest: number;
+  jackpot: number;
+  tile: { amount: number; ownerPlayerId?: string | null };
+}
+
+/**
+ * How each wallet would change for a request, built from the same delta rules the operations
+ * apply. It validates nothing: the client uses it to show a preview before the server decides.
+ */
+export function previewDeltas(
+  request: PlayerTransactionRequest,
+  players: readonly Pick<Player, 'id'>[],
+  context: PreviewContext,
+): PlayerDelta[] {
+  const { tile } = context;
+  const others = (playerId: string) =>
+    players.filter(({ id }) => id !== playerId).map(({ id }) => id);
+  switch (request.type) {
+    case 'PLAYER_TO_PLAYER':
+      return transferDeltas(request.sourcePlayerId, request.destinationPlayerId, request.amount);
+    case 'PLAYER_TO_BANK':
+    case 'TO_JACKPOT':
+      return transferDeltas(request.playerId, null, request.amount);
+    case 'BANK_TO_PLAYER':
+      return transferDeltas(null, request.playerId, request.amount);
+    case 'JACKPOT_PAYOUT':
+      return transferDeltas(null, request.playerId, context.jackpot);
+    case 'PLAYER_TO_ALL':
+      return fanOutDeltas(
+        request.payerPlayerId,
+        others(request.payerPlayerId),
+        request.amountPerPlayer,
+      );
+    case 'ALL_TO_PLAYER':
+      return fanInDeltas(
+        request.recipientPlayerId,
+        others(request.recipientPlayerId),
+        request.amountPerPlayer,
+      );
+    case 'PASS_GO':
+      return transferDeltas(null, request.playerId, context.passGoReward);
+    case 'MORTGAGE':
+      return transferDeltas(
+        null,
+        request.playerId,
+        'amount' in request ? request.amount : tile.amount,
+      );
+    case 'PROPERTY_PURCHASE':
+    case 'PROPERTY_BUILD':
+      return transferDeltas(request.playerId, null, tile.amount);
+    case 'PROPERTY_SELL_BUILDING':
+      return transferDeltas(null, request.playerId, tile.amount);
+    case 'PAY_RENT':
+      return transferDeltas(request.payerPlayerId, tile.ownerPlayerId ?? null, tile.amount);
+    case 'MORTGAGE_REDEMPTION':
+      return transferDeltas(request.playerId, null, context.redemptionAmount);
+    case 'LOAN_ISSUE':
+      return request.lenderKind === 'BANK'
+        ? transferDeltas(null, request.playerId, request.amount)
+        : [];
+    case 'LOAN_REPAYMENT':
+      return repaymentDeltas(
+        request.playerId,
+        context.loans.find((loan) => loan.id === request.loanId)?.lenderPlayerId ?? null,
+        request.amount,
+        context.interest,
+      );
+    case 'PROPERTY_TRANSFER':
+      return [];
+  }
 }
 
 function createBalanceChange(player: Player, balanceDelta: number): PlayerBalanceChange {

@@ -1,11 +1,5 @@
-import type {
-  ActivityCursor,
-  ActivityPage,
-  LedgerStatistics,
-  PaymentRequest,
-  PaymentRequestKind,
-  PaymentRequestState,
-} from '../../shared/contracts/api.js';
+import type { ActivityCursor, ActivityPage, LedgerStatistics } from '../../shared/contracts/api.js';
+import { mapPaymentRequest, type PaymentRequestRow } from './payment-request-repository.js';
 import { D1TradeRequestRepository } from './trade-request-repository.js';
 import {
   calculateBalanceSeries,
@@ -282,41 +276,6 @@ interface PlayerMetricRow {
 function emptyMetric(player_id: string): PlayerMetricRow {
   return { player_id, sent: 0, received: 0, transaction_count: 0, pass_go_count: 0 };
 }
-interface PaymentRequestRow {
-  id: string;
-  kind: PaymentRequestKind;
-  game_id: string;
-  payer_player_id: string;
-  recipient_player_id: string;
-  creator_player_id: string;
-  approver_player_id: string;
-  amount: number;
-  comment: string | null;
-  state: PaymentRequestState;
-  expires_at: string;
-  created_at: string;
-  resolved_at: string | null;
-  transaction_id: string | null;
-}
-function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
-  return {
-    id: row.id,
-    kind: row.kind,
-    gameId: row.game_id,
-    payerPlayerId: row.payer_player_id,
-    recipientPlayerId: row.recipient_player_id,
-    creatorPlayerId: row.creator_player_id,
-    approverPlayerId: row.approver_player_id,
-    amount: row.amount,
-    comment: row.comment,
-    state: row.state,
-    expiresAt: row.expires_at,
-    createdAt: row.created_at,
-    resolvedAt: row.resolved_at,
-    transactionId: row.transaction_id,
-  };
-}
-
 /**
  * Statistics count what the game actually moved: a reversed transaction and the reversal that
  * undid it cancel out, so neither is counted. Both stay in the activity history.

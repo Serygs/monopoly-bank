@@ -17,6 +17,7 @@ import { useLanguage } from '../i18n/language-context';
 import { Button, MoneyValue, Notice, Row, StatPill } from '../components/ui';
 import { cx, wideDialogClass } from '../components/ui/class-names';
 import { MutedText } from '../components/ui/Text';
+import { dateTimeFormat } from '../utils/date-time';
 
 const allActivityScopes: readonly ActivityScope[] = ['ALL', 'MINE', 'PENDING'];
 const immediateActivityScopes: readonly ActivityScope[] = ['ALL', 'MINE'];
@@ -340,7 +341,7 @@ function PendingRow({
             {creator} → {approver}
           </>
         }
-        timestamp={new Intl.DateTimeFormat(locale, {
+        timestamp={dateTimeFormat(locale, {
           dateStyle: 'medium',
           timeStyle: 'short',
           hourCycle: 'h23',

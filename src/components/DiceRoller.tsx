@@ -6,6 +6,7 @@ import { rollDice, type DiceRoll } from '../utils/dice';
 import { useLanguage } from '../i18n/language-context';
 import { Button, ToolPanel } from './ui';
 import { cx, playerSwatchClass } from './ui/class-names';
+import { dateTimeFormat } from '../utils/date-time';
 
 const initialRoll: DiceRoll = { first: 1, second: 1, total: 2, isDouble: true };
 /** Rolls shown at first, how many each "Show more" adds, and the most the server keeps. */
@@ -135,7 +136,7 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
   };
 
   const rolls = history?.playerId === viewPlayerId ? history.rolls : null;
-  const time = new Intl.DateTimeFormat(locale, {
+  const time = dateTimeFormat(locale, {
     dateStyle: 'short',
     timeStyle: 'medium',
     hourCycle: 'h23',

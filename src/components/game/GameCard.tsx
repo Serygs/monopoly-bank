@@ -4,6 +4,7 @@ import type { GameStatus } from '../../../shared/types/monopoly';
 import { OverflowMenu } from '../OverflowMenu';
 import { BankSeal, Button, Card, Toolbar } from '../ui';
 import { cx } from '../ui/class-names';
+import { dateTimeFormat } from '../../utils/date-time';
 
 /* The name column shrinks; these override the page's low-specificity `h2` typography. */
 const copyClass = cx(
@@ -134,7 +135,7 @@ function formatDate(value: string, locale: string, withTime = false): string {
   const date = new Date(value);
   return Number.isNaN(date.valueOf())
     ? value
-    : new Intl.DateTimeFormat(locale, {
+    : dateTimeFormat(locale, {
         dateStyle: 'medium',
         ...(withTime ? { timeStyle: 'short', hourCycle: 'h23' as const } : {}),
       }).format(date);
