@@ -120,7 +120,13 @@ export default defineConfig([
   // Tests: fixtures and mocks legitimately reach for `any`, `!`, unused placeholders and
   // `async` stubs that satisfy a Promise-returning interface without awaiting anything.
   {
-    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts'],
+    files: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.spec.ts',
+      'worker/test-support/**/*.ts',
+      'shared/test-support/**/*.ts',
+    ],
     plugins: { '@typescript-eslint': tseslint.plugin },
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
