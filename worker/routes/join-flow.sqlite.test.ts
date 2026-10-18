@@ -1,6 +1,5 @@
 // @vitest-environment node
-import { readdir, readFile } from 'node:fs/promises';
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import type { DatabaseSync } from 'node:sqlite';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { CreateGameRequest } from '../../shared/contracts/api.js';
 import { D1GameAccessRepository } from '../repositories/game-access-repository.js';
@@ -8,49 +7,8 @@ import { D1GameRepository } from '../repositories/game-repository.js';
 import { D1PlayerRepository } from '../repositories/player-repository.js';
 import { GameAccessService } from '../services/game-access-service.js';
 import { DefaultGameService } from '../services/game-service.js';
+import { d1, migratedDatabase, seedUsers } from '../test-support/sqlite-d1.js';
 import { createApiRouter } from './api-router.js';
-
-/** The slice of D1 the repositories use, backed by a real SQLite database. */
-function d1(database: DatabaseSync): D1Database {
-  const prepare = (sql: string) => {
-    let values: SQLInputValue[] = [];
-    const statement = {
-      bind: (...next: unknown[]) => {
-        values = next as SQLInputValue[];
-        return statement;
-      },
-      first: async () => (database.prepare(sql).get(...values) as unknown) ?? null,
-      all: async () => ({ results: database.prepare(sql).all(...values) as unknown[] }),
-      run: async () => {
-        const result = database.prepare(sql).run(...values);
-        return { meta: { changes: Number(result.changes) } };
-      },
-    };
-    return statement;
-  };
-  const batch = async (statements: { run: () => Promise<unknown> }[]) => {
-    database.exec('BEGIN');
-    try {
-      const results: unknown[] = [];
-      for (const statement of statements) results.push(await statement.run());
-      database.exec('COMMIT');
-      return results;
-    } catch (error) {
-      database.exec('ROLLBACK');
-      throw error;
-    }
-  };
-  return { prepare, batch } as unknown as D1Database;
-}
-
-async function migrated(): Promise<DatabaseSync> {
-  const database = new DatabaseSync(':memory:');
-  database.exec('PRAGMA foreign_keys = ON');
-  const directory = new URL('../../migrations/', import.meta.url);
-  const files = (await readdir(directory)).filter((name) => name.endsWith('.sql')).sort();
-  for (const name of files) database.exec(await readFile(new URL(name, directory), 'utf8'));
-  return database;
-}
 
 const owner = '00000000-0000-4000-8000-0000000000a1';
 const alice = '00000000-0000-4000-8000-0000000000a2';
@@ -103,13 +61,8 @@ describe('lobby join flow against SQLite', () => {
     (await (await call(user, 'POST', '/api/games/join', { joinCode: code })).json()) as Seats;
 
   beforeEach(async () => {
-    database = await migrated();
-    for (const id of [owner, alice, bob, guestId])
-      database
-        .prepare(
-          `INSERT INTO users (id, nickname, avatar, password_hash, password_salt) VALUES (?, ?, 'x', 'h', 's')`,
-        )
-        .run(id, id);
+    database = await migratedDatabase();
+    seedUsers(database, [owner, alice, bob, guestId]);
     const db = d1(database);
     const access = new GameAccessService(new D1GameAccessRepository(db));
     const games = new DefaultGameService({
