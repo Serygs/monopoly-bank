@@ -1,7 +1,8 @@
+import type { ApiErrorCode } from '../../shared/contracts/api';
 import { MonopolyBankApiError } from '../api/monopoly-bank-api';
 import type { Translate, TranslationKey } from './translations';
 
-const errorKeys: Record<string, TranslationKey> = {
+const errorKeys: Record<ApiErrorCode, TranslationKey> = {
   NETWORK_ERROR: 'errorNetwork',
   API_ERROR: 'errorUnexpected',
   VALIDATION_ERROR: 'errorValidation',
@@ -53,11 +54,48 @@ const errorKeys: Record<string, TranslationKey> = {
   INVALID_BID_STEP: 'errorInvalidBidStep',
   AUCTION_NOT_FOUND: 'errorAuctionNotFound',
   INSUFFICIENT_AVAILABLE_FUNDS: 'errorInsufficientAvailableFunds',
+  BANKRUPTCY_CREDITOR_SHORT: 'errorBankruptcyCreditorShort',
+  BOARD_DISABLED: 'errorBoardDisabled',
+  BUILD_MORTGAGED_GROUP: 'errorBuildMortgagedGroup',
+  BUILD_REQUIRES_FULL_GROUP: 'errorBuildRequiresFullGroup',
+  BUILD_UNEVEN: 'errorBuildUneven',
+  CONFLICT: 'errorConflict',
+  DICE_ROLL_ID_REUSED: 'errorDiceRollIdReused',
+  DICE_UNAVAILABLE: 'errorDiceUnavailable',
+  GAME_FINISHED: 'errorGameFinished',
+  GAME_OWNER_REQUIRED: 'errorGameOwnerRequired',
+  INSUFFICIENT_FUNDS: 'errorInsufficientFunds',
+  INVALID_AMOUNT: 'errorInvalidAmount',
+  INVALID_BUILD_TARGET: 'errorInvalidBuildTarget',
+  INVALID_GAME_PASSWORD: 'errorInvalidGamePassword',
+  INVALID_TRADE: 'errorInvalidTrade',
+  INVITATION_NOT_ACTIVE: 'errorInvitationNotActive',
+  LIVE_UNAVAILABLE: 'errorLiveUnavailable',
+  MAX_BUILDINGS: 'errorMaxBuildings',
+  NO_BUILDINGS: 'errorNoBuildings',
+  PLAYER_BANKRUPT: 'errorPlayerBankrupt',
+  PLAYER_NOT_FOUND: 'errorPlayerNotFound',
+  PROPERTY_ALREADY_OWNED: 'errorPropertyAlreadyOwned',
+  PROPERTY_HAS_BUILDINGS: 'errorPropertyHasBuildings',
+  PROPERTY_IN_AUCTION: 'errorPropertyInAuction',
+  PROPERTY_MORTGAGED: 'errorPropertyMortgaged',
+  PROPERTY_NOT_OWNED: 'errorPropertyNotOwned',
+  REALTIME_ERROR: 'errorRealtimeError',
+  SAME_SOURCE_AND_DESTINATION: 'errorSameSourceAndDestination',
+  STATISTICS_UNAVAILABLE: 'errorStatisticsUnavailable',
+  TILE_NOT_BUILDABLE: 'errorTileNotBuildable',
+  TILE_NOT_FOUND: 'errorTileNotFound',
+  TILE_REQUIRED: 'errorTileRequired',
+  DATABASE_ERROR: 'errorPersistence',
 };
+
+function isApiErrorCode(code: string): code is ApiErrorCode {
+  return Object.hasOwn(errorKeys, code);
+}
 
 export function apiErrorMessage(error: unknown, t: Translate, fallback: TranslationKey): string {
   if (!(error instanceof MonopolyBankApiError)) {
     return t(fallback);
   }
-  return t(errorKeys[error.code] ?? fallback);
+  return t(isApiErrorCode(error.code) ? errorKeys[error.code] : fallback);
 }
