@@ -11,6 +11,7 @@ import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
 import { freeTiles, tileViews } from '../../utils/property-view';
 import { TilePicker } from './TilePicker';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 export interface StartAuctionDialogProps {
   gameId: string;
@@ -42,10 +43,8 @@ export function StartAuctionDialog({
 }: StartAuctionDialogProps) {
   const { t } = useLanguage();
   const [lotName, setLotName] = useState(initialLotName.trim().slice(0, 60));
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<unknown | null>(null);
+  const { busy: submitting, error, setError, run } = useAsyncAction();
   const commandIdRef = useRef<string | null>(null);
-  const submittingRef = useRef(false);
   const [tileId, setTileId] = useState(initialTileId);
   const tiles = board === null ? [] : freeTiles(tileViews(board, properties));
   const tile = tiles.find((view) => view.tile.id === tileId) ?? null;
@@ -54,11 +53,8 @@ export function StartAuctionDialog({
   const title = t('auctionStartTitle');
 
   const submit = async () => {
-    if (submittingRef.current || normalized === null) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    setError(null);
-    try {
+    if (normalized === null) return;
+    await run(async () => {
       const commandId = commandIdRef.current ?? crypto.randomUUID();
       commandIdRef.current = commandId;
       onStarted(
@@ -72,12 +68,7 @@ export function StartAuctionDialog({
           commandId,
         ),
       );
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
