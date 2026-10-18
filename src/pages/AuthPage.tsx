@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { AuthForm, AuthHeading } from '../components/ui/AuthCard';
 import { Lede } from '../components/ui/Text';
+import { useAsyncAction } from '../hooks/useAsyncAction';
 
 export function AuthPage({
   onAuthenticated,
@@ -20,8 +21,7 @@ export function AuthPage({
   const [nickname, setNickname] = useState('');
   const [avatar, setAvatar] = useState('🎩');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, error, setError, run } = useAsyncAction();
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -29,19 +29,13 @@ export function AuthPage({
       setError(new Error(t('accountPasswordMinLength')));
       return;
     }
-    setBusy(true);
-    setError(null);
-    try {
+    await run(async () => {
       onAuthenticated(
         registering
           ? await monopolyBankApi.register({ nickname, avatar, password })
           : await monopolyBankApi.login({ nickname, password }),
       );
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   return (

@@ -8,6 +8,7 @@ import { Button, CountBadge, GlassSurface, Notice, SheetActions } from '../../co
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import { tileViews } from '../../utils/property-view';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 export type TradeRequestAction = 'accept' | 'decline' | 'cancel';
 
@@ -38,8 +39,7 @@ export function TradeInbox({
 }: TradeInboxProps) {
   const { t } = useLanguage();
   const [reviewingId, setReviewingId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown | null>(null);
+  const { busy: busy, error, run } = useAsyncAction();
   if (incoming.length === 0 && outgoing.length === 0) return null;
   const views = tileViews(board, properties);
   const nameOf = (id: string) =>
@@ -51,16 +51,10 @@ export function TradeInbox({
     reviewing === null ? undefined : players.find((p) => p.id === reviewing.counterpartyPlayerId);
 
   const act = async (request: TradeRequest, action: TradeRequestAction) => {
-    setBusy(true);
-    setError(null);
-    try {
+    await run(async () => {
       await onAction(request, action);
       setReviewingId(null);
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
   const chosen = (ids: readonly string[]) => views.filter((view) => ids.includes(view.tile.id));
   const errorNotice = error !== null && (
