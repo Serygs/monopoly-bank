@@ -84,7 +84,7 @@ export class NotFoundError extends AppError {
 export class ResourceNotFoundError extends NotFoundError {
   readonly resource: string;
   constructor(resource: string) {
-    super(`${resource.toUpperCase()}_NOT_FOUND`, `${resource} not found.`);
+    super(`${resource.toUpperCase().replaceAll(' ', '_')}_NOT_FOUND`, `${resource} not found.`);
     this.resource = resource;
   }
 }

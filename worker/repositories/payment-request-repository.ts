@@ -137,7 +137,7 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
     transaction: PendingTransaction;
     balanceChanges: readonly PlayerBalanceChange[];
   }): Promise<void> {
-    const balanceStatement = balanceUpdate(this.database, input.balanceChanges);
+    const balanceStatement = balanceUpdate(this.database, input.balanceChanges, input.requestId);
     const transactionStatement = this.database
       .prepare(
         `INSERT INTO transactions (id, game_id, type, amount, total_amount, comment) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -239,13 +239,17 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
 function balanceUpdate(
   database: D1Database,
   changes: readonly PlayerBalanceChange[],
+  requestId: string,
 ): D1PreparedStatement {
   const gameId = changes[0]?.player.gameId;
   if (gameId === undefined) return database.prepare('SELECT 1');
-  const cases = changes.map(() => 'WHEN ? THEN CASE WHEN balance = ? THEN ? ELSE -1 END');
+  const cases = changes.map(
+    () =>
+      `WHEN ? THEN CASE WHEN balance = ? AND EXISTS (SELECT 1 FROM payment_requests WHERE id = ? AND state = 'PENDING' AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) THEN ? ELSE -1 END`,
+  );
   const values: Array<string | number> = [];
   for (const change of changes)
-    values.push(change.player.id, change.balanceBefore, change.balanceAfter);
+    values.push(change.player.id, change.balanceBefore, requestId, change.balanceAfter);
   const ids = changes.map((change) => change.player.id);
   return database
     .prepare(

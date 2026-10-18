@@ -998,30 +998,27 @@ describe('proposing and accepting a trade request', () => {
   );
 });
 
-describe('known defects in the request flows', () => {
-  it.fails(
-    'asks only the active players to pay when everyone pays one player in a game with a bankrupt player and no money',
-    async () => {
-      const { service, paymentRequests } = setup({
-        game: confirmation,
-        players: [player('a'), player('b'), player('c', 0, 'BANKRUPT')],
-      });
-      await service.createTransaction('g', {
-        type: 'ALL_TO_PLAYER',
-        recipientPlayerId: 'a',
-        amountPerPlayer: 30,
-      });
-      expect(paymentRequests.create).toHaveBeenCalledTimes(1);
-    },
-  );
+describe('request flow edge cases', () => {
+  it('asks only the active players to pay when everyone pays one player in a game with a bankrupt player and no money', async () => {
+    const { service, paymentRequests } = setup({
+      game: confirmation,
+      players: [player('a'), player('b'), player('c', 0, 'BANKRUPT')],
+    });
+    await service.createTransaction('g', {
+      type: 'ALL_TO_PLAYER',
+      recipientPlayerId: 'a',
+      amountPerPlayer: 30,
+    });
+    expect(paymentRequests.create).toHaveBeenCalledTimes(1);
+  });
 
-  it.fails('reports a missing payment request with a code the client can map', async () => {
+  it('reports a missing payment request with a code the client can map', async () => {
     expect(await caught(() => setup().service.declinePaymentRequest('g', 'nope'))).toMatchObject({
       code: 'PAYMENT_REQUEST_NOT_FOUND',
     });
   });
 
-  it.fails('reports a missing trade request with the code the client maps', async () => {
+  it('reports a missing trade request with the code the client maps', async () => {
     expect(await caught(() => setup().service.declineTradeRequest('g', 'nope'))).toMatchObject({
       code: 'TRADE_REQUEST_NOT_FOUND',
     });

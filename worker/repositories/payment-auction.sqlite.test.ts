@@ -410,22 +410,19 @@ describe('D1PaymentRequestRepository on SQLite', () => {
       expect(rows(database, 'SELECT id FROM transactions')).toEqual([]);
     });
 
-    it.fails(
-      'does not move money for a payment request that expired before settling (only loans are guarded; the ACCEPTED update silently matches no row)',
-      async () => {
-        await repository.create(request('r1', { expiresAt: past }));
-        await repository
-          .settle({
-            requestId: 'r1',
-            transactionId: 'tx1',
-            transaction: payment(),
-            balanceChanges: [change('a', 1000, 960), change('b', 1000, 1040)],
-          })
-          .catch(() => undefined);
-        expect(balances().map((row) => row.balance)).toEqual([1000, 1000, 1000]);
-        expect(rows(database, 'SELECT id FROM transactions')).toEqual([]);
-      },
-    );
+    it('does not move money for a payment request that expired before settling', async () => {
+      await repository.create(request('r1', { expiresAt: past }));
+      await repository
+        .settle({
+          requestId: 'r1',
+          transactionId: 'tx1',
+          transaction: payment(),
+          balanceChanges: [change('a', 1000, 960), change('b', 1000, 1040)],
+        })
+        .catch(() => undefined);
+      expect(balances().map((row) => row.balance)).toEqual([1000, 1000, 1000]);
+      expect(rows(database, 'SELECT id FROM transactions')).toEqual([]);
+    });
 
     it('wraps a failing batch in a database error without leaking the cause', async () => {
       const failing = new D1PaymentRequestRepository(failingD1(new Error('secret')));
