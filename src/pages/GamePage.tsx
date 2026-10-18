@@ -17,13 +17,7 @@ import { Dialog } from '../components/Dialog';
 import { DialogNavContext } from '../components/dialog-nav-context';
 import { formatMoney } from '../utils/money';
 import { PropertyScreen } from './PropertyScreen';
-import {
-  cardsOwnedBy,
-  cardsValue,
-  mergeProperties,
-  tileViews,
-  type TileIntent,
-} from '../utils/property-view';
+import { cardsOwnedBy, cardsValue, tileViews, type TileIntent } from '../utils/property-view';
 import { GameBottomNav, type GameNavDestination } from '../components/game/GameBottomNav';
 import { cx } from '../components/ui/class-names';
 import { Button, Notice, PageShell, StatPill, useFeedback } from '../components/ui';
@@ -49,6 +43,7 @@ import { TradeInbox } from './game/TradeInbox';
 import { selectRecentEventsForPlayer } from '../utils/recent-events';
 import { WalletsSection } from './game/WalletsSection';
 import {
+  applyBankingResponse,
   applyLiveEvent,
   lobbyNeedsMorePlayers,
   type ActionType,
@@ -582,22 +577,7 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                   playPaymentFeedback(preferences.sound);
                   vibrate(35, preferences.vibration);
                   setDetails((current) =>
-                    current === null
-                      ? current
-                      : {
-                          ...current,
-                          players: result.players,
-                          ...(result.loans === undefined ? {} : { loans: result.loans }),
-                          ...(result.bankLoanCooldowns === undefined
-                            ? {}
-                            : { bankLoanCooldowns: result.bankLoanCooldowns }),
-                          ...(result.jackpot === undefined ? {} : { jackpot: result.jackpot }),
-                          ...(result.properties === undefined
-                            ? {}
-                            : {
-                                properties: mergeProperties(current.properties, result.properties),
-                              }),
-                        },
+                    current === null ? current : applyBankingResponse(current, result),
                   );
                 }
               }}
@@ -626,13 +606,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
                 setDetails((current) =>
                   current === null
                     ? current
-                    : {
-                        ...current,
+                    : applyBankingResponse(current, {
                         players: result.players,
-                        ...(result.properties === undefined
-                          ? {}
-                          : { properties: mergeProperties(current.properties, result.properties) }),
-                      },
+                        properties: result.properties,
+                      }),
                 );
                 notify({ tone: 'success', message: t('tradeRecorded') });
               }
@@ -778,15 +755,14 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               playPaymentFeedback(preferences.sound);
               vibrate(35, preferences.vibration);
               setDetails({
-                ...details,
-                players,
-                ...(mortgages === undefined ? {} : { mortgages }),
-                ...(loans === undefined ? {} : { loans }),
-                ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
-                ...(jackpot === undefined ? {} : { jackpot }),
-                ...(changedProperties === undefined
-                  ? {}
-                  : { properties: mergeProperties(details.properties, changedProperties) }),
+                ...applyBankingResponse(details, {
+                  players,
+                  mortgages,
+                  loans,
+                  bankLoanCooldowns,
+                  jackpot,
+                  properties: changedProperties,
+                }),
                 recentAmounts:
                   amount === null
                     ? details.recentAmounts
@@ -864,15 +840,20 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
               jackpot,
               changedProperties,
             ) => {
-              setDetails({
-                ...details,
-                players,
-                ...(mortgages === undefined ? {} : { mortgages }),
-                ...(loans === undefined ? {} : { loans }),
-                ...(bankLoanCooldowns === undefined ? {} : { bankLoanCooldowns }),
-                ...(jackpot === undefined ? {} : { jackpot }),
-                ...(changedProperties === undefined ? {} : { properties: changedProperties }),
-              });
+              setDetails(
+                applyBankingResponse(
+                  details,
+                  {
+                    players,
+                    mortgages,
+                    loans,
+                    bankLoanCooldowns,
+                    jackpot,
+                    properties: changedProperties,
+                  },
+                  'replace',
+                ),
+              );
               setBankruptPlayer(null);
             }}
           />
