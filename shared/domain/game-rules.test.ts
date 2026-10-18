@@ -33,6 +33,33 @@ describe('deriveMoneyUnit', () => {
   });
 });
 
+describe('deriveMoneyUnit boundaries', () => {
+  it('picks the lower unit when the ratio is exactly halfway between two values', () => {
+    expect(deriveMoneyUnit(2_250)).toBe(10);
+    expect(deriveMoneyUnit(5_250)).toBe(20);
+    expect(deriveMoneyUnit(11_250)).toBe(50);
+    expect(deriveMoneyUnit(22_500)).toBe(100);
+  });
+
+  it('reaches the largest unit of the series and stops there', () => {
+    expect(deriveMoneyUnit(150 * 10 ** 12)).toBe(10 ** 12);
+    expect(deriveMoneyUnit(150 * 5 * 10 ** 12)).toBe(5 * 10 ** 12);
+    expect(deriveMoneyUnit(Number.MAX_SAFE_INTEGER)).toBe(5 * 10 ** 12);
+  });
+
+  it('never goes below the minimum unit', () => {
+    expect(deriveMoneyUnit(1)).toBe(10);
+    expect(deriveMoneyUnit(749)).toBe(10);
+    expect(deriveMoneyUnit(1_000)).toBe(10);
+  });
+
+  it('refuses an invalid starting balance with the reason', () => {
+    const message = 'The starting balance must be a positive safe integer.';
+    for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])
+      expect(() => deriveMoneyUnit(value)).toThrow(message);
+  });
+});
+
 describe('buildGameSettings', () => {
   it('derives the amounts from the unit', () => {
     expect(buildGameSettings(15_000_000)).toEqual({

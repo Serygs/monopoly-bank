@@ -171,3 +171,33 @@ describe('property translations', () => {
       );
   });
 });
+
+describe('PropertyScreen empty states', () => {
+  it('says no cards match when the filters rule out every tile, and lists them again once cleared', async () => {
+    const { user } = renderScreen();
+    await user.click(screen.getByRole('radio', { name: 'All' }));
+    expect(screen.queryByText('No cards match the filters.')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    const popover = screen.getByRole('group', { name: 'Filters' });
+    await user.click(within(popover).getByRole('button', { name: 'Free' }));
+    await user.click(within(popover).getByRole('button', { name: 'Brown' }));
+    expect(screen.getByText('No cards match the filters.')).toBeInTheDocument();
+    expect(document.querySelectorAll('[data-group] li')).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Remove filter Brown' }));
+    expect(screen.queryByText('No cards match the filters.')).toBeNull();
+    expect(document.querySelectorAll('[data-group] li').length).toBeGreaterThan(0);
+  });
+
+  it('shows no empty message in the My cards view when the viewer owns something', () => {
+    renderScreen();
+    expect(screen.queryByText('You do not own any cards yet.')).toBeNull();
+    expect(screen.queryByText('No cards match the filters.')).toBeNull();
+  });
+
+  it('keeps the empty My cards message out of the All view', async () => {
+    const { user } = renderScreen([]);
+    expect(screen.getByText('You do not own any cards yet.')).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'All' }));
+    expect(screen.queryByText('You do not own any cards yet.')).toBeNull();
+  });
+});

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeletedGameSummary, GameSummary } from '../../shared/contracts/api';
 import { defaultGameRules, type Game } from '../../shared/types/monopoly';
-import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { MonopolyBankApiError, monopolyBankApi } from '../api/monopoly-bank-api';
 import { FeedbackProvider } from '../components/ui';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { SavedGamesPage } from './SavedGamesPage';
@@ -107,5 +107,52 @@ describe('SavedGamesPage deleted games', () => {
     const updated = screen.getAllByText(/^Updated /);
     expect(updated).toHaveLength(3);
     expect(updated.filter((line) => /\d:\d\d/.test(line.textContent ?? ''))).toHaveLength(2);
+  });
+});
+
+describe('SavedGamesPage empty state', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('invites the user to create the first game when there is nothing saved or deleted', async () => {
+    const user = setup([], []);
+    expect(await screen.findByText('No saved games yet')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Create new game' }));
+    expect(handlers.onCreateGame).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no empty state while the list is loading, after an error or once a game exists', async () => {
+    vi.spyOn(monopolyBankApi, 'listGames').mockReturnValue(new Promise(() => undefined));
+    vi.spyOn(monopolyBankApi, 'listDeletedGames').mockReturnValue(new Promise(() => undefined));
+    const loading = render(
+      <LanguageProvider>
+        <FeedbackProvider>
+          <SavedGamesPage {...handlers} />
+        </FeedbackProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.queryByText('No saved games yet')).not.toBeInTheDocument();
+    loading.unmount();
+    vi.restoreAllMocks();
+    vi.spyOn(monopolyBankApi, 'listGames').mockRejectedValue(
+      new MonopolyBankApiError({ code: 'NETWORK_ERROR', message: 'x' }),
+    );
+    vi.spyOn(monopolyBankApi, 'listDeletedGames').mockResolvedValue([]);
+    render(
+      <LanguageProvider>
+        <FeedbackProvider>
+          <SavedGamesPage {...handlers} />
+        </FeedbackProvider>
+      </LanguageProvider>,
+    );
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryByText('No saved games yet')).not.toBeInTheDocument();
+  });
+
+  it('shows the games, not the empty state, once there is one', async () => {
+    setup([friday], []);
+    await screen.findByText('Friday Game');
+    expect(screen.queryByText('No saved games yet')).not.toBeInTheDocument();
   });
 });

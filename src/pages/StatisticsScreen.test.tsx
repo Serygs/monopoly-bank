@@ -102,3 +102,23 @@ describe('StatisticsScreen', () => {
     expect(screen.getByText('Most GO passes')).toBeInTheDocument();
   });
 });
+
+describe('StatisticsScreen without winners', () => {
+  it('says there is no winner when the game finished without naming one', () => {
+    renderScreen(true, { ...summary, winners: [] });
+    expect(screen.getByRole('heading', { level: 3, name: 'No winner' })).toBeInTheDocument();
+    expect(screen.getByText('Winners')).toBeInTheDocument();
+  });
+
+  it('names every winner, comma separated, when there are several', () => {
+    renderScreen(true, { ...summary, winners: [ada, bo] });
+    expect(screen.getByRole('heading', { level: 3, name: 'Ada, Bo' })).toBeInTheDocument();
+    expect(screen.queryByText('No winner')).toBeNull();
+  });
+
+  it('shows the plain statistics heading, and never the no-winner text, while the game runs', () => {
+    renderScreen(false, { ...summary, winners: [] });
+    expect(screen.queryByText('No winner')).toBeNull();
+    expect(screen.getByRole('heading', { level: 3, name: 'Statistics' })).toBeInTheDocument();
+  });
+});

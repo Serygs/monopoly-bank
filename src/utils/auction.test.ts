@@ -75,3 +75,29 @@ describe('auction countdown', () => {
     expect(result.current).toBe(0);
   });
 });
+
+describe('newerAuction ties and gaps', () => {
+  it('returns nothing when there is nothing, and whichever side is present otherwise', () => {
+    expect(newerAuction(null, null)).toBeNull();
+    expect(newerAuction(auction, null)).toBe(auction);
+    expect(newerAuction(null, auction)).toBe(auction);
+  });
+
+  it('takes the new snapshot of the same auction when its version is equal, never an older one', () => {
+    const same = { ...auction, currentBid: 99 };
+    expect(newerAuction(auction, same)).toBe(same);
+    const newer = { ...auction, version: auction.version + 1 };
+    expect(newerAuction(auction, newer)).toBe(newer);
+    expect(newerAuction(newer, auction)).toBe(newer);
+  });
+
+  it('takes a different auction that started at the same moment as the current one', () => {
+    const other = { ...auction, id: 'a-other' };
+    expect(newerAuction(auction, other)).toBe(other);
+  });
+
+  it('keeps the current auction when a different one started earlier', () => {
+    const earlier = { ...auction, id: 'a-earlier', startedAt: '2000-01-01T00:00:00.000Z' };
+    expect(newerAuction(auction, earlier)).toBe(auction);
+  });
+});

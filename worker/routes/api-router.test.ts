@@ -6,6 +6,13 @@ import type {
   GameDetails,
   GameSummary,
 } from '../../shared/contracts/api.js';
+import {
+  buildGameDetails,
+  buildPlayer,
+  buildTransaction,
+  testUuid,
+} from '../../shared/test-support/fixtures.js';
+import { jsonRequest } from '../../shared/test-support/requests.js';
 import { InsufficientFundsError } from '../../shared/domain/banking.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { BankingService } from '../services/banking-service.js';
@@ -13,40 +20,31 @@ import { ForbiddenError, ResourceNotFoundError } from '../services/errors.js';
 import type { GameService } from '../services/game-service.js';
 import { createApiRouter } from './api-router.js';
 
-const gameId = '00000000-0000-4000-8000-000000000001';
-const firstPlayerId = '00000000-0000-4000-8000-000000000002';
-const secondPlayerId = '00000000-0000-4000-8000-000000000003';
+const gameId = testUuid(1);
+const firstPlayerId = testUuid(2);
+const secondPlayerId = testUuid(3);
 
-const gameDetails: GameDetails = {
+const gameDetails: GameDetails = buildGameDetails({
   game: {
-    id: gameId,
     name: 'Friday Monopoly',
-    startingBalance: 1500,
-    passGoReward: 200,
-    currency: 'K',
-    status: 'ACTIVE',
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
   },
   players: [
-    {
+    buildPlayer({
       id: firstPlayerId,
-      gameId,
       name: 'Ada',
       color: '#123456',
-      balance: 1500,
       createdAt: '2026-01-01T00:00:00Z',
-    },
-    {
+    }),
+    buildPlayer({
       id: secondPlayerId,
-      gameId,
       name: 'Lin',
       color: '#654321',
-      balance: 1500,
       createdAt: '2026-01-01T00:00:00Z',
-    },
+    }),
   ],
-};
+});
 
 describe('API router', () => {
   it.each([false, true])(
@@ -1137,29 +1135,16 @@ function pickBankingOverrides(overrides: Partial<TestServiceOverrides>): Partial
   };
 }
 
-function jsonRequest(method: string, path: string, body: unknown): Request {
-  return new Request(`https://example.test${path}`, {
-    method,
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-}
-
 function transactionResponse() {
   return {
-    transaction: {
-      id: '00000000-0000-4000-8000-000000000004',
-      gameId,
-      type: 'PLAYER_TO_PLAYER' as const,
-      amount: 100,
-      totalAmount: 100,
-      comment: null,
+    transaction: buildTransaction({
+      type: 'PLAYER_TO_PLAYER',
       createdAt: '2026-01-01T00:00:00Z',
       participants: [
         { playerId: firstPlayerId, balanceDelta: -100 },
         { playerId: secondPlayerId, balanceDelta: 100 },
       ],
-    },
+    }),
     players: gameDetails.players,
   };
 }

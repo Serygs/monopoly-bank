@@ -321,3 +321,67 @@ describe('bankLoanInterest', () => {
     expect([5, '10', null, undefined, 30].some(isInterestRatePercent)).toBe(false);
   });
 });
+
+describe('transactionActor boundaries', () => {
+  it.each([
+    'PLAYER_TO_PLAYER',
+    'PAY_RENT',
+    'PLAYER_TO_BANK',
+    'PLAYER_TO_ALL',
+    'TO_JACKPOT',
+  ] as const)('is the single payer of %s', (type) => {
+    expect(transactionActor(tx(type, { a: -10 }))).toBe('a');
+    expect(transactionActor(tx(type, { a: -10, b: -10 }))).toBeNull();
+    expect(transactionActor(tx(type, { a: 0 }))).toBeNull();
+    expect(transactionActor(tx(type, { z: 0, a: -10 }))).toBe('a');
+  });
+
+  it.each(['BANK_TO_PLAYER', 'PASS_GO', 'ALL_TO_PLAYER', 'JACKPOT_PAYOUT'] as const)(
+    'is the single receiver of %s',
+    (type) => {
+      expect(transactionActor(tx(type, { a: 10 }))).toBe('a');
+      expect(transactionActor(tx(type, { a: 10, b: 10 }))).toBeNull();
+      expect(transactionActor(tx(type, { a: 0 }))).toBeNull();
+      expect(transactionActor(tx(type, { z: 0, a: 10 }))).toBe('a');
+    },
+  );
+
+  it.each([
+    'LOAN_ISSUE',
+    'LOAN_REPAYMENT',
+    'MORTGAGE',
+    'MORTGAGE_REDEMPTION',
+    'AUCTION_PAYMENT',
+    'REVERSAL',
+    'BANKRUPTCY_TRANSFER',
+    'PROPERTY_TRANSFER',
+  ] as const)('says nothing about the turn for %s', (type) => {
+    expect(transactionActor(tx(type, { a: -10, b: 10 }))).toBeNull();
+  });
+
+  it('ignores a transaction that was reversed', () => {
+    expect(
+      transactionActor(tx('PLAYER_TO_BANK', { a: -10 }, { reversedByTransactionId: 'r' })),
+    ).toBeNull();
+  });
+});
+
+describe('withLoanRounds leaves settled loans alone', () => {
+  it('adds no round to a bank loan that is no longer active', () => {
+    const loan: Loan = {
+      id: 'repaid',
+      gameId: 'game',
+      principal: 100,
+      repaidAmount: 100,
+      state: 'REPAID',
+      createdAt: '',
+      closedAt: '',
+      lenderKind: 'BANK',
+      lenderPlayerId: null,
+      borrowerPlayerId: 'a',
+    };
+    const [result] = withLoanRounds([loan], [tx('PLAYER_TO_BANK', { a: -1 })]);
+    expect(result).toBe(loan);
+    expect(result).not.toHaveProperty('rounds');
+  });
+});
