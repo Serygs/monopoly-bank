@@ -24,22 +24,21 @@ export function placePatterns(matrix: Cells) {
   reserveVersion(matrix);
 }
 
+const inRange = (value: number, from: number, to: number): boolean => value >= from && value <= to;
+
+function finderDark(row: number, column: number): boolean {
+  if (!inRange(row, 0, 6) || !inRange(column, 0, 6)) return false;
+  const onRing = row === 0 || row === 6 || column === 0 || column === 6;
+  return onRing || (inRange(row, 2, 4) && inRange(column, 2, 4));
+}
+
 function finder(matrix: Cells, left: number, top: number) {
   for (let row = -1; row <= 7; row += 1)
     for (let column = -1; column <= 7; column += 1) {
       const y = top + row;
       const x = left + column;
-      if (y < 0 || x < 0 || y >= MODULES || x >= MODULES) continue;
-      matrix[y][x] =
-        row >= 0 &&
-        row <= 6 &&
-        column >= 0 &&
-        column <= 6 &&
-        (row === 0 ||
-          row === 6 ||
-          column === 0 ||
-          column === 6 ||
-          (row >= 2 && row <= 4 && column >= 2 && column <= 4));
+      if (!inRange(y, 0, MODULES - 1) || !inRange(x, 0, MODULES - 1)) continue;
+      matrix[y][x] = finderDark(row, column);
     }
 }
 
