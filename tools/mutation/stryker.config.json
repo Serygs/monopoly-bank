@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "symlinkNodeModules": false,
+  "testRunnerNodeArgs": ["--require", "./tools/mutation/prefer-local-vitest.cjs"],
+  "tempDirName": "tools/mutation/.stryker-tmp",
+  "vitest": { "configFile": "tools/mutation/vitest.config.ts", "related": false },
+  "ignorePatterns": [
+    ".claude",
+    ".stryker-tmp",
+    ".wrangler",
+    "dist",
+    "test-results",
+    "artifacts",
+    "e2e",
+    "tools/mutation/node_modules",
+    "tools/mutation/reports",
+    "tools/mutation/.stryker-tmp"
+  ],
+  "mutate": [
+    "shared/domain/banking.ts",
+    "shared/domain/property.ts",
+    "worker/game-session.ts",
+    "worker/repositories/banking-operation-repository.ts",
+    "worker/repositories/payment-request-repository.ts",
+    "worker/repositories/game-statistics-repository.ts",
+    "src/pages/game/BankruptcyDialog.tsx",
+    "src/utils/property-view.ts",
+    "src/utils/feedback.ts"
+  ],
+  "coverageAnalysis": "perTest",
+  "incremental": true,
+  "incrementalFile": "tools/mutation/reports/stryker-incremental.json",
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "htmlReporter": { "fileName": "tools/mutation/reports/mutation.html" },
+  "jsonReporter": { "fileName": "tools/mutation/reports/mutation.json" },
+  "thresholds": { "high": 80, "low": 60, "break": null }
+}
