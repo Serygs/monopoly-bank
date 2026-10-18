@@ -244,3 +244,304 @@ describe('trades in the history', () => {
     );
   });
 });
+
+describe('every transaction type in the history', () => {
+  const ledgerPlayers: Player[] = ['ann', 'bob', 'cat'].map((id) => ({
+    id,
+    gameId: 'game',
+    name: id.charAt(0).toUpperCase() + id.slice(1),
+    color: '#000',
+    balance: 0,
+    createdAt: '',
+  }));
+  const make = (
+    type: Transaction['type'],
+    participants: Transaction['participants'],
+    extra: Partial<Transaction> = {},
+  ): Transaction => ({
+    id: 't',
+    gameId: 'game',
+    type,
+    amount: 10,
+    totalAmount: 30,
+    comment: null,
+    createdAt: '',
+    participants,
+    ...extra,
+  });
+  const payment: Transaction['participants'] = [
+    { playerId: 'ann', balanceDelta: -10 },
+    { playerId: 'bob', balanceDelta: 10 },
+  ];
+  const payerOnly: Transaction['participants'] = [{ playerId: 'ann', balanceDelta: -10 }];
+  const receiverOnly: Transaction['participants'] = [{ playerId: 'bob', balanceDelta: 10 }];
+
+  it.each([
+    ['PLAYER_TO_PLAYER', payment, 'Ann → Bob', 'Ann → Bob', '$10'],
+    ['PAY_RENT', payment, 'Ann → Bob · Rent', 'Ann → Bob · Rent · Zhitna', '$10'],
+    [
+      'PROPERTY_PURCHASE',
+      payerOnly,
+      'Ann · Property purchase',
+      'Ann · Property purchase · Zhitna',
+      '$10',
+    ],
+    ['PROPERTY_BUILD', payerOnly, 'Ann · Building', 'Ann · Building · Zhitna', '$10'],
+    [
+      'PROPERTY_SELL_BUILDING',
+      receiverOnly,
+      'Bob · Building sold',
+      'Bob · Building sold · Zhitna',
+      '+$10',
+    ],
+    ['PLAYER_TO_BANK', payerOnly, 'Ann → Bank', 'Ann → Bank', '$10'],
+    ['BANK_TO_PLAYER', receiverOnly, 'Bank → Bob', 'Bank → Bob', '$10'],
+    ['PLAYER_TO_ALL', payerOnly, 'Ann → Everyone', 'Ann → Everyone', '$10 each · $30 total'],
+    ['ALL_TO_PLAYER', receiverOnly, 'Everyone → Bob', 'Everyone → Bob', '$10 each · $30 total'],
+    ['PASS_GO', receiverOnly, 'Bob · Passed GO', 'Bob · Passed GO', '+$10'],
+    ['MORTGAGE', receiverOnly, 'Bob · Mortgage', 'Bob · Mortgage · Zhitna', '+$10'],
+    [
+      'MORTGAGE_REDEMPTION',
+      payerOnly,
+      'Ann · Mortgage redeemed',
+      'Ann · Mortgage redeemed · Zhitna',
+      '$10',
+    ],
+    ['LOAN_ISSUE', payment, 'Ann lent to Bob', 'Ann lent to Bob', '$10'],
+    ['LOAN_REPAYMENT', payment, 'Ann repaid Bob', 'Ann repaid Bob', '$10'],
+    ['TO_JACKPOT', payerOnly, 'Ann paid to Free Parking', 'Ann paid to Free Parking', '$10'],
+    [
+      'JACKPOT_PAYOUT',
+      receiverOnly,
+      'Bob collected the Free Parking pot',
+      'Bob collected the Free Parking pot',
+      '+$10',
+    ],
+    ['AUCTION_PAYMENT', payerOnly, 'Ann won an auction', 'Ann won the auction for Zhitna', '$10'],
+    [
+      'BANKRUPTCY_TRANSFER',
+      payment,
+      'Ann declared bankruptcy to Bob',
+      'Ann declared bankruptcy to Bob',
+      '$10',
+    ],
+    ['REVERSAL', payment, 'Reversal · Ann → Bob', 'Reversal · Ann → Bob', '$30'],
+    ['PROPERTY_TRANSFER', payment, 'Ann ⇄ Bob · Trade', 'Ann ⇄ Bob · Trade · Zhitna', '$10'],
+  ] as const)(
+    '%s reads %j without and with a tile',
+    (type, participants, plain, withTile, amount) => {
+      const item = make(type, [...participants]);
+      expect(transactionDescription(item, ledgerPlayers)).toBe(plain);
+      expect(transactionDescription(item, ledgerPlayers, 'en', 'Zhitna')).toBe(withTile);
+      expect(transactionAmount(item, 'USD')).toBe(amount);
+    },
+  );
+
+  it('words the other language for the same types', () => {
+    expect(transactionDescription(make('PLAYER_TO_BANK', payerOnly), ledgerPlayers, 'uk')).toBe(
+      'Ann → Банк',
+    );
+    expect(transactionDescription(make('BANK_TO_PLAYER', receiverOnly), ledgerPlayers, 'uk')).toBe(
+      'Банк → Bob',
+    );
+    expect(transactionDescription(make('PLAYER_TO_ALL', payerOnly), ledgerPlayers, 'uk')).toBe(
+      'Ann → Усі',
+    );
+    expect(transactionDescription(make('ALL_TO_PLAYER', receiverOnly), ledgerPlayers, 'uk')).toBe(
+      'Усі → Bob',
+    );
+    expect(transactionDescription(make('PASS_GO', receiverOnly), ledgerPlayers, 'uk')).toBe(
+      'Bob · Проходження СТАРТУ',
+    );
+    expect(transactionAmount(make('PLAYER_TO_ALL', payerOnly), 'USD', 'uk')).toBe(
+      '$10 кожен · $30 загалом',
+    );
+  });
+
+  it('uses the stand-in name for a participant who is not at the table or is missing', () => {
+    const stranger = [
+      { playerId: 'ghost', balanceDelta: -10 },
+      { playerId: 'nobody', balanceDelta: 10 },
+    ];
+    expect(transactionDescription(make('PLAYER_TO_PLAYER', stranger), ledgerPlayers)).toBe(
+      'Player → Player',
+    );
+    expect(transactionDescription(make('PLAYER_TO_PLAYER', []), ledgerPlayers)).toBe(
+      'Player → Player',
+    );
+    expect(transactionDescription(make('PLAYER_TO_BANK', []), ledgerPlayers)).toBe('Player → Bank');
+    expect(transactionDescription(make('BANK_TO_PLAYER', []), ledgerPlayers)).toBe('Bank → Player');
+    expect(transactionDescription(make('PLAYER_TO_ALL', []), ledgerPlayers)).toBe(
+      'Player → Everyone',
+    );
+    expect(transactionDescription(make('ALL_TO_PLAYER', []), ledgerPlayers)).toBe(
+      'Everyone → Player',
+    );
+    expect(transactionDescription(make('PASS_GO', []), ledgerPlayers)).toBe('Player · Passed GO');
+    expect(transactionDescription(make('PAY_RENT', []), ledgerPlayers)).toBe(
+      'Player → Player · Rent',
+    );
+    expect(transactionDescription(make('PROPERTY_PURCHASE', []), ledgerPlayers)).toBe(
+      'Player · Property purchase',
+    );
+    expect(transactionDescription(make('PROPERTY_BUILD', []), ledgerPlayers)).toBe(
+      'Player · Building',
+    );
+    expect(transactionDescription(make('PROPERTY_SELL_BUILDING', []), ledgerPlayers)).toBe(
+      'Player · Building sold',
+    );
+    expect(transactionDescription(make('MORTGAGE', []), ledgerPlayers)).toBe('Player · Mortgage');
+    expect(transactionDescription(make('MORTGAGE_REDEMPTION', []), ledgerPlayers)).toBe(
+      'Player · Mortgage redeemed',
+    );
+    expect(transactionDescription(make('JACKPOT_PAYOUT', []), ledgerPlayers)).toBe(
+      'Player collected the Free Parking pot',
+    );
+    expect(transactionDescription(make('BANKRUPTCY_TRANSFER', []), ledgerPlayers)).toBe(
+      'Player declared bankruptcy to Player',
+    );
+  });
+
+  it('does not take a participant with no change for the payer or the receiver', () => {
+    const withZero = [{ playerId: 'cat', balanceDelta: 0 }, ...payment];
+    expect(transactionDescription(make('PLAYER_TO_PLAYER', withZero), ledgerPlayers)).toBe(
+      'Ann → Bob',
+    );
+    expect(transactionDescription(make('PAY_RENT', withZero), ledgerPlayers)).toBe(
+      'Ann → Bob · Rent',
+    );
+    expect(transactionDescription(make('LOAN_ISSUE', withZero), ledgerPlayers)).toBe(
+      'Ann lent to Bob',
+    );
+    expect(
+      transactionDescription(
+        make('REVERSAL', [{ playerId: 'cat', balanceDelta: 0 }, ...payment]),
+        ledgerPlayers,
+      ),
+    ).toBe('Reversal · Ann → Bob');
+  });
+
+  it('names a loan from the bank and a repayment to the bank without a counterpart', () => {
+    expect(transactionDescription(make('LOAN_ISSUE', receiverOnly), ledgerPlayers)).toBe(
+      'Bob borrowed from the bank',
+    );
+    expect(transactionDescription(make('LOAN_REPAYMENT', payerOnly), ledgerPlayers)).toBe(
+      'Ann repaid the bank loan',
+    );
+    expect(transactionDescription(make('LOAN_ISSUE', payerOnly), ledgerPlayers)).toBe(
+      'Ann lent to Player',
+    );
+    expect(transactionDescription(make('LOAN_REPAYMENT', receiverOnly), ledgerPlayers)).toBe(
+      'Player repaid Bob',
+    );
+  });
+
+  it('names the pot payment after its trimmed comment, or leaves it unnamed', () => {
+    expect(
+      transactionDescription(
+        make('TO_JACKPOT', payerOnly, { comment: '  Income tax  ' }),
+        ledgerPlayers,
+      ),
+    ).toBe('Ann paid Income tax to Free Parking');
+    for (const comment of [null, '', '   '])
+      expect(
+        transactionDescription(make('TO_JACKPOT', payerOnly, { comment }), ledgerPlayers),
+      ).toBe('Ann paid to Free Parking');
+    expect(transactionDescription(make('TO_JACKPOT', [], { comment: 'Tax' }), ledgerPlayers)).toBe(
+      'Player paid Tax to Free Parking',
+    );
+  });
+
+  it('names an auction payment after the tile, the trimmed lot name, or leaves it unnamed', () => {
+    expect(
+      transactionDescription(
+        make('AUCTION_PAYMENT', payerOnly, { comment: '  Park Lane ' }),
+        ledgerPlayers,
+      ),
+    ).toBe('Ann won the auction for Park Lane');
+    for (const comment of [null, '', '   '])
+      expect(
+        transactionDescription(make('AUCTION_PAYMENT', payerOnly, { comment }), ledgerPlayers),
+      ).toBe('Ann won an auction');
+    expect(
+      transactionDescription(
+        make('AUCTION_PAYMENT', payerOnly, { comment: 'Park Lane' }),
+        ledgerPlayers,
+        'en',
+        'Zhitna',
+      ),
+    ).toBe('Ann won the auction for Zhitna');
+    expect(
+      transactionDescription(make('AUCTION_PAYMENT', [], { comment: 'X' }), ledgerPlayers),
+    ).toBe('Player won the auction for X');
+  });
+
+  it('shows a trade between the initiator and the other trader, and falls back to the payer', () => {
+    const swap = [
+      { playerId: 'ann', balanceDelta: 0 },
+      { playerId: 'bob', balanceDelta: 0 },
+    ];
+    expect(
+      transactionDescription(
+        make('PROPERTY_TRANSFER', swap, { initiatorPlayerId: 'bob' }),
+        ledgerPlayers,
+      ),
+    ).toBe('Bob ⇄ Ann · Trade');
+    expect(transactionDescription(make('PROPERTY_TRANSFER', swap), ledgerPlayers)).toBe(
+      'Player ⇄ Ann · Trade',
+    );
+    expect(transactionDescription(make('PROPERTY_TRANSFER', payment), ledgerPlayers)).toBe(
+      'Ann ⇄ Bob · Trade',
+    );
+    expect(
+      transactionDescription(
+        make('PROPERTY_TRANSFER', swap, { initiatorPlayerId: null }),
+        ledgerPlayers,
+      ),
+    ).toBe('Player ⇄ Ann · Trade');
+  });
+
+  it('reads a reversal with no payer or no receiver as the bank, and many as everyone', () => {
+    const reversal = (participants: Transaction['participants']) =>
+      transactionDescription(make('REVERSAL', participants), ledgerPlayers);
+    expect(reversal(receiverOnly)).toBe('Reversal · Bank → Bob');
+    expect(reversal(payerOnly)).toBe('Reversal · Ann → Bank');
+    expect(
+      reversal([
+        { playerId: 'ann', balanceDelta: -5 },
+        { playerId: 'bob', balanceDelta: -5 },
+        { playerId: 'cat', balanceDelta: 10 },
+      ]),
+    ).toBe('Reversal · Everyone → Cat');
+    expect(
+      reversal([
+        { playerId: 'ann', balanceDelta: -10 },
+        { playerId: 'bob', balanceDelta: 5 },
+        { playerId: 'cat', balanceDelta: 5 },
+      ]),
+    ).toBe('Reversal · Ann → Everyone');
+    expect(reversal([])).toBe('Reversal · Bank → Bank');
+  });
+
+  it('shows the amount of a reversal as the total and of other types as the amount', () => {
+    expect(
+      transactionAmount(make('REVERSAL', payment, { amount: 5, totalAmount: 50 }), 'USD'),
+    ).toBe('$50');
+    expect(
+      transactionAmount(make('PLAYER_TO_BANK', payerOnly, { amount: 5, totalAmount: 50 }), 'USD'),
+    ).toBe('$5');
+  });
+
+  it('shows the change of one player, signed, or nothing for a player who took no part', () => {
+    expect(playerTransactionAmount(make('PLAYER_TO_PLAYER', payment), 'ann', 'USD')).toBe('−$10');
+    expect(playerTransactionAmount(make('PLAYER_TO_PLAYER', payment), 'bob', 'USD')).toBe('+$10');
+    expect(playerTransactionAmount(make('PLAYER_TO_PLAYER', payment), 'cat', 'USD')).toBeNull();
+    expect(
+      playerTransactionAmount(
+        make('PROPERTY_TRANSFER', [{ playerId: 'ann', balanceDelta: 0 }]),
+        'ann',
+        'USD',
+      ),
+    ).not.toBeNull();
+  });
+});

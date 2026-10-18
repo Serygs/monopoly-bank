@@ -66,19 +66,30 @@ describe('Pass GO on an exact landing', () => {
       ...baseGame,
       rules: { ...defaultGameRules, doubleRewardOnExactGo: true },
     });
-    await banking.createTransaction('game', request);
+    const response = await banking.createTransaction('game', request);
     expect(persist).toHaveBeenCalledWith(
       expect.objectContaining({
-        transaction: expect.objectContaining({ type: 'PASS_GO', amount: 400, totalAmount: 400 }),
+        transaction: expect.objectContaining({
+          type: 'PASS_GO',
+          amount: 400,
+          totalAmount: 400,
+          participants: [{ playerId, balanceDelta: 400 }],
+        }),
+        balanceChanges: [expect.objectContaining({ balanceBefore: 1000, balanceAfter: 1400 })],
       }),
     );
+    expect(response.transaction.id).toBe('transaction');
   });
 
   it('still pays the normal reward without the flag, whatever the rule says', async () => {
     const { banking, persist } = service(baseGame);
-    await banking.createTransaction('game', { type: 'PASS_GO', playerId });
+    const response = await banking.createTransaction('game', { type: 'PASS_GO', playerId });
     expect(persist).toHaveBeenCalledWith(
-      expect.objectContaining({ transaction: expect.objectContaining({ amount: 200 }) }),
+      expect.objectContaining({
+        transaction: expect.objectContaining({ amount: 200 }),
+        balanceChanges: [expect.objectContaining({ balanceBefore: 1000, balanceAfter: 1200 })],
+      }),
     );
+    expect(response.transaction.id).toBe('transaction');
   });
 });

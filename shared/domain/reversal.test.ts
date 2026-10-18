@@ -251,3 +251,278 @@ describe('reversal dependencies', () => {
     });
   });
 });
+
+describe('reversalInitiatorPlayerId for every transaction type', () => {
+  it.each([
+    'PLAYER_TO_PLAYER',
+    'PAY_RENT',
+    'PLAYER_TO_BANK',
+    'MORTGAGE_REDEMPTION',
+    'PROPERTY_BUILD',
+    'AUCTION_PAYMENT',
+    'PROPERTY_PURCHASE',
+    'PLAYER_TO_ALL',
+  ] as const)('%s is made by the single player who paid', (type) => {
+    expect(reversalInitiatorPlayerId({ type, participants: participants(['a', -5]) })).toBe('a');
+  });
+
+  it.each([
+    'BANK_TO_PLAYER',
+    'PASS_GO',
+    'MORTGAGE',
+    'PROPERTY_SELL_BUILDING',
+    'ALL_TO_PLAYER',
+  ] as const)('%s is made by the single player who received', (type) => {
+    expect(reversalInitiatorPlayerId({ type, participants: participants(['a', 5]) })).toBe('a');
+  });
+
+  it.each([
+    'BANKRUPTCY_TRANSFER',
+    'REVERSAL',
+    'LOAN_ISSUE',
+    'LOAN_REPAYMENT',
+    'TO_JACKPOT',
+    'JACKPOT_PAYOUT',
+  ] as const)('%s has no initiator whoever took part', (type) => {
+    expect(
+      reversalInitiatorPlayerId({ type, participants: participants(['a', -5], ['b', 5]) }),
+    ).toBeNull();
+  });
+
+  it('takes a trade initiator from the record, not from the money', () => {
+    const trade = participants(['a', 0], ['b', 0]);
+    expect(
+      reversalInitiatorPlayerId({
+        type: 'PROPERTY_TRANSFER',
+        participants: trade,
+        initiatorPlayerId: 'b',
+      }),
+    ).toBe('b');
+    expect(
+      reversalInitiatorPlayerId({ type: 'PROPERTY_TRANSFER', participants: trade }),
+    ).toBeNull();
+    expect(
+      reversalInitiatorPlayerId({
+        type: 'PROPERTY_TRANSFER',
+        participants: participants(['a', -50], ['b', 50]),
+        initiatorPlayerId: null,
+      }),
+    ).toBeNull();
+  });
+
+  it('has no initiator when several players paid or several received', () => {
+    expect(
+      reversalInitiatorPlayerId({
+        type: 'PLAYER_TO_ALL',
+        participants: participants(['a', -5], ['b', -5]),
+      }),
+    ).toBeNull();
+    expect(
+      reversalInitiatorPlayerId({
+        type: 'BANK_TO_PLAYER',
+        participants: participants(['a', 5], ['b', 5]),
+      }),
+    ).toBeNull();
+  });
+
+  it('has no initiator when nobody paid or nobody received', () => {
+    expect(
+      reversalInitiatorPlayerId({ type: 'PLAYER_TO_BANK', participants: participants(['a', 0]) }),
+    ).toBeNull();
+    expect(
+      reversalInitiatorPlayerId({ type: 'BANK_TO_PLAYER', participants: participants(['a', 0]) }),
+    ).toBeNull();
+    expect(reversalInitiatorPlayerId({ type: 'PLAYER_TO_BANK', participants: [] })).toBeNull();
+    expect(reversalInitiatorPlayerId({ type: 'BANK_TO_PLAYER', participants: [] })).toBeNull();
+  });
+
+  it('does not count a participant with no change as the payer or the receiver', () => {
+    expect(
+      reversalInitiatorPlayerId({
+        type: 'PLAYER_TO_PLAYER',
+        participants: participants(['z', 0], ['a', -5], ['b', 5]),
+      }),
+    ).toBe('a');
+    expect(
+      reversalInitiatorPlayerId({
+        type: 'BANK_TO_PLAYER',
+        participants: participants(['z', 0], ['a', 5]),
+      }),
+    ).toBe('a');
+  });
+});
+
+describe('findReversalDependency boundaries', () => {
+  const stored = (
+    id: string,
+    type: Transaction['type'],
+    deltas: [string, number][],
+    extra: Partial<Transaction> = {},
+  ): Transaction => ({
+    id,
+    gameId: 'g',
+    type,
+    amount: 10,
+    totalAmount: 10,
+    comment: null,
+    createdAt: '',
+    participants: participants(...deltas),
+    ...extra,
+  });
+
+  it('never makes a transaction depend on itself', () => {
+    const original = stored('t1', 'MORTGAGE', [['a', 10]], { tileId: 'x' });
+    expect(findReversalDependency(original, [original])).toBeNull();
+  });
+
+  it('is blocked when any participant of the later operation is a player of the original', () => {
+    const original = stored('t1', 'PLAYER_TO_PLAYER', [
+      ['a', -10],
+      ['b', 10],
+    ]);
+    const later = stored('t2', 'LOAN_ISSUE', [
+      ['c', -10],
+      ['b', 10],
+    ]);
+    expect(findReversalDependency(original, [later])).toBe(later);
+  });
+
+  it('is not blocked by a dependent type between players unrelated to the original', () => {
+    const original = stored('t1', 'PLAYER_TO_BANK', [['a', -10]]);
+    const later = stored('t2', 'LOAN_ISSUE', [
+      ['c', -10],
+      ['d', 10],
+    ]);
+    expect(findReversalDependency(original, [later])).toBeNull();
+  });
+
+  it('is blocked by a later operation on any tile of the colour group, not only on all of them', () => {
+    const original = stored('t1', 'PROPERTY_PURCHASE', [['a', -10]], { tileId: 'g1' });
+    const build = stored('t2', 'PROPERTY_BUILD', [['z', -10]], { tileIds: ['g2', 'elsewhere'] });
+    expect(findReversalDependency(original, [build], ['g1', 'g2'])).toBe(build);
+  });
+
+  it('is not blocked by an operation outside the colour group', () => {
+    const original = stored('t1', 'PROPERTY_PURCHASE', [['a', -10]], { tileId: 'g1' });
+    const build = stored('t2', 'PROPERTY_BUILD', [['z', -10]], { tileIds: ['elsewhere'] });
+    expect(findReversalDependency(original, [build], ['g1', 'g2'])).toBeNull();
+    expect(findReversalDependency(original, [build])).toBeNull();
+  });
+
+  it('does not let an original type without group blockers be blocked through the group', () => {
+    const original = stored('t1', 'PLAYER_TO_BANK', [['a', -10]]);
+    const rent = stored('t2', 'PAY_RENT', [['z', -10]], { tileId: 'g2' });
+    expect(findReversalDependency(original, [rent], ['g1', 'g2'])).toBeNull();
+  });
+
+  it('does not let a group operation of another type block a purchase', () => {
+    const original = stored('t1', 'PROPERTY_PURCHASE', [['a', -10]], { tileId: 'g1' });
+    const mortgage = stored('t2', 'PLAYER_TO_PLAYER', [['z', -10]], { tileId: 'g2' });
+    expect(findReversalDependency(original, [mortgage], ['g1', 'g2'])).toBeNull();
+  });
+
+  it('skips a later operation that was itself reversed and returns the first live one', () => {
+    const original = stored('t1', 'PLAYER_TO_BANK', [['a', -10]]);
+    const reversed = stored('t2', 'LOAN_ISSUE', [['a', 10]], { reversedByTransactionId: 'r' });
+    const live = stored('t3', 'LOAN_ISSUE', [['a', 10]]);
+    expect(findReversalDependency(original, [reversed, live])).toBe(live);
+  });
+});
+
+describe('reversalAvailability for a viewer who is not the actor', () => {
+  const base = {
+    id: 't1',
+    gameId: 'g',
+    amount: 10,
+    totalAmount: 10,
+    comment: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+  const now = Date.parse(base.createdAt) + 1000;
+
+  it('hides a transaction that has no single initiator from a player', () => {
+    const shared: Transaction = {
+      ...base,
+      type: 'BANK_TO_PLAYER',
+      participants: participants(['a', 5], ['b', 5]),
+    };
+    expect(
+      reversalAvailability({
+        transaction: shared,
+        isOwner: false,
+        controlledPlayerIds: ['a'],
+        now,
+      }),
+    ).toEqual({ status: 'hidden' });
+    expect(
+      reversalAvailability({ transaction: shared, isOwner: true, controlledPlayerIds: [], now }),
+    ).toEqual({ status: 'allowed' });
+  });
+
+  it('hides a transaction the viewer did not make, and one that cannot be reversed, from a player', () => {
+    const payment: Transaction = {
+      ...base,
+      type: 'PLAYER_TO_BANK',
+      participants: participants(['a', -10]),
+    };
+    expect(
+      reversalAvailability({
+        transaction: payment,
+        isOwner: false,
+        controlledPlayerIds: ['b'],
+        now,
+      }),
+    ).toEqual({ status: 'hidden' });
+    expect(
+      reversalAvailability({
+        transaction: { ...payment, type: 'REVERSAL' },
+        isOwner: true,
+        controlledPlayerIds: ['a'],
+        now,
+      }),
+    ).toEqual({ status: 'hidden' });
+    expect(
+      reversalAvailability({
+        transaction: { ...payment, reversedByTransactionId: 'r1' },
+        isOwner: true,
+        controlledPlayerIds: ['a'],
+        now,
+      }),
+    ).toEqual({ status: 'hidden' });
+  });
+
+  it('reports the dependency that blocks an owner and passes the group tiles on', () => {
+    const purchase: Transaction = {
+      ...base,
+      type: 'PROPERTY_PURCHASE',
+      tileId: 'g1',
+      participants: participants(['a', -10]),
+    };
+    const rent: Transaction = {
+      ...base,
+      id: 't2',
+      type: 'PAY_RENT',
+      tileId: 'g2',
+      participants: participants(['z', -5], ['y', 5]),
+    };
+    expect(
+      reversalAvailability({
+        transaction: purchase,
+        isOwner: true,
+        controlledPlayerIds: [],
+        now,
+        later: [rent],
+        groupTileIds: ['g1', 'g2'],
+      }),
+    ).toEqual({ status: 'blocked', reason: 'LATER_OPERATION', dependency: rent });
+    expect(
+      reversalAvailability({
+        transaction: purchase,
+        isOwner: true,
+        controlledPlayerIds: [],
+        now,
+        later: [rent],
+      }),
+    ).toEqual({ status: 'allowed' });
+  });
+});

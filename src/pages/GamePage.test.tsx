@@ -469,3 +469,287 @@ async function flushPromises(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
 }
+
+function liveStatusOf(node: ReactNode): string | undefined {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = liveStatusOf(child);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+  if (node === null || typeof node !== 'object' || !('props' in node)) return undefined;
+  const props = (node as { props: { children?: ReactNode; liveStatus?: unknown } }).props;
+  return typeof props.liveStatus === 'string' ? props.liveStatus : liveStatusOf(props.children);
+}
+
+describe('GamePage live connection recovery', () => {
+  interface Timer {
+    id: number;
+    callback: () => void;
+    delay: number;
+    cleared: boolean;
+  }
+  let intervals: Timer[];
+  let timeouts: Timer[];
+  const register = (list: Timer[]) => (callback: () => void, delay: number) => {
+    const timer = { id: list.length + 1, callback, delay, cleared: false };
+    list.push(timer);
+    return timer.id;
+  };
+  const clear = (list: Timer[]) => (id: number) => {
+    const timer = list.find((item) => item.id === id);
+    if (timer !== undefined) timer.cleared = true;
+  };
+  const rendered = (offline = false) => {
+    const page = renderGamePage(offline);
+    hooks.flushEffects();
+    return page;
+  };
+  async function connected() {
+    api.getGame.mockResolvedValue(gameDetails('ACTIVE', [owner]));
+    rendered();
+    await flushPromises();
+    rendered();
+    return FakeWebSocket.instances[0] as FakeWebSocket;
+  }
+
+  beforeEach(() => {
+    hooks.reset();
+    api.getGame.mockReset();
+    api.listPaymentRequests.mockReset().mockResolvedValue([]);
+    api.getActivity
+      .mockReset()
+      .mockResolvedValue({ transactions: [], paymentRequests: [], nextCursor: null });
+    FakeWebSocket.instances.length = 0;
+    intervals = [];
+    timeouts = [];
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    vi.stubGlobal('window', {
+      location: { origin: 'https://bank.example', protocol: 'https:' },
+      setInterval: register(intervals),
+      clearInterval: clear(intervals),
+      setTimeout: register(timeouts),
+      clearTimeout: clear(timeouts),
+    });
+  });
+
+  afterEach(() => {
+    hooks.unmount();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('connects to the game’s own live address over a secure socket', async () => {
+    const socket = await connected();
+    expect(socket.url).toBe('wss://bank.example/api/games/game-1/live');
+  });
+
+  it('uses an insecure socket on an insecure page and encodes the game id', async () => {
+    vi.stubGlobal('window', {
+      location: { origin: 'http://localhost:5173', protocol: 'http:' },
+      setInterval: register(intervals),
+      clearInterval: clear(intervals),
+      setTimeout: register(timeouts),
+      clearTimeout: clear(timeouts),
+    });
+    const socket = await connected();
+    expect(socket.url).toBe('ws://localhost:5173/api/games/game-1/live');
+  });
+
+  it('goes from connecting to live when the socket opens', async () => {
+    const socket = await connected();
+    expect(liveStatusOf(rendered())).toBe('connecting');
+    socket.open();
+    expect(liveStatusOf(rendered())).toBe('live');
+  });
+
+  it('sends a heartbeat every 20 seconds while the socket is open and none once it is closed', async () => {
+    const socket = await connected();
+    socket.open();
+    expect(intervals).toHaveLength(1);
+    expect(intervals[0]?.delay).toBe(20_000);
+    intervals[0]?.callback();
+    intervals[0]?.callback();
+    expect(socket.sent).toEqual([
+      JSON.stringify({ type: 'HEARTBEAT' }),
+      JSON.stringify({ type: 'HEARTBEAT' }),
+    ]);
+    socket.readyState = FakeWebSocket.CLOSED;
+    intervals[0]?.callback();
+    expect(socket.sent).toHaveLength(2);
+  });
+
+  it('stops the heartbeat when the socket closes', async () => {
+    const socket = await connected();
+    socket.open();
+    socket.close();
+    expect(intervals[0]?.cleared).toBe(true);
+  });
+
+  it('shows offline after a close and reconnects after a jittered, growing delay', async () => {
+    const socket = await connected();
+    socket.open();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    socket.close();
+    expect(liveStatusOf(rendered())).toBe('offline');
+    expect(timeouts).toHaveLength(1);
+    expect(timeouts[0]?.delay).toBe(1000);
+    timeouts[0]?.callback();
+    expect(liveStatusOf(rendered())).toBe('reconnecting');
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const second = FakeWebSocket.instances[1] as FakeWebSocket;
+    second.close();
+    expect(timeouts[1]?.delay).toBe(2000);
+    timeouts[1]?.callback();
+    FakeWebSocket.instances[2]?.close();
+    expect(timeouts[2]?.delay).toBe(4000);
+  });
+
+  it('caps the delay at ten seconds and keeps it within 30% either side', async () => {
+    await connected();
+    const delays: number[] = [];
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      FakeWebSocket.instances.at(-1)?.close();
+      delays.push(timeouts.at(-1)?.delay ?? 0);
+      timeouts.at(-1)?.callback();
+    }
+    expect(delays).toEqual([700, 1400, 2800, 5600, 7000, 7000]);
+    vi.spyOn(Math, 'random').mockReturnValue(0.999999);
+    FakeWebSocket.instances.at(-1)?.close();
+    expect(timeouts.at(-1)?.delay).toBe(13000);
+  });
+
+  it('starts the delay over after a connection succeeds', async () => {
+    await connected();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    FakeWebSocket.instances[0]?.close();
+    timeouts[0]?.callback();
+    FakeWebSocket.instances[1]?.close();
+    expect(timeouts[1]?.delay).toBe(2000);
+    timeouts[1]?.callback();
+    FakeWebSocket.instances[2]?.open();
+    FakeWebSocket.instances[2]?.close();
+    expect(timeouts[2]?.delay).toBe(1000);
+  });
+
+  it('closes a failing socket so the normal reconnect takes over', async () => {
+    const socket = await connected();
+    socket.onerror?.();
+    expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(timeouts).toHaveLength(1);
+  });
+
+  it('ignores everything a replaced socket still says', async () => {
+    const first = await connected();
+    first.open();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    first.close();
+    timeouts[0]?.callback();
+    const second = FakeWebSocket.instances[1] as FakeWebSocket;
+    first.onopen?.();
+    first.onerror?.();
+    first.onclose?.();
+    first.message(snapshot(5, gameDetails('ACTIVE', [owner, joined])));
+    expect(timeouts).toHaveLength(1);
+    expect(second.readyState).not.toBe(FakeWebSocket.CLOSED);
+    expect(renderedPlayerNames(rendered())).not.toContain(joined.name);
+  });
+
+  it('applies a snapshot of any version, then accepts the next version and refuses a gap', async () => {
+    const socket = await connected();
+    socket.message(snapshot(10, gameDetails('ACTIVE', [owner, joined])));
+    expect(renderedPlayerNames(rendered())).toContain(joined.name);
+    socket.message({ type: 'HEARTBEAT', stateVersion: 11 });
+    expect(socket.closeCode).toBeUndefined();
+    socket.message({ type: 'HEARTBEAT', stateVersion: 13 });
+    expect(socket.closeCode).toBe(4001);
+  });
+
+  it('applies a second event of the same version, and resyncs on an older one', async () => {
+    const socket = await connected();
+    socket.message(snapshot(10, gameDetails('ACTIVE', [owner])));
+    const commit = (stateVersion: number, balance: number): LiveServerEvent => ({
+      type: 'GAME_COMMITTED',
+      stateVersion,
+      transaction: {
+        id: `t${stateVersion}-${balance}`,
+        gameId: 'game-1',
+        type: 'BANK_TO_PLAYER',
+        amount: 5,
+        totalAmount: 5,
+        comment: null,
+        createdAt: '',
+        participants: [],
+      },
+      players: [{ ...owner, balance }],
+    });
+    socket.message(commit(10, 1));
+    expect(socket.closeCode).toBeUndefined();
+    expect(hooks.value<GameDetails>(0).players[0]?.balance).toBe(1);
+    socket.message(commit(9, 2));
+    expect(socket.closeCode).toBe(4001);
+    expect(hooks.value<GameDetails>(0).players[0]?.balance).toBe(1);
+  });
+
+  it('reloads the payment requests when the server says they changed', async () => {
+    const socket = await connected();
+    const calls = api.listPaymentRequests.mock.calls.length;
+    socket.message({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion: 1 });
+    expect(api.listPaymentRequests.mock.calls.length).toBe(calls + 1);
+  });
+
+  it('ignores a message that is not JSON or not a live event', async () => {
+    const socket = await connected();
+    socket.onmessage?.({ data: 'not json' });
+    socket.onmessage?.({ data: JSON.stringify({ type: 'SOMETHING_ELSE', stateVersion: 1 }) });
+    socket.onmessage?.({ data: JSON.stringify(null) });
+    socket.onmessage?.({ data: JSON.stringify({ type: 'HEARTBEAT' }) });
+    expect(socket.closeCode).toBeUndefined();
+    expect(socket.readyState).not.toBe(FakeWebSocket.CLOSED);
+  });
+
+  it('keeps at most fifty live transactions, newest first', async () => {
+    const socket = await connected();
+    for (let version = 1; version <= 55; version += 1)
+      socket.message({
+        type: 'GAME_COMMITTED',
+        stateVersion: version,
+        transaction: {
+          id: `t${version}`,
+          gameId: 'game-1',
+          type: 'BANK_TO_PLAYER',
+          amount: 1,
+          totalAmount: 1,
+          comment: null,
+          createdAt: '',
+          participants: [{ playerId: owner.id, balanceDelta: 1 }],
+        },
+        players: [owner],
+      });
+    const ids = recentIds(rendered());
+    expect(ids[0]).toBe('t55');
+    expect(ids.length).toBeLessThanOrEqual(50);
+  });
+
+  it('closes the socket and clears the timers when the page goes away', async () => {
+    const socket = await connected();
+    socket.open();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    hooks.unmount();
+    expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(intervals[0]?.cleared).toBe(true);
+    expect(timeouts).toHaveLength(0);
+  });
+
+  it('cancels a pending reconnect when the page goes away', async () => {
+    const socket = await connected();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    socket.close();
+    hooks.unmount();
+    expect(timeouts[0]?.cleared).toBe(true);
+    timeouts[0]?.callback();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+});

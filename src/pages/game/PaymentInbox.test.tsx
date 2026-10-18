@@ -74,3 +74,38 @@ describe('PaymentInbox outgoing loan requests', () => {
     expect(onAction).toHaveBeenCalledWith(outgoing, 'cancel');
   });
 });
+
+describe('PaymentInbox empty state', () => {
+  const empty = (requests: PaymentRequest[], outgoing: PaymentRequest[] = []) =>
+    render(
+      <LanguageProvider>
+        <PaymentInbox
+          requests={requests}
+          outgoing={outgoing}
+          players={players}
+          currency="USD"
+          onAction={vi.fn()}
+        />
+      </LanguageProvider>,
+    );
+
+  it('says there are no payment requests and shows a zero count', () => {
+    empty([]);
+    expect(screen.getByText('No payment requests waiting for you.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Payment inbox' }).nextSibling).toHaveTextContent(
+      '0',
+    );
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
+  it('does not say it when there is a request to answer', () => {
+    empty([request('PAYMENT')]);
+    expect(screen.queryByText('No payment requests waiting for you.')).not.toBeInTheDocument();
+    expect(screen.getByRole('list')).toBeInTheDocument();
+  });
+
+  it('does not say it when only the viewer’s own loan request is waiting', () => {
+    empty([], [{ ...request('LOAN'), creatorPlayerId: 'p2', approverPlayerId: 'p1' }]);
+    expect(screen.queryByText('No payment requests waiting for you.')).not.toBeInTheDocument();
+  });
+});
