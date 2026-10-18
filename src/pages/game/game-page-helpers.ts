@@ -7,8 +7,11 @@ import type {
 import type { LiveServerEvent } from '../../../shared/contracts/live';
 import type {
   Currency,
+  BankLoanCooldown,
+  GameProperty,
   InterestRatePercent,
   Loan,
+  Mortgage,
   Player,
   Transaction,
   TransactionType,
@@ -113,23 +116,7 @@ export function applyLiveEvent(
     return;
   }
   if (event.type === 'GAME_COMMITTED') {
-    setDetails((current) =>
-      current === null
-        ? current
-        : {
-            ...current,
-            players: event.players,
-            ...(event.mortgages === undefined ? {} : { mortgages: event.mortgages }),
-            ...(event.loans === undefined ? {} : { loans: event.loans }),
-            ...(event.bankLoanCooldowns === undefined
-              ? {}
-              : { bankLoanCooldowns: event.bankLoanCooldowns }),
-            ...(event.jackpot === undefined ? {} : { jackpot: event.jackpot }),
-            ...(event.properties === undefined
-              ? {}
-              : { properties: mergeProperties(current.properties, event.properties) }),
-          },
-    );
+    setDetails((current) => (current === null ? current : applyBankingResponse(current, event)));
     return;
   }
   if (event.type === 'AUCTION_UPDATED') {
@@ -142,6 +129,40 @@ export function applyLiveEvent(
   }
   if (event.type === 'GAME_FINISHED')
     setDetails((current) => withClientGameDetails(event.details, current));
+}
+
+export interface BankingResponseFields {
+  players: Player[];
+  mortgages?: Mortgage[];
+  loans?: Loan[];
+  bankLoanCooldowns?: BankLoanCooldown[];
+  jackpot?: number;
+  properties?: GameProperty[];
+}
+
+export function applyBankingResponse(
+  current: GameDetails,
+  response: BankingResponseFields,
+  propertyMode: 'merge' | 'replace' = 'merge',
+): GameDetails {
+  return {
+    ...current,
+    players: response.players,
+    ...(response.mortgages === undefined ? {} : { mortgages: response.mortgages }),
+    ...(response.loans === undefined ? {} : { loans: response.loans }),
+    ...(response.bankLoanCooldowns === undefined
+      ? {}
+      : { bankLoanCooldowns: response.bankLoanCooldowns }),
+    ...(response.jackpot === undefined ? {} : { jackpot: response.jackpot }),
+    ...(response.properties === undefined
+      ? {}
+      : {
+          properties:
+            propertyMode === 'merge'
+              ? mergeProperties(current.properties, response.properties)
+              : response.properties,
+        }),
+  };
 }
 
 export function withClientGameDetails(

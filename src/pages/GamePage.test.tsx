@@ -606,6 +606,18 @@ describe('GamePage live connection recovery', () => {
     expect(timeouts[2]?.delay).toBe(4000);
   });
 
+  it('goes from offline through reconnecting back to live once the new socket opens', async () => {
+    const socket = await connected();
+    socket.open();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    socket.close();
+    expect(liveStatusOf(rendered())).toBe('offline');
+    timeouts[0]?.callback();
+    expect(liveStatusOf(rendered())).toBe('reconnecting');
+    FakeWebSocket.instances[1]?.open();
+    expect(liveStatusOf(rendered())).toBe('live');
+  });
+
   it('caps the delay at ten seconds and keeps it within 30% either side', async () => {
     await connected();
     const delays: number[] = [];
