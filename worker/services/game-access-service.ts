@@ -1,6 +1,7 @@
 import {
   MAX_LOBBY_PLAYERS,
   type CreateInvitationResponse,
+  type JoinGameRequest,
   type PlayerController,
 } from '../../shared/contracts/api.js';
 import {
@@ -13,7 +14,14 @@ import type {
   GameMemberRole,
   GameAccessRepository,
 } from '../repositories/game-access-repository.js';
-import { ConflictError, ForbiddenError, LobbyFullError, ResourceNotFoundError } from './errors.js';
+import { normalizeJoinCode } from '../validation/api-validation.js';
+import {
+  ConflictError,
+  ForbiddenError,
+  InvalidJoinCodeError,
+  LobbyFullError,
+  ResourceNotFoundError,
+} from './errors.js';
 import { randomToken, tokenHash, verifyPassword } from './password-security.js';
 
 export class GameAccessService {
@@ -149,4 +157,35 @@ export class GameAccessService {
   async linkedMembers(gameId: string): Promise<Array<{ userId: string; playerId: string | null }>> {
     return this.access.listLinkedMembers(gameId);
   }
+}
+
+type JoinAccessLookup = Pick<
+  GameAccessService,
+  'invitation' | 'getJoinCredentials' | 'verifyGamePassword'
+>;
+
+async function joinCodeAccess(
+  access: JoinAccessLookup,
+  joinCode: string,
+  gameAccessPassword: string | undefined,
+): Promise<{ gameId: string; status: string } | null> {
+  const credentials = await access.getJoinCredentials(normalizeJoinCode(joinCode));
+  if (credentials === null || !(await access.verifyGamePassword(gameAccessPassword, credentials)))
+    return null;
+  return { gameId: credentials.gameId, status: credentials.status };
+}
+
+export async function resolveJoinAccess(
+  access: JoinAccessLookup,
+  body: JoinGameRequest,
+  recordFailure: (joinCode: string) => Promise<void>,
+): Promise<{ gameId: string; status: string }> {
+  const found =
+    'invitationToken' in body
+      ? await access.invitation(body.invitationToken)
+      : await joinCodeAccess(access, body.joinCode, body.gameAccessPassword);
+  if (found !== null && found.status === 'LOBBY') return found;
+  if ('joinCode' in body) await recordFailure(body.joinCode);
+  if (found === null) throw new InvalidJoinCodeError();
+  throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
 }

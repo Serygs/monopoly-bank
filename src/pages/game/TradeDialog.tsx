@@ -3,6 +3,7 @@ import type { TradeRequest } from '../../../shared/contracts/api';
 import type { BoardSnapshot } from '../../../shared/board';
 import type { Currency, GameProperty, Player } from '../../../shared/types/monopoly';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { AmountSelector } from '../../components/AmountSelector';
 import { Dialog } from '../../components/Dialog';
 import { TradeSummary } from '../../components/game/TradeSummary';
@@ -76,11 +77,9 @@ export function TradeDialog({
   const [getOn, setGetOn] = useState(false);
   const [get, setGet] = useState('');
   const [confirming, setConfirming] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<unknown | null>(null);
+  const { busy: submitting, error, setError, run } = useAsyncAction();
   const [sent, setSent] = useState<TradeRequest | null>(null);
   const commandIdRef = useRef<string | null>(null);
-  const submittingRef = useRef(false);
   const counterparty = others.find((candidate) => candidate.id === counterpartyId) ?? null;
   const money = (value: number) => formatMoney(value, currency);
 
@@ -128,11 +127,8 @@ export function TradeDialog({
   const anyMortgaged = [...ownGive, ...theirs].some((view) => view.mortgaged);
 
   const submit = async () => {
-    if (submittingRef.current || !valid || counterparty === null) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    setError(null);
-    try {
+    if (!valid || counterparty === null) return;
+    await run(async () => {
       const commandId = commandIdRef.current ?? crypto.randomUUID();
       commandIdRef.current = commandId;
       const { tradeRequest } = await monopolyBankApi.createTradeRequest(
@@ -150,29 +146,16 @@ export function TradeDialog({
       );
       setSent(tradeRequest);
       onRequested(tradeRequest);
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
+    });
   };
 
   const cancelRequest = async () => {
-    if (sent === null || submittingRef.current) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    setError(null);
-    try {
+    if (sent === null) return;
+    await run(async () => {
       const result = await monopolyBankApi.cancelTradeRequest(gameId, sent.id, crypto.randomUUID());
       onCancelled?.(result.tradeRequest);
       onClose();
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
+    });
   };
 
   const title = t('tradeTitle');

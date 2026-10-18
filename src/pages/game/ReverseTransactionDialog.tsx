@@ -8,6 +8,7 @@ import { useLanguage } from '../../i18n/language-context';
 import type { Language } from '../../i18n/translations';
 import { transactionDescription } from '../../utils/transaction-history';
 import { insufficientMessage } from './game-page-helpers';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 export interface ReverseTransactionDialogProps {
   gameId: string;
@@ -35,19 +36,13 @@ export function ReverseTransactionDialog({
 }: ReverseTransactionDialogProps) {
   const { t } = useLanguage();
   const [comment, setComment] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<unknown | null>(null);
-  const submittingRef = useRef(false);
+  const { busy: submitting, error, run } = useAsyncAction();
   // One command ID per attempt, so a retry after a dropped response cannot reverse twice.
   const commandIdRef = useRef<string | null>(null);
   const title = t('reverseTransactionTitle');
 
   const submit = async () => {
-    if (submittingRef.current) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    setError(null);
-    try {
+    await run(async () => {
       const commandId = commandIdRef.current ?? crypto.randomUUID();
       commandIdRef.current = commandId;
       const result = await monopolyBankApi.createTransaction(
@@ -60,12 +55,7 @@ export function ReverseTransactionDialog({
         commandId,
       );
       onReversed(result.players);
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
+    });
   };
 
   const errorMessage =

@@ -78,135 +78,176 @@ function record(history: CalculationEntry[], entry: CalculationEntry): Calculati
   return [entry, ...history].slice(0, historyLimit);
 }
 
+type ActionOf<T extends CalculatorAction['type']> = Extract<CalculatorAction, { type: T }>;
+
+type Handlers = {
+  [T in CalculatorAction['type']]: (state: CalculatorState, action: ActionOf<T>) => CalculatorState;
+};
+
+function enterDigit(state: CalculatorState, action: ActionOf<'digit'>): CalculatorState {
+  if (!/^\d$/.test(action.digit)) return state;
+  if (state.fresh || state.display === '0')
+    return { ...state, display: action.digit, fresh: false };
+  if (state.display.replace(/[-.]/g, '').length >= maxEntryLength) return state;
+  return { ...state, display: `${state.display}${action.digit}` };
+}
+
+function enterDecimal(state: CalculatorState): CalculatorState {
+  if (state.fresh) return { ...state, display: '0.', fresh: false };
+  return state.display.includes('.') ? state : { ...state, display: `${state.display}.` };
+}
+
+function chooseOperator(state: CalculatorState, action: ActionOf<'operator'>): CalculatorState {
+  const { operator } = action;
+  if (state.operator !== null && state.accumulator !== null && state.fresh)
+    return {
+      ...state,
+      operator,
+      expression: `${formatCalculatorNumber(state.accumulator)} ${operator}`,
+    };
+  const entered = Number(state.display);
+  const left =
+    state.operator !== null && state.accumulator !== null
+      ? apply(state.accumulator, state.operator, entered)
+      : entered;
+  if (left === null) return failed(state);
+  const text = formatCalculatorNumber(left);
+  return {
+    ...state,
+    accumulator: left,
+    operator,
+    display: text,
+    fresh: true,
+    repeat: null,
+    expression: `${text} ${operator}`,
+  };
+}
+
+function finishOperation(
+  state: CalculatorState,
+  accumulator: number,
+  operator: CalculatorOperator,
+): CalculatorState {
+  // "5 × =" squares the number, like a pocket calculator.
+  const right = state.fresh ? accumulator : Number(state.display);
+  const result = apply(accumulator, operator, right);
+  if (result === null) return failed(state);
+  const text = formatCalculatorNumber(result);
+  const expression = `${formatCalculatorNumber(accumulator)} ${operator} ${formatCalculatorNumber(right)} =`;
+  return {
+    ...state,
+    display: text,
+    accumulator: null,
+    operator: null,
+    fresh: true,
+    repeat: { operator, operand: right },
+    expression,
+    history: record(state.history, { expression, result: text }),
+  };
+}
+
+function repeatOperation(
+  state: CalculatorState,
+  repeat: NonNullable<CalculatorState['repeat']>,
+): CalculatorState {
+  const left = Number(state.display);
+  const result = apply(left, repeat.operator, repeat.operand);
+  if (result === null) return failed(state);
+  const text = formatCalculatorNumber(result);
+  const expression = `${formatCalculatorNumber(left)} ${repeat.operator} ${formatCalculatorNumber(repeat.operand)} =`;
+  return {
+    ...state,
+    display: text,
+    fresh: true,
+    expression,
+    history: record(state.history, { expression, result: text }),
+  };
+}
+
+function pressEquals(state: CalculatorState): CalculatorState {
+  if (state.operator !== null && state.accumulator !== null)
+    return finishOperation(state, state.accumulator, state.operator);
+  return state.repeat === null ? state : repeatOperation(state, state.repeat);
+}
+
+function percentOf(state: CalculatorState): CalculatorState {
+  const entered = Number(state.display);
+  const value =
+    state.operator !== null && state.accumulator !== null
+      ? state.operator === '+' || state.operator === '−'
+        ? (state.accumulator * entered) / 100
+        : entered / 100
+      : entered / 100;
+  return { ...state, display: formatCalculatorNumber(value), fresh: false };
+}
+
+function mortgageValue(state: CalculatorState, action: ActionOf<'mortgage'>): CalculatorState {
+  const entered = Number(state.display);
+  // Whole amounts stay whole: redemption rounds half up in integers, (v × 11 + 5) / 10.
+  const result =
+    action.kind === 'half'
+      ? entered / 2
+      : Number.isInteger(entered)
+        ? Math.floor((entered * 11 + 5) / 10)
+        : entered * 1.1;
+  const text = formatCalculatorNumber(result);
+  const expression = `${formatCalculatorNumber(entered)} ${action.kind === 'half' ? '÷ 2' : '× 1.1'} =`;
+  return {
+    ...state,
+    display: text,
+    accumulator: null,
+    operator: null,
+    fresh: true,
+    repeat: null,
+    expression,
+    history: record(state.history, { expression, result: text }),
+  };
+}
+
+function negate(state: CalculatorState): CalculatorState {
+  if (state.display === '0') return state;
+  return {
+    ...state,
+    display: state.display.startsWith('-') ? state.display.slice(1) : `-${state.display}`,
+  };
+}
+
+function backspace(state: CalculatorState): CalculatorState {
+  if (state.fresh) return state;
+  const next = state.display.slice(0, -1);
+  return { ...state, display: next === '' || next === '-' ? '0' : next };
+}
+
+function recall(state: CalculatorState, action: ActionOf<'recall'>): CalculatorState {
+  return Number.isFinite(Number(action.value))
+    ? { ...state, display: action.value, fresh: false }
+    : state;
+}
+
+const handlers: Handlers = {
+  digit: enterDigit,
+  decimal: enterDecimal,
+  operator: chooseOperator,
+  equals: pressEquals,
+  percent: percentOf,
+  mortgage: mortgageValue,
+  negate,
+  backspace,
+  clear: (state) => ({ ...initialCalculator, history: state.history }),
+  recall,
+};
+
 export function calculatorReducer(
   current: CalculatorState,
   action: CalculatorAction,
 ): CalculatorState {
   // Any key after an error starts over, keeping the history.
   const state = current.error ? { ...initialCalculator, history: current.history } : current;
-  switch (action.type) {
-    case 'digit': {
-      if (!/^\d$/.test(action.digit)) return state;
-      if (state.fresh || state.display === '0')
-        return { ...state, display: action.digit, fresh: false };
-      if (state.display.replace(/[-.]/g, '').length >= maxEntryLength) return state;
-      return { ...state, display: `${state.display}${action.digit}` };
-    }
-    case 'decimal': {
-      if (state.fresh) return { ...state, display: '0.', fresh: false };
-      return state.display.includes('.') ? state : { ...state, display: `${state.display}.` };
-    }
-    case 'operator': {
-      const { operator } = action;
-      if (state.operator !== null && state.accumulator !== null && state.fresh)
-        return {
-          ...state,
-          operator,
-          expression: `${formatCalculatorNumber(state.accumulator)} ${operator}`,
-        };
-      const entered = Number(state.display);
-      const left =
-        state.operator !== null && state.accumulator !== null
-          ? apply(state.accumulator, state.operator, entered)
-          : entered;
-      if (left === null) return failed(state);
-      const text = formatCalculatorNumber(left);
-      return {
-        ...state,
-        accumulator: left,
-        operator,
-        display: text,
-        fresh: true,
-        repeat: null,
-        expression: `${text} ${operator}`,
-      };
-    }
-    case 'equals': {
-      if (state.operator !== null && state.accumulator !== null) {
-        // "5 × =" squares the number, like a pocket calculator.
-        const right = state.fresh ? state.accumulator : Number(state.display);
-        const result = apply(state.accumulator, state.operator, right);
-        if (result === null) return failed(state);
-        const text = formatCalculatorNumber(result);
-        const expression = `${formatCalculatorNumber(state.accumulator)} ${state.operator} ${formatCalculatorNumber(right)} =`;
-        return {
-          ...state,
-          display: text,
-          accumulator: null,
-          operator: null,
-          fresh: true,
-          repeat: { operator: state.operator, operand: right },
-          expression,
-          history: record(state.history, { expression, result: text }),
-        };
-      }
-      if (state.repeat !== null) {
-        const left = Number(state.display);
-        const result = apply(left, state.repeat.operator, state.repeat.operand);
-        if (result === null) return failed(state);
-        const text = formatCalculatorNumber(result);
-        const expression = `${formatCalculatorNumber(left)} ${state.repeat.operator} ${formatCalculatorNumber(state.repeat.operand)} =`;
-        return {
-          ...state,
-          display: text,
-          fresh: true,
-          expression,
-          history: record(state.history, { expression, result: text }),
-        };
-      }
-      return state;
-    }
-    case 'percent': {
-      const entered = Number(state.display);
-      const value =
-        state.operator !== null && state.accumulator !== null
-          ? state.operator === '+' || state.operator === '−'
-            ? (state.accumulator * entered) / 100
-            : entered / 100
-          : entered / 100;
-      return { ...state, display: formatCalculatorNumber(value), fresh: false };
-    }
-    case 'mortgage': {
-      const entered = Number(state.display);
-      // Whole amounts stay whole: redemption rounds half up in integers, (v × 11 + 5) / 10.
-      const result =
-        action.kind === 'half'
-          ? entered / 2
-          : Number.isInteger(entered)
-            ? Math.floor((entered * 11 + 5) / 10)
-            : entered * 1.1;
-      const text = formatCalculatorNumber(result);
-      const expression = `${formatCalculatorNumber(entered)} ${action.kind === 'half' ? '÷ 2' : '× 1.1'} =`;
-      return {
-        ...state,
-        display: text,
-        accumulator: null,
-        operator: null,
-        fresh: true,
-        repeat: null,
-        expression,
-        history: record(state.history, { expression, result: text }),
-      };
-    }
-    case 'negate': {
-      if (state.display === '0') return state;
-      return {
-        ...state,
-        display: state.display.startsWith('-') ? state.display.slice(1) : `-${state.display}`,
-      };
-    }
-    case 'backspace': {
-      if (state.fresh) return state;
-      const next = state.display.slice(0, -1);
-      return { ...state, display: next === '' || next === '-' ? '0' : next };
-    }
-    case 'clear':
-      return { ...initialCalculator, history: current.history };
-    case 'recall':
-      return Number.isFinite(Number(action.value))
-        ? { ...state, display: action.value, fresh: false }
-        : state;
-  }
+  const handler = handlers[action.type] as (
+    state: CalculatorState,
+    action: CalculatorAction,
+  ) => CalculatorState;
+  return handler(state, action);
 }
 
 /** The display for people: grouped whole part, the locale's separator, a typed trailing comma. */

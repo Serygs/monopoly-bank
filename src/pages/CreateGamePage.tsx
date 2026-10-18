@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
+import { useAsyncAction } from '../hooks/useAsyncAction';
 import type { BoardMode } from '../../shared/board';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
@@ -144,8 +145,7 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
   const [isPublic, setIsPublic] = useState(initial.isPublic);
   const [players, setPlayers] = useState<PlayerForm[]>(initial.players);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<unknown | null>(null);
+  const { busy: submitting, error: submitError, setError: setSubmitError, run } = useAsyncAction();
   const suggestions = getGameNameSuggestions(language, suggestionStart);
   const closeSuggestions = useCallback(() => {
     setSuggestionsOpen(false);
@@ -245,9 +245,7 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
       }
     }
     setErrors({});
-    setSubmitError(null);
-    setSubmitting(true);
-    try {
+    await run(async () => {
       const details = await monopolyBankApi.createGame({
         name: name.trim(),
         startingBalance: Number(startingBalance),
@@ -262,11 +260,7 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
       });
       clearDraft();
       onCreated(details.game.id);
-    } catch (caught) {
-      setSubmitError(caught);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
   const stepTitles = [t('stepBasics'), t('houseRules'), t('stepPlayers')];
   const stepSubtitles = [t('lobbyLede'), t('houseRulesHint'), t('localPlayersHint')];

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { JOIN_CODE_MAX_LENGTH, JOIN_CODE_MIN_LENGTH, normalizeJoinCode } from '../utils/join-code';
 import type { UserProfile } from '../../shared/contracts/api.js';
 import { MonopolyBankApiError, monopolyBankApi } from '../api/monopoly-bank-api';
+import { useAsyncAction } from '../hooks/useAsyncAction';
 import { Button, Field, Notice, PageShell } from '../components/ui';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
@@ -32,8 +33,7 @@ export function JoinGamePage({
   const [gameAccessPassword, setGameAccessPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const avatar = '🎩';
-  const [error, setError] = useState<unknown>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { busy: submitting, error, run } = useAsyncAction();
   const hasInvitation = invitationToken !== '';
   const guest = onGuestJoined !== undefined;
   const fromLink = initialJoinCode !== '';
@@ -51,28 +51,26 @@ export function JoinGamePage({
 
   const join = async (event?: FormEvent) => {
     event?.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      if (onGuestJoined === undefined) {
-        const details = await monopolyBankApi.joinGame(credentials());
-        onJoined(details.game.id);
-      } else {
-        const result = await monopolyBankApi.joinGameAsGuest({
-          nickname,
-          avatar,
-          ...credentials(),
-        });
-        onGuestJoined(result.profile, result.game.game.id);
-      }
-    } catch (caught) {
-      setError(caught);
-      if (caught instanceof MonopolyBankApiError && caught.code === 'INVALID_JOIN_CODE')
-        setPasswordNeeded(true);
-    } finally {
-      setSubmitting(false);
-      setAutoJoining(false);
-    }
+    await run(
+      async () => {
+        if (onGuestJoined === undefined) {
+          const details = await monopolyBankApi.joinGame(credentials());
+          onJoined(details.game.id);
+        } else {
+          const result = await monopolyBankApi.joinGameAsGuest({
+            nickname,
+            avatar,
+            ...credentials(),
+          });
+          onGuestJoined(result.profile, result.game.game.id);
+        }
+      },
+      (caught) => {
+        if (caught instanceof MonopolyBankApiError && caught.code === 'INVALID_JOIN_CODE')
+          setPasswordNeeded(true);
+      },
+    );
+    setAutoJoining(false);
   };
   useEffect(() => {
     if (!autoJoining || autoStarted.current) return;
