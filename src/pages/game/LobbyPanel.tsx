@@ -87,7 +87,7 @@ function PlayerRow({
 
 function LobbyPlayers({ gameId, details, setDetails, offline }: LobbyPanelProps) {
   const { t } = useLanguage();
-  const { error, run } = useAsyncAction();
+  const { busy, error, run } = useAsyncAction();
   const remove = (playerId: string) =>
     void run(async () => {
       setDetails(
@@ -100,7 +100,7 @@ function LobbyPlayers({ gameId, details, setDetails, offline }: LobbyPanelProps)
       {details.players
         .filter((player) => !controlled.includes(player.id))
         .map((player) => (
-          <PlayerRow key={player.id} player={player} offline={offline} onRemove={remove} />
+          <PlayerRow key={player.id} player={player} offline={offline || busy} onRemove={remove} />
         ))}
       {error !== null && (
         <Notice tone="error">{apiErrorMessage(error, t, 'unableRemovePlayer')}</Notice>
