@@ -22,6 +22,7 @@ import { GameBottomNav, type GameNavDestination } from '../components/game/GameB
 import { cx } from '../components/ui/class-names';
 import { Button, Notice, PageShell, StatPill, useFeedback } from '../components/ui';
 import type { DevicePreferences } from '../utils/preferences';
+import { useAsyncAction } from '../hooks/useAsyncAction';
 import { useGameLiveConnection } from '../hooks/useGameLiveConnection';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { playPaymentFeedback, vibrate } from '../utils/feedback';
@@ -88,17 +89,13 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [settleLoanOnOpen, setSettleLoanOnOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [removeError, setRemoveError] = useState<unknown>(null);
-  const removePlayer = async (playerId: string) => {
-    setRemoveError(null);
-    try {
+  const { error: removeError, run: runRemove } = useAsyncAction();
+  const removePlayer = (playerId: string) =>
+    runRemove(async () => {
       setDetails(
         withClientGameDetails(await monopolyBankApi.removeLobbyPlayer(gameId, playerId), details),
       );
-    } catch (caught) {
-      setRemoveError(caught);
-    }
-  };
+    });
   const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);

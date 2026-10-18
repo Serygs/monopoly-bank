@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AuctionResponse } from '../../../shared/contracts/api';
 import type { Auction, Currency, GameSettings, Player } from '../../../shared/types/monopoly';
 import { MonopolyBankApiError, monopolyBankApi } from '../../api/monopoly-bank-api';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { Dialog } from '../../components/Dialog';
 import { Button, SheetActions, MoneyValue, Notice } from '../../components/ui';
 import { apiErrorMessage } from '../../i18n/api-errors';
@@ -54,9 +55,7 @@ export function AuctionDialog({
   const { t } = useLanguage();
   const remaining = useAuctionCountdown(auction);
   const [chosenBidderId, setChosenBidderId] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<unknown | null>(null);
-  const submittingRef = useRef(false);
+  const { busy: submitting, error, run } = useAsyncAction();
   const active = auction.state === 'ACTIVE';
   const expired = active && remaining <= 0;
   const open = active && !expired;
@@ -92,35 +91,31 @@ export function AuctionDialog({
   }, [expired, onRefresh]);
 
   const bid = async (step: number) => {
-    if (submittingRef.current || bidder === null) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    setError(null);
-    try {
-      onUpdated(
-        await monopolyBankApi.placeBid(
-          gameId,
-          {
-            bidderPlayerId: bidder.id,
-            auctionId: auction.id,
-            expectedVersion: auction.version,
-            step,
-          },
-          crypto.randomUUID(),
-        ),
-      );
-    } catch (caught) {
-      setError(caught);
-      // A stale bid carries the newer auction; show it and keep the dialog open.
-      const latest = caught instanceof MonopolyBankApiError ? caught.details?.auction : undefined;
-      if (latest !== undefined && latest !== null && typeof latest === 'object')
-        onUpdated({ auction: latest as Auction });
-      else if (caught instanceof MonopolyBankApiError && caught.code !== 'NETWORK_ERROR')
-        onRefresh();
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
+    if (bidder === null) return;
+    await run(
+      async () => {
+        onUpdated(
+          await monopolyBankApi.placeBid(
+            gameId,
+            {
+              bidderPlayerId: bidder.id,
+              auctionId: auction.id,
+              expectedVersion: auction.version,
+              step,
+            },
+            crypto.randomUUID(),
+          ),
+        );
+      },
+      (caught) => {
+        // A stale bid carries the newer auction; show it and keep the dialog open.
+        const latest = caught instanceof MonopolyBankApiError ? caught.details?.auction : undefined;
+        if (latest !== undefined && latest !== null && typeof latest === 'object')
+          onUpdated({ auction: latest as Auction });
+        else if (caught instanceof MonopolyBankApiError && caught.code !== 'NETWORK_ERROR')
+          onRefresh();
+      },
+    );
   };
 
   const title = t('auctionDialogTitle');

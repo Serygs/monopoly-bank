@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 import type { PaymentRequest } from '../../../shared/contracts/api';
 import type { Currency, Player } from '../../../shared/types/monopoly';
 import { Button, SheetActions, Notice, StatPill } from '../../components/ui';
@@ -46,19 +46,9 @@ export function PaymentInbox({
   onAction,
 }: PaymentInboxProps) {
   const { t, locale } = useLanguage();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<unknown | null>(null);
-  const act = async (request: PaymentRequest, action: PaymentRequestAction) => {
-    setBusyId(request.id);
-    setError(null);
-    try {
-      await onAction(request, action);
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setBusyId(null);
-    }
-  };
+  const { busy, error, run } = useAsyncAction();
+  const act = (request: PaymentRequest, action: PaymentRequestAction) =>
+    run(() => onAction(request, action));
   return (
     <section className={inboxClass} aria-labelledby="payment-inbox-title">
       <header>
@@ -96,14 +86,14 @@ export function PaymentInbox({
                 <SheetActions>
                   <Button
                     variant="primary"
-                    disabled={busyId !== null}
+                    disabled={busy}
                     onClick={() => void act(request, 'accept')}
                   >
                     {t(isLoan ? 'acceptLoan' : 'acceptPayment')}
                   </Button>
                   <Button
                     variant="secondary"
-                    disabled={busyId !== null}
+                    disabled={busy}
                     onClick={() => void act(request, 'decline')}
                   >
                     {t(isLoan ? 'declineLoan' : 'declinePayment')}
@@ -127,7 +117,7 @@ export function PaymentInbox({
                 <SheetActions>
                   <Button
                     variant="secondary"
-                    disabled={busyId !== null}
+                    disabled={busy}
                     onClick={() => void act(request, 'cancel')}
                   >
                     {t('cancelRequest')}
