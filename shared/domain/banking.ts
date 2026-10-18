@@ -1,4 +1,5 @@
 import type { BoardSnapshot } from '../board/types.js';
+import type { PlayerTransactionRequest } from '../contracts/api.js';
 import type {
   BankLoanCooldown,
   Game,
@@ -388,10 +389,7 @@ export function playerToPlayer(command: PlayerToPlayerCommand): BankingOperation
     command.amount,
     command.amount,
     command.comment,
-    [
-      createBalanceChange(source, -command.amount),
-      createBalanceChange(destination, command.amount),
-    ],
+    applyDeltas(players, transferDeltas(source.id, destination.id, command.amount)),
   );
 }
 
@@ -409,7 +407,7 @@ export function playerToBank(command: PlayerToBankCommand): BankingOperationResu
     command.amount,
     command.amount,
     command.comment,
-    [createBalanceChange(player, -command.amount)],
+    applyDeltas(players, transferDeltas(player.id, null, command.amount)),
   );
 }
 
@@ -427,7 +425,7 @@ export function toJackpot(command: ToJackpotCommand): BankingOperationResult {
     command.amount,
     command.amount,
     command.comment,
-    [createBalanceChange(player, -command.amount)],
+    applyDeltas(players, transferDeltas(player.id, null, command.amount)),
   );
   return {
     ...result,
@@ -456,7 +454,7 @@ export function jackpotPayout(command: JackpotPayoutCommand): BankingOperationRe
     command.jackpot,
     command.jackpot,
     null,
-    [createBalanceChange(player, command.jackpot)],
+    applyDeltas(players, transferDeltas(null, player.id, command.jackpot)),
   );
   return {
     ...result,
@@ -482,7 +480,7 @@ export function auctionPayment(command: AuctionPaymentCommand): BankingOperation
     command.amount,
     command.amount,
     command.lotName,
-    [createBalanceChange(player, -command.amount)],
+    applyDeltas(players, transferDeltas(player.id, null, command.amount)),
   );
   if (command.tileId == null) return result;
   if (command.property === undefined)
@@ -540,9 +538,14 @@ export function propertyPurchase(command: PropertyPurchaseCommand): BankingOpera
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
   ensureSufficientFunds(player, price);
-  const result = createResult(command.game.id, 'PROPERTY_PURCHASE', price, price, command.comment, [
-    createBalanceChange(player, -price),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'PROPERTY_PURCHASE',
+    price,
+    price,
+    command.comment,
+    applyDeltas(players, transferDeltas(player.id, null, price)),
+  );
   const purchase = withProperty(result, command.tileId, [
     ownerChange(command.tileId, state, player.id),
   ]);
@@ -657,9 +660,14 @@ export function buildProperty(command: BuildPropertyCommand): BankingOperationRe
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
   ensureSufficientFunds(player, cost);
-  const result = createResult(command.game.id, 'PROPERTY_BUILD', cost, cost, null, [
-    createBalanceChange(player, -cost),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'PROPERTY_BUILD',
+    cost,
+    cost,
+    null,
+    applyDeltas(players, transferDeltas(player.id, null, cost)),
+  );
   return withBuildings(result, plan);
 }
 
@@ -681,9 +689,14 @@ export function sellBuilding(command: SellBuildingCommand): BankingOperationResu
   validateAmount(refund);
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
-  const result = createResult(command.game.id, 'PROPERTY_SELL_BUILDING', refund, refund, null, [
-    createBalanceChange(player, refund),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'PROPERTY_SELL_BUILDING',
+    refund,
+    refund,
+    null,
+    applyDeltas(players, transferDeltas(null, player.id, refund)),
+  );
   return withBuildings(result, plan);
 }
 
@@ -705,10 +718,14 @@ export function payRent(command: PayRentCommand): BankingOperationResult {
   const rent = rentFor(board, registry, command.tileId, command.diceSum);
   validateAmount(rent);
   ensureSufficientFunds(payer, rent);
-  const result = createResult(command.game.id, 'PAY_RENT', rent, rent, command.comment, [
-    createBalanceChange(payer, -rent),
-    createBalanceChange(owner, rent),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'PAY_RENT',
+    rent,
+    rent,
+    command.comment,
+    applyDeltas(players, transferDeltas(payer.id, owner.id, rent)),
+  );
   return { ...result, transaction: { ...result.transaction, tileId: command.tileId } };
 }
 
@@ -729,7 +746,7 @@ export function mortgageProperty(command: MortgagePropertyCommand): BankingOpera
     command.amount,
     command.amount,
     propertyName,
-    [createBalanceChange(player, command.amount)],
+    applyDeltas(players, transferDeltas(null, player.id, command.amount)),
   );
   return {
     ...result,
@@ -758,7 +775,7 @@ export function redeemMortgage(command: RedeemMortgageCommand): BankingOperation
     cost,
     cost,
     mortgage.propertyName,
-    [createBalanceChange(player, -cost)],
+    applyDeltas(players, transferDeltas(player.id, null, cost)),
   );
   const redeemed: BankingOperationResult = {
     ...result,
@@ -784,10 +801,14 @@ export function issueLoan(command: IssueLoanCommand): BankingOperationResult {
   ensureActive(borrower);
   ensureDifferentPlayers(lender, borrower);
   ensureSufficientFunds(lender, command.amount);
-  const result = createResult(command.game.id, 'LOAN_ISSUE', command.amount, command.amount, null, [
-    createBalanceChange(lender, -command.amount),
-    createBalanceChange(borrower, command.amount),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'LOAN_ISSUE',
+    command.amount,
+    command.amount,
+    null,
+    applyDeltas(players, transferDeltas(lender.id, borrower.id, command.amount)),
+  );
   return {
     ...result,
     transaction: {
@@ -828,7 +849,7 @@ export function repayLoan(command: RepayLoanCommand): BankingOperationResult {
     command.amount,
     command.amount,
     null,
-    [createBalanceChange(borrower, -command.amount), createBalanceChange(lender, command.amount)],
+    applyDeltas(players, repaymentDeltas(borrower.id, lender.id, command.amount, 0)),
   );
   return {
     ...result,
@@ -863,9 +884,14 @@ export function issueBankLoan(command: IssueBankLoanCommand): BankingOperationRe
   const cooldown = command.cooldown ?? null;
   if (cooldown !== null && command.acknowledgeCooldown !== true)
     throw new BankLoanCooldownError(borrower.id, cooldown.roundsLeft);
-  const result = createResult(command.game.id, 'LOAN_ISSUE', command.amount, command.amount, null, [
-    createBalanceChange(borrower, command.amount),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'LOAN_ISSUE',
+    command.amount,
+    command.amount,
+    null,
+    applyDeltas(players, transferDeltas(null, borrower.id, command.amount)),
+  );
   return {
     ...result,
     transaction: {
@@ -906,9 +932,14 @@ export function repayBankLoan(command: RepayBankLoanCommand): BankingOperationRe
   const borrower = findPlayer(players, command.playerId);
   ensureActive(borrower);
   ensureSufficientFunds(borrower, total);
-  const result = createResult(command.game.id, 'LOAN_REPAYMENT', total, total, null, [
-    createBalanceChange(borrower, -total),
-  ]);
+  const result = createResult(
+    command.game.id,
+    'LOAN_REPAYMENT',
+    total,
+    total,
+    null,
+    applyDeltas(players, repaymentDeltas(borrower.id, null, outstanding, interest)),
+  );
   return {
     ...result,
     transaction: {
@@ -940,7 +971,7 @@ export function bankToPlayer(command: BankToPlayerCommand): BankingOperationResu
     command.amount,
     command.amount,
     command.comment,
-    [createBalanceChange(player, command.amount)],
+    applyDeltas(players, transferDeltas(null, player.id, command.amount)),
   );
 }
 
@@ -963,10 +994,14 @@ export function playerToAll(command: PlayerToAllCommand): BankingOperationResult
     command.amountPerPlayer,
     totalAmount,
     command.comment,
-    [
-      createBalanceChange(payer, -totalAmount),
-      ...recipients.map((recipient) => createBalanceChange(recipient, command.amountPerPlayer)),
-    ],
+    applyDeltas(
+      players,
+      fanOutDeltas(
+        payer.id,
+        recipients.map(({ id }) => id),
+        command.amountPerPlayer,
+      ),
+    ),
   );
 }
 
@@ -991,10 +1026,14 @@ export function allToPlayer(command: AllToPlayerCommand): BankingOperationResult
     command.amountPerPlayer,
     totalAmount,
     command.comment,
-    [
-      ...payers.map((payer) => createBalanceChange(payer, -command.amountPerPlayer)),
-      createBalanceChange(recipient, totalAmount),
-    ],
+    applyDeltas(
+      players,
+      fanInDeltas(
+        recipient.id,
+        payers.map(({ id }) => id),
+        command.amountPerPlayer,
+      ),
+    ),
   );
 }
 
@@ -1005,9 +1044,14 @@ export function passGo(command: PassGoCommand): BankingOperationResult {
   const player = findPlayer(players, command.playerId);
   ensureActive(player);
   const reward = multiplyAmounts(command.game.passGoReward, command.exactLanding === true ? 2 : 1);
-  return createResult(command.game.id, 'PASS_GO', reward, reward, command.comment, [
-    createBalanceChange(player, reward),
-  ]);
+  return createResult(
+    command.game.id,
+    'PASS_GO',
+    reward,
+    reward,
+    command.comment,
+    applyDeltas(players, transferDeltas(null, player.id, reward)),
+  );
 }
 
 /**
@@ -1319,6 +1363,137 @@ function multiplyAmounts(amount: number, multiplier: number): number {
     throw new InvalidAmountError(totalAmount);
   }
   return totalAmount;
+}
+
+export interface PlayerDelta {
+  playerId: string;
+  delta: number;
+}
+
+function transferDeltas(from: string | null, to: string | null, amount: number): PlayerDelta[] {
+  return [
+    ...(from === null ? [] : [{ playerId: from, delta: -amount }]),
+    ...(to === null ? [] : [{ playerId: to, delta: amount }]),
+  ];
+}
+
+function fanOutDeltas(
+  payerId: string,
+  recipientIds: readonly string[],
+  amountPerPlayer: number,
+): PlayerDelta[] {
+  return [
+    { playerId: payerId, delta: -amountPerPlayer * recipientIds.length },
+    ...recipientIds.map((playerId) => ({ playerId, delta: amountPerPlayer })),
+  ];
+}
+
+function fanInDeltas(
+  recipientId: string,
+  payerIds: readonly string[],
+  amountPerPlayer: number,
+): PlayerDelta[] {
+  return [
+    ...payerIds.map((playerId) => ({ playerId, delta: -amountPerPlayer })),
+    { playerId: recipientId, delta: amountPerPlayer * payerIds.length },
+  ];
+}
+
+function repaymentDeltas(
+  borrowerId: string,
+  lenderId: string | null,
+  amount: number,
+  interest: number,
+): PlayerDelta[] {
+  return [
+    { playerId: borrowerId, delta: -(amount + interest) },
+    ...(lenderId === null ? [] : [{ playerId: lenderId, delta: amount }]),
+  ];
+}
+
+function applyDeltas(
+  players: readonly Player[],
+  deltas: readonly PlayerDelta[],
+): PlayerBalanceChange[] {
+  return deltas.map(({ playerId, delta }) =>
+    createBalanceChange(findPlayer(players, playerId), delta),
+  );
+}
+
+export interface PreviewContext {
+  passGoReward: number;
+  redemptionAmount: number;
+  loans: readonly Pick<Loan, 'id' | 'lenderPlayerId'>[];
+  interest: number;
+  jackpot: number;
+  tile: { amount: number; ownerPlayerId?: string | null };
+}
+
+/**
+ * How each wallet would change for a request, built from the same delta rules the operations
+ * apply. It validates nothing: the client uses it to show a preview before the server decides.
+ */
+export function previewDeltas(
+  request: PlayerTransactionRequest,
+  players: readonly Pick<Player, 'id'>[],
+  context: PreviewContext,
+): PlayerDelta[] {
+  const { tile } = context;
+  const others = (playerId: string) =>
+    players.filter(({ id }) => id !== playerId).map(({ id }) => id);
+  switch (request.type) {
+    case 'PLAYER_TO_PLAYER':
+      return transferDeltas(request.sourcePlayerId, request.destinationPlayerId, request.amount);
+    case 'PLAYER_TO_BANK':
+    case 'TO_JACKPOT':
+      return transferDeltas(request.playerId, null, request.amount);
+    case 'BANK_TO_PLAYER':
+      return transferDeltas(null, request.playerId, request.amount);
+    case 'JACKPOT_PAYOUT':
+      return transferDeltas(null, request.playerId, context.jackpot);
+    case 'PLAYER_TO_ALL':
+      return fanOutDeltas(
+        request.payerPlayerId,
+        others(request.payerPlayerId),
+        request.amountPerPlayer,
+      );
+    case 'ALL_TO_PLAYER':
+      return fanInDeltas(
+        request.recipientPlayerId,
+        others(request.recipientPlayerId),
+        request.amountPerPlayer,
+      );
+    case 'PASS_GO':
+      return transferDeltas(null, request.playerId, context.passGoReward);
+    case 'MORTGAGE':
+      return transferDeltas(
+        null,
+        request.playerId,
+        'amount' in request ? request.amount : tile.amount,
+      );
+    case 'PROPERTY_PURCHASE':
+    case 'PROPERTY_BUILD':
+      return transferDeltas(request.playerId, null, tile.amount);
+    case 'PROPERTY_SELL_BUILDING':
+      return transferDeltas(null, request.playerId, tile.amount);
+    case 'PAY_RENT':
+      return transferDeltas(request.payerPlayerId, tile.ownerPlayerId ?? null, tile.amount);
+    case 'MORTGAGE_REDEMPTION':
+      return transferDeltas(request.playerId, null, context.redemptionAmount);
+    case 'LOAN_ISSUE':
+      return request.lenderKind === 'BANK'
+        ? transferDeltas(null, request.playerId, request.amount)
+        : [];
+    case 'LOAN_REPAYMENT':
+      return repaymentDeltas(
+        request.playerId,
+        context.loans.find((loan) => loan.id === request.loanId)?.lenderPlayerId ?? null,
+        request.amount,
+        context.interest,
+      );
+    case 'PROPERTY_TRANSFER':
+      return [];
+  }
 }
 
 function createBalanceChange(player: Player, balanceDelta: number): PlayerBalanceChange {
