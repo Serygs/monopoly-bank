@@ -128,6 +128,37 @@ function deriveMortgages(inputs: BankingInputs, fields: BankingFields, effective
   };
 }
 
+function deriveParties(
+  inputs: BankingInputs,
+  fields: BankingFields,
+  tile: ReturnType<typeof deriveTile>,
+  loan: ReturnType<typeof deriveLoans>,
+  tileAmount: number,
+) {
+  const { action } = fields;
+  const targetRequired = action === 'PLAYER_TO_PLAYER' || action === 'LOAN_ISSUE';
+  const recipients = inputs.players.filter(
+    (candidate) =>
+      candidate.id !== inputs.player.id &&
+      (action !== 'LOAN_ISSUE' || candidate.status !== 'BANKRUPT'),
+  );
+  const soleRecipient = targetRequired && recipients.length === 1 ? recipients[0] : undefined;
+  const effectiveTargetId = effectiveTargetIdOf({
+    action,
+    targetId: fields.targetId,
+    selectedLoan: loan.selected,
+    selectedTile: tile.selectedTile,
+    soleRecipient,
+  });
+  return {
+    targetRequired,
+    recipients,
+    effectiveTargetId,
+    target: inputs.players.find((candidate) => candidate.id === effectiveTargetId) ?? null,
+    amountValue: amountValueOf(action, inputs.jackpot, tile.tileAction, tileAmount, fields.amount),
+  };
+}
+
 export function deriveBanking(inputs: BankingInputs, fields: BankingFields) {
   const { action } = fields;
   const tile = deriveTile(inputs, fields);
@@ -141,39 +172,15 @@ export function deriveBanking(inputs: BankingInputs, fields: BankingFields) {
     purchaseOverride: tile.purchaseOverride,
     rentAmount: tile.rentAmount,
   });
-  const targetRequired = action === 'PLAYER_TO_PLAYER' || action === 'LOAN_ISSUE';
-  const recipients = inputs.players.filter(
-    (candidate) =>
-      candidate.id !== inputs.player.id &&
-      (action !== 'LOAN_ISSUE' || candidate.status !== 'BANKRUPT'),
-  );
-  const soleRecipient = targetRequired && recipients.length === 1 ? recipients[0] : undefined;
-  const amountValue = amountValueOf(
-    action,
-    inputs.jackpot,
-    tile.tileAction,
-    tileAmount,
-    fields.amount,
-  );
-  const effectiveTargetId = effectiveTargetIdOf({
-    action,
-    targetId: fields.targetId,
-    selectedLoan: loan.selected,
-    selectedTile: tile.selectedTile,
-    soleRecipient,
-  });
-  const mortgage = deriveMortgages(inputs, fields, effectiveTargetId);
+  const parties = deriveParties(inputs, fields, tile, loan, tileAmount);
+  const { amountValue } = parties;
   return {
     ...tile,
+    ...parties,
     build,
     loan,
-    mortgage,
     tileAmount,
-    targetRequired,
-    recipients,
-    amountValue,
-    effectiveTargetId,
-    target: inputs.players.find((candidate) => candidate.id === effectiveTargetId) ?? null,
+    mortgage: deriveMortgages(inputs, fields, parties.effectiveTargetId),
     requestAction: requestActionOf(action, fields.payToPot, inputs.rules.freeParkingJackpot),
     amountRequired: !isIn(reviewOnlyActions, action) && !tile.tileAction,
     reward: fields.exactLanding ? inputs.passGoReward * 2 : inputs.passGoReward,
