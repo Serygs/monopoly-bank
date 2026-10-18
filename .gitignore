@@ -36,3 +36,4 @@ test-results
 /.stryker-tmp/
 /tools/mutation/.stryker-tmp/
 /tools/mutation/reports/
+/reports/
