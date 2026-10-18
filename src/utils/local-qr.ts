@@ -20,7 +20,9 @@ for (let index = 0, value = 1; index < 255; index += 1) {
 }
 for (let index = 255; index < EXP.length; index += 1) EXP[index] = EXP[index - 255];
 
-export type QrMatrix = boolean[][];
+import { score, type QrMatrix } from './local-qr-score.js';
+
+export type { QrMatrix };
 
 export function createLocalQr(value: string): QrMatrix {
   const bytes = new TextEncoder().encode(value);
@@ -222,34 +224,4 @@ function masked(row: number, column: number, mask: number): boolean {
     () => (((row * column) % 2) + ((row * column) % 3)) % 2 === 0,
     () => (((row * column) % 3) + ((row + column) % 2)) % 2 === 0,
   ][mask]();
-}
-function score(matrix: QrMatrix): number {
-  let penalty = 0;
-  const size = matrix.length;
-  for (let axis = 0; axis < 2; axis += 1)
-    for (let line = 0; line < size; line += 1) {
-      let run = 1;
-      let previous = axis === 0 ? matrix[line][0] : matrix[0][line];
-      for (let index = 1; index < size; index += 1) {
-        const current = axis === 0 ? matrix[line][index] : matrix[index][line];
-        if (current === previous) run += 1;
-        else {
-          if (run >= 5) penalty += run - 2;
-          run = 1;
-          previous = current;
-        }
-      }
-      if (run >= 5) penalty += run - 2;
-    }
-  for (let row = 0; row < size - 1; row += 1)
-    for (let column = 0; column < size - 1; column += 1)
-      if (
-        matrix[row][column] === matrix[row + 1][column] &&
-        matrix[row][column] === matrix[row][column + 1] &&
-        matrix[row][column] === matrix[row + 1][column + 1]
-      )
-        penalty += 3;
-  let dark = 0;
-  for (const row of matrix) for (const cell of row) if (cell) dark += 1;
-  return penalty + Math.floor(Math.abs((dark * 100) / (size * size) - 50) / 5) * 10;
 }
