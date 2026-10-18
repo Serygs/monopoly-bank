@@ -9,7 +9,7 @@ import { DatabaseError } from '../services/errors.js';
 /** How long a payment or trade request waits for an answer. */
 export const PAYMENT_REQUEST_TTL_MS = 5 * 60 * 1000;
 
-interface PaymentRequestRow {
+export interface PaymentRequestRow {
   id: string;
   kind: PaymentRequestKind;
   game_id: string;
@@ -258,7 +258,7 @@ function balanceUpdate(
     .bind(...values, gameId, ...ids);
 }
 
-function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
+export function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
   return {
     id: row.id,
     kind: row.kind,
