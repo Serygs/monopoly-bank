@@ -1,71 +1,43 @@
 import { describe, expect, it } from 'vitest';
+import { buildTransaction, testUuid } from '../shared/test-support/fixtures.js';
+import { mutationRequest } from '../shared/test-support/requests.js';
 import { GameSession } from './game-session.js';
+import { createSessionHarness, type SessionInternals } from './test-support/session-harness.js';
 
-const gameId = '00000000-0000-4000-8000-000000000001';
-const commandId = '00000000-0000-4000-8000-000000000002';
+const gameId = testUuid(1);
+const commandId = testUuid(2);
+const walletId = testUuid(3);
+
+const createTransactionCommand = (request: Record<string, unknown>) => ({
+  type: 'CREATE_TRANSACTION',
+  commandId,
+  request,
+});
+const payToBankCommand = () =>
+  createTransactionCommand({ type: 'PLAYER_TO_BANK', playerId: walletId, amount: 100 });
+const payToBankResult = () => ({
+  transaction: buildTransaction({ id: commandId, gameId }),
+  players: [],
+});
 
 describe('GameSession live coordinator', () => {
   it('broadcasts one authoritative update to every client and replays duplicate command IDs', async () => {
-    const sent: string[][] = [[], []];
-    const storage = new Map<string, unknown>();
-    const context = {
-      storage: {
-        get: async <T>(key: string) => storage.get(key) as T | undefined,
-        put: async (key: string, value: unknown) => {
-          storage.set(key, value);
-        },
-      },
-      getWebSockets: () =>
-        sent.map((messages) => ({ send: (message: string) => messages.push(message) })),
-    };
-    const session = new GameSession(context as never, {} as Env) as unknown as {
-      mutate(gameId: string, userId: string, request: Request): Promise<Response>;
-      banking(command: string): { createTransaction(): Promise<unknown> };
-      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
-      commandLedger(): ReturnType<typeof fakeLedger>;
-    };
-    const ledger = fakeLedger();
+    const { session, sockets } = createSessionHarness({ sockets: 2 });
     let calls = 0;
     session.banking = () => ({
       createTransaction: async () => {
         calls += 1;
-        return {
-          transaction: {
-            id: commandId,
-            gameId,
-            type: 'PLAYER_TO_BANK',
-            amount: 100,
-            totalAmount: 100,
-            comment: null,
-            createdAt: '',
-            participants: [],
-          },
-          players: [],
-        };
+        return payToBankResult();
       },
     });
-    session.commandLedger = () => ledger;
-    session.authorizeMutation = async () => undefined;
-    const request = () =>
-      new Request('https://game-session/mutation', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'CREATE_TRANSACTION',
-          commandId,
-          request: {
-            type: 'PLAYER_TO_BANK',
-            playerId: '00000000-0000-4000-8000-000000000003',
-            amount: 100,
-          },
-        }),
-      });
+    const request = () => mutationRequest(payToBankCommand());
 
     expect((await session.mutate(gameId, 'actor', request())).status).toBe(201);
     expect((await session.mutate(gameId, 'actor', request())).status).toBe(201);
     expect(calls).toBe(1);
-    expect(sent[0]).toHaveLength(1);
-    expect(sent[0]).toEqual(sent[1]);
-    expect(JSON.parse(sent[0][0])).toMatchObject({
+    expect(sockets[0]).toHaveLength(1);
+    expect(sockets[0]).toEqual(sockets[1]);
+    expect(JSON.parse(sockets[0][0])).toMatchObject({
       type: 'GAME_COMMITTED',
       stateVersion: 1,
       transaction: { id: commandId },
@@ -79,53 +51,23 @@ describe('GameSession live coordinator', () => {
   });
 
   it('serializes duplicate payment-request accept commands into one settlement', async () => {
-    const storage = new Map<string, unknown>();
-    const context = {
-      storage: {
-        get: async <T>(key: string) => storage.get(key) as T | undefined,
-        put: async (key: string, value: unknown) => {
-          storage.set(key, value);
-        },
-      },
-      getWebSockets: () => [],
-    };
-    const session = new GameSession(context as never, {} as Env) as unknown as {
-      mutate(gameId: string, userId: string, request: Request): Promise<Response>;
-      banking(command: string): { acceptPaymentRequest(): Promise<unknown> };
-      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
-      commandLedger(): ReturnType<typeof fakeLedger>;
-    };
-    const ledger = fakeLedger();
+    const { session } = createSessionHarness();
     let settlements = 0;
     session.banking = () => ({
       acceptPaymentRequest: async () => {
         settlements += 1;
         return {
-          paymentRequest: { id: '00000000-0000-4000-8000-000000000003', state: 'ACCEPTED' },
-          transaction: {
-            id: commandId,
-            gameId,
-            type: 'PLAYER_TO_PLAYER',
-            amount: 100,
-            totalAmount: 100,
-            comment: null,
-            createdAt: '',
-            participants: [],
-          },
+          paymentRequest: { id: walletId, state: 'ACCEPTED' },
+          transaction: buildTransaction({ id: commandId, gameId, type: 'PLAYER_TO_PLAYER' }),
           players: [],
         };
       },
     });
-    session.commandLedger = () => ledger;
-    session.authorizeMutation = async () => undefined;
     const request = () =>
-      new Request('https://game-session/mutation', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'ACCEPT_PAYMENT_REQUEST',
-          commandId,
-          paymentRequestId: '00000000-0000-4000-8000-000000000003',
-        }),
+      mutationRequest({
+        type: 'ACCEPT_PAYMENT_REQUEST',
+        commandId,
+        paymentRequestId: walletId,
       });
     await Promise.all([
       session.mutate(gameId, 'actor', request()),
@@ -135,28 +77,10 @@ describe('GameSession live coordinator', () => {
   });
 
   it('recovers after completion failure: 20 parallel retries leave one transaction and one balance delta', async () => {
-    const storage = new Map<string, unknown>();
-    const context = {
-      storage: {
-        get: async <T>(key: string) => storage.get(key) as T | undefined,
-        put: async (key: string, value: unknown) => {
-          storage.set(key, value);
-        },
-      },
-      getWebSockets: () => [],
-    };
-    const session = new GameSession(context as never, {} as Env) as unknown as {
-      mutate(gameId: string, userId: string, request: Request): Promise<Response>;
-      banking(command: string): { createTransaction(): Promise<unknown> };
-      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
-      commandLedger(): ReturnType<typeof fakeLedger>;
-    };
-    const ledger = fakeLedger({ failCompleteOnce: true });
+    const { session } = createSessionHarness({ failCompleteOnce: true });
     let transactionCount = 0;
     let balanceDelta = 0;
     let persisted = false;
-    session.commandLedger = () => ledger;
-    session.authorizeMutation = async () => undefined;
     session.banking = () => ({
       createTransaction: async () => {
         if (!persisted) {
@@ -164,34 +88,10 @@ describe('GameSession live coordinator', () => {
           transactionCount += 1;
           balanceDelta -= 100;
         }
-        return {
-          transaction: {
-            id: commandId,
-            gameId,
-            type: 'PLAYER_TO_BANK',
-            amount: 100,
-            totalAmount: 100,
-            comment: null,
-            createdAt: '',
-            participants: [],
-          },
-          players: [],
-        };
+        return payToBankResult();
       },
     });
-    const request = () =>
-      new Request('https://game-session/mutation', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'CREATE_TRANSACTION',
-          commandId,
-          request: {
-            type: 'PLAYER_TO_BANK',
-            playerId: '00000000-0000-4000-8000-000000000003',
-            amount: 100,
-          },
-        }),
-      });
+    const request = () => mutationRequest(payToBankCommand());
     const firstWave = await Promise.all(
       Array.from({ length: 20 }, () => session.mutate(gameId, 'actor', request())),
     );
@@ -210,30 +110,11 @@ describe('GameSession live coordinator', () => {
       'version-incremented',
       'published',
     ] as const) {
-      const storage = new Map<string, unknown>();
-      const context = {
-        storage: {
-          get: async <T>(key: string) => storage.get(key) as T | undefined,
-          put: async (key: string, value: unknown) => {
-            storage.set(key, value);
-          },
-        },
-        getWebSockets: () => [],
-      };
-      const session = new GameSession(context as never, {} as Env) as unknown as {
-        mutate(gameId: string, userId: string, request: Request): Promise<Response>;
-        banking(command: string): { createTransaction(): Promise<unknown> };
-        authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
-        commandLedger(): ReturnType<typeof fakeLedger>;
-        afterCommit(stage: string): Promise<void>;
-      };
-      const ledger = fakeLedger();
+      const { session } = createSessionHarness();
       let transactionCount = 0;
       let delta = 0;
       let persisted = false;
       let fail = true;
-      session.commandLedger = () => ledger;
-      session.authorizeMutation = async () => undefined;
       session.banking = () => ({
         createTransaction: async () => {
           if (!persisted) {
@@ -241,19 +122,7 @@ describe('GameSession live coordinator', () => {
             transactionCount += 1;
             delta -= 100;
           }
-          return {
-            transaction: {
-              id: commandId,
-              gameId,
-              type: 'PLAYER_TO_BANK',
-              amount: 100,
-              totalAmount: 100,
-              comment: null,
-              createdAt: '',
-              participants: [],
-            },
-            players: [],
-          };
+          return payToBankResult();
         },
       });
       session.afterCommit = async (current) => {
@@ -262,19 +131,7 @@ describe('GameSession live coordinator', () => {
           throw new Error(`Injected ${stage}`);
         }
       };
-      const request = () =>
-        new Request('https://game-session/mutation', {
-          method: 'POST',
-          body: JSON.stringify({
-            type: 'CREATE_TRANSACTION',
-            commandId,
-            request: {
-              type: 'PLAYER_TO_BANK',
-              playerId: '00000000-0000-4000-8000-000000000003',
-              amount: 100,
-            },
-          }),
-        });
+      const request = () => mutationRequest(payToBankCommand());
       expect((await session.mutate(gameId, 'actor', request())).status).toBe(500);
       expect((await session.mutate(gameId, 'actor', request())).status).toBe(201);
       expect({ transactionCount, delta }).toEqual({ transactionCount: 1, delta: -100 });
@@ -321,88 +178,18 @@ describe('GameSession live coordinator', () => {
   });
 });
 
-function fakeLedger(options: { failCompleteOnce?: boolean } = {}) {
-  const entries = new Map<
-    string,
-    {
-      actorId: string;
-      commandType: string;
-      payloadHash: string;
-      status: 'PENDING' | 'COMPLETED';
-      resultStatus: number | null;
-      resultJson: string | null;
-      resultTransactionId: string | null;
-    }
-  >();
-  return {
-    claim: async (input: {
-      gameId: string;
-      commandId: string;
-      actorId: string;
-      commandType: string;
-      payloadHash: string;
-    }) => {
-      const existing = entries.get(input.commandId);
-      if (existing === undefined) {
-        const entry = {
-          actorId: input.actorId,
-          commandType: input.commandType,
-          payloadHash: input.payloadHash,
-          status: 'PENDING' as const,
-          resultStatus: null,
-          resultJson: null,
-          resultTransactionId: null,
-        };
-        entries.set(input.commandId, entry);
-        return { gameId: input.gameId, commandId: input.commandId, ...entry };
-      }
-      return { gameId: input.gameId, commandId: input.commandId, ...existing };
-    },
-    complete: async (input: {
-      gameId: string;
-      commandId: string;
-      status: number;
-      result: unknown;
-      transactionId: string | null;
-    }) => {
-      if (options.failCompleteOnce === true) {
-        options.failCompleteOnce = false;
-        throw new Error('Injected completion failure');
-      }
-      const entry = entries.get(input.commandId);
-      if (entry === undefined) throw new Error('Missing command');
-      entry.status = 'COMPLETED';
-      entry.resultStatus = input.status;
-      entry.resultJson = JSON.stringify(input.result);
-      entry.resultTransactionId = input.transactionId;
-    },
-  };
-}
-
 describe('GameSession reversal authorization', () => {
-  const transactionId = '00000000-0000-4000-8000-0000000000bb';
-  const stored = {
+  const transactionId = testUuid(0xbb);
+  const stored = buildTransaction({
     id: transactionId,
     gameId,
-    type: 'PLAYER_TO_BANK',
-    amount: 100,
-    totalAmount: 100,
-    comment: null,
     createdAt: '2026-01-01 10:00:00',
-    participants: [{ playerId: '00000000-0000-4000-8000-000000000003', balanceDelta: -100 }],
-  };
-  const command = {
-    type: 'CREATE_TRANSACTION',
-    commandId,
-    request: { type: 'REVERSAL', transactionId },
-  };
+    participants: [{ playerId: walletId, balanceDelta: -100 }],
+  });
+  const command = createTransactionCommand({ type: 'REVERSAL', transactionId });
 
   function sessionWith(found: typeof stored | null) {
-    const session = new GameSession({} as never, {} as Env) as unknown as {
-      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
-      access(): unknown;
-      banking(command: string): unknown;
-    };
+    const session = new GameSession({} as never, {} as Env) as unknown as SessionInternals;
     const calls = { authorities: [] as unknown[], walletChecks: 0 };
     session.access = () => ({
       requireMember: async () => 'PLAYER',
@@ -435,120 +222,65 @@ describe('GameSession reversal authorization', () => {
 
 describe('GameSession mortgage events', () => {
   it('sends the active mortgages with the committed transaction', async () => {
-    const sent: string[] = [];
-    const storage = new Map<string, unknown>();
-    const context = {
-      storage: {
-        get: async <T>(key: string) => storage.get(key) as T | undefined,
-        put: async (key: string, value: unknown) => {
-          storage.set(key, value);
-        },
-      },
-      getWebSockets: () => [{ send: (message: string) => sent.push(message) }],
-    };
-    const session = new GameSession(context as never, {} as Env) as unknown as {
-      mutate(gameId: string, userId: string, request: Request): Promise<Response>;
-      banking(command: string): unknown;
-      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
-      commandLedger(): ReturnType<typeof fakeLedger>;
-    };
+    const { session, messages } = createSessionHarness({ sockets: 1 });
     const mortgages = [{ id: 'm1', propertyName: 'Boardwalk' }];
     session.banking = () => ({
       createTransaction: async () => ({
-        transaction: {
+        transaction: buildTransaction({
           id: commandId,
           gameId,
           type: 'MORTGAGE',
-          amount: 100,
-          totalAmount: 100,
           comment: 'Boardwalk',
-          createdAt: '',
-          participants: [],
-        },
+        }),
         players: [],
         mortgages,
       }),
     });
-    session.commandLedger = () => fakeLedger();
-    session.authorizeMutation = async () => undefined;
 
     await session.mutate(
       gameId,
       'actor',
-      new Request('https://game-session/mutation', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'CREATE_TRANSACTION',
-          commandId,
-          request: {
-            type: 'MORTGAGE',
-            playerId: '00000000-0000-4000-8000-000000000003',
-            propertyName: 'Boardwalk',
-            amount: 100,
-          },
+      mutationRequest(
+        createTransactionCommand({
+          type: 'MORTGAGE',
+          playerId: walletId,
+          propertyName: 'Boardwalk',
+          amount: 100,
         }),
-      }),
+      ),
     );
 
-    expect(JSON.parse(sent[0] ?? '{}')).toMatchObject({ type: 'GAME_COMMITTED', mortgages });
+    expect(JSON.parse(messages[0] ?? '{}')).toMatchObject({ type: 'GAME_COMMITTED', mortgages });
   });
 });
 
 describe('GameSession bank loan events', () => {
   it('sends the loans and cooldowns with every committed transaction', async () => {
-    const sent: string[] = [];
-    const storage = new Map<string, unknown>();
-    const context = {
-      storage: {
-        get: async <T>(key: string) => storage.get(key) as T | undefined,
-        put: async (key: string, value: unknown) => {
-          storage.set(key, value);
-        },
-      },
-      getWebSockets: () => [{ send: (message: string) => sent.push(message) }],
-    };
-    const session = new GameSession(context as never, {} as Env) as unknown as {
-      mutate(gameId: string, userId: string, request: Request): Promise<Response>;
-      banking(command: string): unknown;
-      authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
-      commandLedger(): ReturnType<typeof fakeLedger>;
-    };
+    const { session, messages } = createSessionHarness({ sockets: 1 });
     const loans = [{ id: 'l1', lenderKind: 'BANK', rounds: { round: 2 } }];
     const bankLoanCooldowns = [{ playerId: 'p1', roundsLeft: 1 }];
     session.banking = () => ({
       createTransaction: async () => ({
-        transaction: {
+        transaction: buildTransaction({
           id: commandId,
           gameId,
           type: 'PASS_GO',
           amount: 200,
           totalAmount: 200,
-          comment: null,
-          createdAt: '',
-          participants: [],
-        },
+        }),
         players: [],
         loans,
         bankLoanCooldowns,
       }),
     });
-    session.commandLedger = () => fakeLedger();
-    session.authorizeMutation = async () => undefined;
 
     await session.mutate(
       gameId,
       'actor',
-      new Request('https://game-session/mutation', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'CREATE_TRANSACTION',
-          commandId,
-          request: { type: 'PASS_GO', playerId: '00000000-0000-4000-8000-000000000003' },
-        }),
-      }),
+      mutationRequest(createTransactionCommand({ type: 'PASS_GO', playerId: walletId })),
     );
 
-    expect(JSON.parse(sent[0] ?? '{}')).toMatchObject({
+    expect(JSON.parse(messages[0] ?? '{}')).toMatchObject({
       type: 'GAME_COMMITTED',
       loans,
       bankLoanCooldowns,
@@ -559,58 +291,32 @@ describe('GameSession bank loan events', () => {
 describe('GameSession jackpot events', () => {
   it('sends the pot with a committed transaction, and omits it without the rule', async () => {
     const run = async (jackpot: number | undefined) => {
-      const sent: string[] = [];
-      const storage = new Map<string, unknown>();
-      const context = {
-        storage: {
-          get: async <T>(key: string) => storage.get(key) as T | undefined,
-          put: async (key: string, value: unknown) => {
-            storage.set(key, value);
-          },
-        },
-        getWebSockets: () => [{ send: (message: string) => sent.push(message) }],
-      };
-      const session = new GameSession(context as never, {} as Env) as unknown as {
-        mutate(gameId: string, userId: string, request: Request): Promise<Response>;
-        banking(command: string): unknown;
-        authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
-        commandLedger(): ReturnType<typeof fakeLedger>;
-      };
+      const { session, messages } = createSessionHarness({ sockets: 1 });
       session.banking = () => ({
         createTransaction: async () => ({
-          transaction: {
+          transaction: buildTransaction({
             id: commandId,
             gameId,
             type: 'JACKPOT_PAYOUT',
             amount: 275,
             totalAmount: 275,
-            comment: null,
-            createdAt: '',
-            participants: [],
-          },
+          }),
           players: [],
           ...(jackpot === undefined ? {} : { jackpot }),
         }),
       });
-      session.commandLedger = () => fakeLedger();
-      session.authorizeMutation = async () => undefined;
       await session.mutate(
         gameId,
         'actor',
-        new Request('https://game-session/mutation', {
-          method: 'POST',
-          body: JSON.stringify({
-            type: 'CREATE_TRANSACTION',
-            commandId,
-            request: {
-              type: 'JACKPOT_PAYOUT',
-              playerId: '00000000-0000-4000-8000-000000000003',
-              expectedAmount: 275,
-            },
+        mutationRequest(
+          createTransactionCommand({
+            type: 'JACKPOT_PAYOUT',
+            playerId: walletId,
+            expectedAmount: 275,
           }),
-        }),
+        ),
       );
-      return JSON.parse(sent[0] ?? '{}') as Record<string, unknown>;
+      return JSON.parse(messages[0] ?? '{}') as Record<string, unknown>;
     };
 
     expect(await run(0)).toMatchObject({ type: 'GAME_COMMITTED', jackpot: 0 });
@@ -619,35 +325,17 @@ describe('GameSession jackpot events', () => {
 });
 
 describe('GameSession trade requests', () => {
-  const tradeRequestId = '00000000-0000-4000-8000-0000000000d1';
-  const proposer = '00000000-0000-4000-8000-0000000000d2';
-  const counterparty = '00000000-0000-4000-8000-0000000000d3';
+  const tradeRequestId = testUuid(0xd1);
+  const proposer = testUuid(0xd2);
+  const counterparty = testUuid(0xd3);
   const stored = {
     id: tradeRequestId,
     proposerPlayerId: proposer,
     counterpartyPlayerId: counterparty,
   };
 
-  type Internals = {
-    mutate(gameId: string, userId: string, request: Request): Promise<Response>;
-    banking(command: string): unknown;
-    access(): unknown;
-    authorizeMutation(gameId: string, userId: string, command: unknown): Promise<void>;
-    commandLedger(): ReturnType<typeof fakeLedger>;
-  };
   function build() {
-    const sent: string[] = [];
-    const storage = new Map<string, unknown>();
-    const context = {
-      storage: {
-        get: async <T>(key: string) => storage.get(key) as T | undefined,
-        put: async (key: string, value: unknown) => {
-          storage.set(key, value);
-        },
-      },
-      getWebSockets: () => [{ send: (message: string) => sent.push(message) }],
-    };
-    const session = new GameSession(context as never, {} as Env) as unknown as Internals;
+    const { session, messages } = createSessionHarness({ sockets: 1, authorizeAll: false });
     const controlled: string[] = [];
     session.access = () => ({
       requireMember: async () => 'PLAYER',
@@ -655,29 +343,19 @@ describe('GameSession trade requests', () => {
         controlled.push(playerId);
       },
     });
-    return { session, sent, controlled };
+    return { session, sent: messages, controlled };
   }
-  const send = (session: Internals, command: Record<string, unknown>) =>
-    session.mutate(
-      gameId,
-      'actor',
-      new Request('https://game-session/mutation', {
-        method: 'POST',
-        body: JSON.stringify({ commandId, ...command }),
-      }),
-    );
+  const send = (session: SessionInternals, command: Record<string, unknown>) =>
+    session.mutate(gameId, 'actor', mutationRequest({ commandId, ...command }));
   const accepted = {
     tradeRequest: { ...stored, state: 'ACCEPTED' },
-    transaction: {
+    transaction: buildTransaction({
       id: commandId,
       gameId,
       type: 'PROPERTY_TRANSFER',
       amount: 0,
       totalAmount: 0,
-      comment: null,
-      createdAt: '',
-      participants: [],
-    },
+    }),
     players: [],
   };
 
@@ -729,8 +407,6 @@ describe('GameSession trade requests', () => {
         return accepted;
       },
     });
-    const ledger = fakeLedger();
-    session.commandLedger = () => ledger;
     const command = { type: 'ACCEPT_TRADE_REQUEST', tradeRequestId };
     await Promise.all([send(session, command), send(session, command)]);
     await send(session, command);
@@ -748,8 +424,7 @@ describe('GameSession trade requests', () => {
       declineTradeRequest: async () => response,
       cancelTradeRequest: async () => response,
     });
-    session.commandLedger = () => fakeLedger();
-    const ids = ['1', '2', '3'].map((n) => `00000000-0000-4000-8000-00000000000${n}`);
+    const ids = [1, 2, 3].map(testUuid);
     const commands: Array<Record<string, unknown>> = [
       { type: 'CREATE_TRADE_REQUEST', request: { id: tradeRequestId, playerId: proposer } },
       { type: 'DECLINE_TRADE_REQUEST', tradeRequestId },
