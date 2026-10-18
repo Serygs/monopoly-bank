@@ -7,6 +7,7 @@ import { useLanguage } from '../../i18n/language-context';
 import { formatMoney } from '../../utils/money';
 import { cx } from '../../components/ui/class-names';
 import { MutedText } from '../../components/ui/Text';
+import { dateTimeFormat } from '../../utils/date-time';
 
 export type PaymentRequestAction = 'accept' | 'decline' | 'cancel';
 
@@ -85,7 +86,7 @@ export function PaymentInbox({
                   </strong>
                   <small>
                     {t('paymentRequestExpires', {
-                      time: new Intl.DateTimeFormat(locale, {
+                      time: dateTimeFormat(locale, {
                         timeStyle: 'short',
                         hourCycle: 'h23',
                       }).format(new Date(request.expiresAt)),

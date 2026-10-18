@@ -1,3 +1,5 @@
+import { groupThousands } from './money';
+
 export const calculatorOperators = ['+', '−', '×', '÷'] as const;
 export type CalculatorOperator = (typeof calculatorOperators)[number];
 
@@ -213,7 +215,7 @@ export function formatCalculatorDisplay(display: string, decimalSeparator: strin
   const body = negative ? display.slice(1) : display;
   if (body.includes('e')) return display;
   const dot = body.indexOf('.');
-  const whole = (dot === -1 ? body : body.slice(0, dot)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const whole = groupThousands(dot === -1 ? body : body.slice(0, dot));
   const text = dot === -1 ? whole : `${whole}${decimalSeparator}${body.slice(dot + 1)}`;
   return negative ? `-${text}` : text;
 }

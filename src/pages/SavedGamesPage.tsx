@@ -24,6 +24,7 @@ import {
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { cx } from '../components/ui/class-names';
+import { dateTimeFormat } from '../utils/date-time';
 
 /*
  * `page-header--hero` stays as the hook for `liquid-glass-effects.ts`; its pointer tilt and
@@ -441,7 +442,7 @@ function RemoveGameDialog({
       <p>
         {t('removeGameWarning', {
           count: game.playerCount,
-          date: new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(restorableUntil),
+          date: dateTimeFormat(locale, { dateStyle: 'medium' }).format(restorableUntil),
         })}
       </p>
       {error !== null && (
