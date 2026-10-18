@@ -1160,3 +1160,50 @@ describe('BankingDialog board mode', () => {
     expect(screen.getByRole('textbox', { name: 'Property name' })).toBeInTheDocument();
   });
 });
+
+describe('BankingDialog bank payments to a player', () => {
+  const limitMessage = 'The bank pays at most $4 000 000 in one operation.';
+  const bankPays = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole('button', { name: 'Bank payment' }));
+    await user.click(screen.getByRole('button', { name: 'Millions' }));
+  };
+
+  it('accepts exactly 4 000 000 without a warning', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await bankPays(user);
+    await press(user, '4');
+    expect(screen.getByText('= $4 000 000')).toBeInTheDocument();
+    expect(screen.queryByText(limitMessage)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeEnabled();
+  });
+
+  it('refuses 4 000 001 with the limit and keeps the review button disabled', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await bankPays(user);
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    await press(user, '4', '0', '0', '0', '0', '0', '1');
+    expect(screen.getByText('= $4 000 001')).toBeInTheDocument();
+    expect(screen.getByText(limitMessage)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+  });
+
+  it('clears the warning when the amount comes back under the limit', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await bankPays(user);
+    await press(user, '5');
+    expect(screen.getByText(limitMessage)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Backspace' }));
+    await press(user, '3');
+    expect(screen.queryByText(limitMessage)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeEnabled();
+  });
+
+  it('does not apply the limit to a payment to the bank or to another player', async () => {
+    const { user } = renderDialog([olena, taras]);
+    await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
+    await user.click(screen.getByRole('button', { name: 'Millions' }));
+    await press(user, '5');
+    expect(screen.queryByText(limitMessage)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeEnabled();
+  });
+});
