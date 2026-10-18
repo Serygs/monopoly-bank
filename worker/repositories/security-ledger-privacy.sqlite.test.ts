@@ -471,43 +471,40 @@ describe('D1PrivacyRepository', () => {
     ).toEqual(['inv-live']);
   });
 
-  it.fails(
-    'purges completed ledger entries of games finished over ninety days ago (cleanup filters on status FINISHED, which is stored as ARCHIVED)',
-    async () => {
-      seedUser(database, 'u1');
-      seedGame(database, 'fin-old', { owner: 'u1', status: 'ARCHIVED' });
-      seedGame(database, 'fin-new', { owner: 'u1', status: 'ARCHIVED' });
+  it('purges completed ledger entries of games finished over ninety days ago', async () => {
+    seedUser(database, 'u1');
+    seedGame(database, 'fin-old', { owner: 'u1', status: 'ARCHIVED' });
+    seedGame(database, 'fin-new', { owner: 'u1', status: 'ARCHIVED' });
+    exec(
+      database,
+      "UPDATE games SET finished_at = datetime('now', '-91 days') WHERE id = 'fin-old'",
+    );
+    exec(
+      database,
+      "UPDATE games SET finished_at = datetime('now', '-89 days') WHERE id = 'fin-new'",
+    );
+    for (const [game, status] of [
+      ['fin-old', 'COMPLETED'],
+      ['fin-new', 'COMPLETED'],
+      ['fin-old', 'PENDING'],
+    ] as const) {
       exec(
         database,
-        "UPDATE games SET finished_at = datetime('now', '-91 days') WHERE id = 'fin-old'",
+        'INSERT INTO command_ledger (game_id, command_id, actor_id, command_type, payload_hash, status) VALUES (?, ?, ?, ?, ?, ?)',
+        game,
+        `${game}-${status}`,
+        'a',
+        't',
+        'h',
+        status,
       );
-      exec(
+    }
+    await repository.cleanupExpiredOperationalData();
+    expect(
+      rows<{ command_id: string }>(
         database,
-        "UPDATE games SET finished_at = datetime('now', '-89 days') WHERE id = 'fin-new'",
-      );
-      for (const [game, status] of [
-        ['fin-old', 'COMPLETED'],
-        ['fin-new', 'COMPLETED'],
-        ['fin-old', 'PENDING'],
-      ] as const) {
-        exec(
-          database,
-          'INSERT INTO command_ledger (game_id, command_id, actor_id, command_type, payload_hash, status) VALUES (?, ?, ?, ?, ?, ?)',
-          game,
-          `${game}-${status}`,
-          'a',
-          't',
-          'h',
-          status,
-        );
-      }
-      await repository.cleanupExpiredOperationalData();
-      expect(
-        rows<{ command_id: string }>(
-          database,
-          'SELECT command_id FROM command_ledger ORDER BY command_id',
-        ).map((r) => r.command_id),
-      ).toEqual(['fin-new-COMPLETED', 'fin-old-PENDING']);
-    },
-  );
+        'SELECT command_id FROM command_ledger ORDER BY command_id',
+      ).map((r) => r.command_id),
+    ).toEqual(['fin-new-COMPLETED', 'fin-old-PENDING']);
+  });
 });

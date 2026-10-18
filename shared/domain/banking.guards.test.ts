@@ -323,25 +323,17 @@ describe('players who cannot take part', () => {
     );
   });
 
-  it.fails(
-    'a payment to everyone with nobody else to pay is refused instead of recording a zero total',
-    () => {
-      const players = [player('a'), player('b', 0, 'BANKRUPT')];
-      expect(() =>
-        playerToAll({ game, players, payerPlayerId: 'a', amountPerPlayer: 30 }),
-      ).toThrow();
-    },
-  );
+  it('a payment to everyone with nobody else to pay is refused instead of recording a zero total', () => {
+    const players = [player('a'), player('b', 0, 'BANKRUPT')];
+    expect(() => playerToAll({ game, players, payerPlayerId: 'a', amountPerPlayer: 30 })).toThrow();
+  });
 
-  it.fails(
-    'a collection from everyone with nobody else to pay is refused instead of recording a zero total',
-    () => {
-      const players = [player('a'), player('b', 0, 'BANKRUPT')];
-      expect(() =>
-        allToPlayer({ game, players, recipientPlayerId: 'a', amountPerPlayer: 30 }),
-      ).toThrow();
-    },
-  );
+  it('a collection from everyone with nobody else to pay is refused instead of recording a zero total', () => {
+    const players = [player('a'), player('b', 0, 'BANKRUPT')];
+    expect(() =>
+      allToPlayer({ game, players, recipientPlayerId: 'a', amountPerPlayer: 30 }),
+    ).toThrow();
+  });
 
   it('passing GO pays double only on an exact landing', () => {
     expect(passGo({ game, players: table(), playerId: 'a' }).transaction.amount).toBe(200);

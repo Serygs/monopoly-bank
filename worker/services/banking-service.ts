@@ -47,6 +47,7 @@ import {
   JackpotEmptyError,
   LoanNotFoundError,
   MortgageNotFoundError,
+  NoOtherActivePlayersError,
   mortgageProperty,
   mortgageTile,
   payRent,
@@ -1185,7 +1186,9 @@ export class DefaultBankingService implements BankingService {
             },
           ]
         : players
-            .filter((player) => player.id !== request.recipientPlayerId)
+            .filter(
+              (player) => player.id !== request.recipientPlayerId && player.status !== 'BANKRUPT',
+            )
             .map((player) => ({
               payerPlayerId: player.id,
               recipientPlayerId: request.recipientPlayerId,
@@ -1194,6 +1197,7 @@ export class DefaultBankingService implements BankingService {
               amount: request.amountPerPlayer,
               comment: request.comment ?? null,
             }));
+    if (pairs.length === 0) throw new NoOtherActivePlayersError();
     const auction = await this.runningAuction(game);
     for (const pair of pairs) {
       const payer = players.find((player) => player.id === pair.payerPlayerId);

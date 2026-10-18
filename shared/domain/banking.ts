@@ -432,6 +432,18 @@ export class InvalidGameStateError extends BankingDomainError {
   }
 }
 
+export class NoOtherActivePlayersError extends BankingDomainError {
+  readonly code = 'NO_OTHER_ACTIVE_PLAYERS' as const;
+
+  constructor() {
+    super({
+      code: 'NO_OTHER_ACTIVE_PLAYERS',
+      message: 'There is no other active player to pay or collect from.',
+      status: 409,
+    });
+  }
+}
+
 export class TransactionNotFoundError extends BankingDomainError {
   readonly code = 'TRANSACTION_NOT_FOUND' as const;
   constructor(transactionId: string) {
@@ -1202,6 +1214,7 @@ export function playerToAll(command: PlayerToAllCommand): BankingOperationResult
   const recipients = players.filter(
     (player) => player.id !== payer.id && player.status !== 'BANKRUPT',
   );
+  if (recipients.length === 0) throw new NoOtherActivePlayersError();
   const totalAmount = multiplyAmounts(command.amountPerPlayer, recipients.length);
   ensureSufficientFunds(payer, totalAmount);
 
@@ -1227,6 +1240,7 @@ export function allToPlayer(command: AllToPlayerCommand): BankingOperationResult
   const payers = players.filter(
     (player) => player.id !== recipient.id && player.status !== 'BANKRUPT',
   );
+  if (payers.length === 0) throw new NoOtherActivePlayersError();
   for (const payer of payers) {
     ensureSufficientFunds(payer, command.amountPerPlayer);
   }

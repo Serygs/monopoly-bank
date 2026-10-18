@@ -115,7 +115,7 @@ export class D1PrivacyRepository implements PrivacyRepository {
         "DELETE FROM game_invitations WHERE expires_at <= datetime('now', '-30 days') OR revoked_at <= datetime('now', '-30 days')",
       ),
       this.database.prepare(
-        "DELETE FROM command_ledger WHERE status = 'COMPLETED' AND game_id IN (SELECT id FROM games WHERE status = 'FINISHED' AND finished_at <= datetime('now', '-90 days'))",
+        "DELETE FROM command_ledger WHERE status = 'COMPLETED' AND game_id IN (SELECT id FROM games WHERE status = 'ARCHIVED' AND finished_at <= datetime('now', '-90 days'))",
       ),
     ]);
   }
