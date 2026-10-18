@@ -132,7 +132,8 @@ export function findReversalDependency(
   later: readonly Transaction[],
   groupTileIds: readonly string[] = [],
 ): Transaction | null {
-  const originalTiles = tilesOf(original);
+  const originalTiles = new Set(tilesOf(original));
+  const groupTiles = new Set(groupTileIds);
   const playerIds = new Set(original.participants.map((participant) => participant.playerId));
   return (
     later.find(
@@ -142,8 +143,8 @@ export function findReversalDependency(
         ((dependentTypes.includes(candidate.type) &&
           candidate.participants.some((participant) => playerIds.has(participant.playerId))) ||
           (registryTypes.includes(candidate.type) &&
-            tilesOf(candidate).some((tileId) => originalTiles.includes(tileId))) ||
-          (tilesOf(candidate).some((tileId) => groupTileIds.includes(tileId)) &&
+            tilesOf(candidate).some((tileId) => originalTiles.has(tileId))) ||
+          (tilesOf(candidate).some((tileId) => groupTiles.has(tileId)) &&
             (groupBlockers[original.type]?.includes(candidate.type) ?? false))),
     ) ?? null
   );
