@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type {
   AuctionResponse,
   GameDetails,
@@ -22,18 +22,17 @@ import { GameBottomNav, type GameNavDestination } from '../components/game/GameB
 import { cx } from '../components/ui/class-names';
 import { Button, Notice, PageShell, StatPill, useFeedback } from '../components/ui';
 import type { DevicePreferences } from '../utils/preferences';
+import { useGameLiveConnection } from '../hooks/useGameLiveConnection';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { playPaymentFeedback, vibrate } from '../utils/feedback';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
-import { isLiveServerEvent } from '../../shared/contracts/live';
 import { newerAuction } from '../utils/auction';
-import { acceptsLiveVersion } from '../utils/live-version';
 import { AuctionDialog } from './game/AuctionDialog';
 import { BankingDialog } from './game/BankingDialog';
 import { BankruptcyDialog } from './game/BankruptcyDialog';
 import { FinishGameDialog } from './game/FinishGameDialog';
-import { GameHeader, type LiveStatus } from './game/GameHeader';
+import { GameHeader } from './game/GameHeader';
 import { ReverseTransactionDialog } from './game/ReverseTransactionDialog';
 import { InviteDialog } from './game/InviteDialog';
 import { PaymentInbox } from './game/PaymentInbox';
@@ -44,7 +43,6 @@ import { selectRecentEventsForPlayer } from '../utils/recent-events';
 import { WalletsSection } from './game/WalletsSection';
 import {
   applyBankingResponse,
-  applyLiveEvent,
   lobbyNeedsMorePlayers,
   type ActionType,
   splitPaymentRequests,
@@ -104,12 +102,10 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   const [activeWalletId, setActiveWalletId] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
-  const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
   // The first activity page, fetched once so the recent list is not empty after a reload.
   const [seededTransactions, setSeededTransactions] = useState<Transaction[]>([]);
-  const lastAppliedVersion = useRef(0);
   // The wallet putting a property up for auction, with the suggested name.
   const [tradePrompt, setTradePrompt] = useState<{ player: Player; tileId: string } | null>(null);
   const [auctionPrompt, setAuctionPrompt] = useState<{
@@ -170,6 +166,14 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
     };
   }, [gameId, seedRecentActivity]);
 
+  const liveStatus = useGameLiveConnection({
+    gameId,
+    enabled: details !== null && details.game.status !== 'FINISHED' && !offline,
+    setDetails,
+    setLiveTransactions,
+    loadPaymentRequests,
+  });
+
   /** Applies an auction answer: the newest auction, and the balances when it settled a sale. */
   const applyAuctionResponse = useCallback((response: AuctionResponse) => {
     if (response.transaction !== undefined) {
@@ -205,84 +209,6 @@ export function GamePage({ gameId, onBack, preferences, offline, onPaymentFlowCh
   }, [auctionPolling, refreshAuction]);
 
   useWakeLock(preferences.keepScreenAwake && details?.game.status === 'ACTIVE');
-
-  const shouldConnectLive = details !== null && details.game.status !== 'FINISHED' && !offline;
-  useEffect(() => {
-    if (!shouldConnectLive) return;
-    let closed = false;
-    let retry: number | undefined;
-    let heartbeat: number | undefined;
-    let socket: WebSocket | null = null;
-    let attempts = 0;
-    const connect = () => {
-      if (closed) return;
-      setLiveStatus(attempts === 0 ? 'connecting' : 'reconnecting');
-      const url = new URL(`/api/games/${encodeURIComponent(gameId)}/live`, window.location.origin);
-      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-      const nextSocket = new WebSocket(url);
-      socket = nextSocket;
-      nextSocket.onopen = () => {
-        if (socket === nextSocket) {
-          attempts = 0;
-          setLiveStatus('live');
-          heartbeat = window.setInterval(() => {
-            if (nextSocket.readyState === WebSocket.OPEN)
-              nextSocket.send(JSON.stringify({ type: 'HEARTBEAT' }));
-          }, 20_000);
-        }
-      };
-      nextSocket.onmessage = (message) => {
-        if (socket !== nextSocket) return;
-        try {
-          const event: unknown = JSON.parse(String(message.data));
-          if (!isLiveServerEvent(event)) return;
-          if (event.type === 'GAME_SNAPSHOT') {
-            lastAppliedVersion.current = event.state.stateVersion;
-            applyLiveEvent(event, setDetails);
-            return;
-          }
-          if (!acceptsLiveVersion(lastAppliedVersion.current, event.stateVersion)) {
-            nextSocket.close(4001, 'State version gap: resync required.');
-            return;
-          }
-          if (event.stateVersion > lastAppliedVersion.current)
-            lastAppliedVersion.current = event.stateVersion;
-          applyLiveEvent(event, setDetails);
-          if (event.type === 'GAME_COMMITTED')
-            setLiveTransactions((current) =>
-              [
-                event.transaction,
-                ...current.filter((item) => item.id !== event.transaction.id),
-              ].slice(0, 50),
-            );
-          if (event.type === 'PAYMENT_REQUESTS_UPDATED') loadPaymentRequests();
-        } catch {
-          /* Ignore malformed network data. */
-        }
-      };
-      nextSocket.onclose = () => {
-        if (heartbeat !== undefined) {
-          window.clearInterval(heartbeat);
-          heartbeat = undefined;
-        }
-        if (closed || socket !== nextSocket) return;
-        setLiveStatus('offline');
-        attempts += 1;
-        const base = Math.min(1000 * 2 ** (attempts - 1), 10_000);
-        retry = window.setTimeout(connect, Math.round(base * (0.7 + Math.random() * 0.6)));
-      };
-      nextSocket.onerror = () => {
-        if (socket === nextSocket) nextSocket.close();
-      };
-    };
-    connect();
-    return () => {
-      closed = true;
-      if (retry !== undefined) window.clearTimeout(retry);
-      if (heartbeat !== undefined) window.clearInterval(heartbeat);
-      socket?.close();
-    };
-  }, [gameId, loadPaymentRequests, shouldConnectLive]);
 
   /** Closes the sheet behind the bottom navigation, so choosing another item replaces it. */
   const closeNavSheets = () => {
