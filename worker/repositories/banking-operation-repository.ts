@@ -1,6 +1,7 @@
 import type { PlayerBalanceChange, PendingTransaction } from '../../shared/domain/banking.js';
 import { propertyNameKey } from '../../shared/domain/mortgage.js';
 import { DatabaseError } from '../services/errors.js';
+import { guardedBalanceUpdate } from './balance-statements.js';
 
 export interface PersistBankingOperationInput {
   transactionId: string;
@@ -44,7 +45,7 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
   }
 
   async persist(input: PersistBankingOperationInput): Promise<void> {
-    const balanceStatement = createBalanceUpdateStatement(this.database, input.balanceChanges);
+    const balanceStatement = guardedBalanceUpdate(this.database, input.balanceChanges);
     const transactionStatement = this.database
       .prepare(
         `INSERT INTO transactions (id, game_id, type, amount, total_amount, comment, reverses_transaction_id, tile_id, price_overridden, initiator_player_id)
@@ -478,33 +479,4 @@ function recentAmountStatements(
       )
       .bind(gameId, gameId),
   ];
-}
-
-function createBalanceUpdateStatement(
-  database: D1Database,
-  balanceChanges: readonly PlayerBalanceChange[],
-): D1PreparedStatement {
-  const gameId = balanceChanges[0]?.player.gameId;
-  if (gameId === undefined && balanceChanges.length === 0) {
-    return database.prepare('SELECT 1');
-  }
-  if (gameId === undefined || balanceChanges.some((change) => change.player.gameId !== gameId)) {
-    throw new Error('All balance changes must belong to the same game.');
-  }
-
-  const cases = balanceChanges.map(() => 'WHEN ? THEN CASE WHEN balance = ? THEN ? ELSE -1 END');
-  const values: (string | number)[] = [];
-  for (const change of balanceChanges) {
-    values.push(change.player.id, change.balanceBefore, change.balanceAfter);
-  }
-  const playerIds = balanceChanges.map((change) => change.player.id);
-  values.push(gameId, ...playerIds);
-
-  return database
-    .prepare(
-      `UPDATE players
-       SET balance = CASE id ${cases.join(' ')} ELSE balance END
-       WHERE game_id = ? AND id IN (${playerIds.map(() => '?').join(', ')})`,
-    )
-    .bind(...values);
 }
