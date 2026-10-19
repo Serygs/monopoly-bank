@@ -175,11 +175,18 @@ describe('rentFor a railway', () => {
 });
 
 describe('rentFor a utility', () => {
-  it('charges 4 times the dice sum for one utility and 10 times for both', () => {
-    expect(rentFor(board, registry({ power_plant: owned() }), 'power_plant', 7)).toBe(28);
+  it('charges 4 times the dice sum for one utility and 10 times for both, in thousands', () => {
+    expect(rentFor(board, registry({ power_plant: owned() }), 'power_plant', 7)).toBe(28_000);
     expect(
       rentFor(board, registry({ power_plant: owned(), waterworks: owned() }), 'power_plant', 7),
-    ).toBe(70);
+    ).toBe(70_000);
+  });
+
+  it('pays 16 000 for a 4 and one utility, and 40 000 for a 4 and both', () => {
+    expect(rentFor(board, registry({ power_plant: owned() }), 'power_plant', 4)).toBe(16_000);
+    expect(
+      rentFor(board, registry({ power_plant: owned(), waterworks: owned() }), 'waterworks', 4),
+    ).toBe(40_000);
   });
 
   it('needs the dice sum', () => {
@@ -773,12 +780,12 @@ describe('rent boundaries', () => {
 
   it('multiplies the dice sum by the multiplier for the utilities held', () => {
     const one = registry({ power_plant: { ownerPlayerId: 'a' } });
-    expect(rentFor(board, one, 'power_plant', 7)).toBe(28);
+    expect(rentFor(board, one, 'power_plant', 7)).toBe(28_000);
     const both = registry({
       power_plant: { ownerPlayerId: 'a' },
       waterworks: { ownerPlayerId: 'a' },
     });
-    expect(rentFor(board, both, 'waterworks', 7)).toBe(70);
+    expect(rentFor(board, both, 'waterworks', 7)).toBe(70_000);
   });
 
   it('refuses a missing rent entry as an unknown tile', () => {

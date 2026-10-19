@@ -290,7 +290,7 @@ describe('payRent', () => {
       diceSum: 9,
       property: property({ power_plant: { ownerPlayerId: p2 } }),
     });
-    expect(result.transaction.amount).toBe(36);
+    expect(result.transaction.amount).toBe(36_000);
   });
 
   it('rejects a missing or an unexpected dice sum', () => {

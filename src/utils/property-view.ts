@@ -6,6 +6,7 @@ import {
   MAX_BUILDINGS,
   planBuildings,
   sellRefund,
+  UTILITY_RENT_UNIT,
 } from '../../shared/domain/property';
 import type { GameProperty } from '../../shared/types/monopoly';
 
@@ -200,7 +201,9 @@ export function rentDue(
   const rent = tileRent(board, views, view);
   if (rent.kind === 'amount') return rent.amount;
   if (rent.kind === 'dice')
-    return diceSum !== undefined && isDiceSum(diceSum) ? diceSum * rent.multiplier : null;
+    return diceSum !== undefined && isDiceSum(diceSum)
+      ? diceSum * rent.multiplier * UTILITY_RENT_UNIT
+      : null;
   return null;
 }
 
