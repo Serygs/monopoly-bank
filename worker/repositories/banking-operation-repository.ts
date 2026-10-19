@@ -8,6 +8,7 @@ import { transactionStatements } from './operation-statements/ledger-statements.
 import { loanStatements } from './operation-statements/loan-statements.js';
 import { mortgageStatements } from './operation-statements/mortgage-statements.js';
 import { registryStatements } from './operation-statements/registry-statements.js';
+import { recentAmountStatement } from './recent-amounts.js';
 import {
   acceptedTradeStatements,
   bankruptTradeStatements,
@@ -72,32 +73,10 @@ export class D1BankingOperationRepository implements BankingOperationRepository 
       const recentStatements =
         input.recentAmount === undefined
           ? []
-          : recentAmountStatements(database, input.transaction.gameId, input.recentAmount);
+          : [await recentAmountStatement(database, input.transaction.gameId, input.recentAmount)];
       await database.batch([...statements, ...recentStatements]);
     } catch (cause) {
       throw new DatabaseError({ operation: 'persistBankingOperation', cause });
     }
   }
-}
-
-function recentAmountStatements(
-  database: D1Database,
-  gameId: string,
-  amount: number,
-): D1PreparedStatement[] {
-  return [
-    database
-      .prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?')
-      .bind(gameId, amount),
-    database
-      .prepare(
-        'INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
-      )
-      .bind(gameId, amount),
-    database
-      .prepare(
-        'DELETE FROM game_recent_amounts WHERE game_id = ? AND amount NOT IN (SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5)',
-      )
-      .bind(gameId, gameId),
-  ];
 }

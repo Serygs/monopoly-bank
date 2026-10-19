@@ -13,6 +13,7 @@ import type {
   PaymentMode,
 } from '../../shared/types/monopoly.js';
 import type { CreatePlayerInput } from './player-repository.js';
+import { readRecentAmounts, recentAmountStatement } from './recent-amounts.js';
 
 /** The stored house-rule flags and the derived-amounts snapshot, selected with every game. */
 const RULE_COLUMNS =
@@ -403,32 +404,12 @@ export class D1GameRepository implements GameRepository {
     return this.listFavoriteAmounts(gameId);
   }
 
-  async listRecentAmounts(gameId: string): Promise<number[]> {
-    const result = await this.database
-      .prepare(
-        'SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5',
-      )
-      .bind(gameId)
-      .all<{ amount: number }>();
-    return result.results.map((row) => row.amount);
+  listRecentAmounts(gameId: string): Promise<number[]> {
+    return readRecentAmounts(this.database, gameId);
   }
 
   async recordRecentAmount(gameId: string, amount: number): Promise<void> {
-    await this.database.batch([
-      this.database
-        .prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?')
-        .bind(gameId, amount),
-      this.database
-        .prepare(
-          'INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
-        )
-        .bind(gameId, amount),
-      this.database
-        .prepare(
-          'DELETE FROM game_recent_amounts WHERE game_id = ? AND amount NOT IN (SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5)',
-        )
-        .bind(gameId, gameId),
-    ]);
+    await (await recentAmountStatement(this.database, gameId, amount)).run();
   }
 }
 

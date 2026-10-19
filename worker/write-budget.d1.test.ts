@@ -18,7 +18,7 @@ const BUDGET: Record<string, number> = {
   'create lobby': 72,
   join: 18,
   start: 4,
-  transfer: 20,
+  transfer: 17,
   'pass go': 12,
   'property purchase': 16,
   'pay rent': 16,
@@ -31,7 +31,7 @@ const BUDGET: Record<string, number> = {
   finish: 42,
   'deferred cleanup': 36,
 };
-const SCENARIO_BUDGET = 829;
+const SCENARIO_BUDGET = 774;
 
 interface Usage {
   written: number;
