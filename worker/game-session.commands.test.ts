@@ -1,3 +1,4 @@
+import './test-support/auto-response-stub.js';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { GameSession } from './game-session.js';
 import { ForbiddenError } from './services/errors.js';
@@ -64,6 +65,7 @@ function setup(options: { sockets?: Socket[]; stored?: Record<string, unknown> }
         alarm = null;
       },
     },
+    setWebSocketAutoResponse: () => undefined,
     getWebSockets: () => sockets,
   };
   const session = new GameSession(context as never, {} as Env) as unknown as Seams;
@@ -198,6 +200,34 @@ describe('the live socket protocol', () => {
     const c = socket();
     await both.session.webSocketMessage(c, JSON.stringify({ type: 'HEARTBEAT' }));
     expect(sentTo(c)).toEqual([{ type: 'HEARTBEAT', stateVersion: 9 }]);
+  });
+
+  it('serves the stored state version over GET /version without touching D1', async () => {
+    const { session } = setup({ stored: { stateVersion: 12 } });
+    const headers = { 'x-game-id': G, 'x-user-id': U };
+    const response = await session.fetch(
+      new Request('https://game-session/version', { method: 'GET', headers }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: { stateVersion: 12 } });
+    const wrongMethod = await session.fetch(
+      new Request('https://game-session/version', { method: 'POST', headers }),
+    );
+    expect(wrongMethod.status).toBe(404);
+  });
+
+  it('registers the ping auto response on construction', () => {
+    const setAutoResponse = vi.fn();
+    const created = new GameSession(
+      { setWebSocketAutoResponse: setAutoResponse } as never,
+      {
+        MONOPOLY_BANK_DB: undefined,
+      } as never,
+    );
+    expect(created).toBeDefined();
+    expect(setAutoResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ request: 'ping', response: 'pong' }),
+    );
   });
 
   it('closes a socket that cannot be written to, and survives one that cannot even be closed', async () => {
@@ -758,6 +788,7 @@ describe('transaction commands', () => {
     expect(sentTo(sockets[0] as Socket)).toEqual([
       expect.objectContaining({ type: 'GAME_COMMITTED', bankruptPlayerId: P1 }),
       { type: 'PAYMENT_REQUESTS_UPDATED', stateVersion: 1 },
+      { type: 'TRADE_REQUESTS_UPDATED', stateVersion: 1 },
     ]);
   });
 
@@ -772,6 +803,7 @@ describe('transaction commands', () => {
     expect(sentTo(sockets[0] as Socket).map((event) => event.type)).toEqual([
       'GAME_COMMITTED',
       'PAYMENT_REQUESTS_UPDATED',
+      'TRADE_REQUESTS_UPDATED',
       'AUCTION_UPDATED',
     ]);
   });
@@ -848,7 +880,7 @@ describe('trade request commands', () => {
     expect(access.requirePlayerController).toHaveBeenCalledWith(G, U, P1);
     expect(banking.createTradeRequest).toHaveBeenCalledWith(G, proposal);
     expect(sentTo(sockets[0] as Socket)).toEqual([
-      { type: 'PAYMENT_REQUESTS_UPDATED', stateVersion: 1 },
+      { type: 'TRADE_REQUESTS_UPDATED', stateVersion: 1 },
     ]);
   });
 
@@ -859,7 +891,7 @@ describe('trade request commands', () => {
   ] as const)(
     '%s needs the counterparty, or the proposer for a withdrawal',
     async (type, method, controlled) => {
-      const { session, access, banking } = setup();
+      const { session, access, banking, sockets } = setup();
       banking.getTradeRequest.mockResolvedValue(stored);
       banking[method]?.mockResolvedValue({ tradeRequest: stored, players: [] });
       const response = await session.mutate(G, U, post({ type, tradeRequestId: R }));
@@ -867,6 +899,12 @@ describe('trade request commands', () => {
       expect(banking.getTradeRequest).toHaveBeenCalledWith(G, R);
       expect(access.requirePlayerController).toHaveBeenCalledWith(G, U, controlled);
       expect(banking[method]).toHaveBeenCalledWith(G, R);
+      expect(sentTo(sockets[0] as Socket).map((event) => event.type)).toContain(
+        'TRADE_REQUESTS_UPDATED',
+      );
+      expect(sentTo(sockets[0] as Socket).map((event) => event.type)).not.toContain(
+        'PAYMENT_REQUESTS_UPDATED',
+      );
     },
   );
 

@@ -1,3 +1,4 @@
+import './auto-response-stub.js';
 import { GameSession } from '../game-session.js';
 import { fakeLedger, type FakeLedger } from './fake-ledger.js';
 
@@ -33,6 +34,7 @@ export function createSessionHarness(options: SessionHarnessOptions = {}): Sessi
         storage.set(key, value);
       },
     },
+    setWebSocketAutoResponse: () => undefined,
     getWebSockets: () =>
       sockets.map((messages) => ({ send: (message: string) => messages.push(message) })),
   };

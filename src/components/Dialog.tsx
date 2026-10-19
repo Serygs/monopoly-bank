@@ -9,6 +9,8 @@ import {
 import { buttonCoreClass, buttonToneClass, cx, iconButtonShapeClass } from './ui/class-names';
 import { DialogNavContext } from './dialog-nav-context';
 import { Eyebrow } from './ui/Text';
+import { RefreshIcon } from './RefreshIcon';
+import { PULL_THRESHOLD, usePullToRefresh } from '../hooks/usePullToRefresh';
 
 interface DialogProps {
   title: string;
@@ -26,6 +28,8 @@ interface DialogProps {
   sheet?: 'browse' | 'flow';
   id?: string;
   popoverStyle?: CSSProperties;
+  onPullRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 /*
@@ -119,7 +123,10 @@ export function Dialog({
   sheet = 'browse',
   id,
   popoverStyle,
+  onPullRefresh,
+  refreshing = false,
 }: DialogProps) {
+  const { pull, handlers } = usePullToRefresh(onPullRefresh);
   // The dialog stays mounted for its leave transition; `onClose` runs once that has finished.
   const [open, setOpen] = useState(true);
   const bottomNav = useContext(DialogNavContext);
@@ -161,7 +168,24 @@ export function Dialog({
           className={cx(panelClass, presentationClass[presentation], className, panelMotion)}
           style={presentation === 'popover' ? popoverStyle : undefined}
           onKeyDown={keepFocusWhileLocked}
+          {...(onPullRefresh === undefined ? {} : handlers)}
         >
+          {onPullRefresh !== undefined && (pull > 0 || refreshing) && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none sticky top-0 z-10 -mb-(--mb-space-2) flex h-0 justify-center overflow-visible text-secondary"
+            >
+              <span
+                className="mt-(--mb-space-1) inline-flex size-8 items-center justify-center rounded-pill border border-border bg-surface-elevated shadow-sm"
+                style={{
+                  opacity: refreshing ? 1 : Math.min(pull / PULL_THRESHOLD, 1),
+                  translate: `0 ${refreshing ? 0 : pull / 2}px`,
+                }}
+              >
+                <RefreshIcon state={refreshing ? 'busy' : 'idle'} />
+              </span>
+            </div>
+          )}
           <header>
             <div>
               {eyebrow !== undefined && <Eyebrow>{eyebrow}</Eyebrow>}

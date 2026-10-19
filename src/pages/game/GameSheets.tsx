@@ -18,6 +18,8 @@ function ActivitySheet({ ctx }: { ctx: GameContext }) {
       initialPlayerId={activity.playerId}
       refreshKey={activity.version}
       board={view.board}
+      onPullRefresh={ctx.refresh.run}
+      refreshing={ctx.refresh.state === 'busy'}
       reversal={
         view.canMutate
           ? {
@@ -72,6 +74,8 @@ export function GameSheets({ ctx }: { ctx: GameContext }) {
           currency={details.game.currency}
           loans={view.visibleLoans}
           finished={details.game.status === 'FINISHED'}
+          onPullRefresh={ctx.refresh.run}
+          refreshing={ctx.refresh.state === 'busy'}
           onClose={() => sheets.setStatisticsOpen(false)}
         />
       )}

@@ -74,10 +74,15 @@ export type LiveServerEvent =
   | { type: 'GAME_FINISHED'; stateVersion: number; details: GameDetails }
   | { type: 'LOBBY_UPDATED'; stateVersion: number; details: Pick<GameDetails, 'game' | 'players'> }
   | { type: 'PAYMENT_REQUESTS_UPDATED'; stateVersion: number }
+  | { type: 'TRADE_REQUESTS_UPDATED'; stateVersion: number }
   /** The auction started, got a bid or closed (a closed sale also sends GAME_COMMITTED). */
   | { type: 'AUCTION_UPDATED'; stateVersion: number; auction: Auction | null }
   | { type: 'PRESENCE_UPDATED'; stateVersion: number; connectedActors: number }
   | { type: 'HEARTBEAT'; stateVersion: number };
+
+export interface GameVersionResponse {
+  stateVersion: number;
+}
 
 export type LiveMutationResponse =
   | CreateBankingCommandResponse
@@ -140,6 +145,7 @@ const EVENT_BODY_CHECKS: Record<
   AUCTION_UPDATED: (value) => value.auction === null || isRecord(value.auction),
   PRESENCE_UPDATED: (value) => isNonNegativeInteger(value.connectedActors),
   PAYMENT_REQUESTS_UPDATED: () => true,
+  TRADE_REQUESTS_UPDATED: () => true,
   HEARTBEAT: () => true,
 };
 

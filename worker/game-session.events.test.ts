@@ -258,6 +258,7 @@ describe('events published after a command', () => {
         bankruptPlayerId: P1,
       },
       { type: 'PAYMENT_REQUESTS_UPDATED', stateVersion: 1 },
+      { type: 'TRADE_REQUESTS_UPDATED', stateVersion: 1 },
       {
         type: 'AUCTION_UPDATED',
         stateVersion: 1,
@@ -277,6 +278,7 @@ describe('events published after a command', () => {
     expect(events().map((event) => event.type)).toEqual([
       'GAME_COMMITTED',
       'PAYMENT_REQUESTS_UPDATED',
+      'TRADE_REQUESTS_UPDATED',
     ]);
   });
 });

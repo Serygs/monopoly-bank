@@ -1,3 +1,4 @@
+import './test-support/auto-response-stub.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GameSession } from './game-session.js';
 
@@ -42,6 +43,7 @@ function harness() {
         alarm = null;
       },
     },
+    setWebSocketAutoResponse: () => undefined,
     getWebSockets: () => [
       { send: (message: string) => sent.push(JSON.parse(message) as Record<string, unknown>) },
     ],

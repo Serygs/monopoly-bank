@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Player, Transaction } from '../../shared/types/monopoly';
@@ -352,5 +352,31 @@ describe('activity filtered by one player', () => {
     renderActivity('en', true, { initialPlayerId: 'p1' }, players);
     expect(await screen.findByText(translate('en', 'noActivity'))).toBeInTheDocument();
     expect(screen.queryByText(/note-one/u)).not.toBeInTheDocument();
+  });
+});
+
+describe('activity pull to refresh', () => {
+  beforeEach(() => {
+    vi.spyOn(monopolyBankApi, 'getActivity').mockResolvedValue({
+      transactions: [],
+      paymentRequests: [],
+      nextCursor: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('calls the refresh handler after a pull from the top', async () => {
+    const onPullRefresh = vi.fn();
+    renderActivity('en', true, { onPullRefresh });
+    const panel = document.querySelector('.dialog');
+    if (panel === null) throw new Error('missing panel');
+    fireEvent.touchStart(panel, { touches: [{ clientX: 0, clientY: 0 }] });
+    fireEvent.touchMove(panel, { touches: [{ clientX: 0, clientY: 150 }] });
+    fireEvent.touchEnd(panel, { changedTouches: [{ clientX: 0, clientY: 0 }] });
+    expect(onPullRefresh).toHaveBeenCalledTimes(1);
+    await screen.findByRole('tablist');
   });
 });

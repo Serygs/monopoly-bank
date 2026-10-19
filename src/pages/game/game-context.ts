@@ -6,6 +6,7 @@ import type {
   TradeRequest,
 } from '../../../shared/contracts/api';
 import type { Transaction } from '../../../shared/types/monopoly';
+import type { RefreshControl } from '../../hooks/useGameSync';
 import type { DevicePreferences } from '../../utils/preferences';
 import type { GameView } from './game-view';
 import type { GameDialogs } from './useGameDialogs';
@@ -25,6 +26,7 @@ export interface GameContext {
   loadPaymentRequests: () => void;
   applyAuctionResponse: (response: AuctionResponse) => void;
   refreshAuction: () => void;
+  refresh: RefreshControl;
   putTradeRequest: (tradeRequest: TradeRequest) => void;
 }
 
