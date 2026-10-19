@@ -228,17 +228,20 @@ describe('D1GameStatisticsRepository on SQLite', () => {
       });
     });
 
-    it('expires stale requests of the game before listing and leaves other games alone', async () => {
+    it('leaves out stale requests without writing on the read', async () => {
       request('stale', 'a', 'b', at(1), 'PENDING', '2000-01-01T00:00:00.000Z');
       request('fresh', 'a', 'b', at(2));
+      const changes = () => rows<{ n: number }>(database, 'SELECT total_changes() AS n')[0].n;
+      const before = changes();
       const page = await statistics.pending('game', ['a'], null, 10);
       expect(page.paymentRequests.map((item) => item.id)).toEqual(['fresh']);
-      const stale = rows<{ state: string; resolved_at: string | null }>(
-        database,
-        "SELECT state, resolved_at FROM payment_requests WHERE id = 'stale'",
-      )[0];
-      expect(stale.state).toBe('EXPIRED');
-      expect(stale.resolved_at).not.toBeNull();
+      expect(changes()).toBe(before);
+      expect(
+        rows<{ state: string }>(
+          database,
+          "SELECT state FROM payment_requests WHERE id = 'stale'",
+        )[0].state,
+      ).toBe('PENDING');
     });
 
     it('pages with a cursor, repeating trades only on the first page', async () => {
