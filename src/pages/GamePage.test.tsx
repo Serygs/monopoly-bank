@@ -105,8 +105,24 @@ const hooks = vi.hoisted(() => {
 const api = vi.hoisted(() => ({
   getGame: vi.fn(),
   listPaymentRequests: vi.fn(),
+  listTradeRequests: vi.fn(),
+  getGameVersion: vi.fn(),
   getActivity: vi.fn(),
 }));
+
+const windowListeners = new Map<string, Array<() => void>>();
+const listenerStubs = {
+  addEventListener: (type: string, listener: () => void) => {
+    windowListeners.set(type, [...(windowListeners.get(type) ?? []), listener]);
+  },
+  removeEventListener: (type: string, listener: () => void) => {
+    windowListeners.set(
+      type,
+      (windowListeners.get(type) ?? []).filter((item) => item !== listener),
+    );
+  },
+};
+const fire = (type: string) => windowListeners.get(type)?.forEach((listener) => listener());
 
 vi.mock('react', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -186,6 +202,9 @@ describe('GamePage live connection lifecycle', () => {
     hooks.reset();
     api.getGame.mockReset();
     api.listPaymentRequests.mockReset().mockResolvedValue([]);
+    api.listTradeRequests.mockReset().mockResolvedValue([]);
+    api.getGameVersion.mockReset().mockResolvedValue({ stateVersion: 0 });
+    windowListeners.clear();
     api.getActivity
       .mockReset()
       .mockResolvedValue({ transactions: [], paymentRequests: [], nextCursor: null });
@@ -193,6 +212,7 @@ describe('GamePage live connection lifecycle', () => {
     setTimeoutMock.mockClear();
     vi.stubGlobal('WebSocket', FakeWebSocket);
     vi.stubGlobal('window', {
+      ...listenerStubs,
       location: { origin: 'http://localhost' },
       setInterval: vi.fn(() => 1),
       clearInterval: vi.fn(),
@@ -344,7 +364,7 @@ describe('GamePage live connection lifecycle', () => {
     },
   );
 
-  it('preserves ACTIVE reconnect-on-version-gap behavior', async () => {
+  it('resyncs instead of reconnecting on a version gap', async () => {
     api.getGame.mockResolvedValue(gameDetails('ACTIVE', [owner]));
 
     renderGamePage(false);
@@ -355,10 +375,11 @@ describe('GamePage live connection lifecycle', () => {
 
     const socket = FakeWebSocket.instances[0];
     socket.message(snapshot(7, gameDetails('ACTIVE', [owner])));
-    socket.message({ type: 'HEARTBEAT', stateVersion: 9 });
+    socket.message({ type: 'AUCTION_UPDATED', stateVersion: 9, auction: null });
 
-    expect(socket.closeCode).toBe(4001);
-    expect(setTimeoutMock).toHaveBeenCalledTimes(1);
+    expect(socket.closeCode).toBeUndefined();
+    expect(api.getGameVersion).toHaveBeenCalledTimes(1);
+    expect(setTimeoutMock).not.toHaveBeenCalled();
   });
 });
 
@@ -470,6 +491,25 @@ async function flushPromises(): Promise<void> {
   await Promise.resolve();
 }
 
+function refreshOf(node: ReactNode): { state: string; run: () => void } | undefined {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = refreshOf(child);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+  if (node === null || typeof node !== 'object' || !('props' in node)) return undefined;
+  const props = (node as { props: { children?: ReactNode; refresh?: unknown } }).props;
+  return typeof props.refresh === 'object' && props.refresh !== null
+    ? (props.refresh as { state: string; run: () => void })
+    : refreshOf(props.children);
+}
+
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+}
+
 function liveStatusOf(node: ReactNode): string | undefined {
   if (Array.isArray(node)) {
     for (const child of node) {
@@ -518,6 +558,9 @@ describe('GamePage live connection recovery', () => {
     hooks.reset();
     api.getGame.mockReset();
     api.listPaymentRequests.mockReset().mockResolvedValue([]);
+    api.listTradeRequests.mockReset().mockResolvedValue([]);
+    api.getGameVersion.mockReset().mockResolvedValue({ stateVersion: 0 });
+    windowListeners.clear();
     api.getActivity
       .mockReset()
       .mockResolvedValue({ transactions: [], paymentRequests: [], nextCursor: null });
@@ -526,6 +569,7 @@ describe('GamePage live connection recovery', () => {
     timeouts = [];
     vi.stubGlobal('WebSocket', FakeWebSocket);
     vi.stubGlobal('window', {
+      ...listenerStubs,
       location: { origin: 'https://bank.example', protocol: 'https:' },
       setInterval: register(intervals),
       clearInterval: clear(intervals),
@@ -547,6 +591,7 @@ describe('GamePage live connection recovery', () => {
 
   it('uses an insecure socket on an insecure page and encodes the game id', async () => {
     vi.stubGlobal('window', {
+      ...listenerStubs,
       location: { origin: 'http://localhost:5173', protocol: 'http:' },
       setInterval: register(intervals),
       clearInterval: clear(intervals),
@@ -567,16 +612,13 @@ describe('GamePage live connection recovery', () => {
   it('sends a heartbeat every 20 seconds while the socket is open and none once it is closed', async () => {
     const socket = await connected();
     socket.open();
-    expect(intervals).toHaveLength(1);
-    expect(intervals[0]?.delay).toBe(20_000);
-    intervals[0]?.callback();
-    intervals[0]?.callback();
-    expect(socket.sent).toEqual([
-      JSON.stringify({ type: 'HEARTBEAT' }),
-      JSON.stringify({ type: 'HEARTBEAT' }),
-    ]);
+    const heartbeat = intervals.find((timer) => timer.delay === 20_000);
+    expect(heartbeat).toBeDefined();
+    heartbeat?.callback();
+    heartbeat?.callback();
+    expect(socket.sent).toEqual(['ping', 'ping']);
     socket.readyState = FakeWebSocket.CLOSED;
-    intervals[0]?.callback();
+    heartbeat?.callback();
     expect(socket.sent).toHaveLength(2);
   });
 
@@ -584,7 +626,7 @@ describe('GamePage live connection recovery', () => {
     const socket = await connected();
     socket.open();
     socket.close();
-    expect(intervals[0]?.cleared).toBe(true);
+    expect(intervals.find((timer) => timer.delay === 20_000)?.cleared).toBe(true);
   });
 
   it('shows offline after a close and reconnects after a jittered, growing delay', async () => {
@@ -669,14 +711,15 @@ describe('GamePage live connection recovery', () => {
     expect(renderedPlayerNames(rendered())).not.toContain(joined.name);
   });
 
-  it('applies a snapshot of any version, then accepts the next version and refuses a gap', async () => {
+  it('applies a snapshot of any version, then accepts the next version and resyncs on a gap', async () => {
     const socket = await connected();
     socket.message(snapshot(10, gameDetails('ACTIVE', [owner, joined])));
     expect(renderedPlayerNames(rendered())).toContain(joined.name);
-    socket.message({ type: 'HEARTBEAT', stateVersion: 11 });
+    socket.message({ type: 'AUCTION_UPDATED', stateVersion: 11, auction: null });
+    expect(api.getGameVersion).not.toHaveBeenCalled();
+    socket.message({ type: 'AUCTION_UPDATED', stateVersion: 13, auction: null });
+    expect(api.getGameVersion).toHaveBeenCalledTimes(1);
     expect(socket.closeCode).toBeUndefined();
-    socket.message({ type: 'HEARTBEAT', stateVersion: 13 });
-    expect(socket.closeCode).toBe(4001);
   });
 
   it('applies a second event of the same version, and resyncs on an older one', async () => {
@@ -701,7 +744,7 @@ describe('GamePage live connection recovery', () => {
     expect(socket.closeCode).toBeUndefined();
     expect(hooks.value<GameDetails>(0).players[0]?.balance).toBe(1);
     socket.message(commit(9, 2));
-    expect(socket.closeCode).toBe(4001);
+    expect(api.getGameVersion).toHaveBeenCalledTimes(1);
     expect(hooks.value<GameDetails>(0).players[0]?.balance).toBe(1);
   });
 
@@ -712,12 +755,15 @@ describe('GamePage live connection recovery', () => {
     expect(api.listPaymentRequests.mock.calls.length).toBe(calls + 1);
   });
 
-  it('ignores a message that is not JSON or not a live event', async () => {
+  it('answers a message that is not JSON or not a live event with a resync, not a close', async () => {
     const socket = await connected();
+    socket.onmessage?.({ data: 'pong' });
+    expect(api.getGameVersion).not.toHaveBeenCalled();
     socket.onmessage?.({ data: 'not json' });
     socket.onmessage?.({ data: JSON.stringify({ type: 'SOMETHING_ELSE', stateVersion: 1 }) });
     socket.onmessage?.({ data: JSON.stringify(null) });
     socket.onmessage?.({ data: JSON.stringify({ type: 'HEARTBEAT' }) });
+    expect(api.getGameVersion).toHaveBeenCalledTimes(1);
     expect(socket.closeCode).toBeUndefined();
     expect(socket.readyState).not.toBe(FakeWebSocket.CLOSED);
   });
@@ -763,5 +809,167 @@ describe('GamePage live connection recovery', () => {
     expect(timeouts[0]?.cleared).toBe(true);
     timeouts[0]?.callback();
     expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  describe('state sync', () => {
+    const tradeRequest = {
+      id: 'trade-1',
+      gameId: 'game-1',
+      proposerPlayerId: owner.id,
+      counterpartyPlayerId: joined.id,
+      status: 'PENDING',
+    } as unknown as NonNullable<GameDetails['tradeRequests']>[number];
+    const detailsNow = () => hooks.value<GameDetails>(0);
+
+    it('applies a trade request update without reloading payment requests', async () => {
+      const socket = await connected();
+      const payments = api.listPaymentRequests.mock.calls.length;
+      api.listTradeRequests.mockResolvedValue([tradeRequest]);
+      socket.message({ type: 'TRADE_REQUESTS_UPDATED', stateVersion: 1 });
+      await settle();
+      expect(detailsNow().tradeRequests).toEqual([tradeRequest]);
+      expect(api.listPaymentRequests.mock.calls.length).toBe(payments);
+    });
+
+    it('resyncs when a presence or heartbeat event carries a newer version', async () => {
+      const socket = await connected();
+      socket.message(snapshot(5, gameDetails('ACTIVE', [owner])));
+      socket.message({ type: 'PRESENCE_UPDATED', stateVersion: 5, connectedActors: 2 });
+      await settle();
+      expect(api.getGameVersion).not.toHaveBeenCalled();
+      socket.message({ type: 'PRESENCE_UPDATED', stateVersion: 6, connectedActors: 2 });
+      await settle();
+      expect(api.getGameVersion).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['online', 'pageshow', 'visibilitychange'])('resyncs on %s', async (type) => {
+      await connected();
+      if (type === 'visibilitychange') document.dispatchEvent(new Event(type));
+      else fire(type);
+      await settle();
+      expect(api.getGameVersion).toHaveBeenCalledTimes(1);
+    });
+
+    it('resyncs once the socket opens', async () => {
+      const socket = await connected();
+      socket.open();
+      await settle();
+      expect(api.getGameVersion).toHaveBeenCalledTimes(1);
+    });
+
+    it('polls only while the socket is unhealthy and stops once it is healthy', async () => {
+      let now = 1_000_000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const socket = await connected();
+      const poll = intervals.find((timer) => timer.delay === 15_000);
+      expect(poll).toBeDefined();
+      poll?.callback();
+      await settle();
+      expect(api.getGameVersion).toHaveBeenCalledTimes(1);
+      socket.open();
+      await settle();
+      const afterOpen = api.getGameVersion.mock.calls.length;
+      poll?.callback();
+      await settle();
+      expect(api.getGameVersion.mock.calls.length).toBe(afterOpen);
+      now += 31_000;
+      poll?.callback();
+      await settle();
+      expect(api.getGameVersion.mock.calls.length).toBe(afterOpen + 1);
+      socket.message({ type: 'HEARTBEAT', stateVersion: 0 });
+      now += 1000;
+      poll?.callback();
+      await settle();
+      expect(api.getGameVersion.mock.calls.length).toBe(afterOpen + 1);
+    });
+
+    it('refresh makes no snapshot request when the version is unchanged', async () => {
+      const socket = await connected();
+      socket.message(snapshot(5, gameDetails('ACTIVE', [owner])));
+      api.getGameVersion.mockResolvedValue({ stateVersion: 5 });
+      const games = api.getGame.mock.calls.length;
+      refreshOf(rendered())?.run();
+      await settle();
+      expect(api.getGameVersion).toHaveBeenCalledTimes(1);
+      expect(api.getGame.mock.calls.length).toBe(games);
+      expect(refreshOf(rendered())?.state).toBe('done');
+    });
+
+    it('refresh applies a newer snapshot', async () => {
+      const socket = await connected();
+      socket.message(snapshot(5, gameDetails('ACTIVE', [owner])));
+      api.getGameVersion.mockResolvedValue({ stateVersion: 7 });
+      api.getGame.mockResolvedValue(gameDetails('ACTIVE', [owner, joined]));
+      api.listTradeRequests.mockResolvedValue([tradeRequest]);
+      refreshOf(rendered())?.run();
+      await settle();
+      expect(renderedPlayerNames(rendered())).toContain(joined.name);
+      expect(detailsNow().tradeRequests).toEqual([tradeRequest]);
+      socket.message({ type: 'AUCTION_UPDATED', stateVersion: 8, auction: null });
+      expect(api.getGameVersion).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores refresh taps within two seconds of the previous request', async () => {
+      let now = 5_000_000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      await connected();
+      refreshOf(rendered())?.run();
+      await settle();
+      refreshOf(rendered())?.run();
+      await settle();
+      expect(api.getGameVersion).toHaveBeenCalledTimes(1);
+      now += 2001;
+      refreshOf(rendered())?.run();
+      await settle();
+      expect(api.getGameVersion).toHaveBeenCalledTimes(2);
+    });
+
+    it('reruns once after a resync that was requested mid-flight and applies the newer state', async () => {
+      const socket = await connected();
+      socket.message(snapshot(5, gameDetails('ACTIVE', [owner])));
+      let release: (value: { stateVersion: number }) => void = () => undefined;
+      api.getGameVersion.mockReset();
+      api.getGameVersion.mockImplementationOnce(
+        () =>
+          new Promise<{ stateVersion: number }>((resolve) => {
+            release = resolve;
+          }),
+      );
+      api.getGameVersion.mockResolvedValue({ stateVersion: 9 });
+      api.getGame.mockResolvedValue(gameDetails('ACTIVE', [owner, joined]));
+      const poll = intervals.find((timer) => timer.delay === 15_000);
+      poll?.callback();
+      await settle();
+      expect(api.getGameVersion).toHaveBeenCalledTimes(1);
+      socket.message({ type: 'AUCTION_UPDATED', stateVersion: 9, auction: null });
+      await settle();
+      expect(api.getGameVersion).toHaveBeenCalledTimes(1);
+      release({ stateVersion: 5 });
+      await settle();
+      expect(api.getGameVersion).toHaveBeenCalledTimes(2);
+      expect(renderedPlayerNames(rendered())).toContain(joined.name);
+    });
+
+    it('closes the socket when the server version is lower than the client version', async () => {
+      const socket = await connected();
+      socket.message(snapshot(8, gameDetails('ACTIVE', [owner, joined])));
+      api.getGameVersion.mockResolvedValue({ stateVersion: 3 });
+      const games = api.getGame.mock.calls.length;
+      refreshOf(rendered())?.run();
+      await settle();
+      expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
+      expect(api.getGame.mock.calls.length).toBe(games);
+    });
+
+    it('shows an error and keeps the current state when refresh fails', async () => {
+      const socket = await connected();
+      socket.message(snapshot(5, gameDetails('ACTIVE', [owner, joined])));
+      const before = detailsNow();
+      api.getGameVersion.mockRejectedValue(new Error('network'));
+      refreshOf(rendered())?.run();
+      await settle();
+      expect(refreshOf(rendered())?.state).toBe('error');
+      expect(detailsNow()).toBe(before);
+    });
   });
 });

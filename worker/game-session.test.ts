@@ -1,3 +1,4 @@
+import './test-support/auto-response-stub.js';
 import { describe, expect, it } from 'vitest';
 import { buildTransaction, testUuid } from '../shared/test-support/fixtures.js';
 import { mutationRequest } from '../shared/test-support/requests.js';
@@ -46,7 +47,10 @@ describe('GameSession live coordinator', () => {
   });
 
   it('rejects requests that did not come through the authenticated Worker gateway', async () => {
-    const session = new GameSession({} as never, {} as Env);
+    const session = new GameSession(
+      { setWebSocketAutoResponse: () => undefined } as never,
+      {} as Env,
+    );
     expect((await session.fetch(new Request('https://game-session/mutation'))).status).toBe(403);
   });
 
@@ -143,6 +147,7 @@ describe('GameSession live coordinator', () => {
     let closed = false;
     const context = {
       storage: { get: async <T>() => undefined as T | undefined, put: async () => undefined },
+      setWebSocketAutoResponse: () => undefined,
       getWebSockets: () => [
         {
           send: () => {
@@ -165,6 +170,7 @@ describe('GameSession live coordinator', () => {
 
   it('counts multiple hibernatable sockets for one actor as one presence', () => {
     const context = {
+      setWebSocketAutoResponse: () => undefined,
       getWebSockets: () => [
         { deserializeAttachment: () => ({ userId: 'actor-a' }) },
         { deserializeAttachment: () => ({ userId: 'actor-a' }) },
@@ -189,7 +195,10 @@ describe('GameSession reversal authorization', () => {
   const command = createTransactionCommand({ type: 'REVERSAL', transactionId });
 
   function sessionWith(found: typeof stored | null) {
-    const session = new GameSession({} as never, {} as Env) as unknown as SessionInternals;
+    const session = new GameSession(
+      { setWebSocketAutoResponse: () => undefined } as never,
+      {} as Env,
+    ) as unknown as SessionInternals;
     const calls = { authorities: [] as unknown[], walletChecks: 0 };
     session.access = () => ({
       requireMember: async () => 'PLAYER',
@@ -412,7 +421,7 @@ describe('GameSession trade requests', () => {
     await send(session, command);
     expect(settlements).toBe(1);
     const types = sent.map((message) => (JSON.parse(message) as { type: string }).type);
-    expect(types).toEqual(['GAME_COMMITTED', 'PAYMENT_REQUESTS_UPDATED']);
+    expect(types).toEqual(['GAME_COMMITTED', 'TRADE_REQUESTS_UPDATED']);
   });
 
   it('announces a created, declined or cancelled request as a pending-requests update', async () => {
@@ -433,9 +442,9 @@ describe('GameSession trade requests', () => {
     for (const [index, command] of commands.entries())
       await send(session, { ...command, commandId: ids[index] });
     expect(sent.map((message) => (JSON.parse(message) as { type: string }).type)).toEqual([
-      'PAYMENT_REQUESTS_UPDATED',
-      'PAYMENT_REQUESTS_UPDATED',
-      'PAYMENT_REQUESTS_UPDATED',
+      'TRADE_REQUESTS_UPDATED',
+      'TRADE_REQUESTS_UPDATED',
+      'TRADE_REQUESTS_UPDATED',
     ]);
   });
 });

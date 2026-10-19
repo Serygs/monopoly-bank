@@ -24,6 +24,14 @@ async function readAuction(context: AuthedRouteContext): Promise<Response> {
   return dependencies.live.readAuction(gameId, actor);
 }
 
+async function readVersion(context: AuthedRouteContext): Promise<Response> {
+  const { requestId, dependencies, actor } = context;
+  const gameId = gameIdOf(context);
+  await dependencies.access.requireMember(gameId, actor.id);
+  if (dependencies.live === undefined) return liveUnavailable(requestId);
+  return dependencies.live.readVersion(gameId, actor);
+}
+
 async function startAuction(context: AuthedRouteContext): Promise<Response> {
   const { request, requestId, dependencies, actor } = context;
   const gameId = gameIdOf(context);
@@ -54,6 +62,7 @@ async function placeBid(context: AuthedRouteContext): Promise<Response> {
 
 export const auctionRoutes: Route<AuthedRouteContext>[] = [
   route('GET', /^\/api\/games\/([^/]+)\/auction$/, readAuction),
+  route('GET', /^\/api\/games\/([^/]+)\/version$/, readVersion),
   route('POST', /^\/api\/games\/([^/]+)\/auctions$/, startAuction),
   route('POST', /^\/api\/games\/([^/]+)\/auctions\/([^/]+)\/bids$/, placeBid),
 ];

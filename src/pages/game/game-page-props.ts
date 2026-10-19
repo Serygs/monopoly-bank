@@ -11,6 +11,7 @@ export function headerProps(ctx: GameContext, liveStatus: LiveStatus, onBack: ()
     jackpot: details.jackpot,
     canManage: details.canManage,
     liveStatus,
+    refresh: ctx.refresh,
     offline,
     onBack,
     onOpenActivity: () => dialogs.activity.setOpen(true),

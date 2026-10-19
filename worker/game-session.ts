@@ -1,6 +1,7 @@
 import type { AuctionResponse, GameDetails } from '../shared/contracts/api.js';
 import {
   isLiveMutationCommand,
+  type GameVersionResponse,
   type LiveGameState,
   type LiveMutationCommand,
   type LiveServerEvent,
@@ -67,6 +68,7 @@ export class GameSession {
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
     this.env = env;
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -79,6 +81,7 @@ export class GameSession {
     if (path === '/mutation') return this.mutate(gameId, userId, request);
     if (path === '/auction' && request.method === 'GET')
       return this.readAuction(gameId, userId, request);
+    if (path === '/version' && request.method === 'GET') return this.readVersion();
     return Response.json(
       { error: { code: 'NOT_FOUND', message: 'Endpoint not found.', requestId } },
       { status: 404, headers: { 'x-request-id': requestId } },
@@ -133,6 +136,12 @@ export class GameSession {
 
   async webSocketClose(): Promise<void> {
     await this.broadcastPresence();
+  }
+
+  private async readVersion(): Promise<Response> {
+    return Response.json({
+      data: { stateVersion: await this.stateVersion() } satisfies GameVersionResponse,
+    });
   }
 
   /**
@@ -644,19 +653,21 @@ export class GameSession {
           ? { bankruptPlayerId: command.request.playerId }
           : {}),
       });
-    // Trade requests share the pending-requests event: clients refetch their pending items. An
-    // accepted trade also commits (GAME_COMMITTED above); a bankruptcy cancels the player's trades.
     if (
       command.type === 'ACCEPT_PAYMENT_REQUEST' ||
       command.type === 'DECLINE_PAYMENT_REQUEST' ||
       command.type === 'CANCEL_PAYMENT_REQUEST' ||
+      command.type === 'DECLARE_BANKRUPTCY'
+    )
+      await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion });
+    if (
       command.type === 'CREATE_TRADE_REQUEST' ||
       command.type === 'ACCEPT_TRADE_REQUEST' ||
       command.type === 'DECLINE_TRADE_REQUEST' ||
       command.type === 'CANCEL_TRADE_REQUEST' ||
       command.type === 'DECLARE_BANKRUPTCY'
     )
-      await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion });
+      await this.broadcast({ type: 'TRADE_REQUESTS_UPDATED', stateVersion });
     // A bankrupt leading bidder withdraws the bid, which changes the running auction.
     if (command.type === 'DECLARE_BANKRUPTCY') {
       const deadline = await this.ctx.storage.get<AuctionDeadline>(AUCTION_DEADLINE_KEY);

@@ -1,4 +1,5 @@
 import type { Game } from '../../../shared/types/monopoly';
+import type { RefreshControl } from '../../hooks/useGameSync';
 import { OverflowMenu, type OverflowMenuItem } from '../../components/OverflowMenu';
 import { PageHeader } from '../../components/PageHeader';
 import { Button, MoneyValue, StatPill, Toolbar } from '../../components/ui';
@@ -38,12 +39,87 @@ const liveStatusToneClass: Record<LiveStatus, string> = {
   offline: 'text-danger',
 };
 
+const refreshButtonClass = 'size-[44px] min-h-[44px] min-w-[44px] p-0';
+const refreshToneClass: Record<RefreshControl['state'], string> = {
+  idle: 'text-secondary',
+  busy: 'text-secondary',
+  done: 'text-status-text',
+  error: 'text-danger',
+};
+
+function RefreshIcon({ state }: { state: RefreshControl['state'] }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={state === 'busy' ? 'animate-spin motion-reduce:animate-none' : undefined}
+    >
+      {state === 'done' ? (
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      ) : (
+        <>
+          <path d="M20 11a8 8 0 0 0-14.4-4.4L4 8" />
+          <path d="M4 4v4h4" />
+          <path d="M4 13a8 8 0 0 0 14.4 4.4L20 16" />
+          <path d="M20 20v-4h-4" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function RefreshButton({ refresh, offline }: { refresh: RefreshControl; offline: boolean }) {
+  const { t } = useLanguage();
+  const message =
+    refresh.state === 'done'
+      ? t('refreshGameDone')
+      : refresh.state === 'error'
+        ? t('refreshGameFailed')
+        : '';
+  return (
+    <span className="relative inline-flex">
+      <span
+        role="status"
+        className={
+          message === ''
+            ? 'sr-only'
+            : cx(
+                'absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-md bg-surface-elevated px-2 py-1 text-small shadow-sm',
+                refreshToneClass[refresh.state],
+              )
+        }
+      >
+        {message}
+      </span>
+      <Button
+        variant="quiet"
+        iconOnly
+        className={cx(refreshButtonClass, refreshToneClass[refresh.state])}
+        aria-label={t('refreshGame')}
+        aria-busy={refresh.state === 'busy'}
+        disabled={offline || refresh.state === 'busy'}
+        onClick={refresh.run}
+      >
+        <RefreshIcon state={refresh.state} />
+      </Button>
+    </span>
+  );
+}
+
 export interface GameHeaderProps {
   game: Game;
   /** The Free Parking pot; shown only when the game has the jackpot rule. */
   jackpot?: number | undefined;
   canManage: boolean | undefined;
   liveStatus: LiveStatus;
+  refresh: RefreshControl;
   offline: boolean;
   onBack: () => void;
   onOpenActivity: () => void;
@@ -59,6 +135,7 @@ export function GameHeader({
   jackpot,
   canManage,
   liveStatus,
+  refresh,
   offline,
   onBack,
   onOpenActivity,
@@ -107,7 +184,7 @@ export function GameHeader({
             <span aria-hidden="true">←</span>
             {t('savedGames')}
           </Button>
-          <div className="flex items-center gap-(--mb-space-3)">
+          <div className="flex items-center gap-(--mb-space-2)">
             {game.status === 'ACTIVE' && (
               <StatPill live className={cx(liveStatusClass, liveStatusToneClass[liveStatus])}>
                 {liveStatus === 'live'
@@ -119,6 +196,7 @@ export function GameHeader({
                       : t('connectionOffline')}
               </StatPill>
             )}
+            {game.status !== 'FINISHED' && <RefreshButton refresh={refresh} offline={offline} />}
             {managerItems.length > 0 && (
               <div className="md:hidden">
                 <OverflowMenu label={t('gameActions', { name: game.name })} items={managerItems} />

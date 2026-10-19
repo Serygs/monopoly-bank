@@ -2,9 +2,8 @@ import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } 
 import type { AuctionResponse, GameDetails, PaymentRequest } from '../../shared/contracts/api';
 import type { Transaction } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
-import type { LiveStatus } from '../pages/game/GameHeader';
 import { newerAuction } from '../utils/auction';
-import { useGameLiveConnection } from './useGameLiveConnection';
+import { useGameSync } from './useGameSync';
 import { useWakeLock } from './useWakeLock';
 
 const MAX_LIVE_TRANSACTIONS = 50;
@@ -114,11 +113,12 @@ export function useGameData(gameId: string, offline: boolean, keepScreenAwake: b
     status === 'ACTIVE' && !offline,
   );
   const seededTransactions = useSeededTransactions(gameId, status === 'ACTIVE' && !offline);
-  const liveStatus: LiveStatus = useGameLiveConnection({
+  const { liveStatus, refresh } = useGameSync({
     gameId,
     enabled: details !== null && status !== 'FINISHED' && !offline,
     setDetails,
     setLiveTransactions,
+    setPaymentRequests,
     loadPaymentRequests,
   });
   const auctionPolling =
@@ -138,6 +138,7 @@ export function useGameData(gameId: string, offline: boolean, keepScreenAwake: b
     liveTransactions,
     seededTransactions,
     liveStatus,
+    refresh,
     ...auction,
   };
 }
