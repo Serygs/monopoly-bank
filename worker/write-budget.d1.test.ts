@@ -15,23 +15,23 @@ const enabled = process.env.D1_WRITE_BUDGET === '1';
 const ORIGIN = 'http://localhost';
 
 const BUDGET: Record<string, number> = {
-  'create lobby': 100,
-  join: 19,
-  start: 5,
-  transfer: 24,
-  'pass go': 15,
-  'property purchase': 20,
-  'pay rent': 20,
-  'trade request': 9,
-  'trade accept': 34,
-  mortgage: 26,
+  'create lobby': 72,
+  join: 18,
+  start: 4,
+  transfer: 20,
+  'pass go': 12,
+  'property purchase': 16,
+  'pay rent': 16,
+  'trade request': 8,
+  'trade accept': 28,
+  mortgage: 22,
   'dice roll': 3,
   reconnect: 0,
   'tab switch': 0,
-  finish: 43,
+  finish: 42,
   'deferred cleanup': 36,
 };
-const SCENARIO_BUDGET = 976;
+const SCENARIO_BUDGET = 829;
 
 interface Usage {
   written: number;
