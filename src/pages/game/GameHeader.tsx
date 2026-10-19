@@ -2,6 +2,7 @@ import type { Game } from '../../../shared/types/monopoly';
 import type { RefreshControl } from '../../hooks/useGameSync';
 import { OverflowMenu, type OverflowMenuItem } from '../../components/OverflowMenu';
 import { PageHeader } from '../../components/PageHeader';
+import { RefreshIcon } from '../../components/RefreshIcon';
 import { Button, MoneyValue, StatPill, Toolbar } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
@@ -46,34 +47,6 @@ const refreshToneClass: Record<RefreshControl['state'], string> = {
   done: 'text-status-text',
   error: 'text-danger',
 };
-
-function RefreshIcon({ state }: { state: RefreshControl['state'] }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      width="20"
-      height="20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={state === 'busy' ? 'animate-spin motion-reduce:animate-none' : undefined}
-    >
-      {state === 'done' ? (
-        <path d="M5 12.5l4.5 4.5L19 7.5" />
-      ) : (
-        <>
-          <path d="M20 11a8 8 0 0 0-14.4-4.4L4 8" />
-          <path d="M4 4v4h4" />
-          <path d="M4 13a8 8 0 0 0 14.4 4.4L20 16" />
-          <path d="M20 20v-4h-4" />
-        </>
-      )}
-    </svg>
-  );
-}
 
 function RefreshButton({ refresh, offline }: { refresh: RefreshControl; offline: boolean }) {
   const { t } = useLanguage();

@@ -47,6 +47,8 @@ export function StatisticsScreen({
   currency,
   loans = [],
   finished = false,
+  onPullRefresh,
+  refreshing,
   onClose,
 }: {
   summary: { winners: Player[] } & LedgerStatistics;
@@ -54,6 +56,8 @@ export function StatisticsScreen({
   /** The loans still ACTIVE; with a finished game each player's net after debts is shown. */
   loans?: Loan[];
   finished?: boolean;
+  onPullRefresh?: () => void;
+  refreshing?: boolean;
   onClose: () => void;
 }) {
   const { t } = useLanguage();
@@ -72,6 +76,8 @@ export function StatisticsScreen({
       closeLabel={t('closeDialog', { title: t('statistics') })}
       onClose={onClose}
       className={wideDialogClass}
+      onPullRefresh={onPullRefresh}
+      refreshing={refreshing}
     >
       <section className={reportClass}>
         <header className={reportHeaderClass}>

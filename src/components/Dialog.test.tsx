@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type CSSProperties } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -166,5 +166,57 @@ describe('Dialog', () => {
       expect(motion.length).toBeGreaterThan(0);
       expect(motion.every((name) => /motion-(safe|reduce):/.test(name))).toBe(true);
     }
+  });
+});
+
+function pullPanel(panel: Element, distance: number, scrollTop = 0) {
+  Object.defineProperty(panel, 'scrollTop', { configurable: true, value: scrollTop });
+  fireEvent.touchStart(panel, { touches: [{ clientX: 10, clientY: 100 }] });
+  fireEvent.touchMove(panel, { touches: [{ clientX: 10, clientY: 100 + distance }] });
+  fireEvent.touchEnd(panel, { changedTouches: [{ clientX: 0, clientY: 0 }] });
+}
+
+describe('Dialog pull to refresh', () => {
+  function renderPullDialog(onPullRefresh: (() => void) | undefined) {
+    render(
+      <Dialog title="Sheet" closeLabel="Close" onClose={() => {}} onPullRefresh={onPullRefresh}>
+        <p>Body</p>
+      </Dialog>,
+    );
+    const panel = document.querySelector('.dialog');
+    if (panel === null) throw new Error('missing panel');
+    return panel;
+  }
+
+  it('refreshes once after a pull past the threshold at the top', () => {
+    const onPullRefresh = vi.fn();
+    pullPanel(renderPullDialog(onPullRefresh), 160);
+    expect(onPullRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a short pull', () => {
+    const onPullRefresh = vi.fn();
+    pullPanel(renderPullDialog(onPullRefresh), 60);
+    expect(onPullRefresh).not.toHaveBeenCalled();
+  });
+
+  it('ignores a pull while the panel is scrolled', () => {
+    const onPullRefresh = vi.fn();
+    pullPanel(renderPullDialog(onPullRefresh), 160, 20);
+    expect(onPullRefresh).not.toHaveBeenCalled();
+  });
+
+  it('ignores a mostly horizontal move', () => {
+    const onPullRefresh = vi.fn();
+    const panel = renderPullDialog(onPullRefresh);
+    fireEvent.touchStart(panel, { touches: [{ clientX: 0, clientY: 100 }] });
+    fireEvent.touchMove(panel, { touches: [{ clientX: 300, clientY: 260 }] });
+    fireEvent.touchEnd(panel, { changedTouches: [{ clientX: 0, clientY: 0 }] });
+    expect(onPullRefresh).not.toHaveBeenCalled();
+  });
+
+  it('does nothing without a refresh handler', () => {
+    pullPanel(renderPullDialog(undefined), 160);
+    expect(document.querySelector('[aria-hidden="true"].sticky')).toBeNull();
   });
 });

@@ -86,6 +86,8 @@ export function ActivityScreen({
   reversal,
   refreshKey = 0,
   board = null,
+  onPullRefresh,
+  refreshing,
   onClose,
 }: {
   gameId: string;
@@ -104,6 +106,8 @@ export function ActivityScreen({
   refreshKey?: number;
   /** Board games: names the tiles in the ledger rows. */
   board?: BoardSnapshot | null;
+  onPullRefresh?: () => void;
+  refreshing?: boolean;
   onClose: () => void;
 }) {
   const { language, locale, t } = useLanguage();
@@ -287,6 +291,8 @@ export function ActivityScreen({
       closeLabel={t('closeDialog', { title: t('activity') })}
       onClose={onClose}
       className={dialogClass}
+      onPullRefresh={onPullRefresh}
+      refreshing={refreshing}
     >
       <TabGroup as={Fragment} selectedIndex={activityScopes.indexOf(scope)} onChange={selectScope}>
         <div className={stickyClass}>
