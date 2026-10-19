@@ -23,6 +23,10 @@ Do not manually create a second Durable Object class migration with the same `v1
 
 The full release procedure, including the isolated development and staging environments, is in [deployment](deployment.md).
 
+## Dice rolls
+
+Dice history is a table tool, not game state, so it lives in the game object's storage instead of D1: one key per player (`dice:<playerId>`) holding that player's newest 100 rolls, newest first. `GET` and `POST /api/games/:id/players/:playerId/dice-rolls` are authorised and validated in the Worker (any member reads, only the wallet's controller rolls) and then forwarded to the object, which records through the same queue as commands. A roll ID is idempotent for its player and refused with `DICE_ROLL_ID_REUSED` when another player of the game used it. The history is shown only while the game is ACTIVE, and `FINISH_GAME` deletes every `dice:` key from the object. A game soft-deleted while still active keeps its hidden keys (at most 100 rolls per player), because deletion runs in the Worker rather than the object. Rolls stored in the legacy `dice_rolls` table by games that were running when this moved are still read, and copied into the object on that player's next roll; the table and its finish trigger can be dropped once no such game is active.
+
 ## Auctions (rule `auctions`)
 
 An auction is settled by the game's Durable Object, never by a client.

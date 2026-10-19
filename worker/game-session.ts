@@ -24,6 +24,7 @@ import {
   type CommandLedgerEntry,
   type CommandLedgerRepository,
 } from './repositories/command-ledger-repository.js';
+import { DurableObjectDiceRollRepository } from './repositories/durable-dice-roll-repository.js';
 import { D1GameAccessRepository } from './repositories/game-access-repository.js';
 import { D1GameCompletionRepository } from './repositories/game-completion-repository.js';
 import { D1GameRepository } from './repositories/game-repository.js';
@@ -37,6 +38,9 @@ import { D1PlayerRepository } from './repositories/player-repository.js';
 import { D1TransactionRepository } from './repositories/transaction-repository.js';
 import { DefaultAuctionService } from './services/auction-service.js';
 import { DefaultBankingService } from './services/banking-service.js';
+import { DefaultDiceRollService } from './services/dice-roll-service.js';
+import { readDiceHistoryLimit } from './routes/route-support.js';
+import { parseRecordDiceRollRequest, parseResourceId } from './validation/api-validation.js';
 import { ConflictError, ResourceNotFoundError, ValidationError } from './services/errors.js';
 import { handleError } from './services/error-handler.js';
 import { GameAccessService } from './services/game-access-service.js';
@@ -82,6 +86,7 @@ export class GameSession {
     if (path === '/auction' && request.method === 'GET')
       return this.readAuction(gameId, userId, request);
     if (path === '/version' && request.method === 'GET') return this.readVersion();
+    if (path === '/dice-rolls') return this.diceRolls(gameId, userId, request);
     return Response.json(
       { error: { code: 'NOT_FOUND', message: 'Endpoint not found.', requestId } },
       { status: 404, headers: { 'x-request-id': requestId } },
@@ -136,6 +141,28 @@ export class GameSession {
 
   async webSocketClose(): Promise<void> {
     await this.broadcastPresence();
+  }
+
+  private async diceRolls(gameId: string, userId: string, request: Request): Promise<Response> {
+    const headers = { 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() };
+    try {
+      const url = new URL(request.url);
+      const playerId = parseResourceId(url.searchParams.get('playerId') ?? '', 'playerId');
+      const database = this.env.MONOPOLY_BANK_DB;
+      const service = new DefaultDiceRollService({
+        games: new D1GameRepository(database),
+        rolls: new DurableObjectDiceRollRepository(this.ctx.storage, database),
+      });
+      if (request.method === 'POST') {
+        const body = await parseRecordDiceRollRequest(request);
+        const roll = await this.serialize(() => service.record(gameId, playerId, body));
+        return Response.json({ data: roll }, { status: 201, headers });
+      }
+      const rolls = await service.list(gameId, playerId, readDiceHistoryLimit(request));
+      return Response.json({ data: rolls }, { headers });
+    } catch (error) {
+      return handleError(error, { ...context(request, gameId, userId), path: '/dice-rolls' });
+    }
   }
 
   private async readVersion(): Promise<Response> {
@@ -831,6 +858,7 @@ export class GameSession {
     await new ProfileStatisticsService(
       new D1GameCompletionRepository(this.env.MONOPOLY_BANK_DB),
     ).recordCompletedGame(gameId, participants);
+    await new DurableObjectDiceRollRepository(this.ctx.storage, this.env.MONOPOLY_BANK_DB).clear();
     return details;
   }
 }

@@ -35,7 +35,9 @@ export class DefaultDiceRollService implements DiceRollService {
   }
 
   async list(gameId: string, playerId: string, limit: number): Promise<DiceRoll[]> {
-    if ((await this.games.getById(gameId)) === null) throw new ResourceNotFoundError('Game');
+    const game = await this.games.getById(gameId);
+    if (game === null) throw new ResourceNotFoundError('Game');
+    if (game.status !== 'ACTIVE') return [];
     return this.rolls.listForPlayer(gameId, playerId, limit);
   }
 }

@@ -27,36 +27,35 @@ export interface CommandLedgerRepository {
   }): Promise<void>;
 }
 
+type CommandClaim = Omit<
+  CommandLedgerEntry,
+  'status' | 'resultStatus' | 'resultJson' | 'resultTransactionId'
+>;
+
 export class D1CommandLedgerRepository implements CommandLedgerRepository {
   private readonly database: D1Database;
+  private readonly claims = new Map<string, CommandClaim>();
   constructor(database: D1Database) {
     this.database = database;
   }
-  async claim(
-    input: Omit<
-      CommandLedgerEntry,
-      'status' | 'resultStatus' | 'resultJson' | 'resultTransactionId'
-    >,
-  ): Promise<CommandLedgerEntry> {
+  async claim(input: CommandClaim): Promise<CommandLedgerEntry> {
     try {
-      await this.database
-        .prepare(
-          "INSERT INTO command_ledger (game_id, command_id, actor_id, command_type, payload_hash, status) VALUES (?, ?, ?, ?, ?, 'PENDING') ON CONFLICT(game_id, command_id) DO NOTHING",
-        )
-        .bind(input.gameId, input.commandId, input.actorId, input.commandType, input.payloadHash)
-        .run();
       const row = await this.database
         .prepare(
           'SELECT game_id, command_id, actor_id, command_type, payload_hash, status, result_status, result_json, result_transaction_id FROM command_ledger WHERE game_id = ? AND command_id = ?',
         )
         .bind(input.gameId, input.commandId)
         .first<CommandLedgerRow>();
-      if (row === null)
-        throw new DatabaseError({
-          operation: 'claimCommand',
-          cause: new Error('Command was not persisted.'),
-        });
-      const entry = mapEntry(row);
+      const entry: CommandLedgerEntry =
+        row === null
+          ? {
+              ...input,
+              status: 'PENDING',
+              resultStatus: null,
+              resultJson: null,
+              resultTransactionId: null,
+            }
+          : mapEntry(row);
       if (
         entry.actorId !== input.actorId ||
         entry.commandType !== input.commandType ||
@@ -66,9 +65,10 @@ export class D1CommandLedgerRepository implements CommandLedgerRepository {
           'COMMAND_ID_REUSED',
           'This command ID belongs to a different command.',
         );
+      if (entry.status === 'PENDING') this.claims.set(claimKey(input), input);
       return entry;
     } catch (cause) {
-      if (cause instanceof ConflictError || cause instanceof DatabaseError) throw cause;
+      if (cause instanceof ConflictError) throw cause;
       throw new DatabaseError({ operation: 'claimCommand', cause });
     }
   }
@@ -79,19 +79,42 @@ export class D1CommandLedgerRepository implements CommandLedgerRepository {
     result: unknown;
     transactionId: string | null;
   }): Promise<void> {
+    const claim = this.claims.get(claimKey(input));
     try {
+      if (claim === undefined) {
+        await this.database
+          .prepare(
+            "UPDATE command_ledger SET status = 'COMPLETED', result_status = ?, result_json = ?, result_transaction_id = ?, completed_at = CURRENT_TIMESTAMP WHERE game_id = ? AND command_id = ? AND status = 'PENDING'",
+          )
+          .bind(
+            input.status,
+            JSON.stringify(input.result),
+            input.transactionId,
+            input.gameId,
+            input.commandId,
+          )
+          .run();
+        return;
+      }
       await this.database
         .prepare(
-          "UPDATE command_ledger SET status = 'COMPLETED', result_status = ?, result_json = ?, result_transaction_id = ?, completed_at = CURRENT_TIMESTAMP WHERE game_id = ? AND command_id = ? AND status = 'PENDING'",
+          `INSERT INTO command_ledger (game_id, command_id, actor_id, command_type, payload_hash, status, result_status, result_json, result_transaction_id, completed_at)
+           VALUES (?, ?, ?, ?, ?, 'COMPLETED', ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(game_id, command_id) DO UPDATE SET status = 'COMPLETED', result_status = excluded.result_status, result_json = excluded.result_json, result_transaction_id = excluded.result_transaction_id, completed_at = excluded.completed_at
+           WHERE command_ledger.status = 'PENDING'`,
         )
         .bind(
+          claim.gameId,
+          claim.commandId,
+          claim.actorId,
+          claim.commandType,
+          claim.payloadHash,
           input.status,
           JSON.stringify(input.result),
           input.transactionId,
-          input.gameId,
-          input.commandId,
         )
         .run();
+      this.claims.delete(claimKey(input));
     } catch (cause) {
       throw new DatabaseError({ operation: 'completeCommand', cause });
     }
@@ -120,4 +143,7 @@ function mapEntry(row: CommandLedgerRow): CommandLedgerEntry {
     resultJson: row.result_json,
     resultTransactionId: row.result_transaction_id,
   };
+}
+function claimKey(input: { gameId: string; commandId: string }): string {
+  return `${input.gameId}\u0000${input.commandId}`;
 }

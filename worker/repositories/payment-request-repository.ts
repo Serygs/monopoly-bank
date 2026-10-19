@@ -6,6 +6,7 @@ import type {
 import type { PendingTransaction, PlayerBalanceChange } from '../../shared/domain/banking.js';
 import { DatabaseError } from '../services/errors.js';
 import { guardedBalanceUpdate } from './balance-statements.js';
+import { recentAmountStatement } from './recent-amounts.js';
 
 /** How long a payment or trade request waits for an answer. */
 export const PAYMENT_REQUEST_TTL_MS = 5 * 60 * 1000;
@@ -197,21 +198,6 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
                 newLoan.principal,
               ),
           ];
-    const recentStatements = [
-      this.database
-        .prepare('DELETE FROM game_recent_amounts WHERE game_id = ? AND amount = ?')
-        .bind(input.transaction.gameId, input.transaction.amount),
-      this.database
-        .prepare(
-          'INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
-        )
-        .bind(input.transaction.gameId, input.transaction.amount),
-      this.database
-        .prepare(
-          'DELETE FROM game_recent_amounts WHERE game_id = ? AND amount NOT IN (SELECT amount FROM game_recent_amounts WHERE game_id = ? ORDER BY used_at DESC, amount DESC LIMIT 5)',
-        )
-        .bind(input.transaction.gameId, input.transaction.gameId),
-    ];
     try {
       await this.database.batch([
         balanceStatement,
@@ -219,7 +205,11 @@ export class D1PaymentRequestRepository implements PaymentRequestRepository {
         ...participants,
         requestStatement,
         ...loanStatements,
-        ...recentStatements,
+        await recentAmountStatement(
+          this.database,
+          input.transaction.gameId,
+          input.transaction.amount,
+        ),
       ]);
     } catch (cause) {
       throw new DatabaseError({ operation: 'settlePaymentRequest', cause });

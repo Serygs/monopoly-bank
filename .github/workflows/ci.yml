@@ -41,6 +41,9 @@ jobs:
       - name: Verify migrations against local D1
         run: npm run test:d1
 
+      - name: Check D1 rows written per operation
+        run: npm run test:write-budget
+
       - name: Build production assets
         run: npm run build
 

@@ -164,21 +164,61 @@ describe('D1CommandLedgerRepository on SQLite', () => {
     repository = new D1CommandLedgerRepository(d1(database));
   });
 
-  it('claims a command as pending and replays the same claim', async () => {
-    const pending = {
-      ...input,
-      status: 'PENDING',
-      resultStatus: null,
-      resultJson: null,
-      resultTransactionId: null,
-    };
+  const pending = {
+    ...input,
+    status: 'PENDING',
+    resultStatus: null,
+    resultJson: null,
+    resultTransactionId: null,
+  };
+
+  it('claims a new command as pending without writing a row', async () => {
     expect(await repository.claim(input)).toEqual(pending);
     expect(await repository.claim(input)).toEqual(pending);
+    expect(rows(database, 'SELECT * FROM command_ledger')).toEqual([]);
+  });
+
+  it('writes nothing for a command that never completed', async () => {
+    await repository.claim(input);
+    const retry = new D1CommandLedgerRepository(d1(database));
+    expect(await retry.claim({ ...input, payloadHash: 'h2' })).toEqual({
+      ...pending,
+      payloadHash: 'h2',
+    });
+    expect(rows(database, 'SELECT * FROM command_ledger')).toEqual([]);
+  });
+
+  it('completes a pending row written before commands were recorded once', async () => {
+    database
+      .prepare(
+        "INSERT INTO command_ledger (game_id, command_id, actor_id, command_type, payload_hash, status) VALUES ('g1', 'c1', 'a1', 'PAY', 'h1', 'PENDING')",
+      )
+      .run();
+    expect(await repository.claim(input)).toEqual(pending);
+    await repository.complete({
+      gameId: 'g1',
+      commandId: 'c1',
+      status: 201,
+      result: { ok: true },
+      transactionId: 't1',
+    });
+    expect(await repository.claim(input)).toMatchObject({
+      status: 'COMPLETED',
+      resultStatus: 201,
+      resultJson: '{"ok":true}',
+    });
     expect(rows(database, 'SELECT * FROM command_ledger')).toHaveLength(1);
   });
 
   it('rejects a reused command ID that differs in actor, type or payload', async () => {
     await repository.claim(input);
+    await repository.complete({
+      gameId: 'g1',
+      commandId: 'c1',
+      status: 200,
+      result: null,
+      transactionId: null,
+    });
     for (const change of [{ actorId: 'a2' }, { commandType: 'OTHER' }, { payloadHash: 'h2' }]) {
       const attempt = repository.claim({ ...input, ...change });
       await expect(attempt).rejects.toBeInstanceOf(ConflictError);
@@ -224,9 +264,7 @@ describe('D1CommandLedgerRepository on SQLite', () => {
       result: 1,
       transactionId: null,
     });
-    expect(rows<{ status: string }>(database, 'SELECT status FROM command_ledger')[0].status).toBe(
-      'PENDING',
-    );
+    expect(rows(database, 'SELECT * FROM command_ledger')).toEqual([]);
   });
 
   it('wraps storage failures without leaking the cause message', async () => {
@@ -245,23 +283,6 @@ describe('D1CommandLedgerRepository on SQLite', () => {
         transactionId: null,
       }),
     ).rejects.toMatchObject({ code: 'DATABASE_ERROR', operation: 'completeCommand' });
-  });
-
-  it('reports a missing row after the insert as a database error', async () => {
-    const empty = {
-      prepare: () => {
-        const statement = {
-          bind: () => statement,
-          run: async () => ({ meta: { changes: 0 } }),
-          first: async () => null,
-        };
-        return statement;
-      },
-    } as unknown as D1Database;
-    await expect(new D1CommandLedgerRepository(empty).claim(input)).rejects.toMatchObject({
-      code: 'DATABASE_ERROR',
-      operation: 'claimCommand',
-    });
   });
 });
 

@@ -489,12 +489,18 @@ describe('D1GameRepository behaviour', () => {
         }
       }
       await games.recordRecentAmount('g1', 99);
+      expect(await games.listRecentAmounts('g1')).toEqual([99, 7, 6, 5, 4]);
       expect(
-        rows<{ amount: number }>(
+        rows<{ recent_amounts: string }>(
           database,
-          "SELECT amount FROM game_recent_amounts WHERE game_id = 'g1' ORDER BY used_at DESC, amount DESC",
-        ).map((row) => row.amount),
-      ).toEqual([99, 7, 6, 5, 4]);
+          "SELECT recent_amounts FROM games WHERE id = 'g1'",
+        ).map((row) => row.recent_amounts),
+      ).toEqual(['[99,7,6,5,4]']);
+      exec(
+        database,
+        "INSERT INTO game_recent_amounts (game_id, amount, used_at) VALUES ('g1', 500, '2099-01-01 00:00:00')",
+      );
+      expect(await games.listRecentAmounts('g1')).toEqual([99, 7, 6, 5, 4]);
       expect(await games.listRecentAmounts('g2')).toEqual([7]);
     });
   });

@@ -86,12 +86,6 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
     limit: number,
   ): Promise<ActivityPage> {
     if (playerIds.length === 0) return { transactions: [], paymentRequests: [], nextCursor: null };
-    await this.database
-      .prepare(
-        "UPDATE payment_requests SET state = 'EXPIRED', resolved_at = CURRENT_TIMESTAMP WHERE game_id = ? AND state = 'PENDING' AND expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
-      )
-      .bind(gameId)
-      .run();
     const cursorClause =
       cursor === null ? '' : 'AND (created_at < ? OR (created_at = ? AND id < ?))';
     const values: (string | number)[] = [gameId, ...playerIds];
@@ -99,7 +93,7 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
     values.push(limit + 1);
     const rows = await this.database
       .prepare(
-        `SELECT * FROM payment_requests WHERE game_id = ? AND state = 'PENDING' AND (creator_player_id IN (${playerIds.map(() => '?').join(', ')}) OR approver_player_id IN (${playerIds.map(() => '?').join(', ')})) ${cursorClause} ORDER BY created_at DESC, id DESC LIMIT ?`,
+        `SELECT * FROM payment_requests WHERE game_id = ? AND state = 'PENDING' AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AND (creator_player_id IN (${playerIds.map(() => '?').join(', ')}) OR approver_player_id IN (${playerIds.map(() => '?').join(', ')})) ${cursorClause} ORDER BY created_at DESC, id DESC LIMIT ?`,
       )
       .bind(gameId, ...playerIds, ...values.slice(1))
       .all<PaymentRequestRow>();

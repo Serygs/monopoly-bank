@@ -14,6 +14,7 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --passWithNoTests",
     "test:d1": "node scripts/test-d1-migrations.mjs",
+    "test:write-budget": "D1_WRITE_BUDGET=1 vitest run --project node worker/write-budget.d1.test.ts",
     "test:worker": "vitest run worker/game-session.test.ts worker/routes/api-router.test.ts",
     "test:e2e": "playwright test",
     "test:visual": "PLAYWRIGHT_VISUAL=1 playwright test --project=visual",
