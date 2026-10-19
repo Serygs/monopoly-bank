@@ -183,6 +183,26 @@ describe('dice roll routes', () => {
     expect(m.diceRolls.record).toHaveBeenCalledWith(G, P1, { id: R, dieOne: 3, dieTwo: 4 });
   });
 
+  it('hands reads and checked rolls to the game object when it is configured', async () => {
+    const { router, m } = harness({ live: true });
+    expect(await read(await router(request('GET', `${url}?limit=5`)))).toEqual({
+      data: [{ id: 'live' }],
+    });
+    expect(m.live.listDiceRolls).toHaveBeenCalledWith(G, USER, P1, 5);
+    const response = await router(request('POST', url, { id: R, dieOne: 3, dieTwo: 4 }));
+    expect(response.status).toBe(201);
+    expect(m.access.requirePlayerController).toHaveBeenCalledWith(G, USER.id, P1);
+    expect(m.live.recordDiceRoll).toHaveBeenCalledWith(G, USER, P1, {
+      id: R,
+      dieOne: 3,
+      dieTwo: 4,
+    });
+    expect(m.diceRolls.list).not.toHaveBeenCalled();
+    expect(m.diceRolls.record).not.toHaveBeenCalled();
+    expect((await router(request('POST', url, { id: R, dieOne: 9, dieTwo: 4 }))).status).toBe(400);
+    expect(m.live.recordDiceRoll).toHaveBeenCalledTimes(1);
+  });
+
   it('says dice are unavailable when the service is not configured, and refuses other methods', async () => {
     const { router } = harness({ dice: false });
     const response = await router(request('GET', url));

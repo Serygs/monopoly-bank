@@ -745,12 +745,13 @@ export class DefaultBankingService implements BankingService {
         : null;
     // A purchase can change the rent of its colour group (a full group doubles it).
     const board = game.settings?.board;
+    const tilesById = new Map(board?.tiles.map((tile) => [tile.id, tile]));
     const groupTileIds =
       board == null
         ? []
         : (original.tileIds ?? (original.tileId == null ? [] : [original.tileId])).flatMap(
             (tileId) => {
-              const tile = board.tiles.find((item) => item.id === tileId);
+              const tile = tilesById.get(tileId);
               return tile === undefined ? [] : groupTiles(board, tile).map((item) => item.id);
             },
           );
@@ -1199,8 +1200,9 @@ export class DefaultBankingService implements BankingService {
             }));
     if (pairs.length === 0) throw new NoOtherActivePlayersError();
     const auction = await this.runningAuction(game);
+    const playersById = new Map(players.map((player) => [player.id, player]));
     for (const pair of pairs) {
-      const payer = players.find((player) => player.id === pair.payerPlayerId);
+      const payer = playersById.get(pair.payerPlayerId);
       if (payer === undefined || pair.payerPlayerId === pair.recipientPlayerId)
         throw new ConflictError(
           'INVALID_PAYMENT_REQUEST',
@@ -1277,8 +1279,9 @@ function assertRegistryMatches(
   registry: readonly GameProperty[],
   changes: readonly PropertyChange[],
 ): void {
+  const rowsByTile = new Map(registry.map((row) => [row.tileId, row]));
   for (const change of changes) {
-    const row = registry.find((candidate) => candidate.tileId === change.tileId);
+    const row = rowsByTile.get(change.tileId);
     if (
       row === undefined ||
       row.ownerPlayerId !== change.before.ownerPlayerId ||

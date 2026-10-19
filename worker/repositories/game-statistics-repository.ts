@@ -1,11 +1,5 @@
-import type {
-  ActivityCursor,
-  ActivityPage,
-  LedgerStatistics,
-  PaymentRequest,
-  PaymentRequestKind,
-  PaymentRequestState,
-} from '../../shared/contracts/api.js';
+import type { ActivityCursor, ActivityPage, LedgerStatistics } from '../../shared/contracts/api.js';
+import { mapPaymentRequest, type PaymentRequestRow } from './payment-request-repository.js';
 import { D1TradeRequestRepository } from './trade-request-repository.js';
 import {
   calculateBalanceSeries,
@@ -92,12 +86,6 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
     limit: number,
   ): Promise<ActivityPage> {
     if (playerIds.length === 0) return { transactions: [], paymentRequests: [], nextCursor: null };
-    await this.database
-      .prepare(
-        "UPDATE payment_requests SET state = 'EXPIRED', resolved_at = CURRENT_TIMESTAMP WHERE game_id = ? AND state = 'PENDING' AND expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
-      )
-      .bind(gameId)
-      .run();
     const cursorClause =
       cursor === null ? '' : 'AND (created_at < ? OR (created_at = ? AND id < ?))';
     const values: (string | number)[] = [gameId, ...playerIds];
@@ -105,7 +93,7 @@ export class D1GameStatisticsRepository implements GameStatisticsRepository {
     values.push(limit + 1);
     const rows = await this.database
       .prepare(
-        `SELECT * FROM payment_requests WHERE game_id = ? AND state = 'PENDING' AND (creator_player_id IN (${playerIds.map(() => '?').join(', ')}) OR approver_player_id IN (${playerIds.map(() => '?').join(', ')})) ${cursorClause} ORDER BY created_at DESC, id DESC LIMIT ?`,
+        `SELECT * FROM payment_requests WHERE game_id = ? AND state = 'PENDING' AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AND (creator_player_id IN (${playerIds.map(() => '?').join(', ')}) OR approver_player_id IN (${playerIds.map(() => '?').join(', ')})) ${cursorClause} ORDER BY created_at DESC, id DESC LIMIT ?`,
       )
       .bind(gameId, ...playerIds, ...values.slice(1))
       .all<PaymentRequestRow>();
@@ -282,41 +270,6 @@ interface PlayerMetricRow {
 function emptyMetric(player_id: string): PlayerMetricRow {
   return { player_id, sent: 0, received: 0, transaction_count: 0, pass_go_count: 0 };
 }
-interface PaymentRequestRow {
-  id: string;
-  kind: PaymentRequestKind;
-  game_id: string;
-  payer_player_id: string;
-  recipient_player_id: string;
-  creator_player_id: string;
-  approver_player_id: string;
-  amount: number;
-  comment: string | null;
-  state: PaymentRequestState;
-  expires_at: string;
-  created_at: string;
-  resolved_at: string | null;
-  transaction_id: string | null;
-}
-function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
-  return {
-    id: row.id,
-    kind: row.kind,
-    gameId: row.game_id,
-    payerPlayerId: row.payer_player_id,
-    recipientPlayerId: row.recipient_player_id,
-    creatorPlayerId: row.creator_player_id,
-    approverPlayerId: row.approver_player_id,
-    amount: row.amount,
-    comment: row.comment,
-    state: row.state,
-    expiresAt: row.expires_at,
-    createdAt: row.created_at,
-    resolvedAt: row.resolved_at,
-    transactionId: row.transaction_id,
-  };
-}
-
 /**
  * Statistics count what the game actually moved: a reversed transaction and the reversal that
  * undid it cancel out, so neither is counted. Both stay in the activity history.

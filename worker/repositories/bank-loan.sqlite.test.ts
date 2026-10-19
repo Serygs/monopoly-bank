@@ -266,8 +266,8 @@ describe('persisted bank loans', () => {
       amount: 150,
       participants: [{ playerId: 'b', balanceDelta: 150 }],
     });
-    expect(database.prepare('SELECT amount FROM game_recent_amounts').all()).toEqual([
-      { amount: 150 },
+    expect(database.prepare('SELECT recent_amounts FROM games').all()).toEqual([
+      { recent_amounts: '[150]' },
     ]);
   });
 

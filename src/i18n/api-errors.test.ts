@@ -98,7 +98,7 @@ describe('API error code table', () => {
     ['INSUFFICIENT_AVAILABLE_FUNDS', 'errorInsufficientAvailableFunds'],
   ] as const;
 
-  const unmapped = [
+  const newlyMapped = [
     'BANKRUPTCY_CREDITOR_SHORT',
     'BOARD_DISABLED',
     'BUILD_MORTGAGED_GROUP',
@@ -145,9 +145,18 @@ describe('API error code table', () => {
     }
   });
 
-  it.each(unmapped)('falls back to the operation message for %s today', (code) => {
+  it.each(newlyMapped)('shows a dedicated message for %s in both languages', (code) => {
+    for (const language of ['en', 'uk'] as const) {
+      const t = (k: Parameters<typeof translate>[1]) => translate(language, k);
+      const message = apiErrorMessage(failure(code), t, 'unableJoinGame');
+      expect(message).not.toBe('');
+      expect(message).not.toBe(t('unableJoinGame'));
+    }
+  });
+
+  it('does not treat an inherited object property as an error code', () => {
     const t = (k: Parameters<typeof translate>[1]) => translate('en', k);
-    expect(apiErrorMessage(failure(code), t, 'unableJoinGame')).toBe(t('unableJoinGame'));
+    expect(apiErrorMessage(failure('constructor'), t, 'unableJoinGame')).toBe(t('unableJoinGame'));
   });
 
   it('uses the fallback for anything that is not an API error', () => {
@@ -158,7 +167,7 @@ describe('API error code table', () => {
 
   it('picks the fallback the caller asked for', () => {
     const t = (k: Parameters<typeof translate>[1]) => translate('en', k);
-    expect(apiErrorMessage(failure('TILE_NOT_FOUND'), t, 'unableAuthenticate')).toBe(
+    expect(apiErrorMessage(failure('SOME_UNKNOWN_CODE'), t, 'unableAuthenticate')).toBe(
       t('unableAuthenticate'),
     );
   });

@@ -12,6 +12,7 @@ import type {
   CreateBankingCommandResponse,
   CreateTradeRequestBody,
   CreateTradeRequestResponse,
+  TradeRequest,
   TradeRequestActionResponse,
   CreateGameRequest,
   CreateInvitationResponse,
@@ -38,6 +39,7 @@ import type {
   UpgradeGuestRequest,
   UserProfile,
 } from '../../shared/contracts/api.js';
+import type { GameVersionResponse } from '../../shared/contracts/live.js';
 import type { Transaction } from '../../shared/types/monopoly.js';
 import type { Player, Game } from '../../shared/types/monopoly.js';
 
@@ -130,6 +132,8 @@ export interface MonopolyBankApi {
   declareBankruptcy(gameId: string, request: BankruptcyRequest): Promise<CreateTransactionResponse>;
   /** The active auction, or the one that closed most recently (polling fallback). */
   getAuction(gameId: string): Promise<AuctionResponse>;
+  getGameVersion(gameId: string): Promise<GameVersionResponse>;
+  listTradeRequests(gameId: string): Promise<TradeRequest[]>;
   startAuction(
     gameId: string,
     request: StartAuctionRequest,
@@ -388,6 +392,12 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
       `/api/games/${encodeURIComponent(gameId)}/bankruptcy`,
       commandInit({ method: 'POST', body: JSON.stringify(input) }),
     );
+  }
+  async getGameVersion(gameId: string): Promise<GameVersionResponse> {
+    return request<GameVersionResponse>(`/api/games/${encodeURIComponent(gameId)}/version`);
+  }
+  async listTradeRequests(gameId: string): Promise<TradeRequest[]> {
+    return request<TradeRequest[]>(`/api/games/${encodeURIComponent(gameId)}/trade-requests`);
   }
   async getAuction(gameId: string): Promise<AuctionResponse> {
     return request<AuctionResponse>(`/api/games/${encodeURIComponent(gameId)}/auction`);

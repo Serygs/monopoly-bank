@@ -15,6 +15,7 @@ import { useLanguage } from '../../i18n/language-context';
 import { formatJoinCode, joinInviteLink } from '../../utils/join-code';
 import { createLocalQr } from '../../utils/local-qr';
 import { LocalQr } from './LocalQr';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 export interface InviteDialogProps {
   /** The game's one join code: what the link and QR open, and what the manual form accepts. */
@@ -50,8 +51,7 @@ export function InviteDialog({
   const code = regenerated ?? joinCode;
   const [copied, setCopied] = useState(false);
   const [confirmingRegenerate, setConfirmingRegenerate] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
-  const [error, setError] = useState<unknown | null>(null);
+  const { busy: regenerating, error, run } = useAsyncAction();
   const timer = useRef<number | null>(null);
   useEffect(
     () => () => {
@@ -93,19 +93,13 @@ export function InviteDialog({
   };
   const regenerate = async () => {
     if (gameId === undefined || regenerating) return;
-    setRegenerating(true);
-    setError(null);
-    try {
+    await run(async () => {
       const result = await monopolyBankApi.regenerateJoinCode(gameId);
       setRegenerated(result.joinCode);
       onCodeChanged?.(result.joinCode);
       setConfirmingRegenerate(false);
       notify({ tone: 'success', message: t('inviteCodeRegenerated') });
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setRegenerating(false);
-    }
+    });
   };
 
   // A link too long for the local encoder just drops the QR; copy and share still work.

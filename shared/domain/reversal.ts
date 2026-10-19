@@ -1,4 +1,5 @@
 import type { Transaction, TransactionType } from '../types/monopoly.js';
+import { type ParticipantSide, soleParticipant } from './participants.js';
 
 /** How long after a transaction its own player may still reverse it. The game owner has no limit. */
 export const REVERSAL_WINDOW_MS = 15 * 60 * 1000;
@@ -37,39 +38,30 @@ export function reversibleTransaction(transaction: Pick<Transaction, 'type' | 't
  * the receiving player of money paid in (from the bank, or by everyone). `null` when the record
  * has no such single player.
  */
+const REVERSAL_INITIATOR_SIDE: Partial<Record<TransactionType, ParticipantSide>> = {
+  PLAYER_TO_PLAYER: 'DEBIT',
+  PAY_RENT: 'DEBIT',
+  PLAYER_TO_BANK: 'DEBIT',
+  MORTGAGE_REDEMPTION: 'DEBIT',
+  PROPERTY_BUILD: 'DEBIT',
+  AUCTION_PAYMENT: 'DEBIT',
+  PROPERTY_PURCHASE: 'DEBIT',
+  PLAYER_TO_ALL: 'DEBIT',
+  BANK_TO_PLAYER: 'CREDIT',
+  PASS_GO: 'CREDIT',
+  MORTGAGE: 'CREDIT',
+  PROPERTY_SELL_BUILDING: 'CREDIT',
+  ALL_TO_PLAYER: 'CREDIT',
+};
+
 export function reversalInitiatorPlayerId(
   transaction: Pick<Transaction, 'type' | 'participants'> & {
     initiatorPlayerId?: string | null;
   },
 ): string | null {
-  const debited = transaction.participants.filter((participant) => participant.balanceDelta < 0);
-  const credited = transaction.participants.filter((participant) => participant.balanceDelta > 0);
-  switch (transaction.type) {
-    case 'PLAYER_TO_PLAYER':
-    case 'PAY_RENT':
-    case 'PLAYER_TO_BANK':
-    case 'MORTGAGE_REDEMPTION':
-    case 'PROPERTY_BUILD':
-    case 'AUCTION_PAYMENT':
-    case 'PROPERTY_PURCHASE':
-    case 'PLAYER_TO_ALL':
-      return debited.length === 1 ? (debited[0]?.playerId ?? null) : null;
-    case 'BANK_TO_PLAYER':
-    case 'PASS_GO':
-    case 'MORTGAGE':
-    case 'PROPERTY_SELL_BUILDING':
-    case 'ALL_TO_PLAYER':
-      return credited.length === 1 ? (credited[0]?.playerId ?? null) : null;
-    case 'PROPERTY_TRANSFER':
-      return transaction.initiatorPlayerId ?? null;
-    case 'BANKRUPTCY_TRANSFER':
-    case 'REVERSAL':
-    case 'LOAN_ISSUE':
-    case 'LOAN_REPAYMENT':
-    case 'TO_JACKPOT':
-    case 'JACKPOT_PAYOUT':
-      return null;
-  }
+  if (transaction.type === 'PROPERTY_TRANSFER') return transaction.initiatorPlayerId ?? null;
+  const side = REVERSAL_INITIATOR_SIDE[transaction.type];
+  return side === undefined ? null : soleParticipant(transaction.participants, side);
 }
 
 /** D1 stores `YYYY-MM-DD HH:MM:SS` in UTC; ISO strings from the live channel already carry a zone. */
@@ -140,7 +132,8 @@ export function findReversalDependency(
   later: readonly Transaction[],
   groupTileIds: readonly string[] = [],
 ): Transaction | null {
-  const originalTiles = tilesOf(original);
+  const originalTiles = new Set(tilesOf(original));
+  const groupTiles = new Set(groupTileIds);
   const playerIds = new Set(original.participants.map((participant) => participant.playerId));
   return (
     later.find(
@@ -150,8 +143,8 @@ export function findReversalDependency(
         ((dependentTypes.includes(candidate.type) &&
           candidate.participants.some((participant) => playerIds.has(participant.playerId))) ||
           (registryTypes.includes(candidate.type) &&
-            tilesOf(candidate).some((tileId) => originalTiles.includes(tileId))) ||
-          (tilesOf(candidate).some((tileId) => groupTileIds.includes(tileId)) &&
+            tilesOf(candidate).some((tileId) => originalTiles.has(tileId))) ||
+          (tilesOf(candidate).some((tileId) => groupTiles.has(tileId)) &&
             (groupBlockers[original.type]?.includes(candidate.type) ?? false))),
     ) ?? null
   );

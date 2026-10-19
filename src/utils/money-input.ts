@@ -1,4 +1,5 @@
 import type { AmountUnit } from './preferences';
+import { groupThousands } from './money';
 
 export interface AmountInputState {
   digits: string;
@@ -108,7 +109,7 @@ export function changeAmountUnit(state: AmountInputState, unit: AmountUnit): Amo
 export function formatDigitsDisplay(digits: string, decimalSeparator: string): string {
   if (digits === '') return '';
   const dot = digits.indexOf('.');
-  const whole = (dot === -1 ? digits : digits.slice(0, dot)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const whole = groupThousands(dot === -1 ? digits : digits.slice(0, dot));
   return dot === -1 ? whole : `${whole}${decimalSeparator}${digits.slice(dot + 1)}`;
 }
 

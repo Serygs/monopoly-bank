@@ -74,10 +74,15 @@ export type LiveServerEvent =
   | { type: 'GAME_FINISHED'; stateVersion: number; details: GameDetails }
   | { type: 'LOBBY_UPDATED'; stateVersion: number; details: Pick<GameDetails, 'game' | 'players'> }
   | { type: 'PAYMENT_REQUESTS_UPDATED'; stateVersion: number }
+  | { type: 'TRADE_REQUESTS_UPDATED'; stateVersion: number }
   /** The auction started, got a bid or closed (a closed sale also sends GAME_COMMITTED). */
   | { type: 'AUCTION_UPDATED'; stateVersion: number; auction: Auction | null }
   | { type: 'PRESENCE_UPDATED'; stateVersion: number; connectedActors: number }
   | { type: 'HEARTBEAT'; stateVersion: number };
+
+export interface GameVersionResponse {
+  stateVersion: number;
+}
 
 export type LiveMutationResponse =
   | CreateBankingCommandResponse
@@ -87,60 +92,62 @@ export type LiveMutationResponse =
   | AuctionResponse
   | GameDetails;
 
+const COMMAND_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+type CommandBodyCheck = (value: Record<string, unknown>) => boolean;
+
+const hasRequest: CommandBodyCheck = (value) => 'request' in value;
+const hasString =
+  (...keys: string[]): CommandBodyCheck =>
+  (value) =>
+    keys.every((key) => typeof value[key] === 'string');
+
+const COMMAND_BODY_CHECKS: Record<LiveMutationCommand['type'], CommandBodyCheck> = {
+  CREATE_TRANSACTION: hasRequest,
+  DECLARE_BANKRUPTCY: hasRequest,
+  CREATE_TRADE_REQUEST: hasRequest,
+  START_AUCTION: (value) => isStartAuctionRequest(value.request),
+  PLACE_BID: (value) => isPlaceBidRequest(value.request),
+  FINISH_GAME: (value) =>
+    Array.isArray(value.winnerPlayerIds) &&
+    (value.winnerPlayerIds as unknown[]).every((id) => typeof id === 'string'),
+  START_GAME: () => true,
+  REMOVE_PLAYER: hasString('playerId'),
+  JOIN_LOBBY: (value) =>
+    hasString('playerId', 'nickname', 'color')(value) && typeof value.startingBalance === 'number',
+  ACCEPT_TRADE_REQUEST: hasString('tradeRequestId'),
+  DECLINE_TRADE_REQUEST: hasString('tradeRequestId'),
+  CANCEL_TRADE_REQUEST: hasString('tradeRequestId'),
+  ACCEPT_PAYMENT_REQUEST: hasString('paymentRequestId'),
+  DECLINE_PAYMENT_REQUEST: hasString('paymentRequestId'),
+  CANCEL_PAYMENT_REQUEST: hasString('paymentRequestId'),
+};
+
 export function isLiveMutationCommand(value: unknown): value is LiveMutationCommand {
-  if (value === null || typeof value !== 'object' || !('type' in value) || !('commandId' in value))
-    return false;
-  const command = value as { type?: unknown; commandId?: unknown };
-  return (
-    typeof command.commandId === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-      command.commandId,
-    ) &&
-    (command.type === 'CREATE_TRANSACTION' ||
-      command.type === 'DECLARE_BANKRUPTCY' ||
-      command.type === 'FINISH_GAME' ||
-      command.type === 'ACCEPT_PAYMENT_REQUEST' ||
-      command.type === 'DECLINE_PAYMENT_REQUEST' ||
-      command.type === 'CANCEL_PAYMENT_REQUEST' ||
-      command.type === 'CREATE_TRADE_REQUEST' ||
-      command.type === 'ACCEPT_TRADE_REQUEST' ||
-      command.type === 'DECLINE_TRADE_REQUEST' ||
-      command.type === 'CANCEL_TRADE_REQUEST' ||
-      command.type === 'START_GAME' ||
-      command.type === 'JOIN_LOBBY' ||
-      command.type === 'REMOVE_PLAYER' ||
-      command.type === 'START_AUCTION' ||
-      command.type === 'PLACE_BID') &&
-    (command.type === 'CREATE_TRANSACTION' ||
-    command.type === 'DECLARE_BANKRUPTCY' ||
-    command.type === 'CREATE_TRADE_REQUEST'
-      ? 'request' in value
-      : command.type === 'START_AUCTION'
-        ? isStartAuctionRequest((value as { request?: unknown }).request)
-        : command.type === 'PLACE_BID'
-          ? isPlaceBidRequest((value as { request?: unknown }).request)
-          : command.type === 'FINISH_GAME'
-            ? Array.isArray((value as { winnerPlayerIds?: unknown }).winnerPlayerIds) &&
-              ((value as { winnerPlayerIds?: unknown[] }).winnerPlayerIds ?? []).every(
-                (id) => typeof id === 'string',
-              )
-            : command.type === 'START_GAME'
-              ? true
-              : command.type === 'REMOVE_PLAYER'
-                ? typeof (value as { playerId?: unknown }).playerId === 'string'
-                : command.type === 'JOIN_LOBBY'
-                  ? typeof (value as { playerId?: unknown }).playerId === 'string' &&
-                    typeof (value as { nickname?: unknown }).nickname === 'string' &&
-                    typeof (value as { color?: unknown }).color === 'string' &&
-                    typeof (value as { startingBalance?: unknown }).startingBalance === 'number'
-                  : command.type === 'ACCEPT_TRADE_REQUEST' ||
-                      command.type === 'DECLINE_TRADE_REQUEST' ||
-                      command.type === 'CANCEL_TRADE_REQUEST'
-                    ? typeof (value as { tradeRequestId?: unknown }).tradeRequestId === 'string'
-                    : typeof (value as { paymentRequestId?: unknown }).paymentRequestId ===
-                      'string')
-  );
+  if (!isRecord(value) || !('type' in value) || !('commandId' in value)) return false;
+  const { type, commandId } = value;
+  if (typeof commandId !== 'string' || !COMMAND_ID_PATTERN.test(commandId)) return false;
+  if (typeof type !== 'string' || !Object.hasOwn(COMMAND_BODY_CHECKS, type)) return false;
+  return COMMAND_BODY_CHECKS[type as LiveMutationCommand['type']](value);
 }
+
+type EventBodyCheck = (value: Record<string, unknown>) => boolean;
+
+const EVENT_BODY_CHECKS: Record<
+  Exclude<LiveServerEvent['type'], 'GAME_SNAPSHOT'>,
+  EventBodyCheck
+> = {
+  GAME_COMMITTED: (value) => isRecord(value.transaction) && Array.isArray(value.players),
+  GAME_FINISHED: (value) => isRecord(value.details),
+  LOBBY_UPDATED: (value) =>
+    isRecord(value.details) && isRecord(value.details.game) && Array.isArray(value.details.players),
+  AUCTION_UPDATED: (value) => value.auction === null || isRecord(value.auction),
+  PRESENCE_UPDATED: (value) => isNonNegativeInteger(value.connectedActors),
+  PAYMENT_REQUESTS_UPDATED: () => true,
+  TRADE_REQUESTS_UPDATED: () => true,
+  HEARTBEAT: () => true,
+};
 
 export function isLiveServerEvent(value: unknown): value is LiveServerEvent {
   if (!isRecord(value) || typeof value.type !== 'string') return false;
@@ -151,19 +158,8 @@ export function isLiveServerEvent(value: unknown): value is LiveServerEvent {
       Array.isArray(value.state.transactions) &&
       isRecord(value.state.details)
     );
-  if (!isVersion(value.stateVersion)) return false;
-  if (value.type === 'GAME_COMMITTED')
-    return isRecord(value.transaction) && Array.isArray(value.players);
-  if (value.type === 'GAME_FINISHED') return isRecord(value.details);
-  if (value.type === 'LOBBY_UPDATED')
-    return (
-      isRecord(value.details) &&
-      isRecord(value.details.game) &&
-      Array.isArray(value.details.players)
-    );
-  if (value.type === 'AUCTION_UPDATED') return value.auction === null || isRecord(value.auction);
-  if (value.type === 'PRESENCE_UPDATED') return isNonNegativeInteger(value.connectedActors);
-  return value.type === 'PAYMENT_REQUESTS_UPDATED' || value.type === 'HEARTBEAT';
+  if (!isVersion(value.stateVersion) || !Object.hasOwn(EVENT_BODY_CHECKS, value.type)) return false;
+  return EVENT_BODY_CHECKS[value.type as keyof typeof EVENT_BODY_CHECKS](value);
 }
 
 function isStartAuctionRequest(value: unknown): boolean {

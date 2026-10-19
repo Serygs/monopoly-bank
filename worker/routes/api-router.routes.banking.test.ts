@@ -27,6 +27,19 @@ describe('auction routes', () => {
     expect((await read(none)).error?.code).toBe('LIVE_UNAVAILABLE');
   });
 
+  it('reads the state version through the live game for a member only', async () => {
+    const { router, m } = harness({ live: true });
+    const response = await router(request('GET', `/api/games/${G}/version`));
+    expect(await read(response)).toEqual({ data: { stateVersion: 3 } });
+    expect(m.access.requireMember).toHaveBeenCalledWith(G, USER.id);
+    expect(m.live.readVersion).toHaveBeenCalledWith(G, USER);
+    m.live.readVersion.mockClear();
+    m.access.requireMember.mockRejectedValue(new ForbiddenError());
+    const refused = await router(request('GET', `/api/games/${G}/version`));
+    expect(refused.status).toBe(403);
+    expect(m.live.readVersion).not.toHaveBeenCalled();
+  });
+
   it('starts an auction for a wallet the caller controls', async () => {
     const { router, m } = harness({ live: true });
     await router(request('POST', `/api/games/${G}/auctions`, lot, withCommand));

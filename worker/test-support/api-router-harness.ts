@@ -102,7 +102,7 @@ export function harness(options: { live?: boolean; statistics?: boolean; dice?: 
     ),
     statistics: fns('getFinalSnapshot', 'calculate', 'saveFinalSnapshot', 'pending', 'activity'),
     diceRolls: fns('list', 'record'),
-    live: fns('mutate', 'connect', 'readAuction'),
+    live: fns('mutate', 'connect', 'readAuction', 'readVersion', 'listDiceRolls', 'recordDiceRoll'),
     profileStatistics: fns('recordCompletedGame'),
     metrics: fns('record'),
   };
@@ -128,6 +128,11 @@ export function harness(options: { live?: boolean; statistics?: boolean; dice?: 
   m.live.mutate.mockImplementation(async () => Response.json({ data: { live: 'mutated' } }));
   m.live.connect.mockImplementation(async () => Response.json({ data: { live: 'connected' } }));
   m.live.readAuction.mockImplementation(async () => Response.json({ data: { live: 'auction' } }));
+  m.live.readVersion.mockImplementation(async () => Response.json({ data: { stateVersion: 3 } }));
+  m.live.listDiceRolls.mockImplementation(async () => Response.json({ data: [{ id: 'live' }] }));
+  m.live.recordDiceRoll.mockImplementation(async () =>
+    Response.json({ data: { id: 'live' } }, { status: 201 }),
+  );
   const wiring = {
     games: m.games,
     banking: m.banking,

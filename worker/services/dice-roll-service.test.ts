@@ -75,8 +75,13 @@ describe('DefaultDiceRollService', () => {
     });
   });
 
-  it('lists the history of a finished game too (the database has emptied it)', async () => {
-    const { service: dice } = service({ game: game('FINISHED') });
+  it('lists the history of an active game', async () => {
+    const { service: dice } = service({ game: game('ACTIVE') });
     await expect(dice.list('game-1', 'player-1', 20)).resolves.toEqual([stored]);
+  });
+
+  it.each(['LOBBY', 'FINISHED'] as const)('shows no history in a %s game', async (status) => {
+    const { service: dice } = service({ game: game(status) });
+    await expect(dice.list('game-1', 'player-1', 20)).resolves.toEqual([]);
   });
 });

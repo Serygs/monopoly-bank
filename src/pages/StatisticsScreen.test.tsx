@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import type { LedgerStatistics } from '../../shared/contracts/api';
 import type { Player } from '../../shared/types/monopoly';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -120,5 +120,27 @@ describe('StatisticsScreen without winners', () => {
     renderScreen(false, { ...summary, winners: [] });
     expect(screen.queryByText('No winner')).toBeNull();
     expect(screen.getByRole('heading', { level: 3, name: 'Statistics' })).toBeInTheDocument();
+  });
+});
+
+describe('StatisticsScreen pull to refresh', () => {
+  it('calls the refresh handler after a pull from the top', () => {
+    const onPullRefresh = vi.fn();
+    render(
+      <LanguageProvider>
+        <StatisticsScreen
+          summary={summary}
+          currency="USD"
+          onPullRefresh={onPullRefresh}
+          onClose={() => {}}
+        />
+      </LanguageProvider>,
+    );
+    const panel = document.querySelector('.dialog');
+    if (panel === null) throw new Error('missing panel');
+    fireEvent.touchStart(panel, { touches: [{ clientX: 0, clientY: 0 }] });
+    fireEvent.touchMove(panel, { touches: [{ clientX: 0, clientY: 150 }] });
+    fireEvent.touchEnd(panel, { changedTouches: [{ clientX: 0, clientY: 0 }] });
+    expect(onPullRefresh).toHaveBeenCalledTimes(1);
   });
 });

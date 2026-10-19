@@ -6,6 +6,7 @@ import { tileDisplayNames } from '../../utils/property-name';
 import { transactionAmount, transactionDescription } from '../../utils/transaction-history';
 import { Button, MoneyValue, Row } from '../ui';
 import { cx } from '../ui/class-names';
+import { dateTimeFormat } from '../../utils/date-time';
 
 export type TransactionTone = 'income' | 'expense';
 
@@ -53,7 +54,7 @@ export function TransactionRow({
   const tileNames = tileDisplayNames(board, tileIds, (key) => translate(language, key));
   const tileName = tileNames === '' ? undefined : tileNames;
   const title = transactionDescription(transaction, players, language, tileName);
-  const timestamp = new Intl.DateTimeFormat(
+  const timestamp = dateTimeFormat(
     locale,
     variant === 'compact'
       ? { timeStyle: 'short', hourCycle: 'h23' }

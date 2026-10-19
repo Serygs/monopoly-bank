@@ -1,6 +1,7 @@
 import type { AuctionResponse, GameDetails } from '../shared/contracts/api.js';
 import {
   isLiveMutationCommand,
+  type GameVersionResponse,
   type LiveGameState,
   type LiveMutationCommand,
   type LiveServerEvent,
@@ -23,6 +24,7 @@ import {
   type CommandLedgerEntry,
   type CommandLedgerRepository,
 } from './repositories/command-ledger-repository.js';
+import { DurableObjectDiceRollRepository } from './repositories/durable-dice-roll-repository.js';
 import { D1GameAccessRepository } from './repositories/game-access-repository.js';
 import { D1GameCompletionRepository } from './repositories/game-completion-repository.js';
 import { D1GameRepository } from './repositories/game-repository.js';
@@ -36,6 +38,9 @@ import { D1PlayerRepository } from './repositories/player-repository.js';
 import { D1TransactionRepository } from './repositories/transaction-repository.js';
 import { DefaultAuctionService } from './services/auction-service.js';
 import { DefaultBankingService } from './services/banking-service.js';
+import { DefaultDiceRollService } from './services/dice-roll-service.js';
+import { readDiceHistoryLimit } from './routes/route-support.js';
+import { parseRecordDiceRollRequest, parseResourceId } from './validation/api-validation.js';
 import { ConflictError, ResourceNotFoundError, ValidationError } from './services/errors.js';
 import { handleError } from './services/error-handler.js';
 import { GameAccessService } from './services/game-access-service.js';
@@ -67,6 +72,7 @@ export class GameSession {
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
     this.env = env;
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -79,6 +85,8 @@ export class GameSession {
     if (path === '/mutation') return this.mutate(gameId, userId, request);
     if (path === '/auction' && request.method === 'GET')
       return this.readAuction(gameId, userId, request);
+    if (path === '/version' && request.method === 'GET') return this.readVersion();
+    if (path === '/dice-rolls') return this.diceRolls(gameId, userId, request);
     return Response.json(
       { error: { code: 'NOT_FOUND', message: 'Endpoint not found.', requestId } },
       { status: 404, headers: { 'x-request-id': requestId } },
@@ -133,6 +141,34 @@ export class GameSession {
 
   async webSocketClose(): Promise<void> {
     await this.broadcastPresence();
+  }
+
+  private async diceRolls(gameId: string, userId: string, request: Request): Promise<Response> {
+    const headers = { 'x-request-id': request.headers.get('x-request-id') ?? crypto.randomUUID() };
+    try {
+      const url = new URL(request.url);
+      const playerId = parseResourceId(url.searchParams.get('playerId') ?? '', 'playerId');
+      const database = this.env.MONOPOLY_BANK_DB;
+      const service = new DefaultDiceRollService({
+        games: new D1GameRepository(database),
+        rolls: new DurableObjectDiceRollRepository(this.ctx.storage, database),
+      });
+      if (request.method === 'POST') {
+        const body = await parseRecordDiceRollRequest(request);
+        const roll = await this.serialize(() => service.record(gameId, playerId, body));
+        return Response.json({ data: roll }, { status: 201, headers });
+      }
+      const rolls = await service.list(gameId, playerId, readDiceHistoryLimit(request));
+      return Response.json({ data: rolls }, { headers });
+    } catch (error) {
+      return handleError(error, { ...context(request, gameId, userId), path: '/dice-rolls' });
+    }
+  }
+
+  private async readVersion(): Promise<Response> {
+    return Response.json({
+      data: { stateVersion: await this.stateVersion() } satisfies GameVersionResponse,
+    });
   }
 
   /**
@@ -364,14 +400,12 @@ export class GameSession {
     return pending;
   }
 
-  private async execute(
-    gameId: string,
-    userId: string,
-    command: LiveMutationCommand,
-  ): Promise<ResponsePayload> {
-    if (command.type === 'START_GAME')
-      return { status: 200, data: await this.gameService().startGame(gameId) };
-    if (command.type === 'JOIN_LOBBY') {
+  private readonly executors: Executors = {
+    START_GAME: async (gameId) => ({
+      status: 200,
+      data: await this.gameService().startGame(gameId),
+    }),
+    JOIN_LOBBY: async (gameId, userId, command) => {
       await this.access().joinLobby({
         gameId,
         userId,
@@ -381,60 +415,93 @@ export class GameSession {
         startingBalance: command.startingBalance,
       });
       return { status: 201, data: await this.gameService().getGame(gameId) };
-    }
-    if (command.type === 'REMOVE_PLAYER') {
+    },
+    REMOVE_PLAYER: async (gameId, userId, command) => {
       await this.access().removeLobbyPlayer(gameId, userId, command.playerId);
       return { status: 200, data: await this.gameService().getGame(gameId) };
-    }
-    if (command.type === 'START_AUCTION') {
+    },
+    START_AUCTION: async (gameId, _userId, command) => {
       const data = await this.auctions().startAuction(gameId, command.request, command.commandId);
       if (data.auction?.state === 'ACTIVE') await this.armAuction(gameId, data.auction);
       return { status: 201, data };
-    }
-    if (command.type === 'PLACE_BID') {
+    },
+    PLACE_BID: async (gameId, _userId, command) => {
       const data = await this.auctions().placeBid(gameId, command.request);
       // A late bid moves the end (at least 10 seconds), so the alarm moves with it.
       if (data.auction?.state === 'ACTIVE') await this.armAuction(gameId, data.auction);
       return { status: 200, data };
-    }
-    const banking = this.banking(command.commandId);
-    if (command.type === 'CREATE_TRANSACTION')
-      return { status: 201, data: await banking.createTransaction(gameId, command.request) };
-    if (command.type === 'ACCEPT_PAYMENT_REQUEST')
-      return {
-        status: 200,
-        data: await banking.acceptPaymentRequest(gameId, command.paymentRequestId),
-      };
-    if (command.type === 'DECLINE_PAYMENT_REQUEST')
-      return {
-        status: 200,
-        data: await banking.declinePaymentRequest(gameId, command.paymentRequestId),
-      };
-    if (command.type === 'CANCEL_PAYMENT_REQUEST')
-      return {
-        status: 200,
-        data: await banking.cancelPaymentRequest(gameId, command.paymentRequestId),
-      };
-    if (command.type === 'CREATE_TRADE_REQUEST')
-      return { status: 201, data: await banking.createTradeRequest(gameId, command.request) };
-    if (command.type === 'ACCEPT_TRADE_REQUEST')
-      return {
-        status: 200,
-        data: await banking.acceptTradeRequest(gameId, command.tradeRequestId),
-      };
-    if (command.type === 'DECLINE_TRADE_REQUEST')
-      return {
-        status: 200,
-        data: await banking.declineTradeRequest(gameId, command.tradeRequestId),
-      };
-    if (command.type === 'CANCEL_TRADE_REQUEST')
-      return {
-        status: 200,
-        data: await banking.cancelTradeRequest(gameId, command.tradeRequestId),
-      };
-    if (command.type === 'DECLARE_BANKRUPTCY')
-      return { status: 201, data: await banking.declareBankruptcy(gameId, command.request) };
-    return { status: 200, data: await this.finishGame(gameId, command.winnerPlayerIds) };
+    },
+    CREATE_TRANSACTION: async (gameId, _userId, command) => ({
+      status: 201,
+      data: await this.banking(command.commandId).createTransaction(gameId, command.request),
+    }),
+    ACCEPT_PAYMENT_REQUEST: async (gameId, _userId, command) => ({
+      status: 200,
+      data: await this.banking(command.commandId).acceptPaymentRequest(
+        gameId,
+        command.paymentRequestId,
+      ),
+    }),
+    DECLINE_PAYMENT_REQUEST: async (gameId, _userId, command) => ({
+      status: 200,
+      data: await this.banking(command.commandId).declinePaymentRequest(
+        gameId,
+        command.paymentRequestId,
+      ),
+    }),
+    CANCEL_PAYMENT_REQUEST: async (gameId, _userId, command) => ({
+      status: 200,
+      data: await this.banking(command.commandId).cancelPaymentRequest(
+        gameId,
+        command.paymentRequestId,
+      ),
+    }),
+    CREATE_TRADE_REQUEST: async (gameId, _userId, command) => ({
+      status: 201,
+      data: await this.banking(command.commandId).createTradeRequest(gameId, command.request),
+    }),
+    ACCEPT_TRADE_REQUEST: async (gameId, _userId, command) => ({
+      status: 200,
+      data: await this.banking(command.commandId).acceptTradeRequest(
+        gameId,
+        command.tradeRequestId,
+      ),
+    }),
+    DECLINE_TRADE_REQUEST: async (gameId, _userId, command) => ({
+      status: 200,
+      data: await this.banking(command.commandId).declineTradeRequest(
+        gameId,
+        command.tradeRequestId,
+      ),
+    }),
+    CANCEL_TRADE_REQUEST: async (gameId, _userId, command) => ({
+      status: 200,
+      data: await this.banking(command.commandId).cancelTradeRequest(
+        gameId,
+        command.tradeRequestId,
+      ),
+    }),
+    DECLARE_BANKRUPTCY: async (gameId, _userId, command) => ({
+      status: 201,
+      data: await this.banking(command.commandId).declareBankruptcy(gameId, command.request),
+    }),
+    FINISH_GAME: async (gameId, _userId, command) => ({
+      status: 200,
+      data: await this.finishGame(gameId, command.winnerPlayerIds),
+    }),
+  };
+
+  private execute(
+    gameId: string,
+    userId: string,
+    command: LiveMutationCommand,
+  ): Promise<ResponsePayload> {
+    const run = this.executors[command.type] as (
+      gameId: string,
+      userId: string,
+      command: LiveMutationCommand,
+    ) => Promise<ResponsePayload>;
+    return run(gameId, userId, command);
   }
 
   /** Test seam for failures after a durable financial commit; production is a no-op. */
@@ -445,66 +512,98 @@ export class GameSession {
     return Promise.resolve();
   }
 
-  private async authorizeMutation(
+  private readonly authorizers: Authorizers = {
+    START_GAME: (gameId, userId) => this.access().requireOwner(gameId, userId),
+    FINISH_GAME: (gameId, userId) => this.access().requireOwner(gameId, userId),
+    REMOVE_PLAYER: (gameId, userId) => this.access().requireOwner(gameId, userId),
+    JOIN_LOBBY: async (gameId, userId) => {
+      const details = await this.gameService().getGame(gameId);
+      if (details.game.status !== 'LOBBY')
+        throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
+      return this.access().requireLobbySeat(gameId, userId, details.players.length);
+    },
+    ACCEPT_PAYMENT_REQUEST: (gameId, userId, command) =>
+      this.requirePaymentController(gameId, userId, command, 'approverPlayerId'),
+    DECLINE_PAYMENT_REQUEST: (gameId, userId, command) =>
+      this.requirePaymentController(gameId, userId, command, 'approverPlayerId'),
+    CANCEL_PAYMENT_REQUEST: (gameId, userId, command) =>
+      this.requirePaymentController(gameId, userId, command, 'creatorPlayerId'),
+    ACCEPT_TRADE_REQUEST: (gameId, userId, command) =>
+      this.requireTradeController(gameId, userId, command, 'counterpartyPlayerId'),
+    DECLINE_TRADE_REQUEST: (gameId, userId, command) =>
+      this.requireTradeController(gameId, userId, command, 'counterpartyPlayerId'),
+    CANCEL_TRADE_REQUEST: (gameId, userId, command) =>
+      this.requireTradeController(gameId, userId, command, 'proposerPlayerId'),
+    CREATE_TRADE_REQUEST: (gameId, userId, command) =>
+      this.requireMemberController(gameId, userId, command.request.playerId),
+    START_AUCTION: (gameId, userId, command) =>
+      this.requireMemberController(gameId, userId, command.request.initiatorPlayerId),
+    PLACE_BID: (gameId, userId, command) =>
+      this.requireMemberController(gameId, userId, command.request.bidderPlayerId),
+    CREATE_TRANSACTION: (gameId, userId, command) =>
+      this.authorizeBankingRequest(gameId, userId, command),
+    DECLARE_BANKRUPTCY: (gameId, userId, command) =>
+      this.authorizeBankingRequest(gameId, userId, command),
+  };
+
+  private authorizeMutation(
     gameId: string,
     userId: string,
     command: LiveMutationCommand,
   ): Promise<void> {
+    const authorize = this.authorizers[command.type] as (
+      gameId: string,
+      userId: string,
+      command: LiveMutationCommand,
+    ) => Promise<void>;
+    return authorize(gameId, userId, command);
+  }
+
+  private async requirePaymentController(
+    gameId: string,
+    userId: string,
+    command: { commandId: string; paymentRequestId: string },
+    side: 'approverPlayerId' | 'creatorPlayerId',
+  ): Promise<void> {
+    const paymentRequest = await this.banking(command.commandId).getPaymentRequest(
+      gameId,
+      command.paymentRequestId,
+    );
+    if (paymentRequest === null) throw new ValidationError('Payment request not found.');
+    return this.access().requirePlayerController(gameId, userId, paymentRequest[side]);
+  }
+
+  // The counterparty answers; only the proposer withdraws.
+  private async requireTradeController(
+    gameId: string,
+    userId: string,
+    command: { commandId: string; tradeRequestId: string },
+    side: 'counterpartyPlayerId' | 'proposerPlayerId',
+  ): Promise<void> {
+    const tradeRequest = await this.banking(command.commandId).getTradeRequest(
+      gameId,
+      command.tradeRequestId,
+    );
+    if (tradeRequest === null) throw new ValidationError('Trade request not found.');
+    return this.access().requirePlayerController(gameId, userId, tradeRequest[side]);
+  }
+
+  private async requireMemberController(
+    gameId: string,
+    userId: string,
+    playerId: string,
+  ): Promise<void> {
+    await this.access().requireMember(gameId, userId);
+    return this.access().requirePlayerController(gameId, userId, playerId);
+  }
+
+  private async authorizeBankingRequest(
+    gameId: string,
+    userId: string,
+    command: CommandOf<'CREATE_TRANSACTION' | 'DECLARE_BANKRUPTCY'>,
+  ): Promise<void> {
     const access = this.access();
-    if (
-      command.type === 'START_GAME' ||
-      command.type === 'FINISH_GAME' ||
-      command.type === 'REMOVE_PLAYER'
-    )
-      return access.requireOwner(gameId, userId);
-    if (command.type === 'JOIN_LOBBY') {
-      const details = await this.gameService().getGame(gameId);
-      if (details.game.status !== 'LOBBY')
-        throw new ConflictError('LOBBY_CLOSED', 'This lobby is no longer open for new players.');
-      return access.requireLobbySeat(gameId, userId, details.players.length);
-    }
-    if (command.type === 'ACCEPT_PAYMENT_REQUEST' || command.type === 'DECLINE_PAYMENT_REQUEST') {
-      const paymentRequest = await this.banking(command.commandId).getPaymentRequest(
-        gameId,
-        command.paymentRequestId,
-      );
-      if (paymentRequest === null) throw new ValidationError('Payment request not found.');
-      return access.requirePlayerController(gameId, userId, paymentRequest.approverPlayerId);
-    }
-    if (command.type === 'CANCEL_PAYMENT_REQUEST') {
-      const paymentRequest = await this.banking(command.commandId).getPaymentRequest(
-        gameId,
-        command.paymentRequestId,
-      );
-      if (paymentRequest === null) throw new ValidationError('Payment request not found.');
-      return access.requirePlayerController(gameId, userId, paymentRequest.creatorPlayerId);
-    }
-    if (
-      command.type === 'ACCEPT_TRADE_REQUEST' ||
-      command.type === 'DECLINE_TRADE_REQUEST' ||
-      command.type === 'CANCEL_TRADE_REQUEST'
-    ) {
-      const tradeRequest = await this.banking(command.commandId).getTradeRequest(
-        gameId,
-        command.tradeRequestId,
-      );
-      if (tradeRequest === null) throw new ValidationError('Trade request not found.');
-      // The counterparty answers; only the proposer withdraws.
-      return access.requirePlayerController(
-        gameId,
-        userId,
-        command.type === 'CANCEL_TRADE_REQUEST'
-          ? tradeRequest.proposerPlayerId
-          : tradeRequest.counterpartyPlayerId,
-      );
-    }
     await access.requireMember(gameId, userId);
-    if (command.type === 'CREATE_TRADE_REQUEST')
-      return access.requirePlayerController(gameId, userId, command.request.playerId);
-    if (command.type === 'START_AUCTION')
-      return access.requirePlayerController(gameId, userId, command.request.initiatorPlayerId);
-    if (command.type === 'PLACE_BID')
-      return access.requirePlayerController(gameId, userId, command.request.bidderPlayerId);
     const { request } = command;
     if ('type' in request && request.type === 'REVERSAL') {
       const original = await this.banking(command.commandId).getTransaction(
@@ -581,19 +680,21 @@ export class GameSession {
           ? { bankruptPlayerId: command.request.playerId }
           : {}),
       });
-    // Trade requests share the pending-requests event: clients refetch their pending items. An
-    // accepted trade also commits (GAME_COMMITTED above); a bankruptcy cancels the player's trades.
     if (
       command.type === 'ACCEPT_PAYMENT_REQUEST' ||
       command.type === 'DECLINE_PAYMENT_REQUEST' ||
       command.type === 'CANCEL_PAYMENT_REQUEST' ||
+      command.type === 'DECLARE_BANKRUPTCY'
+    )
+      await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion });
+    if (
       command.type === 'CREATE_TRADE_REQUEST' ||
       command.type === 'ACCEPT_TRADE_REQUEST' ||
       command.type === 'DECLINE_TRADE_REQUEST' ||
       command.type === 'CANCEL_TRADE_REQUEST' ||
       command.type === 'DECLARE_BANKRUPTCY'
     )
-      await this.broadcast({ type: 'PAYMENT_REQUESTS_UPDATED', stateVersion });
+      await this.broadcast({ type: 'TRADE_REQUESTS_UPDATED', stateVersion });
     // A bankrupt leading bidder withdraws the bid, which changes the running auction.
     if (command.type === 'DECLARE_BANKRUPTCY') {
       const deadline = await this.ctx.storage.get<AuctionDeadline>(AUCTION_DEADLINE_KEY);
@@ -757,9 +858,28 @@ export class GameSession {
     await new ProfileStatisticsService(
       new D1GameCompletionRepository(this.env.MONOPOLY_BANK_DB),
     ).recordCompletedGame(gameId, participants);
+    await new DurableObjectDiceRollRepository(this.ctx.storage, this.env.MONOPOLY_BANK_DB).clear();
     return details;
   }
 }
+
+type CommandOf<T extends LiveMutationCommand['type']> = Extract<LiveMutationCommand, { type: T }>;
+
+type Executors = {
+  [T in LiveMutationCommand['type']]: (
+    gameId: string,
+    userId: string,
+    command: CommandOf<T>,
+  ) => Promise<ResponsePayload>;
+};
+
+type Authorizers = {
+  [T in LiveMutationCommand['type']]: (
+    gameId: string,
+    userId: string,
+    command: CommandOf<T>,
+  ) => Promise<void>;
+};
 
 interface ResponsePayload {
   status: number;

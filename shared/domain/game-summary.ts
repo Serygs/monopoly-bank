@@ -1,4 +1,4 @@
-import type { Player, Transaction } from '../types/monopoly.js';
+import type { Player, Transaction, TransactionType } from '../types/monopoly.js';
 
 export interface FinalGameSummary {
   totalMoneyTransferred: number;
@@ -18,6 +18,27 @@ export interface FinalGameSummary {
 }
 
 /** Global volume counts each transfer once, never once per participant. */
+const PAID_TO_BANK_TYPES: ReadonlySet<TransactionType> = new Set([
+  'PLAYER_TO_BANK',
+  'MORTGAGE_REDEMPTION',
+  'PROPERTY_PURCHASE',
+  'PROPERTY_BUILD',
+  'AUCTION_PAYMENT',
+]);
+
+const RECEIVED_FROM_BANK_TYPES: ReadonlySet<TransactionType> = new Set([
+  'BANK_TO_PLAYER',
+  'PASS_GO',
+  'PROPERTY_SELL_BUILDING',
+  'MORTGAGE',
+]);
+
+const PAIRED_TYPES: ReadonlySet<TransactionType> = new Set([
+  'PLAYER_TO_PLAYER',
+  'PAY_RENT',
+  'BANKRUPTCY_TRANSFER',
+]);
+
 export function calculateFinalGameSummary(
   players: readonly Player[],
   transactions: readonly Transaction[],
@@ -66,28 +87,11 @@ export function calculateFinalGameSummary(
         else metric.received += participant.balanceDelta;
       }
     }
-    if (
-      transaction.type === 'PLAYER_TO_BANK' ||
-      transaction.type === 'MORTGAGE_REDEMPTION' ||
-      transaction.type === 'PROPERTY_PURCHASE' ||
-      transaction.type === 'PROPERTY_BUILD' ||
-      transaction.type === 'AUCTION_PAYMENT'
-    )
-      paidToBank += transaction.totalAmount;
-    if (
-      transaction.type === 'BANK_TO_PLAYER' ||
-      transaction.type === 'PASS_GO' ||
-      transaction.type === 'PROPERTY_SELL_BUILDING' ||
-      transaction.type === 'MORTGAGE'
-    )
-      receivedFromBank += transaction.totalAmount;
+    if (PAID_TO_BANK_TYPES.has(transaction.type)) paidToBank += transaction.totalAmount;
+    if (RECEIVED_FROM_BANK_TYPES.has(transaction.type)) receivedFromBank += transaction.totalAmount;
     // The cash of a trade is player-to-player money; who paid whom is not worked out for it.
     if (transaction.type === 'PROPERTY_TRANSFER') playerToPlayerTotal += transaction.totalAmount;
-    if (
-      transaction.type === 'PLAYER_TO_PLAYER' ||
-      transaction.type === 'PAY_RENT' ||
-      transaction.type === 'BANKRUPTCY_TRANSFER'
-    ) {
+    if (PAIRED_TYPES.has(transaction.type)) {
       playerToPlayerTotal += transaction.totalAmount;
       const payer = transaction.participants.find((item) => item.balanceDelta < 0);
       const recipient = transaction.participants.find((item) => item.balanceDelta > 0);

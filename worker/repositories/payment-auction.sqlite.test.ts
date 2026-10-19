@@ -258,8 +258,8 @@ describe('D1PaymentRequestRepository on SQLite', () => {
           'SELECT resolved_at FROM payment_requests',
         )[0].resolved_at,
       ).not.toBeNull();
-      expect(rows(database, 'SELECT game_id, amount FROM game_recent_amounts')).toEqual([
-        { game_id: 'game', amount: 40 },
+      expect(rows(database, "SELECT id, recent_amounts FROM games WHERE id = 'game'")).toEqual([
+        { id: 'game', recent_amounts: '[40]' },
       ]);
     });
 
@@ -279,12 +279,9 @@ describe('D1PaymentRequestRepository on SQLite', () => {
         transaction: payment(60),
         balanceChanges: [change('a', 1000, 940), change('b', 1000, 1060)],
       });
-      expect(
-        rows<{ amount: number }>(
-          database,
-          'SELECT amount FROM game_recent_amounts ORDER BY used_at DESC, amount DESC',
-        ).map((row) => row.amount),
-      ).toEqual([60, 50, 40, 30, 20]);
+      expect(rows(database, "SELECT recent_amounts FROM games WHERE id = 'game'")).toEqual([
+        { recent_amounts: '[60,50,40,30,20]' },
+      ]);
     });
 
     it('rolls everything back when a balance changed since it was read', async () => {
@@ -300,7 +297,9 @@ describe('D1PaymentRequestRepository on SQLite', () => {
       expect(balances().map((row) => row.balance)).toEqual([1000, 1000, 1000]);
       expect(rows(database, 'SELECT id FROM transactions')).toEqual([]);
       expect(stateOf('r1')).toBe('PENDING');
-      expect(rows(database, 'SELECT amount FROM game_recent_amounts')).toEqual([]);
+      expect(rows(database, "SELECT recent_amounts FROM games WHERE id = 'game'")).toEqual([
+        { recent_amounts: null },
+      ]);
     });
 
     it('rolls everything back when a payer would go negative', async () => {

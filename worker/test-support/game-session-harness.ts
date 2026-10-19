@@ -1,3 +1,4 @@
+import './auto-response-stub.js';
 import { vi, type Mock } from 'vitest';
 import { GameSession } from '../game-session.js';
 
@@ -81,6 +82,7 @@ export function harness(
       },
     },
     getWebSockets: () => sockets,
+    setWebSocketAutoResponse: vi.fn(),
     acceptWebSocket: vi.fn((ws: FakeSocket) => {
       sockets.push(ws);
     }),

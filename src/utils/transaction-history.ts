@@ -1,6 +1,146 @@
 import type { Currency, Player, Transaction } from '../../shared/types/monopoly';
-import { translate, type Language } from '../i18n/translations';
+import {
+  translate,
+  type Language,
+  type TranslationKey,
+  type TranslationValues,
+} from '../i18n/translations';
 import { formatMoney, formatMoneyDelta } from './money';
+
+interface DescriptionContext {
+  transaction: Transaction;
+  negative: Transaction['participants'][number] | undefined;
+  positive: Transaction['participants'][number] | undefined;
+  language: Language;
+  tileName: string | undefined;
+  nameOf: (id: string | undefined) => string;
+  tr: (key: TranslationKey, values?: TranslationValues) => string;
+  withTile: (text: string) => string;
+}
+
+type Describe = (context: DescriptionContext) => string;
+
+const trimmedComment = (transaction: Transaction): string | null =>
+  transaction.comment === null || transaction.comment.trim() === ''
+    ? null
+    : transaction.comment.trim();
+
+const transfer: Describe = ({ negative, positive, nameOf }) =>
+  `${nameOf(negative?.playerId)} → ${nameOf(positive?.playerId)}`;
+
+const labelled =
+  (side: 'negative' | 'positive', key: TranslationKey): Describe =>
+  (context) =>
+    context.withTile(`${context.nameOf(context[side]?.playerId)} · ${context.tr(key)}`);
+
+const toCounterparty =
+  (side: 'negative', key: TranslationKey): Describe =>
+  (context) =>
+    `${context.nameOf(context[side]?.playerId)} → ${context.tr(key)}`;
+
+const fromCounterparty =
+  (key: TranslationKey): Describe =>
+  (context) =>
+    `${context.tr(key)} → ${context.nameOf(context.positive?.playerId)}`;
+
+function describeTrade({
+  transaction,
+  negative,
+  nameOf,
+  tr,
+  withTile,
+}: DescriptionContext): string {
+  const initiator = transaction.initiatorPlayerId ?? negative?.playerId;
+  const other = transaction.participants.find((item) => item.playerId !== initiator);
+  return withTile(
+    `${nameOf(initiator ?? undefined)} ⇄ ${nameOf(other?.playerId)} · ${tr('propertyTradeLabel')}`,
+  );
+}
+
+function describeLoanIssue({ negative, positive, nameOf, tr }: DescriptionContext): string {
+  if (negative === undefined)
+    return tr('loanIssueBankDescription', { borrower: nameOf(positive?.playerId) });
+  return tr('loanIssueDescription', {
+    lender: nameOf(negative.playerId),
+    borrower: nameOf(positive?.playerId),
+  });
+}
+
+function describeLoanRepayment({ negative, positive, nameOf, tr }: DescriptionContext): string {
+  if (positive === undefined)
+    return tr('loanRepaymentBankDescription', { borrower: nameOf(negative?.playerId) });
+  return tr('loanRepaymentDescription', {
+    borrower: nameOf(negative?.playerId),
+    lender: nameOf(positive.playerId),
+  });
+}
+
+function describeJackpotPayment({ transaction, negative, nameOf, tr }: DescriptionContext): string {
+  const purpose = trimmedComment(transaction);
+  const name = nameOf(negative?.playerId);
+  return purpose === null
+    ? tr('jackpotPaymentDescription', { name })
+    : tr('jackpotPaymentForDescription', { name, purpose });
+}
+
+function describeAuctionPayment({
+  transaction,
+  negative,
+  tileName,
+  nameOf,
+  tr,
+}: DescriptionContext): string {
+  const name = nameOf(negative?.playerId);
+  if (tileName !== undefined) return tr('auctionPaymentDescription', { name, lot: tileName });
+  const lot = trimmedComment(transaction);
+  return lot === null
+    ? tr('auctionPaymentUnnamedDescription', { name })
+    : tr('auctionPaymentDescription', { name, lot });
+}
+
+function counterpartyLabel(
+  participants: Transaction['participants'],
+  nameOf: DescriptionContext['nameOf'],
+  tr: DescriptionContext['tr'],
+): string {
+  if (participants.length === 0) return tr('transactionBank');
+  if (participants.length > 1) return tr('transactionEveryone');
+  return nameOf(participants[0]?.playerId);
+}
+
+function describeReversal({ transaction, nameOf, tr }: DescriptionContext): string {
+  const debited = transaction.participants.filter((participant) => participant.balanceDelta < 0);
+  const credited = transaction.participants.filter((participant) => participant.balanceDelta > 0);
+  return `${tr('reversal')} · ${counterpartyLabel(debited, nameOf, tr)} → ${counterpartyLabel(credited, nameOf, tr)}`;
+}
+
+const DESCRIBE: Record<Transaction['type'], Describe> = {
+  PLAYER_TO_PLAYER: transfer,
+  PAY_RENT: (context) => context.withTile(`${transfer(context)} · ${context.tr('rent')}`),
+  PROPERTY_PURCHASE: labelled('negative', 'propertyPurchaseLabel'),
+  PROPERTY_TRANSFER: describeTrade,
+  PROPERTY_BUILD: labelled('negative', 'propertyBuildLabel'),
+  PROPERTY_SELL_BUILDING: labelled('positive', 'propertySellBuildingLabel'),
+  PLAYER_TO_BANK: toCounterparty('negative', 'transactionBank'),
+  BANK_TO_PLAYER: fromCounterparty('transactionBank'),
+  PLAYER_TO_ALL: toCounterparty('negative', 'transactionEveryone'),
+  ALL_TO_PLAYER: fromCounterparty('transactionEveryone'),
+  PASS_GO: ({ positive, nameOf, tr }) => `${nameOf(positive?.playerId)} · ${tr('passedGo')}`,
+  MORTGAGE: labelled('positive', 'mortgageLabel'),
+  MORTGAGE_REDEMPTION: labelled('negative', 'redemptionLabel'),
+  LOAN_ISSUE: describeLoanIssue,
+  LOAN_REPAYMENT: describeLoanRepayment,
+  TO_JACKPOT: describeJackpotPayment,
+  JACKPOT_PAYOUT: ({ positive, nameOf, tr }) =>
+    tr('jackpotPayoutDescription', { name: nameOf(positive?.playerId) }),
+  AUCTION_PAYMENT: describeAuctionPayment,
+  BANKRUPTCY_TRANSFER: ({ negative, positive, nameOf, tr }) =>
+    tr('bankruptcyTransactionDescription', {
+      source: nameOf(negative?.playerId),
+      destination: nameOf(positive?.playerId),
+    }),
+  REVERSAL: describeReversal,
+};
 
 export function transactionDescription(
   transaction: Transaction,
@@ -10,127 +150,17 @@ export function transactionDescription(
   tileName?: string,
 ): string {
   const names = new Map(players.map((player) => [player.id, player.name]));
-  const negative = transaction.participants.find((participant) => participant.balanceDelta < 0);
-  const positive = transaction.participants.find((participant) => participant.balanceDelta > 0);
-  const player = translate(language, 'playerFallback');
-  const nameOf = (id: string | undefined) =>
-    id === undefined ? player : (names.get(id) ?? player);
-  const withTile = (text: string) => (tileName === undefined ? text : `${text} · ${tileName}`);
-  switch (transaction.type) {
-    case 'PLAYER_TO_PLAYER':
-      return `${nameOf(negative?.playerId)} → ${nameOf(positive?.playerId)}`;
-    case 'PAY_RENT':
-      return withTile(
-        `${nameOf(negative?.playerId)} → ${nameOf(positive?.playerId)} · ${translate(language, 'rent')}`,
-      );
-    case 'PROPERTY_PURCHASE':
-      return withTile(
-        `${nameOf(negative?.playerId)} · ${translate(language, 'propertyPurchaseLabel')}`,
-      );
-    case 'PROPERTY_TRANSFER': {
-      const initiator = transaction.initiatorPlayerId ?? negative?.playerId;
-      const other = transaction.participants.find((item) => item.playerId !== initiator);
-      return withTile(
-        `${nameOf(initiator ?? undefined)} ⇄ ${nameOf(other?.playerId)} · ${translate(language, 'propertyTradeLabel')}`,
-      );
-    }
-    case 'PROPERTY_BUILD':
-      return withTile(
-        `${nameOf(negative?.playerId)} · ${translate(language, 'propertyBuildLabel')}`,
-      );
-    case 'PROPERTY_SELL_BUILDING':
-      return withTile(
-        `${nameOf(positive?.playerId)} · ${translate(language, 'propertySellBuildingLabel')}`,
-      );
-    case 'PLAYER_TO_BANK':
-      return `${nameOf(negative?.playerId)} → ${translate(language, 'transactionBank')}`;
-    case 'BANK_TO_PLAYER':
-      return `${translate(language, 'transactionBank')} → ${nameOf(positive?.playerId)}`;
-    case 'PLAYER_TO_ALL':
-      return `${nameOf(negative?.playerId)} → ${translate(language, 'transactionEveryone')}`;
-    case 'ALL_TO_PLAYER':
-      return `${translate(language, 'transactionEveryone')} → ${nameOf(positive?.playerId)}`;
-    case 'PASS_GO':
-      return `${nameOf(positive?.playerId)} · ${translate(language, 'passedGo')}`;
-    case 'MORTGAGE':
-      return withTile(`${nameOf(positive?.playerId)} · ${translate(language, 'mortgageLabel')}`);
-    case 'MORTGAGE_REDEMPTION':
-      return withTile(`${nameOf(negative?.playerId)} · ${translate(language, 'redemptionLabel')}`);
-    case 'LOAN_ISSUE':
-      // A bank loan has no lender participant: the money comes from the bank.
-      if (negative === undefined)
-        return translate(language, 'loanIssueBankDescription', {
-          borrower: nameOf(positive?.playerId),
-        });
-      return translate(language, 'loanIssueDescription', {
-        lender: nameOf(negative?.playerId),
-        borrower: nameOf(positive?.playerId),
-      });
-    case 'LOAN_REPAYMENT':
-      // A bank loan repayment has no player on the receiving side; the interest is not stored.
-      if (positive === undefined)
-        return translate(language, 'loanRepaymentBankDescription', {
-          borrower: nameOf(negative?.playerId),
-        });
-      return translate(language, 'loanRepaymentDescription', {
-        borrower: nameOf(negative?.playerId),
-        lender: nameOf(positive?.playerId),
-      });
-    case 'TO_JACKPOT':
-      // The comment names what was paid (e.g. "Income tax"); without one the payment is unnamed.
-      return transaction.comment === null || transaction.comment.trim() === ''
-        ? translate(language, 'jackpotPaymentDescription', { name: nameOf(negative?.playerId) })
-        : translate(language, 'jackpotPaymentForDescription', {
-            name: nameOf(negative?.playerId),
-            purpose: transaction.comment.trim(),
-          });
-    case 'JACKPOT_PAYOUT':
-      return translate(language, 'jackpotPayoutDescription', {
-        name: nameOf(positive?.playerId),
-      });
-    case 'AUCTION_PAYMENT':
-      // The comment is the lot name.
-      if (tileName !== undefined)
-        return translate(language, 'auctionPaymentDescription', {
-          name: nameOf(negative?.playerId),
-          lot: tileName,
-        });
-      return transaction.comment === null || transaction.comment.trim() === ''
-        ? translate(language, 'auctionPaymentUnnamedDescription', {
-            name: nameOf(negative?.playerId),
-          })
-        : translate(language, 'auctionPaymentDescription', {
-            name: nameOf(negative?.playerId),
-            lot: transaction.comment.trim(),
-          });
-    case 'BANKRUPTCY_TRANSFER':
-      return translate(language, 'bankruptcyTransactionDescription', {
-        source: nameOf(negative?.playerId),
-        destination: nameOf(positive?.playerId),
-      });
-    case 'REVERSAL': {
-      // Who pays whom in the correction; several payers or payees read as "everyone".
-      const debited = transaction.participants.filter(
-        (participant) => participant.balanceDelta < 0,
-      );
-      const credited = transaction.participants.filter(
-        (participant) => participant.balanceDelta > 0,
-      );
-      const from =
-        debited.length === 0
-          ? translate(language, 'transactionBank')
-          : debited.length > 1
-            ? translate(language, 'transactionEveryone')
-            : nameOf(debited[0]?.playerId);
-      const to =
-        credited.length === 0
-          ? translate(language, 'transactionBank')
-          : credited.length > 1
-            ? translate(language, 'transactionEveryone')
-            : nameOf(credited[0]?.playerId);
-      return `${translate(language, 'reversal')} · ${from} → ${to}`;
-    }
-  }
+  const fallback = translate(language, 'playerFallback');
+  return DESCRIBE[transaction.type]({
+    transaction,
+    negative: transaction.participants.find((participant) => participant.balanceDelta < 0),
+    positive: transaction.participants.find((participant) => participant.balanceDelta > 0),
+    language,
+    tileName,
+    nameOf: (id) => (id === undefined ? fallback : (names.get(id) ?? fallback)),
+    tr: (key, values) => translate(language, key, values),
+    withTile: (text) => (tileName === undefined ? text : `${text} · ${tileName}`),
+  });
 }
 
 export function transactionAmount(
