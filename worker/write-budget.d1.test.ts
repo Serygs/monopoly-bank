@@ -25,13 +25,13 @@ const BUDGET: Record<string, number> = {
   'trade request': 7,
   'trade accept': 27,
   mortgage: 21,
-  'dice roll': 3,
+  'dice roll': 0,
   reconnect: 0,
   'tab switch': 0,
-  finish: 41,
+  finish: 11,
   'deferred cleanup': 36,
 };
-const SCENARIO_BUDGET = 738;
+const SCENARIO_BUDGET = 618;
 
 interface Usage {
   written: number;
@@ -130,7 +130,10 @@ function sessionNamespace(env: () => Env): DurableObjectNamespace {
         put: async (key: string, value: unknown) => {
           storage.set(key, value);
         },
-        delete: async (key: string) => storage.delete(key),
+        delete: async (keys: string | string[]) =>
+          (Array.isArray(keys) ? keys : [keys]).filter((key) => storage.delete(key)).length,
+        list: async ({ prefix }: { prefix: string }) =>
+          new Map([...storage].filter(([key]) => key.startsWith(prefix))),
         setAlarm: async () => undefined,
         deleteAlarm: async () => undefined,
       },

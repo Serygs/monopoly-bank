@@ -1,4 +1,4 @@
-import type { UserProfile } from '../../shared/contracts/api.js';
+import type { RecordDiceRollRequest, UserProfile } from '../../shared/contracts/api.js';
 import type { LiveMutationCommand } from '../../shared/contracts/live.js';
 
 export interface GameLiveGateway {
@@ -7,6 +7,18 @@ export interface GameLiveGateway {
   /** The current auction, read through the game object so a due one is settled first. */
   readAuction(gameId: string, actor: UserProfile): Promise<Response>;
   readVersion(gameId: string, actor: UserProfile): Promise<Response>;
+  listDiceRolls(
+    gameId: string,
+    actor: UserProfile,
+    playerId: string,
+    limit: number,
+  ): Promise<Response>;
+  recordDiceRoll(
+    gameId: string,
+    actor: UserProfile,
+    playerId: string,
+    roll: RecordDiceRollRequest,
+  ): Promise<Response>;
 }
 
 /** The public Worker authenticates requests before forwarding them to the per-game object. */
@@ -57,7 +69,43 @@ export class DurableObjectGameLiveGateway implements GameLiveGateway {
     );
   }
 
+  listDiceRolls(
+    gameId: string,
+    actor: UserProfile,
+    playerId: string,
+    limit: number,
+  ): Promise<Response> {
+    return this.session(gameId).fetch(
+      new Request(diceRollsUrl(playerId, limit), {
+        method: 'GET',
+        headers: { 'x-game-id': gameId, 'x-user-id': actor.id },
+      }),
+    );
+  }
+
+  recordDiceRoll(
+    gameId: string,
+    actor: UserProfile,
+    playerId: string,
+    roll: RecordDiceRollRequest,
+  ): Promise<Response> {
+    return this.session(gameId).fetch(
+      new Request(diceRollsUrl(playerId), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-game-id': gameId, 'x-user-id': actor.id },
+        body: JSON.stringify(roll),
+      }),
+    );
+  }
+
   private session(gameId: string): DurableObjectStub {
     return this.sessions.get(this.sessions.idFromName(gameId));
   }
+}
+
+function diceRollsUrl(playerId: string, limit?: number): string {
+  const url = new URL('https://game-session/dice-rolls');
+  url.searchParams.set('playerId', playerId);
+  if (limit !== undefined) url.searchParams.set('limit', String(limit));
+  return url.toString();
 }
