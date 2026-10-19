@@ -14,6 +14,14 @@ describe('D1CommandLedgerRepository', () => {
   it('replays only the identical actor and canonical payload', async () => {
     const repository = new D1CommandLedgerRepository(new LedgerDatabase() as unknown as D1Database);
     await repository.claim(input);
+    await repository.complete({
+      gameId: 'game',
+      commandId: 'command',
+      status: 201,
+      result: {},
+      transactionId: null,
+    });
+    await expect(repository.claim(input)).resolves.toMatchObject({ status: 'COMPLETED' });
     await expect(repository.claim({ ...input, actorId: 'actor-b' })).rejects.toBeInstanceOf(
       ConflictError,
     );
@@ -29,17 +37,17 @@ class LedgerDatabase {
     return {
       bind: (...values: unknown[]) => ({
         run: async () => {
-          if (query.startsWith('INSERT INTO command_ledger') && this.row === null)
+          if (query.trimStart().startsWith('INSERT INTO command_ledger') && this.row === null)
             this.row = {
               game_id: values[0],
               command_id: values[1],
               actor_id: values[2],
               command_type: values[3],
               payload_hash: values[4],
-              status: 'PENDING',
-              result_status: null,
-              result_json: null,
-              result_transaction_id: null,
+              status: 'COMPLETED',
+              result_status: values[5],
+              result_json: values[6],
+              result_transaction_id: values[7],
             };
           return { meta: { changes: 1 } };
         },

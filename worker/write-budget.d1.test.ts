@@ -16,22 +16,22 @@ const ORIGIN = 'http://localhost';
 
 const BUDGET: Record<string, number> = {
   'create lobby': 72,
-  join: 18,
-  start: 4,
-  transfer: 17,
-  'pass go': 12,
-  'property purchase': 16,
-  'pay rent': 16,
-  'trade request': 8,
-  'trade accept': 28,
-  mortgage: 22,
+  join: 17,
+  start: 3,
+  transfer: 16,
+  'pass go': 11,
+  'property purchase': 15,
+  'pay rent': 15,
+  'trade request': 7,
+  'trade accept': 27,
+  mortgage: 21,
   'dice roll': 3,
   reconnect: 0,
   'tab switch': 0,
-  finish: 42,
+  finish: 41,
   'deferred cleanup': 36,
 };
-const SCENARIO_BUDGET = 774;
+const SCENARIO_BUDGET = 738;
 
 interface Usage {
   written: number;
