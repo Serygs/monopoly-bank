@@ -105,7 +105,7 @@ export class GameSession {
         { status: 426, headers: { 'x-request-id': requestId } },
       );
     await this.settleQuietly(gameId);
-    const details = await this.gameService().getGame(gameId);
+    const details = await this.readGameShared(gameId);
     if (details.game.status === 'FINISHED')
       return Response.json(
         { error: { code: 'GAME_FINISHED', message: 'This game is finished.', requestId } },
@@ -707,6 +707,26 @@ export class GameSession {
     }
   }
 
+  /** The read of the game now in flight, with the state version it started at. */
+  private gameRead: { version: number; read: Promise<GameDetails> } | null = null;
+
+  /**
+   * `getGame` for a connection or a snapshot. Clients that reconnect together after a restart or a
+   * network drop share one set of D1 reads while no command has committed in between; the entry
+   * goes away as soon as the read finishes, so nothing is ever served from a past read.
+   */
+  private async readGameShared(gameId: string): Promise<GameDetails> {
+    const version = await this.stateVersion();
+    if (this.gameRead?.version === version) return this.gameRead.read;
+    const read = this.gameService()
+      .getGame(gameId)
+      .finally(() => {
+        if (this.gameRead?.read === read) this.gameRead = null;
+      });
+    this.gameRead = { version, read };
+    return read;
+  }
+
   private async state(
     gameId: string,
     userId: string,
@@ -714,7 +734,7 @@ export class GameSession {
   ): Promise<LiveGameState> {
     await this.settleQuietly(gameId);
     const controlledWallets = await this.access().controlledWallets(gameId, userId);
-    const loaded = details ?? (await this.gameService().getGame(gameId));
+    const loaded = details ?? (await this.readGameShared(gameId));
     // A running auction without a remembered deadline (lost storage, a crash between the D1 write
     // and the storage write) is picked up again here, so it can never be stuck.
     if (
