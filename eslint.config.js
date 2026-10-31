@@ -100,8 +100,18 @@ export default defineConfig([
       globals: globals.node,
     },
   },
+  // The service worker template runs in the browser's service-worker scope.
   {
-    files: ['*.ts', 'migrations/**/*.ts'],
+    files: ['pwa/**/*.js'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      globals: { ...globals.serviceworker, __PRECACHE__: 'readonly' },
+    },
+  },
+  {
+    files: ['*.ts', 'migrations/**/*.ts', 'pwa/**/*.ts'],
     extends: [js.configs.recommended, tseslint.configs.recommended],
     languageOptions: {
       globals: globals.node,
