@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { auctionReserve, nextBid } from '../../shared/domain/auction-rules';
 import type { Auction, Player } from '../../shared/types/monopoly';
 
-/** How often the countdown redraws; the figure only shows whole seconds. */
-const CLOCK_TICK_MS = 250;
+/** Slack after a second boundary, so the redraw lands just past it and never just before. */
+const TICK_SLACK_MS = 15;
 
 /**
  * The leading bid is held back on the leader's wallet while the auction runs. This is the Worker's
@@ -51,10 +51,15 @@ export function useAuctionCountdown(auction: Auction): number {
   const offset = useMemo(() => serverClockOffset(auction), [auction]);
   const [now, setNow] = useState(() => Date.now());
   const running = auction.state === 'ACTIVE';
+  // The figure shows whole seconds, so redraw once per second at the moment it changes (and at
+  // zero) instead of on a fixed fast tick that redraws the whole dialog four times a second.
+  const left = remainingMs(auction, offset, Math.max(now, 0));
   useEffect(() => {
-    if (!running) return;
-    const timer = window.setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
-    return () => window.clearInterval(timer);
-  }, [running]);
-  return remainingMs(auction, offset, Math.max(now, 0));
+    if (!running || left === 0) return;
+    // Measured now, not from the last draw, so a late render cannot push the next one off.
+    const untilBoundary = remainingMs(auction, offset) % 1000 || 1000;
+    const timer = window.setTimeout(() => setNow(Date.now()), untilBoundary + TICK_SLACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [auction, offset, running, left]);
+  return left;
 }

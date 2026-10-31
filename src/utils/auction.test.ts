@@ -69,10 +69,23 @@ describe('auction countdown', () => {
 
     const { result } = renderHook(() => useAuctionCountdown(auction));
     expect(result.current).toBe(20_000);
-    act(() => void vi.advanceTimersByTime(5_000));
-    expect(result.current).toBe(15_000);
-    act(() => void vi.advanceTimersByTime(60_000));
+    // It redraws just past each second boundary, so a figure in whole seconds is never behind.
+    for (let step = 0; step < 21; step += 1) act(() => void vi.advanceTimersByTime(250));
+    expect(Math.ceil(result.current / 1000)).toBe(15);
+    for (let step = 0; step < 100; step += 1) act(() => void vi.advanceTimersByTime(250));
     expect(result.current).toBe(0);
+  });
+
+  it('redraws once a second, not on a fast tick', () => {
+    vi.setSystemTime(new Date('2026-10-16T12:00:10.000Z'));
+    let renders = 0;
+    renderHook(() => {
+      renders += 1;
+      return useAuctionCountdown(auction);
+    });
+    const initial = renders;
+    for (let step = 0; step < 13; step += 1) act(() => void vi.advanceTimersByTime(250));
+    expect(renders - initial).toBeLessThanOrEqual(4);
   });
 });
 
