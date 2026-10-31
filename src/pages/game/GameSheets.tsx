@@ -1,8 +1,12 @@
-import { PropertyScreen } from '../PropertyScreen';
+import { LazyBoundary } from '../../components/app-shell/LazyBoundary';
+import { lazyNamed } from '../../utils/lazy-named';
 import { ActivityScreen } from '../ActivityScreen';
-import { RulesScreen } from '../RulesScreen';
-import { StatisticsScreen } from '../StatisticsScreen';
 import type { GameContext } from './game-context';
+
+// Opened on demand, so each loads with its first use (the service worker precaches them).
+const PropertyScreen = lazyNamed(() => import('../PropertyScreen'), 'PropertyScreen');
+const RulesScreen = lazyNamed(() => import('../RulesScreen'), 'RulesScreen');
+const StatisticsScreen = lazyNamed(() => import('../StatisticsScreen'), 'StatisticsScreen');
 
 function ActivitySheet({ ctx }: { ctx: GameContext }) {
   const { gameId, details, view, dialogs } = ctx;
@@ -62,7 +66,7 @@ export function GameSheets({ ctx }: { ctx: GameContext }) {
   const { details, view, dialogs } = ctx;
   const { sheets, activity } = dialogs;
   return (
-    <>
+    <LazyBoundary>
       {sheets.rulesOpen && (
         <RulesScreen game={details.game} onClose={() => sheets.setRulesOpen(false)} />
       )}
@@ -79,6 +83,6 @@ export function GameSheets({ ctx }: { ctx: GameContext }) {
           onClose={() => sheets.setStatisticsOpen(false)}
         />
       )}
-    </>
+    </LazyBoundary>
   );
 }

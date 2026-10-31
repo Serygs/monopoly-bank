@@ -1,12 +1,16 @@
 import type { UserProfile } from '../../../shared/contracts/api';
-import { CreateGamePage } from '../../pages/CreateGamePage';
-import { GamePage } from '../../pages/GamePage';
-import { JoinGamePage } from '../../pages/JoinGamePage';
-import { ProfilePage } from '../../pages/ProfilePage';
 import { SavedGamesPage } from '../../pages/SavedGamesPage';
 import { joinCodeFromSearch } from '../../utils/join-code';
+import { lazyNamed } from '../../utils/lazy-named';
 import type { DevicePreferences } from '../../utils/preferences';
 import { invitationFromLocation } from './invitation';
+import { LazyBoundary } from './LazyBoundary';
+
+// The home screen ships with the app; every other page loads in its own chunk on first use.
+const CreateGamePage = lazyNamed(() => import('../../pages/CreateGamePage'), 'CreateGamePage');
+const GamePage = lazyNamed(() => import('../../pages/GamePage'), 'GamePage');
+const JoinGamePage = lazyNamed(() => import('../../pages/JoinGamePage'), 'JoinGamePage');
+const ProfilePage = lazyNamed(() => import('../../pages/ProfilePage'), 'ProfilePage');
 
 interface SignedInRoutesProps {
   path: string;
@@ -50,6 +54,14 @@ function SavedGamesRoute({ navigate }: Pick<SignedInRoutesProps, 'navigate'>) {
 }
 
 export function SignedInRoutes(props: SignedInRoutesProps) {
+  return (
+    <LazyBoundary page key={props.path}>
+      <SignedInRoute {...props} />
+    </LazyBoundary>
+  );
+}
+
+function SignedInRoute(props: SignedInRoutesProps) {
   const { path, profile, setProfile, navigate } = props;
   const gameMatch = /^\/games\/([^/]+)$/.exec(path);
   if (path === '/profile') return <ProfilePage profile={profile} onUpdated={setProfile} />;
