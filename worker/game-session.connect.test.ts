@@ -172,6 +172,24 @@ describe('the WebSocket upgrade decision', () => {
     expect(gameService.getGame).toHaveBeenCalledTimes(1);
   });
 
+  it('shares one game read between connections made while it is in flight', async () => {
+    const { session, gameService } = harness();
+    let finish: (details: ReturnType<typeof gameDetails>) => void = () => undefined;
+    gameService.getGame.mockImplementation(
+      () => new Promise((resolve) => (finish = resolve as typeof finish)),
+    );
+    const first = session.fetch(connect(UPGRADE));
+    const second = session.fetch(connect(UPGRADE));
+    await vi.waitFor(() => expect(gameService.getGame).toHaveBeenCalled());
+    finish(gameDetails('ACTIVE'));
+    await Promise.all([first, second]);
+    expect(gameService.getGame).toHaveBeenCalledTimes(1);
+    // Once it has finished nothing is served from it: the next connection reads again.
+    gameService.getGame.mockResolvedValue(gameDetails('ACTIVE'));
+    await session.fetch(connect(UPGRADE));
+    expect(gameService.getGame).toHaveBeenCalledTimes(2);
+  });
+
   it('adds the pending trade requests of the wallets the user controls in a board game', async () => {
     const { session, gameService, access } = harness({ sockets: [] });
     const board = {
