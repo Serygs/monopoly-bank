@@ -330,7 +330,7 @@ describe('navigation', () => {
     const user = mount();
     await screen.findByText('saved games page');
     await user.click(screen.getByRole('button', { name: /Ada/u }));
-    expect(screen.getByText('profile page')).toBeInTheDocument();
+    expect(await screen.findByText('profile page')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/profile');
     await user.click(screen.getByRole('button', { name: t('appName') }));
     expect(screen.getByText('saved games page')).toBeInTheDocument();
@@ -341,14 +341,14 @@ describe('navigation', () => {
     const user = mount();
     await screen.findByText('saved games page');
     await user.click(screen.getByRole('button', { name: 'to create' }));
-    expect(screen.getByText('create page')).toBeInTheDocument();
+    expect(await screen.findByText('create page')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/games/new');
     await user.click(screen.getByRole('button', { name: 'close create' }));
     await user.click(screen.getByRole('button', { name: 'to join' }));
-    expect(screen.getByText('join page code= token= auto=true')).toBeInTheDocument();
+    expect(await screen.findByText('join page code= token= auto=true')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/games/join');
     await user.click(screen.getByRole('button', { name: 'joined' }));
-    expect(screen.getByText('game page joined%20id offline=false')).toBeInTheDocument();
+    expect(await screen.findByText('game page joined%20id offline=false')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/games/joined%20id');
   });
 
@@ -357,7 +357,7 @@ describe('navigation', () => {
     await screen.findByText('saved games page');
     await user.click(screen.getByRole('button', { name: 'to join with code' }));
     expect(window.location.search).toBe('?code=AB%2012');
-    expect(screen.getByText('join page code=AB12 token= auto=true')).toBeInTheDocument();
+    expect(await screen.findByText('join page code=AB12 token= auto=true')).toBeInTheDocument();
   });
 
   it('reads an invitation from the address fragment on the join page', async () => {
