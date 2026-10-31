@@ -1,13 +1,20 @@
 import type { UserProfile } from '../shared/contracts/api';
 import { AccountLoading } from './components/app-shell/AccountLoading';
 import { emailTokenRoute } from './components/app-shell/EmailTokenRoute';
+import { LazyBoundary } from './components/app-shell/LazyBoundary';
 import { OfflineShell } from './components/app-shell/OfflineShell';
 import { SignedInRoutes } from './components/app-shell/SignedInRoutes';
 import { SignedInShell } from './components/app-shell/SignedInShell';
-import { SignedOutRoutes } from './components/app-shell/SignedOutRoutes';
 import { FeedbackProvider } from './components/ui';
 import { useAppState, type AppState } from './hooks/useAppState';
+import { lazyNamed } from './utils/lazy-named';
 import './styles/app.css';
+
+// Sign-in, registration and the guest join flow are not needed once a session exists.
+const SignedOutRoutes = lazyNamed(
+  () => import('./components/app-shell/SignedOutRoutes'),
+  'SignedOutRoutes',
+);
 
 /** Every route, including the signed-out and email-token pages, shares one notification region. */
 function App() {
@@ -39,14 +46,16 @@ function AccountGate({ app }: { app: AppState }) {
     return <AccountLoading error={session.accountError} onRetry={session.retry} />;
   if (profile !== null) return <SignedInApp app={app} profile={profile} />;
   return (
-    <SignedOutRoutes
-      path={nav.path}
-      joinChoice={app.joinChoice}
-      setJoinChoice={app.setJoinChoice}
-      navigate={nav.navigate}
-      navigatePublic={nav.navigatePublic}
-      onAuthenticated={session.settle}
-    />
+    <LazyBoundary page>
+      <SignedOutRoutes
+        path={nav.path}
+        joinChoice={app.joinChoice}
+        setJoinChoice={app.setJoinChoice}
+        navigate={nav.navigate}
+        navigatePublic={nav.navigatePublic}
+        onAuthenticated={session.settle}
+      />
+    </LazyBoundary>
   );
 }
 

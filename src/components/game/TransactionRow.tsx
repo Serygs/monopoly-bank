@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { BoardSnapshot } from '../../../shared/board';
 import type { Currency, Player, Transaction } from '../../../shared/types/monopoly';
 import { translate, type Language } from '../../i18n/translations';
@@ -35,7 +36,7 @@ export interface TransactionRowProps {
 }
 
 /** One ledger/history list item for a committed transaction. */
-export function TransactionRow({
+function TransactionRowView({
   transaction,
   players,
   currency,
@@ -143,3 +144,34 @@ export function TransactionRow({
     </li>
   );
 }
+
+const playerKey = (players: readonly Player[]) =>
+  players.map((player) => `${player.id}:${player.name}`).join('|');
+
+/**
+ * A live event hands the page fresh `players` and transaction objects, so a plain `memo` would
+ * redraw every row of a long ledger on each operation. A stored transaction never changes except
+ * for the reversed flag, and a row only reads the players' names, so those are what is compared.
+ * `onReverse` is compared by presence: it must only depend on the row's own transaction.
+ */
+function sameRow(previous: TransactionRowProps, next: TransactionRowProps): boolean {
+  return (
+    (previous.transaction === next.transaction ||
+      (previous.transaction.id === next.transaction.id &&
+        previous.transaction.reversedByTransactionId === next.transaction.reversedByTransactionId &&
+        previous.transaction.priceOverridden === next.transaction.priceOverridden)) &&
+    (previous.players === next.players ||
+      playerKey(previous.players) === playerKey(next.players)) &&
+    previous.currency === next.currency &&
+    previous.language === next.language &&
+    previous.locale === next.locale &&
+    previous.variant === next.variant &&
+    previous.playerId === next.playerId &&
+    previous.tone === next.tone &&
+    previous.reversalNote === next.reversalNote &&
+    (previous.board ?? null) === (next.board ?? null) &&
+    (previous.onReverse === undefined) === (next.onReverse === undefined)
+  );
+}
+
+export const TransactionRow = memo(TransactionRowView, sameRow);

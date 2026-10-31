@@ -69,7 +69,8 @@ describe('AuctionDialog', () => {
     expect(screen.getByText('Park Place')).toBeInTheDocument();
     expect(screen.getByText('No bids yet')).toBeInTheDocument();
     expect(screen.getByText('25 s')).toBeInTheDocument();
-    act(() => void vi.advanceTimersByTime(10_000));
+    // In small steps: the countdown re-arms itself after each redraw.
+    for (let step = 0; step < 41; step += 1) act(() => void vi.advanceTimersByTime(250));
     expect(screen.getByText('15 s')).toBeInTheDocument();
   });
 

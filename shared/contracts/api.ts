@@ -623,10 +623,13 @@ export interface GameAwards {
   bestAuctionDeal: StatisticsAward | null;
   biggestLoan: StatisticsAward | null;
 }
-/** `steps` counted transactions; `balances` hold up to 61 evenly spaced points, first and last included. */
+/**
+ * `steps` counted transactions; `balances` hold up to 61 evenly spaced points, first and last included.
+ * `endIndex` is the last point of a player who went bankrupt; absent for everyone else.
+ */
 export interface BalanceSeries {
   steps: number;
-  players: Array<{ playerId: string; balances: number[] }>;
+  players: Array<{ playerId: string; balances: number[]; endIndex?: number }>;
 }
 export interface LedgerStatistics extends FinalGameSummaryResponse {
   cashLeaderboard: CashLeaderboardEntry[];

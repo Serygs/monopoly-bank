@@ -115,7 +115,10 @@ function connect(state: Connection, gameId: string, listener: LiveListener): voi
   };
 }
 
-function startLiveConnection(gameId: string, listener: LiveListener): () => void {
+function startLiveConnection(
+  gameId: string,
+  listener: LiveListener,
+): { stop: () => void; reconnectNow: () => void } {
   const state: Connection = {
     closed: false,
     retry: undefined,
@@ -124,12 +127,22 @@ function startLiveConnection(gameId: string, listener: LiveListener): () => void
     attempts: 0,
   };
   connect(state, gameId, listener);
-  return () => {
-    state.closed = true;
-    if (state.retry !== undefined) window.clearTimeout(state.retry);
-    stopHeartbeat(state);
-    state.socket?.close();
-    listener.onSocket(null);
+  return {
+    stop: () => {
+      state.closed = true;
+      if (state.retry !== undefined) window.clearTimeout(state.retry);
+      stopHeartbeat(state);
+      state.socket?.close();
+      listener.onSocket(null);
+    },
+    // Skips the backoff wait: only when the last socket is gone and a retry is still pending.
+    reconnectNow: () => {
+      if (state.closed || state.retry === undefined) return;
+      if (state.socket !== null && state.socket.readyState !== WebSocket.CLOSED) return;
+      window.clearTimeout(state.retry);
+      state.retry = undefined;
+      connect(state, gameId, listener);
+    },
   };
 }
 
@@ -193,6 +206,7 @@ export function useGameSync({
 }: Options): { liveStatus: LiveStatus; refresh: RefreshControl } {
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
   const sync = useRef<SyncState>(initialSync());
+  const reconnectNow = useRef<() => void>(() => undefined);
   const resync = useCallback((): Promise<void> => {
     const current = sync.current;
     if (current.inFlight !== null) {
@@ -237,7 +251,15 @@ export function useGameSync({
     current.inFlight = flight;
     return flight;
   }, [gameId, setDetails, setPaymentRequests]);
-  const refresh = useRefresh(resync);
+  const { state: refreshState, run: runRefresh } = useRefresh(resync);
+  // A manual refresh also skips the reconnect backoff, so it doubles as "retry now".
+  const refresh: RefreshControl = {
+    state: refreshState,
+    run: () => {
+      reconnectNow.current();
+      runRefresh();
+    },
+  };
   useEffect(() => {
     if (!enabled) return;
     sync.current = initialSync();
@@ -299,24 +321,30 @@ export function useGameSync({
       if (document.visibilityState !== 'visible' || isHealthy(sync.current)) return;
       requestResync();
     }, POLL_INTERVAL_MS);
+    const onOnline = () => {
+      reconnectNow.current();
+      requestResync();
+    };
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('online', requestResync);
+    window.addEventListener('online', onOnline);
     window.addEventListener('pageshow', requestResync);
     const onSocket = (socket: WebSocket | null) => {
       sync.current.socket = socket;
     };
-    const stop = startLiveConnection(gameId, {
+    const connection = startLiveConnection(gameId, {
       onStatus: setLiveStatus,
       onSocket,
       onOpen,
       onMessage,
     });
+    reconnectNow.current = connection.reconnectNow;
     return () => {
       window.clearInterval(poll);
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('online', requestResync);
+      window.removeEventListener('online', onOnline);
       window.removeEventListener('pageshow', requestResync);
-      stop();
+      reconnectNow.current = () => undefined;
+      connection.stop();
     };
   }, [gameId, enabled, resync, setDetails, setLiveTransactions, loadPaymentRequests]);
   return { liveStatus, refresh };

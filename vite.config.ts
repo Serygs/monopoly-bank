@@ -4,11 +4,19 @@ import { defineConfig } from 'vite';
 
 import { cloudflare } from '@cloudflare/vite-plugin';
 
+import { serviceWorkerPlugin } from './pwa/service-worker-plugin.ts';
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
   // Unit tests use mocked Worker/D1 boundaries and must not open a remote
   // Cloudflare development session in non-interactive CI.
-  plugins: mode === 'test' ? [react(), tailwindcss()] : [react(), tailwindcss(), cloudflare()],
+  plugins:
+    mode === 'test'
+      ? [react(), tailwindcss()]
+      : [react(), tailwindcss(), cloudflare(), serviceWorkerPlugin()],
+  // Hashed build output only, so `public/_headers` can cache it forever without also pinning
+  // the unhashed files under `public/assets/themes/`.
+  build: { assetsDir: 'assets/build' },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

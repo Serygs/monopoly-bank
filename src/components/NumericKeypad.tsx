@@ -26,7 +26,21 @@ export function NumericKeypad({
   const separator = decimalSeparator(locale);
   const decimalDisabled = maxFractionDigits(unit) === 0 || digits.includes('.');
   return (
-    <div className={keypadClass} role="group" aria-label={t('numericKeypad')}>
+    <div
+      className={keypadClass}
+      role="group"
+      aria-label={t('numericKeypad')}
+      onKeyDown={(event) => {
+        // A focused key still takes Enter and Space itself; the rest types like the input would.
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        if (/^[0-9]$/u.test(event.key)) onChange(appendMoneyDigit(digits, event.key, unit));
+        else if (event.key === 'Backspace') onChange(removeMoneyDigit(digits));
+        else if ((event.key === '.' || event.key === ',') && !decimalDisabled)
+          onChange(appendDecimalSeparator(digits, unit));
+        else return;
+        event.preventDefault();
+      }}
+    >
       <>
         {[...'123456789'].map((digit) => (
           <KeypadKey key={digit} onPress={() => onChange(appendMoneyDigit(digits, digit, unit))}>

@@ -165,9 +165,15 @@ export function AuctionDialog({
         {active && (
           <p className={statClass}>
             <span>{t('auctionTimeLeft')}</span>
-            <strong aria-live="off">
+            <strong aria-hidden={!expired}>
               {expired ? t('auctionClosing') : t('auctionSecondsLeft', { seconds })}
             </strong>
+            {/* Spoken only for the last stretch; reading every second would drown the bids. */}
+            <span className="sr-only" role="status">
+              {!expired && (seconds === 10 || seconds <= 5)
+                ? t('auctionSecondsLeft', { seconds })
+                : ''}
+            </span>
           </p>
         )}
       </div>

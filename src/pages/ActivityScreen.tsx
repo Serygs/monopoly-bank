@@ -56,6 +56,8 @@ const ledgerClass = cx(
   'activity-ledger m-0 grid list-none gap-0 p-0',
   '[&>li]:grid [&>li]:grid-cols-[minmax(0,1fr)_auto] [&>li]:gap-x-[14px] [&>li]:gap-y-[4px] [&>li]:border-b [&>li]:border-b-border [&>li]:px-[4px] [&>li]:py-[14px]',
   'glass:[&>li]:border-[rgb(85_98_116/0.16)]',
+  // Rows below the fold skip layout and paint until scrolled near; the size is a first guess.
+  '[&>li]:[contain-intrinsic-size:auto_72px] [&>li]:[content-visibility:auto]',
   '[&>li>span]:shrink-0 [&>li>span]:self-start [&>li>span]:font-money [&>li>span]:font-bold [&>li>span]:whitespace-nowrap [&>li>span]:text-primary [&>li>span]:tabular-nums',
   '[&_:is(time,li_em)]:col-span-full [&_:is(time,li_em)]:text-[0.84rem] [&_:is(time,li_em)]:text-secondary',
 );
@@ -197,18 +199,24 @@ export function ActivityScreen({
     setError(false);
     setScope(nextScope);
   };
-  /** The ledger is newest first, so the rows above one are the operations written after it. */
-  const reversalProps = (
-    transaction: Transaction,
-    newer: readonly (Transaction | PaymentRequest)[],
-  ) => {
+  // The ledger is newest first, so the transactions above a row were written after it. Listed
+  // once here, each row takes the leading slice instead of filtering the whole page again.
+  const transactionRows: Transaction[] = [];
+  const transactionsAbove = items.map((item) => {
+    const above = transactionRows.length;
+    if (!('state' in item)) transactionRows.push(item);
+    return above;
+  });
+  /** The transactions written after the one at `index` of `items`. */
+  const newerThan = (index: number) => transactionRows.slice(0, transactionsAbove[index]);
+  const reversalProps = (transaction: Transaction, newer: readonly Transaction[]) => {
     if (reversal === undefined) return {};
     const availability = reversalAvailability({
       transaction,
       isOwner: reversal.isOwner,
       controlledPlayerIds: reversal.controlledPlayerIds,
       now,
-      later: newer.filter((item): item is Transaction => !('state' in item)),
+      later: newer,
       groupTileIds: groupTileIdsOf(board, transaction),
     });
     if (availability.status === 'allowed')
@@ -255,7 +263,7 @@ export function ActivityScreen({
               language={language}
               locale={locale}
               board={board}
-              {...reversalProps(item, items.slice(0, index))}
+              {...reversalProps(item, newerThan(index))}
             />
           ),
         )}

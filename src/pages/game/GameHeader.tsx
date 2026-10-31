@@ -169,6 +169,11 @@ export function GameHeader({
                       : t('connectionOffline')}
               </StatPill>
             )}
+            {game.status === 'ACTIVE' && liveStatus === 'offline' && !offline && (
+              <Button variant="quiet" onClick={refresh.run}>
+                {t('connectionRetry')}
+              </Button>
+            )}
             {game.status !== 'FINISHED' && <RefreshButton refresh={refresh} offline={offline} />}
             {managerItems.length > 0 && (
               <div className="md:hidden">

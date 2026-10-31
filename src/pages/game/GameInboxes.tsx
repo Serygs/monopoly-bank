@@ -1,6 +1,7 @@
 import type { PaymentRequest, TradeRequest } from '../../../shared/contracts/api';
 import { monopolyBankApi } from '../../api/monopoly-bank-api';
 import { useFeedback } from '../../components/ui';
+import { usePendingTitle } from '../../hooks/usePendingTitle';
 import { useLanguage } from '../../i18n/language-context';
 import { playPaymentFeedback, vibrate } from '../../utils/feedback';
 import type { GameContext } from './game-context';
@@ -88,6 +89,7 @@ function TradeInboxSection({ ctx }: { ctx: GameContext }) {
 
 export function GameInboxes({ ctx }: { ctx: GameContext }) {
   const { view } = ctx;
+  usePendingTitle(view.canMutate ? view.inboxRequests.length + view.incomingTrades.length : 0);
   if (!view.canMutate) return null;
   const showPayments =
     view.confirmationMode || view.inboxRequests.length > 0 || view.outgoingLoanRequests.length > 0;

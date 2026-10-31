@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { playPaymentFeedback, vibrate } from './feedback';
+import { playPaymentFeedback, playRollFeedback, resetAudioContext, vibrate } from './feedback';
 
 type ParamCall = { method: 'set' | 'ramp'; value: number; time: number };
 
@@ -59,6 +59,7 @@ function createAudioHarness(currentTime: number) {
 }
 
 afterEach(() => {
+  resetAudioContext();
   vi.unstubAllGlobals();
 });
 
@@ -153,5 +154,58 @@ describe('vibrate', () => {
   it('does not call a non-function vibrate property', () => {
     vi.stubGlobal('navigator', { vibrate: 'yes' });
     expect(() => vibrate(200, true)).not.toThrow();
+  });
+});
+
+describe('shared audio context', () => {
+  it('creates one context for every sound and resumes it when suspended', () => {
+    const created = vi.fn();
+    const resume = vi.fn();
+    class Counting {
+      currentTime = 0;
+      state = 'suspended';
+      destination = {};
+      constructor() {
+        created();
+      }
+      resume = resume;
+      createOscillator() {
+        return {
+          type: '',
+          frequency: {
+            setValueAtTime: () => undefined,
+            exponentialRampToValueAtTime: () => undefined,
+          },
+          connect: () => ({ connect: () => undefined }),
+          start: () => undefined,
+          stop: () => undefined,
+        };
+      }
+      createGain() {
+        return {
+          gain: { setValueAtTime: () => undefined, exponentialRampToValueAtTime: () => undefined },
+        };
+      }
+    }
+    vi.stubGlobal('AudioContext', Counting);
+    playPaymentFeedback(true);
+    playRollFeedback(true);
+    playPaymentFeedback(true);
+    expect(created).toHaveBeenCalledTimes(1);
+    expect(resume).toHaveBeenCalledTimes(3);
+  });
+
+  it('stays silent when the roll sound is off', () => {
+    const created = vi.fn();
+    vi.stubGlobal(
+      'AudioContext',
+      class {
+        constructor() {
+          created();
+        }
+      },
+    );
+    playRollFeedback(false);
+    expect(created).not.toHaveBeenCalled();
   });
 });

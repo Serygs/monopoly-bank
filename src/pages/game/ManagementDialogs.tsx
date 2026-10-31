@@ -1,26 +1,32 @@
+import { LazyBoundary } from '../../components/app-shell/LazyBoundary';
 import { useFeedback } from '../../components/ui';
 import { useLanguage } from '../../i18n/language-context';
+import { lazyNamed } from '../../utils/lazy-named';
 import type { GameContext } from './game-context';
 import { withClientGameDetails } from './game-page-helpers';
 import { FinishGameDialog } from './FinishGameDialog';
-import { InviteDialog } from './InviteDialog';
 import { ReverseTransactionDialog } from './ReverseTransactionDialog';
+
+// The QR code generator ships with the invite dialog, which is opened rarely.
+const InviteDialog = lazyNamed(() => import('./InviteDialog'), 'InviteDialog');
 
 function InviteHost({ ctx }: { ctx: GameContext }) {
   const { gameId, details, setDetails, dialogs } = ctx;
   if (!dialogs.sheets.inviteOpen) return null;
   return (
-    <InviteDialog
-      joinCode={details.joinCode}
-      gameId={gameId}
-      playerCount={details.players.length}
-      hasPassword={details.hasAccessPassword}
-      canRegenerate={details.canManage === true && details.game.status === 'LOBBY'}
-      onCodeChanged={(joinCode) =>
-        setDetails((current) => (current === null ? current : { ...current, joinCode }))
-      }
-      onClose={() => dialogs.sheets.setInviteOpen(false)}
-    />
+    <LazyBoundary>
+      <InviteDialog
+        joinCode={details.joinCode}
+        gameId={gameId}
+        playerCount={details.players.length}
+        hasPassword={details.hasAccessPassword}
+        canRegenerate={details.canManage === true && details.game.status === 'LOBBY'}
+        onCodeChanged={(joinCode) =>
+          setDetails((current) => (current === null ? current : { ...current, joinCode }))
+        }
+        onClose={() => dialogs.sheets.setInviteOpen(false)}
+      />
+    </LazyBoundary>
   );
 }
 

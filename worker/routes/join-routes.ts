@@ -4,6 +4,7 @@ import {
   type GuestJoinGameRequest,
   type JoinGameRequest,
 } from '../../shared/contracts/api.js';
+import { pickRandomUnusedColor } from '../../shared/domain/player-colors.js';
 import type { PublicProfile } from '../services/auth-service.js';
 import { resolveJoinAccess } from '../services/game-access-service.js';
 import { LobbyFullError } from '../services/errors.js';
@@ -18,13 +19,8 @@ import {
   type Route,
 } from './route-support.js';
 
-const PLAYER_COLORS = ['#e05263', '#2f80ed', '#27ae60', '#f2994a', '#9b51e0', '#14b8a6'];
-
 function nextPlayerColor(players: readonly { color: string }[]): string {
-  return (
-    PLAYER_COLORS.find((color) => !players.some((player) => player.color === color)) ??
-    PLAYER_COLORS[players.length % PLAYER_COLORS.length]
-  );
+  return pickRandomUnusedColor(players.map((player) => player.color));
 }
 
 function resolveAccess(context: PublicRouteContext, body: JoinGameRequest) {

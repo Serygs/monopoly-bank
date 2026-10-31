@@ -1,10 +1,12 @@
 /* Static shell only: do not cache authenticated data, financial mutations, invitations, or WebSocket traffic. */
-const SHELL_VERSION = 'monopoly-bank-shell-v1';
+/* Built by pwa/service-worker-plugin.ts: the version and the file list change with every build. */
+const SHELL_VERSION = '__SHELL_VERSION__';
 const SHELL = [
   '/',
   '/manifest.webmanifest',
   '/icons/monopoly-bank-192.svg',
   '/icons/monopoly-bank-512.svg',
+  ...__PRECACHE__,
 ];
 
 self.addEventListener('install', (event) => {

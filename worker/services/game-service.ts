@@ -182,30 +182,44 @@ export class DefaultGameService implements GameService {
     }
 
     const players = await this.players.listByGameId(gameId);
+    // Everything below needs only the game and the players, so the reads run side by side.
     // With the bank-loans rule the loans carry their round and the cooldowns are reported too.
-    const bankLoans =
+    const [
+      bankLoans,
+      mortgages,
+      activeLoans,
+      jackpot,
+      auction,
+      properties,
+      favoriteAmounts,
+      recentAmounts,
+    ] = await Promise.all([
       game.rules.bankLoans && this.loans !== undefined && this.transactions !== undefined
-        ? await loadBankLoanView(
-            { loans: this.loans, transactions: this.transactions },
-            gameId,
-            players,
-          )
-        : null;
+        ? loadBankLoanView({ loans: this.loans, transactions: this.transactions }, gameId, players)
+        : null,
+      this.mortgages?.listActive(gameId),
+      this.loans?.listActive(gameId),
+      game.rules.freeParkingJackpot ? this.games.getJackpot(gameId) : undefined,
+      game.rules.auctions && this.auctions !== undefined
+        ? this.auctions.getCurrent(gameId, Date.now())
+        : undefined,
+      game.settings?.board && this.properties !== undefined
+        ? this.properties.listByGame(gameId)
+        : undefined,
+      this.games.listFavoriteAmounts(gameId),
+      this.games.listRecentAmounts(gameId),
+    ]);
     return {
       game,
       players,
-      mortgages: (await this.mortgages?.listActive(gameId)) ?? [],
-      loans: bankLoans?.loans ?? (await this.loans?.listActive(gameId)) ?? [],
+      mortgages: mortgages ?? [],
+      loans: bankLoans?.loans ?? activeLoans ?? [],
       ...(bankLoans === null ? {} : { bankLoanCooldowns: bankLoans.bankLoanCooldowns }),
-      ...(game.rules.freeParkingJackpot ? { jackpot: await this.games.getJackpot(gameId) } : {}),
-      ...(game.rules.auctions && this.auctions !== undefined
-        ? { auction: await this.auctions.getCurrent(gameId, Date.now()) }
-        : {}),
-      ...(game.settings?.board && this.properties !== undefined
-        ? { properties: await this.properties.listByGame(gameId) }
-        : {}),
-      favoriteAmounts: await this.games.listFavoriteAmounts(gameId),
-      recentAmounts: await this.games.listRecentAmounts(gameId),
+      ...(game.rules.freeParkingJackpot ? { jackpot: jackpot ?? 0 } : {}),
+      ...(game.rules.auctions && this.auctions !== undefined ? { auction } : {}),
+      ...(game.settings?.board && this.properties !== undefined ? { properties } : {}),
+      favoriteAmounts,
+      recentAmounts,
     };
   }
 

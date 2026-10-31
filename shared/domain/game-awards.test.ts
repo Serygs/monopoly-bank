@@ -79,6 +79,30 @@ describe('calculateBalanceSeries', () => {
     expect(player.balances[0]).toBe(0);
     expect(player.balances.at(-1)).toBe(500);
   });
+
+  it('marks where a bankrupt player ends, in thinned points too', () => {
+    const short = calculateBalanceSeries(
+      [
+        row('t1', 'BANK_TO_PLAYER', 5, 'b', 5),
+        row('t2', 'BANKRUPTCY_TRANSFER', 100, 'a', -100),
+        row('t2', 'BANKRUPTCY_TRANSFER', 100, 'b', 100),
+        row('t3', 'BANK_TO_PLAYER', 5, 'b', 5),
+      ],
+      ['a', 'b'],
+      100,
+    );
+    expect(short.players.map((entry) => entry.endIndex)).toEqual([2, undefined]);
+
+    const entries = [
+      ...Array.from({ length: 200 }, (_, index) => row(`t${index}`, 'BANK_TO_PLAYER', 1, 'b', 1)),
+      row('x', 'BANKRUPTCY_TRANSFER', 100, 'a', -100),
+      row('x', 'BANKRUPTCY_TRANSFER', 100, 'b', 100),
+      ...Array.from({ length: 200 }, (_, index) => row(`u${index}`, 'BANK_TO_PLAYER', 1, 'b', 1)),
+    ];
+    const thinned = calculateBalanceSeries(entries, ['a', 'b'], 100).players[0];
+    expect(thinned.endIndex).toBeGreaterThan(0);
+    expect(thinned.endIndex).toBeLessThan(MAX_SERIES_POINTS - 1);
+  });
 });
 
 describe('trades in the awards', () => {

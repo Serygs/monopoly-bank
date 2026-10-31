@@ -104,7 +104,7 @@ describe('lobby creation', () => {
 
   it('accepts one to six players and refuses none or seven, naming the count', async () => {
     const some = (count: number) =>
-      Array.from({ length: count }, (_, index) => ({ name: `P${index}`, color: '#000' }));
+      Array.from({ length: count }, (_, index) => ({ name: `P${index}`, color: `#00000${index}` }));
     await expect(parse({ players: some(1) })).resolves.toBeDefined();
     await expect(parse({ players: some(6) })).resolves.toBeDefined();
     for (const count of [0, 7]) {
@@ -113,6 +113,20 @@ describe('lobby creation', () => {
         details: { playerCount: count },
       });
     }
+  });
+
+  it('refuses two players with the same colour, whatever its case', async () => {
+    await expect(
+      parse({
+        players: [
+          { name: 'Ann', color: '#d83f55' },
+          { name: 'Bob', color: '#D83F55' },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      message: 'Every player must have a different color.',
+      details: { color: '#D83F55' },
+    });
   });
 
   it.each([
