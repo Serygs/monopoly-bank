@@ -1,11 +1,12 @@
 import { monopolyRu2012 } from './monopoly-ru-2012.js';
+import { monopolyUaClassic } from './monopoly-ua-classic.js';
 import type { BoardPreset, BoardSnapshot, PropertyTile } from './types.js';
 
 export * from './types.js';
-export { monopolyRu2012 };
+export { monopolyRu2012, monopolyUaClassic };
 
 /** Board modes a game can be created with. 'custom' is reserved for a later phase. */
-export const boardModes = ['none', 'monopoly-ru-2012'] as const;
+export const boardModes = ['none', 'monopoly-ru-2012', 'monopoly-ua-classic'] as const;
 export type BoardMode = (typeof boardModes)[number];
 
 export function isBoardMode(value: unknown): value is BoardMode {
@@ -14,10 +15,31 @@ export function isBoardMode(value: unknown): value is BoardMode {
 
 const presets: Record<Exclude<BoardMode, 'none'>, BoardPreset> = {
   'monopoly-ru-2012': monopolyRu2012,
+  'monopoly-ua-classic': monopolyUaClassic,
 };
 
 export function getBoardPreset(mode: Exclude<BoardMode, 'none'>): BoardPreset {
   return presets[mode];
+}
+
+/** The presets a game can be created with, in the order the selector lists them. */
+export const boardPresetModes = boardModes.filter(
+  (mode): mode is Exclude<BoardMode, 'none'> => mode !== 'none',
+);
+
+/** What the create-game form fills in when a preset is chosen. */
+export function boardDefaults(mode: Exclude<BoardMode, 'none'>): {
+  startingBalance: number;
+  passGoReward: number;
+  currency: string;
+} {
+  const preset = presets[mode];
+  const go = preset.nonPropertyTiles.find((tile) => tile.type === 'go');
+  return {
+    startingBalance: preset.baseStartBalance,
+    passGoReward: go && go.type === 'go' ? go.reward : 0,
+    currency: preset.currency,
+  };
 }
 
 /** Units per money unit at the preset's base: base starting balance / 150. */
