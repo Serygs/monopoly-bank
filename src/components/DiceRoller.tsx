@@ -4,6 +4,7 @@ import type { Player } from '../../shared/types/monopoly';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { rollDice, type DiceRoll } from '../utils/dice';
 import { useLanguage } from '../i18n/language-context';
+import { playRollFeedback, vibrate } from '../utils/feedback';
 import { Button, ToolPanel } from './ui';
 import { cx, playerSwatchClass } from './ui/class-names';
 import { dateTimeFormat } from '../utils/date-time';
@@ -53,9 +54,18 @@ export interface DiceRollerProps {
   players: Player[];
   /** The wallet whose rolls are recorded; null when the viewer controls none (rolls stay local). */
   rollerPlayerId: string | null;
+  /** Device preferences: a click and a buzz on each roll. Off when omitted. */
+  sound?: boolean;
+  vibration?: boolean;
 }
 
-export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps) {
+export function DiceRoller({
+  gameId,
+  players,
+  rollerPlayerId,
+  sound = false,
+  vibration = false,
+}: DiceRollerProps) {
   const { t, locale } = useLanguage();
   const [roll, setRoll] = useState(initialRoll);
   const [rolling, setRolling] = useState(false);
@@ -123,6 +133,8 @@ export function DiceRoller({ gameId, players, rollerPlayerId }: DiceRollerProps)
     if (rolling) return;
     const next = rollDice();
     setRoll(next);
+    playRollFeedback(sound);
+    vibrate([20, 40, 20], vibration);
     if (rollerPlayerId !== null) {
       setChosenPlayerId(rollerPlayerId);
       record(next, rollerPlayerId);

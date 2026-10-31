@@ -197,18 +197,24 @@ export function ActivityScreen({
     setError(false);
     setScope(nextScope);
   };
-  /** The ledger is newest first, so the rows above one are the operations written after it. */
-  const reversalProps = (
-    transaction: Transaction,
-    newer: readonly (Transaction | PaymentRequest)[],
-  ) => {
+  // The ledger is newest first, so the transactions above a row were written after it. Listed
+  // once here, each row takes the leading slice instead of filtering the whole page again.
+  const transactionRows: Transaction[] = [];
+  const transactionsAbove = items.map((item) => {
+    const above = transactionRows.length;
+    if (!('state' in item)) transactionRows.push(item);
+    return above;
+  });
+  /** The transactions written after the one at `index` of `items`. */
+  const newerThan = (index: number) => transactionRows.slice(0, transactionsAbove[index]);
+  const reversalProps = (transaction: Transaction, newer: readonly Transaction[]) => {
     if (reversal === undefined) return {};
     const availability = reversalAvailability({
       transaction,
       isOwner: reversal.isOwner,
       controlledPlayerIds: reversal.controlledPlayerIds,
       now,
-      later: newer.filter((item): item is Transaction => !('state' in item)),
+      later: newer,
       groupTileIds: groupTileIdsOf(board, transaction),
     });
     if (availability.status === 'allowed')
@@ -255,7 +261,7 @@ export function ActivityScreen({
               language={language}
               locale={locale}
               board={board}
-              {...reversalProps(item, items.slice(0, index))}
+              {...reversalProps(item, newerThan(index))}
             />
           ),
         )}

@@ -54,6 +54,10 @@ export function PaymentInbox({
       <header>
         <h2 id="payment-inbox-title">{t('paymentInbox')}</h2>
         <StatPill variant="pill">{requests.length}</StatPill>
+        {/* Spoken when a request arrives or is answered, while the list itself stays quiet. */}
+        <span className="sr-only" role="status">
+          {`${t('paymentInbox')}: ${requests.length}`}
+        </span>
       </header>
       {error !== null && (
         <Notice tone="error">{apiErrorMessage(error, t, 'unableRecordTransaction')}</Notice>

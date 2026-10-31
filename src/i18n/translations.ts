@@ -18,6 +18,7 @@ const english = {
   dismissNotification: 'Dismiss notification',
   tryAgain: 'Try again',
   loadingPage: 'Loading…',
+  connectionRetry: 'Retry now',
   pageLoadFailed: 'This part of the app could not load. Check the connection and reload.',
   reloadApp: 'Reload',
   close: 'Close',
@@ -965,6 +966,7 @@ const ukrainian: TranslationCatalog = {
   dismissNotification: 'Закрити сповіщення',
   tryAgain: 'Спробувати ще',
   loadingPage: 'Завантаження…',
+  connectionRetry: 'Спробувати зараз',
   pageLoadFailed:
     'Цю частину застосунку не вдалося завантажити. Перевірте з’єднання й перезавантажте.',
   reloadApp: 'Перезавантажити',
