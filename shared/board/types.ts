@@ -14,6 +14,9 @@ export type PropertyGroupId = (typeof propertyGroupIds)[number];
 
 export type PropertyTileType = 'street' | 'railway' | 'utility';
 
+/** Optional glyph for a transport tile; without it the UI shows the group's default. */
+export type PropertyTileIcon = 'train' | 'ship' | 'plane';
+
 /** Rent for [base, 1 house, 2 houses, 3 houses, 4 houses, hotel]. */
 export type StreetRent = readonly [number, number, number, number, number, number];
 
@@ -29,6 +32,7 @@ export interface PropertyTile {
   mortgage: number;
   rent?: StreetRent;
   houseCost?: number;
+  icon?: PropertyTileIcon;
 }
 
 export type NonPropertyTile =

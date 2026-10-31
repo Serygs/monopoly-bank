@@ -52,6 +52,16 @@ describe('DefaultGameService board', () => {
     expect(input.settings.board?.tiles).toHaveLength(28);
   });
 
+  it('snapshots the Ukrainian board with its own id and 28 tiles to seed', async () => {
+    const { service, createWithPlayers } = build(null);
+    await service.createGameForOwner('owner', { ...request, board: 'monopoly-ua-classic' });
+    const [input] = createWithPlayers.mock.calls[0] as unknown as [
+      { settings: { board?: { presetId: string; tiles: unknown[] } } },
+    ];
+    expect(input.settings.board?.presetId).toBe('monopoly-ua-classic');
+    expect(input.settings.board?.tiles).toHaveLength(28);
+  });
+
   it.each([undefined, 'none' as const])('adds no board for %s', async (board) => {
     const { service, createWithPlayers } = build(null);
     await service.createGameForOwner('owner', { ...request, ...(board ? { board } : {}) });

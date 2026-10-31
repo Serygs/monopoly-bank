@@ -11,7 +11,8 @@ import {
 
 describe('board catalog', () => {
   it('accepts only the supported board modes', () => {
-    expect(boardModes).toEqual(['none', 'monopoly-ru-2012']);
+    expect(boardModes).toEqual(['none', 'monopoly-ru-2012', 'monopoly-ua-classic']);
+    expect(isBoardMode('monopoly-ua-classic')).toBe(true);
     expect(isBoardMode('none')).toBe(true);
     expect(isBoardMode('monopoly-ru-2012')).toBe(true);
     expect(isBoardMode('custom')).toBe(false);

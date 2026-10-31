@@ -12,7 +12,7 @@ import {
 } from 'react';
 import { monopolyBankApi } from '../api/monopoly-bank-api';
 import { useAsyncAction } from '../hooks/useAsyncAction';
-import type { BoardMode } from '../../shared/board';
+import { boardDefaults, boardPresetModes, type BoardMode } from '../../shared/board';
 import { apiErrorMessage } from '../i18n/api-errors';
 import { useLanguage } from '../i18n/language-context';
 import { AmountInput } from '../components/AmountInput';
@@ -122,6 +122,14 @@ interface Props {
   onCreated: (gameId: string) => void;
 }
 
+const boardLabelKeys = {
+  'monopoly-ru-2012': { title: 'boardMonopolyRu2012', description: 'boardDescMonopolyRu2012' },
+  'monopoly-ua-classic': {
+    title: 'boardMonopolyUaClassic',
+    description: 'boardDescMonopolyUaClassic',
+  },
+} as const;
+
 export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: Props) {
   const { language, t } = useLanguage();
   const [initial] = useState(() => readDraft(profile.id, profile.nickname));
@@ -160,6 +168,16 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
     ),
   );
 
+  /** A preset brings its own starting balance, GO reward and currency; the fields stay editable. */
+  const chooseBoard = (mode: BoardMode) => {
+    setBoard(mode);
+    if (mode === 'none') return;
+    const defaults = boardDefaults(mode);
+    setStartingBalance(String(defaults.startingBalance));
+    setPassGoReward(String(defaults.passGoReward));
+    const preset = selectableCurrencies.find((option) => option === defaults.currency);
+    if (preset !== undefined) setCurrency(preset);
+  };
   const toggleSuggestions = () => {
     setSuggestionsOpen((open) => {
       if (!open) setSuggestionStart(randomSuggestionStart());
@@ -374,13 +392,19 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
               <SegmentedControl
                 label={t('boardPlayChoice')}
                 value={board}
-                onChange={setBoard}
+                onChange={chooseBoard}
                 options={[
                   { value: 'none', label: t('boardNone') },
-                  { value: 'monopoly-ru-2012', label: t('boardMonopolyRu2012') },
+                  ...boardPresetModes.map((mode) => ({
+                    value: mode,
+                    label: t(boardLabelKeys[mode].title),
+                  })),
                 ]}
               />
-              <FieldHint as="p">{t('boardHint')}</FieldHint>
+              <FieldHint as="p">
+                {board === 'none' ? t('boardHint') : t(boardLabelKeys[board].description)}
+              </FieldHint>
+              {board !== 'none' && <FieldHint as="p">{t('boardHint')}</FieldHint>}
             </FormSection>
             <FormSection legend={t('bankingRules')}>
               <FieldStack>
@@ -562,7 +586,7 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
                 />
                 <ReviewRow
                   label={t('boardSection')}
-                  value={board === 'none' ? t('boardNone') : t('boardMonopolyRu2012')}
+                  value={board === 'none' ? t('boardNone') : t(boardLabelKeys[board].title)}
                 />
                 <ReviewRow
                   label={t('houseRules')}

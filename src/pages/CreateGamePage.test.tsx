@@ -216,6 +216,26 @@ describe('board choice', () => {
     expect(createGame).toHaveBeenCalledWith(expect.objectContaining({ board: 'monopoly-ru-2012' }));
   });
 
+  it('fills balance, GO reward and currency from the Ukrainian preset and sends it', async () => {
+    const user = userEvent.setup();
+    const createGame = vi.spyOn(monopolyBankApi, 'createGame').mockResolvedValue({
+      game: { id: 'game-1' },
+    } as never);
+    renderPage();
+    await user.click(screen.getByRole('radio', { name: 'Monopoly Ukraine' }));
+    expect(screen.getByText(/Ukrainian cities, UAH/)).toBeInTheDocument();
+    await advance(user, 2);
+    await user.click(screen.getByRole('button', { name: 'Create lobby' }));
+    expect(createGame).toHaveBeenCalledWith(
+      expect.objectContaining({
+        board: 'monopoly-ua-classic',
+        startingBalance: 1_500_000,
+        passGoReward: 200_000,
+        currency: 'UAH',
+      }),
+    );
+  });
+
   it('does not send a board for No board', async () => {
     const user = userEvent.setup();
     const createGame = vi.spyOn(monopolyBankApi, 'createGame').mockResolvedValue({
