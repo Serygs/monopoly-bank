@@ -10,13 +10,15 @@ const gameToolsClass =
   'mt-[24px] grid grid-cols-1 gap-(--mb-space-4) md:grid-cols-2 md:gap-(--mb-layout-gap-medium) lg:gap-(--mb-layout-gap-wide)';
 
 function Tools({ ctx }: { ctx: GameContext }) {
-  const { gameId, details, view } = ctx;
+  const { gameId, details, view, preferences } = ctx;
   return (
     <>
       <DiceRoller
         gameId={gameId}
         players={details.players}
         rollerPlayerId={view.activeWallet?.id ?? null}
+        sound={preferences.sound}
+        vibration={preferences.vibration}
       />
       <TableCalculator />
     </>
