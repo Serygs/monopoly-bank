@@ -85,6 +85,14 @@ flowchart TB
 | Quality                     | ESLint, Vitest, Playwright, Node.js validation/load/restore scripts | Static checks, unit/contract tests, D1 migration checks, browser tests, load tests, and operational rehearsals. |
 | Delivery                    | GitHub Actions, Wrangler                                            | Validates pull requests and deploys isolated development, staging, and production environments with migrations. |
 
+## Board catalog
+
+Board presets live in `shared/board/`: one file per preset (`monopoly-ru-2012.ts`, `monopoly-ua-classic.ts`), registered in `boardModes` and `presets` in `index.ts`. A game freezes a copy scaled to its money unit into `Game.settings.board`, so editing a preset never changes existing games. Adding a preset needs no migration (the id is stored only in the settings JSON) and no engine change: rent, trades, bankruptcy and seeding read the snapshot, never tile ids.
+
+To add one: create the preset file (stable snake_case tile ids, `mortgage = price / 2`, groups including `railway` and `utility`), register it, add title and description translations (`boardMonopoly…`, `boardDesc…`) and the entry in `boardLabelKeys` in `CreateGamePage.tsx`. Choosing a preset in the create form fills the starting balance, GO reward and (when selectable) currency from `boardDefaults`.
+
+`monopoly-ua-classic` is the RU 2012 amounts divided by 10, in UAH. Its `baseStartBalance` of 1,500,000 is an assumption (not visible on the physical board). The optional tile `icon` (`train` | `ship` | `plane`) is data only for now; no UI renders per-tile icons. `UTILITY_RENT_UNIT` (1000) is not scaled by the board multiplier, so utility rent is exact only at a preset's base starting balance.
+
 ## Related documents
 
 - [Real-time Durable Objects](realtime-durable-objects.md) — the `GAME_SESSIONS` binding and its deployment rules.
