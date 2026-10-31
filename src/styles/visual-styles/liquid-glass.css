@@ -339,6 +339,16 @@
   }
 }
 
+/*
+ * The drift moves `background-position`, which repaints the whole mesh gradient on the CPU every
+ * frame. It stays on large screens with a mouse; phones and touch screens get the still mesh.
+ */
+@media (max-width: 47.99rem), (pointer: coarse) {
+  :root[data-visual-style='liquid-glass'] .app-shell {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root[data-visual-style='liquid-glass'] .app-shell {
     animation: none;
