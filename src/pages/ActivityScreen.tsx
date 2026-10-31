@@ -56,6 +56,8 @@ const ledgerClass = cx(
   'activity-ledger m-0 grid list-none gap-0 p-0',
   '[&>li]:grid [&>li]:grid-cols-[minmax(0,1fr)_auto] [&>li]:gap-x-[14px] [&>li]:gap-y-[4px] [&>li]:border-b [&>li]:border-b-border [&>li]:px-[4px] [&>li]:py-[14px]',
   'glass:[&>li]:border-[rgb(85_98_116/0.16)]',
+  // Rows below the fold skip layout and paint until scrolled near; the size is a first guess.
+  '[&>li]:[contain-intrinsic-size:auto_72px] [&>li]:[content-visibility:auto]',
   '[&>li>span]:shrink-0 [&>li>span]:self-start [&>li>span]:font-money [&>li>span]:font-bold [&>li>span]:whitespace-nowrap [&>li>span]:text-primary [&>li>span]:tabular-nums',
   '[&_:is(time,li_em)]:col-span-full [&_:is(time,li_em)]:text-[0.84rem] [&_:is(time,li_em)]:text-secondary',
 );
