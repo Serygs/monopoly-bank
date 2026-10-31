@@ -58,6 +58,32 @@
   }
 }
 
+/*
+ * Phones and touch screens repaint a backdrop blur on every frame of a scroll or a sheet
+ * transition. A shorter radius with no saturation boost looks the same through the tint and
+ * keeps those frames cheap; `min()` leaves a token that is already smaller alone.
+ */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  @media (max-width: 47.99rem), (pointer: coarse) {
+    :root[data-visual-style='liquid-glass'] .glass-panel {
+      -webkit-backdrop-filter: blur(min(var(--mb-glass-blur), 14px));
+      backdrop-filter: blur(min(var(--mb-glass-blur), 14px));
+    }
+    :root[data-visual-style='liquid-glass'] .glass-card-blur {
+      -webkit-backdrop-filter: blur(min(var(--mb-glass-card-blur), 8px));
+      backdrop-filter: blur(min(var(--mb-glass-card-blur), 8px));
+    }
+    :root[data-visual-style='liquid-glass'] .glass-popover {
+      -webkit-backdrop-filter: blur(min(var(--mb-popover-blur), 14px));
+      backdrop-filter: blur(min(var(--mb-popover-blur), 14px));
+    }
+    :root[data-visual-style='liquid-glass'] .glass-scrim {
+      -webkit-backdrop-filter: blur(min(var(--mb-scrim-blur), 6px));
+      backdrop-filter: blur(min(var(--mb-scrim-blur), 6px));
+    }
+  }
+}
+
 /* Solid surfaces when the user asks for less transparency or the system forces colors. */
 @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
   :root[data-visual-style='liquid-glass'] .glass-panel,
