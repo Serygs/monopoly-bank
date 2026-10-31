@@ -55,6 +55,7 @@ import {
   type SelectableCurrency,
 } from '../../shared/types/monopoly';
 import type { UserProfile } from '../../shared/contracts/api';
+import { pickRandomUnusedColor } from '../../shared/domain/player-colors';
 
 const colors = [
   { value: '#d83f55', token: '--mb-color-player-red', nameKey: 'playerColorRed' },
@@ -188,9 +189,7 @@ export function CreateGamePage({ profile, onClose, onDirtyChange, onCreated }: P
     setPlayers(players.map((player) => (player.key === key ? { ...player, ...change } : player)));
   const addPlayer = () => {
     if (players.length < 6) {
-      const color =
-        colors.find((candidate) => !players.some((player) => player.color === candidate.value))
-          ?.value ?? colors[0].value;
+      const color = pickRandomUnusedColor(players.map((player) => player.color));
       setPlayers([...players, { key: nextKey.current++, name: '', color }]);
     }
   };

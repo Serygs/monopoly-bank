@@ -116,9 +116,13 @@ export function calculateBalanceSeries(
   const running = new Map(playerIds.map((id) => [id, startingBalance]));
   const full = new Map(playerIds.map((id) => [id, [startingBalance]]));
   const transactions = group(entries);
-  for (const transaction of transactions) {
-    for (const { playerId, delta } of transaction.deltas)
+  const bankruptAt = new Map<string, number>();
+  for (const [index, transaction] of transactions.entries()) {
+    for (const { playerId, delta } of transaction.deltas) {
       if (running.has(playerId)) running.set(playerId, (running.get(playerId) ?? 0) + delta);
+      if (transaction.type === 'BANKRUPTCY_TRANSFER' && delta < 0 && !bankruptAt.has(playerId))
+        bankruptAt.set(playerId, index + 1);
+    }
     for (const id of playerIds) full.get(id)?.push(running.get(id) ?? startingBalance);
   }
   const steps = transactions.length;
@@ -130,9 +134,14 @@ export function calculateBalanceSeries(
         );
   return {
     steps,
-    players: playerIds.map((playerId) => ({
-      playerId,
-      balances: keep.map((index) => full.get(playerId)?.[index] ?? startingBalance),
-    })),
+    players: playerIds.map((playerId) => {
+      const step = bankruptAt.get(playerId);
+      const endIndex = step === undefined ? -1 : keep.findIndex((index) => index >= step);
+      return {
+        playerId,
+        balances: keep.map((index) => full.get(playerId)?.[index] ?? startingBalance),
+        ...(endIndex < 0 ? {} : { endIndex }),
+      };
+    }),
   };
 }

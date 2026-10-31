@@ -33,6 +33,7 @@ import {
 import { isBoardMode, type BoardMode } from '../../shared/board/index.js';
 import { isInterestRatePercent } from '../../shared/domain/bank-loan.js';
 import { normalizePropertyName } from '../../shared/domain/mortgage.js';
+import { findDuplicateColor } from '../../shared/domain/player-colors.js';
 import { ValidationError } from '../services/errors.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -65,6 +66,12 @@ export async function parseCreateGameRequest(request: Request): Promise<CreateGa
       playerCount: players.length,
     });
   }
+
+  const duplicateColor = findDuplicateColor(players.map((player) => player.color));
+  if (duplicateColor !== null)
+    throw new ApiValidationError('Every player must have a different color.', {
+      color: duplicateColor,
+    });
 
   if (body.isPublic !== undefined && typeof body.isPublic !== 'boolean')
     throw new ApiValidationError('isPublic must be a boolean.');
