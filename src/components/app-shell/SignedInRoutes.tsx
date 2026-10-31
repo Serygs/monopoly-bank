@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import type { UserProfile } from '../../../shared/contracts/api';
 import { SavedGamesPage } from '../../pages/SavedGamesPage';
 import { joinCodeFromSearch } from '../../utils/join-code';
+import { preloadWhenIdle } from '../../utils/idle-preload';
 import { lazyNamed } from '../../utils/lazy-named';
 import type { DevicePreferences } from '../../utils/preferences';
 import { invitationFromLocation } from './invitation';
@@ -8,7 +10,8 @@ import { LazyBoundary } from './LazyBoundary';
 
 // The home screen ships with the app; every other page loads in its own chunk on first use.
 const CreateGamePage = lazyNamed(() => import('../../pages/CreateGamePage'), 'CreateGamePage');
-const GamePage = lazyNamed(() => import('../../pages/GamePage'), 'GamePage');
+const loadGamePage = () => import('../../pages/GamePage');
+const GamePage = lazyNamed(loadGamePage, 'GamePage');
 const JoinGamePage = lazyNamed(() => import('../../pages/JoinGamePage'), 'JoinGamePage');
 const ProfilePage = lazyNamed(() => import('../../pages/ProfilePage'), 'ProfilePage');
 
@@ -54,6 +57,8 @@ function SavedGamesRoute({ navigate }: Pick<SignedInRoutesProps, 'navigate'>) {
 }
 
 export function SignedInRoutes(props: SignedInRoutesProps) {
+  // Most visits end in a game, so fetch its page while the saved-games list is on screen.
+  useEffect(() => preloadWhenIdle(loadGamePage), []);
   return (
     <LazyBoundary page key={props.path}>
       <SignedInRoute {...props} />
