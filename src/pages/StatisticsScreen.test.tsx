@@ -95,6 +95,27 @@ describe('StatisticsScreen', () => {
     expect(within(table).getByRole('columnheader', { name: 'Ada' })).toBeInTheDocument();
   });
 
+  it('picks one line out from the legend and ends a bankrupt line with a mark', () => {
+    const bankrupt = {
+      ...summary,
+      balanceSeries: {
+        steps: 2,
+        players: [
+          { playerId: 'a', balances: [1500, 0, 0], endIndex: 1 },
+          { playerId: 'b', balances: [1500, 1800, 1800] },
+        ],
+      },
+    };
+    renderScreen(false, bankrupt);
+    const legend = screen.getByRole('button', { name: /Ada/ });
+    expect(legend).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(legend);
+    expect(legend).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(legend);
+    expect(legend).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('img', { name: /2 operations/ }).textContent).toContain('✕');
+  });
+
   it('still renders a snapshot saved before awards existed', () => {
     const { awards: _awards, balanceSeries: _series, ...legacy } = summary;
     renderScreen(true, legacy as typeof summary);

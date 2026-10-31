@@ -248,7 +248,7 @@ describe('joining a game', () => {
     });
   });
 
-  it('seats a player directly in the first free colour', async () => {
+  it('seats a player directly in a colour nobody at the table has', async () => {
     const { router, m } = harness();
     const response = await router(join({ joinCode: 'ABCD' }));
     expect(response.status).toBe(200);
@@ -258,9 +258,9 @@ describe('joining a game', () => {
       gameId: G,
       userId: USER.id,
       nickname: 'Test',
-      color: '#27ae60',
       startingBalance: 1500,
     });
+    expect(['#238b57', '#d97721', '#8b4cc5', '#087f78']).toContain(joined.color);
     expect(joined.playerId).toMatch(/^[0-9a-f-]{36}$/u);
   });
 
