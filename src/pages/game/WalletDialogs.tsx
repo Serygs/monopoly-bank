@@ -28,29 +28,34 @@ type Completed = Parameters<BankingProps['onCompleted']>;
 function useWalletCompletion(ctx: GameContext) {
   const { t } = useLanguage();
   const notify = useFeedback();
-  const { details, preferences, setDetails, dialogs } = ctx;
+  const { preferences, setDetails, dialogs } = ctx;
   const closeWallet = () => dialogs.wallet.setSelectedPlayer(null);
   const completed = (
     ...[players, action, amount, mortgages, loans, cooldowns, jackpot, changed]: Completed
   ) => {
     playPaymentFeedback(preferences.sound);
     vibrate(35, preferences.vibration);
-    const applied = applyBankingResponse(details, {
-      players,
-      mortgages,
-      loans,
-      bankLoanCooldowns: cooldowns,
-      jackpot,
-      properties: changed,
+    // Functional: live events may have landed while the request was in flight, and a copy taken
+    // at render time would overwrite them (a tile bought by someone else would turn free again).
+    setDetails((current) => {
+      if (current === null) return current;
+      const applied = applyBankingResponse(current, {
+        players,
+        mortgages,
+        loans,
+        bankLoanCooldowns: cooldowns,
+        jackpot,
+        properties: changed,
+      });
+      const recent =
+        amount === null
+          ? current.recentAmounts
+          : [amount, ...(current.recentAmounts ?? []).filter((value) => value !== amount)].slice(
+              0,
+              5,
+            );
+      return { ...applied, recentAmounts: recent };
     });
-    const recent =
-      amount === null
-        ? details.recentAmounts
-        : [amount, ...(details.recentAmounts ?? []).filter((value) => value !== amount)].slice(
-            0,
-            5,
-          );
-    setDetails({ ...applied, recentAmounts: recent });
     closeWallet();
     notify({ tone: 'success', message: t(completionMessage[action] ?? 'paymentSent') });
   };
@@ -163,12 +168,14 @@ function BankruptcyHost({ ctx }: { ctx: GameContext }) {
       }}
       onClose={() => setBankruptPlayer(null)}
       onCompleted={(players, mortgages, loans, bankLoanCooldowns, jackpot, properties) => {
-        setDetails(
-          applyBankingResponse(
-            details,
-            { players, mortgages, loans, bankLoanCooldowns, jackpot, properties },
-            'replace',
-          ),
+        setDetails((current) =>
+          current === null
+            ? current
+            : applyBankingResponse(
+                current,
+                { players, mortgages, loans, bankLoanCooldowns, jackpot, properties },
+                'replace',
+              ),
         );
         setBankruptPlayer(null);
       }}

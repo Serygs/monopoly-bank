@@ -96,7 +96,7 @@ describe('withClientGameDetails', () => {
       controlledWallets: [{ playerId: 'p1', kind: 'PRIMARY' }],
       controlledPlayerIds: ['p1'],
     });
-    const server = details({ players: [alice, bob], canManage: false });
+    const server = details({ players: [alice, bob] });
     expect(withClientGameDetails(server, current)).toEqual({
       ...server,
       canManage: true,
@@ -104,6 +104,15 @@ describe('withClientGameDetails', () => {
       controlledWallets: [{ playerId: 'p1', kind: 'PRIMARY' }],
       controlledPlayerIds: ['p1'],
     });
+  });
+
+  it('prefers owner fields supplied by the server', () => {
+    const current = details({ canManage: false, joinCode: 'OLD', hasAccessPassword: false });
+    const server = details({ canManage: true, joinCode: 'NEW', hasAccessPassword: true });
+    const merged = withClientGameDetails(server, current);
+    expect(merged.canManage).toBe(true);
+    expect(merged.joinCode).toBe('NEW');
+    expect(merged.hasAccessPassword).toBe(true);
   });
 
   it('prefers controlled wallets supplied by the server', () => {

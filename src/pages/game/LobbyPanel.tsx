@@ -50,7 +50,15 @@ function LobbyBanner({ gameId, details, setDetails, offline }: LobbyPanelProps) 
         <Button
           variant="primary"
           disabled={offline || lobbyNeedsMorePlayers(details.players.length)}
-          onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}
+          onClick={() =>
+            void monopolyBankApi
+              .startGame(gameId)
+              .then((started) =>
+                setDetails((current) =>
+                  current === null ? started : withClientGameDetails(started, current),
+                ),
+              )
+          }
         >
           {t('startGame')}
         </Button>
@@ -90,8 +98,9 @@ function LobbyPlayers({ gameId, details, setDetails, offline }: LobbyPanelProps)
   const { busy, error, run } = useAsyncAction();
   const remove = (playerId: string) =>
     void run(async () => {
-      setDetails(
-        withClientGameDetails(await monopolyBankApi.removeLobbyPlayer(gameId, playerId), details),
+      const updated = await monopolyBankApi.removeLobbyPlayer(gameId, playerId);
+      setDetails((current) =>
+        current === null ? updated : withClientGameDetails(updated, current),
       );
     });
   const controlled = details.controlledPlayerIds ?? [];

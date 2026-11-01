@@ -78,7 +78,7 @@ describe('ReverseTransactionDialog', () => {
       { type: 'REVERSAL', transactionId: 't1', comment: 'Wrong player' },
       expect.any(String),
     );
-    expect(onReversed).toHaveBeenCalledWith(reversed);
+    expect(onReversed).toHaveBeenCalledWith(expect.objectContaining({ players: reversed }));
   });
 
   it('retries with the same command ID so a dropped response cannot reverse twice', async () => {

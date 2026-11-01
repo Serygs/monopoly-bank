@@ -7,7 +7,7 @@ import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
 import type { Language } from '../../i18n/translations';
 import { transactionDescription } from '../../utils/transaction-history';
-import { insufficientMessage } from './game-page-helpers';
+import { insufficientMessage, type BankingResponseFields } from './game-page-helpers';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 export interface ReverseTransactionDialogProps {
@@ -17,8 +17,8 @@ export interface ReverseTransactionDialogProps {
   currency: Currency;
   language: Language;
   onClose: () => void;
-  /** Called with the balances after the reversal was recorded. */
-  onReversed: (players: Player[]) => void;
+  /** Called with the balances and registry rows the reversal changed. */
+  onReversed: (result: BankingResponseFields) => void;
 }
 
 const effectListClass =
@@ -54,7 +54,7 @@ export function ReverseTransactionDialog({
         },
         commandId,
       );
-      onReversed(result.players);
+      onReversed(result);
     });
   };
 

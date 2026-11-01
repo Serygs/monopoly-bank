@@ -50,7 +50,7 @@ const activeCardClass = cx(
   'glass:dark:fine-pointer:enabled:hover:shadow-[0_18px_46px_rgb(0_0_0/0.3),0_0_0_1px_rgb(137_169_207/0.12),inset_0_1px_0_rgb(255_255_255/0.16)]',
 );
 const prominentCardClass =
-  'min-h-[210px] p-[clamp(var(--mb-space-5),5vw,var(--mb-space-7))] max-md:min-h-[120px] max-md:gap-(--mb-space-3) max-md:p-(--mb-space-4)';
+  'min-h-[210px] p-[clamp(var(--mb-space-5),5vw,var(--mb-space-7))] max-md:min-h-[7.5rem] max-md:short-portrait:min-h-[6.25rem] max-md:short-portrait:gap-(--mb-space-2) max-md:short-portrait:p-(--mb-space-3) max-md:gap-(--mb-space-3) max-md:p-(--mb-space-4)';
 const standardActiveCardClass = 'min-h-[154px] p-(--mb-space-5)';
 
 const headingClass =

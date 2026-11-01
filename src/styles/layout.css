@@ -58,11 +58,15 @@
   }
 }
 
-/* iOS standalone mode can report a zero top inset during first paint. */
+/*
+ * iOS standalone mode can report a zero top inset during first paint, so the installed app keeps a
+ * floor. A normal Safari tab reports its real inset (0 under the toolbar); forcing the floor there
+ * wasted 54px of an already short viewport.
+ */
 @supports (-webkit-touch-callout: none) {
   @media (max-width: 47.99rem) and (orientation: portrait) {
     :root {
-      --mb-app-safe-top: max(env(safe-area-inset-top, 0px), 54px);
+      --mb-app-safe-top: env(safe-area-inset-top, 0px);
     }
     .app-header-inner {
       min-width: 0;
@@ -70,6 +74,18 @@
     .header-tools {
       flex: 0 0 auto;
     }
+  }
+  @media (display-mode: standalone) and (max-width: 47.99rem) and (orientation: portrait) {
+    :root {
+      --mb-app-safe-top: max(env(safe-area-inset-top, 0px), 54px);
+    }
+  }
+}
+
+/* Short portrait phones (an iPhone in a Safari tab): less air above the page content. */
+@media (max-height: 43.75rem) and (orientation: portrait) and (max-width: 47.99rem) {
+  .page {
+    padding-top: var(--mb-space-4);
   }
 }
 
