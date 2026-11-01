@@ -157,6 +157,21 @@ describe('the WebSocket upgrade decision', () => {
     expect(storage.get('stateVersion')).toBe(5);
   });
 
+  it('stamps the snapshot with the version its game was read at, not a later commit', async () => {
+    const { session, storage, gameService, sockets } = harness({
+      sockets: [],
+      stored: { stateVersion: 5 },
+    });
+    // A command commits (bumping the version) while the connection is still being built.
+    gameService.getGame.mockImplementation(async () => {
+      storage.set('stateVersion', 6);
+      return gameDetails();
+    });
+    await session.fetch(connect(UPGRADE));
+    const snapshot = sentTo(sockets[0] as never)[0] as { state: { stateVersion: number } };
+    expect(snapshot.state.stateVersion).toBe(5);
+  });
+
   it('counts the new connection as present once its attachment is readable', async () => {
     const { session, sockets } = harness({ sockets: [socket({ userId: 'other' })] });
     server.deserializeAttachment = () => ({ userId: U });
