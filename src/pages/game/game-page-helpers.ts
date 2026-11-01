@@ -173,8 +173,9 @@ export function withClientGameDetails(
     ? details
     : {
         ...details,
-        canManage: current.canManage,
-        joinCode: current.joinCode,
+        canManage: details.canManage ?? current.canManage,
+        joinCode: details.joinCode ?? current.joinCode,
+        hasAccessPassword: details.hasAccessPassword ?? current.hasAccessPassword,
         controlledWallets: details.controlledWallets ?? current.controlledWallets,
         controlledPlayerIds: details.controlledPlayerIds ?? current.controlledPlayerIds,
       };

@@ -50,7 +50,15 @@ function LobbyBanner({ gameId, details, setDetails, offline }: LobbyPanelProps) 
         <Button
           variant="primary"
           disabled={offline || lobbyNeedsMorePlayers(details.players.length)}
-          onClick={() => void monopolyBankApi.startGame(gameId).then(setDetails)}
+          onClick={() =>
+            void monopolyBankApi
+              .startGame(gameId)
+              .then((started) =>
+                setDetails((current) =>
+                  current === null ? started : withClientGameDetails(started, current),
+                ),
+              )
+          }
         >
           {t('startGame')}
         </Button>
