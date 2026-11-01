@@ -2,7 +2,7 @@ import { AmountSelector } from '../../components/AmountSelector';
 import { Field, FieldError, FieldHint, MoneyValue, Toggle } from '../../components/ui';
 import { BuildingStepper } from './BuildingStepper';
 import { MortgageDetails, RedemptionPicker } from './MortgageFields';
-import { TilePicker } from './TilePicker';
+import { TileMultiPicker, TilePicker } from './TilePicker';
 import type { BankingForm } from './useBankingDialog';
 
 function PurchaseFields({ form }: { form: BankingForm }) {
@@ -109,12 +109,12 @@ function MortgageFields({ form }: { form: BankingForm }) {
       />
     );
   return (
-    <TilePicker
+    <TileMultiPicker
       currency={inputs.currency}
       legend={t('tileChooseMortgage')}
       items={items.mortgage}
-      value={fields.tileId}
-      onChange={handlers.chooseTile}
+      values={fields.batchIds}
+      onToggle={handlers.toggleMortgageTile}
     />
   );
 }
@@ -130,15 +130,18 @@ function RedeemFields({ form }: { form: BankingForm }) {
         onChange={handlers.chooseMortgage}
       />
     );
+  const chosenTiles = items.tileMortgages
+    .filter((item) => fields.batchIds.includes(item.id))
+    .flatMap((item) => (item.tileId == null ? [] : [item.tileId]));
   return (
-    <TilePicker
+    <TileMultiPicker
       currency={inputs.currency}
       legend={t('tileChooseRedeem')}
       items={items.redeem}
-      value={d.mortgage.selected?.tileId ?? ''}
-      onChange={(view) => {
+      values={chosenTiles}
+      onToggle={(view) => {
         const mortgage = items.tileMortgages.find((item) => item.tileId === view.tile.id);
-        if (mortgage !== undefined) handlers.chooseMortgage(mortgage);
+        if (mortgage !== undefined) handlers.toggleRedemption(mortgage);
       }}
     />
   );

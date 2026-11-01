@@ -403,6 +403,8 @@ export function levelBounds(view: TileView, mode: BuildMode): { min: number; max
 /** One card of an ownership strip: its group colour, whether anybody holds it, an owner ring. */
 export interface PropertyStripCard {
   tileId: string;
+  /** The colour group; the strip leaves a wider gap where the group changes. */
+  group: PropertyGroupId;
   color: string;
   owned: boolean;
   /** The owner's player colour, drawn as a ring around the viewer's own cards. */
@@ -429,6 +431,7 @@ export function boardStrip(
       owner !== null && controlledPlayerIds.includes(owner) ? playerColors.get(owner) : undefined;
     return {
       tileId: view.tile.id,
+      group: view.tile.group,
       color: propertyGroupColors[view.tile.group],
       owned: owner !== null,
       ...(ring === undefined ? {} : { ring }),
@@ -443,6 +446,7 @@ export function playerStrip(views: readonly TileView[], playerId: string): Prope
     views.filter((view) => view.ownerPlayerId === playerId),
   ).map((view) => ({
     tileId: view.tile.id,
+    group: view.tile.group,
     color: propertyGroupColors[view.tile.group],
     owned: true,
   }));

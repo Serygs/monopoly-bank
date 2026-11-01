@@ -1,6 +1,6 @@
 import { BANK_TO_PLAYER_MAX_AMOUNT } from '../../../shared/domain/banking';
 import { Button, FieldError } from '../../components/ui';
-import { shortfallClass } from './banking-dialog-styles';
+import { bankruptcyClass, shortfallClass } from './banking-dialog-styles';
 import type { BankingForm } from './useBankingDialog';
 
 function LimitErrors({ form }: { form: BankingForm }) {
@@ -55,9 +55,9 @@ function ShortfallActions({ form }: { form: BankingForm }) {
           {t('auctionInstead')}
         </Button>
       )}
-      <Button variant="danger" onClick={props.onBankrupt}>
+      <button type="button" className={bankruptcyClass} onClick={props.onBankrupt}>
         {t('declareBankrupt')}
-      </Button>
+      </button>
     </div>
   );
 }

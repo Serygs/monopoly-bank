@@ -236,8 +236,8 @@ describe('ownership strips', () => {
 
   it("lists a player's cards from the cheapest group to the dearest", () => {
     expect(playerStrip(views, 'a')).toEqual([
-      { tileId: brown, color: propertyGroupColors.brown, owned: true },
-      { tileId: blue, color: propertyGroupColors.blue, owned: true },
+      { tileId: brown, group: 'brown', color: propertyGroupColors.brown, owned: true },
+      { tileId: blue, group: 'blue', color: propertyGroupColors.blue, owned: true },
     ]);
     expect(playerStrip(views, 'c')).toEqual([]);
   });
@@ -247,6 +247,7 @@ describe('ownership strips', () => {
     expect(strip).toHaveLength(board.tiles.length);
     expect(strip[0]).toEqual({
       tileId: brown,
+      group: 'brown',
       color: propertyGroupColors.brown,
       owned: true,
       ring: '#e11d48',
@@ -254,6 +255,7 @@ describe('ownership strips', () => {
     expect(strip.at(-1)?.color).toBe(propertyGroupColors.blue);
     expect(strip.find((card) => card.tileId === orange)).toEqual({
       tileId: orange,
+      group: 'orange',
       color: propertyGroupColors.orange,
       owned: true,
     });
