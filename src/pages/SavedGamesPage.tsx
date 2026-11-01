@@ -49,7 +49,8 @@ const heroClass = cx(
   'glass:isolate glass:border-[rgb(255_255_255/0.6)] glass:text-primary glass:shadow-lg',
   'glass:[&_.eyebrow]:text-[color:color-mix(in_srgb,var(--mb-color-accent-hover)_88%,var(--mb-color-text-primary))]',
   'glass:after:w-[42%] glass:after:opacity-82',
-  'glass:after:[background:radial-gradient(circle_at_70%_34%,rgb(255_244_232/0.9),transparent_13%),radial-gradient(circle_at_45%_65%,rgb(201_220_244/0.92),transparent_22%),radial-gradient(circle_at_80%_72%,rgb(231_226_244/0.84),transparent_26%)]',
+  'glass:after:[background:var(--mb-hero-ornament)_right_-40px_center/auto_150%_no-repeat]',
+  'glass:after:[mask-image:linear-gradient(90deg,transparent,black_40%)]',
 );
 /* The search field and sort select share each style's control skin. */
 const controlsClass = cx(
