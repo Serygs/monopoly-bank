@@ -75,7 +75,19 @@ describe('LobbyPanel', () => {
     vi.spyOn(monopolyBankApi, 'startGame').mockResolvedValue(details('ACTIVE'));
     const setDetails = show(details('LOBBY'));
     await userEvent.setup().click(screen.getByRole('button', { name: 'Start game' }));
-    await waitFor(() => expect(setDetails).toHaveBeenCalledWith(details('ACTIVE')));
+    await waitFor(() => expect(setDetails).toHaveBeenCalled());
+    const lobby: GameDetails = {
+      ...details('LOBBY'),
+      controlledWallets: [{ playerId: 'a', kind: 'PRIMARY' }],
+      joinCode: 'JOIN',
+    };
+    const apply = setDetails.mock.calls[0]?.[0] as (current: GameDetails | null) => GameDetails;
+    const next = apply(lobby);
+    expect(next.game.status).toBe('ACTIVE');
+    expect(next.controlledWallets).toEqual([{ playerId: 'a', kind: 'PRIMARY' }]);
+    expect(next.controlledPlayerIds).toEqual(['a']);
+    expect(next.canManage).toBe(true);
+    expect(next.joinCode).toBe('JOIN');
   });
 
   it('disables starting while offline', () => {
