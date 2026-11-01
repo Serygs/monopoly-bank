@@ -38,14 +38,14 @@ const fadeClass =
   'pointer-events-none fixed inset-x-0 bottom-0 z-30 h-(--mb-bottom-nav-height) bg-linear-to-t from-canvas to-transparent';
 const listClass = 'm-0 grid list-none items-end p-0 px-(--mb-space-2)';
 const itemClass = cx(
-  'relative flex h-[64px] w-full min-w-0 cursor-pointer flex-col items-center justify-end gap-[2px] rounded-pill border-0 bg-transparent px-[2px] pt-(--mb-space-2) pb-(--mb-space-2)',
+  'relative flex h-16 w-full min-w-0 cursor-pointer flex-col items-center justify-end gap-[2px] rounded-pill border-0 bg-transparent px-[2px] pt-(--mb-space-2) pb-(--mb-space-2)',
   'font-ui text-[0.6875rem] leading-[1.2] font-semibold whitespace-nowrap text-secondary max-[380px]:text-[0.625rem]',
   'focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-60',
 );
 const activeItemClass = 'bg-surface-subtle text-primary';
 const raisedItemClass = 'overflow-visible text-secondary';
 const raisedCircleClass = cx(
-  'absolute top-[-20px] left-1/2 grid size-[58px] -translate-x-1/2 place-items-center rounded-[50%] [&_svg]:size-[27px]',
+  'absolute top-[-1.25rem] left-1/2 grid size-[3.625rem] -translate-x-1/2 place-items-center rounded-[50%] [&_svg]:size-[1.6875rem]',
   'bg-surface-inverse text-on-inverse shadow-md',
 );
 const dotClass =
@@ -57,6 +57,7 @@ export function NavIcon({ children }: { children: ReactNode }) {
     <svg
       width="22"
       height="22"
+      className="size-[1.375rem]"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -73,7 +74,7 @@ export function NavIcon({ children }: { children: ReactNode }) {
 /** Bottom navigation: equal destinations plus at most one raised action, in the given order. */
 export function BottomNav({ label, items, className }: BottomNavProps) {
   const columns = items.map((item) =>
-    item.raised === true ? 'minmax(88px,1fr)' : 'minmax(0,1fr)',
+    item.raised === true ? 'minmax(5.5rem,1fr)' : 'minmax(0,1fr)',
   );
   return (
     <>
@@ -97,7 +98,7 @@ export function BottomNav({ label, items, className }: BottomNavProps) {
                 >
                   {raised ? (
                     <>
-                      <span className="size-[22px]" aria-hidden="true" />
+                      <span className="size-[1.375rem]" aria-hidden="true" />
                       <span
                         className={cx(
                           raisedCircleClass,

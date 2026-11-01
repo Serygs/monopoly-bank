@@ -28,6 +28,8 @@
 @custom-variant forced-colors (@media (forced-colors: active));
 /* Short landscape phones; registered after `md`/`lg`, so it overrides them as the old CSS did. */
 @custom-variant short-landscape (@media (max-height: 31.25rem) and (orientation: landscape));
+/* Short portrait phones, e.g. an iPhone in a Safari tab (~660px visible); tightens gaps only. */
+@custom-variant short-portrait (@media (max-height: 43.75rem) and (orientation: portrait));
 
 :root {
   --mb-app-safe-top: env(safe-area-inset-top, 0px);
@@ -37,7 +39,7 @@
   /* The compact game navigation: one row plus its bottom padding; dialogs stop above it. */
   --mb-bottom-nav-inset: 8px;
   --mb-bottom-nav-height: calc(
-    64px + max(var(--mb-bottom-nav-inset), var(--mb-app-safe-bottom)) + 16px
+    4rem + max(var(--mb-bottom-nav-inset), var(--mb-app-safe-bottom)) + 1rem
   );
   --mb-dialog-nav-offset: 0px;
   color: var(--mb-color-text-primary);
@@ -57,6 +59,18 @@
 
 * {
   box-sizing: border-box;
+}
+
+/*
+ * Compact phones scale every rem-based size with the screen. Width term: a 430px phone keeps 16px,
+ * a 393px one gets ~14.6px, a 360px Android the 14px floor. Height term (`svh`, stable while
+ * Safari's toolbars move): a ~660px Safari viewport gets ~14.5px. Percentages keep the user's own
+ * browser text size as the base, and tablets and desktops stay at 100%.
+ */
+@media (max-width: 47.99rem) {
+  html {
+    font-size: clamp(87.5%, min(3.72vw, 2.2svh), 100%);
+  }
 }
 
 body {
