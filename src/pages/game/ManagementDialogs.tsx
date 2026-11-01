@@ -3,7 +3,7 @@ import { useFeedback } from '../../components/ui';
 import { useLanguage } from '../../i18n/language-context';
 import { lazyNamed } from '../../utils/lazy-named';
 import type { GameContext } from './game-context';
-import { withClientGameDetails } from './game-page-helpers';
+import { applyBankingResponse, withClientGameDetails } from './game-page-helpers';
 import { FinishGameDialog } from './FinishGameDialog';
 import { ReverseTransactionDialog } from './ReverseTransactionDialog';
 
@@ -61,8 +61,10 @@ function ReverseHost({ ctx }: { ctx: GameContext }) {
       currency={details.game.currency}
       language={language}
       onClose={() => setReversing(null)}
-      onReversed={(players) => {
-        setDetails({ ...details, players });
+      onReversed={(result) => {
+        setDetails((current) =>
+          current === null ? current : applyBankingResponse(current, result),
+        );
         setReversing(null);
         setVersion((version) => version + 1);
         notify({ tone: 'success', message: t('reversalRecorded') });

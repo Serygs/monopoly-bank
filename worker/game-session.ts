@@ -105,7 +105,8 @@ export class GameSession {
         { status: 426, headers: { 'x-request-id': requestId } },
       );
     await this.settleQuietly(gameId);
-    const details = await this.readGameShared(gameId);
+    const loaded = await this.readGameShared(gameId);
+    const details = loaded.details;
     if (details.game.status === 'FINISHED')
       return Response.json(
         { error: { code: 'GAME_FINISHED', message: 'This game is finished.', requestId } },
@@ -117,7 +118,7 @@ export class GameSession {
     const server = pair[1];
     server.serializeAttachment({ userId });
     this.ctx.acceptWebSocket(server, [userId]);
-    this.send(server, { type: 'GAME_SNAPSHOT', state: await this.state(gameId, userId, details) });
+    this.send(server, { type: 'GAME_SNAPSHOT', state: await this.state(gameId, userId, loaded) });
     await this.broadcastPresence();
     return new Response(null, {
       status: 101,
@@ -715,26 +716,29 @@ export class GameSession {
    * network drop share one set of D1 reads while no command has committed in between; the entry
    * goes away as soon as the read finishes, so nothing is ever served from a past read.
    */
-  private async readGameShared(gameId: string): Promise<GameDetails> {
+  private async readGameShared(gameId: string): Promise<{ details: GameDetails; version: number }> {
     const version = await this.stateVersion();
-    if (this.gameRead?.version === version) return this.gameRead.read;
+    if (this.gameRead?.version === version) return { details: await this.gameRead.read, version };
     const read = this.gameService()
       .getGame(gameId)
       .finally(() => {
         if (this.gameRead?.read === read) this.gameRead = null;
       });
     this.gameRead = { version, read };
-    return read;
+    return { details: await read, version };
   }
 
   private async state(
     gameId: string,
     userId: string,
-    details?: GameDetails,
+    read?: { details: GameDetails; version: number },
   ): Promise<LiveGameState> {
     await this.settleQuietly(gameId);
     const controlledWallets = await this.access().controlledWallets(gameId, userId);
-    const loaded = details ?? (await this.readGameShared(gameId));
+    // The snapshot is stamped with the version the game was read at, never a later one. A command
+    // that commits while this waits would otherwise leave details older than their stamp, and the
+    // client (which trusts a snapshot's version) would never ask for the missing change.
+    const { details: loaded, version } = read ?? (await this.readGameShared(gameId));
     // A running auction without a remembered deadline (lost storage, a crash between the D1 write
     // and the storage write) is picked up again here, so it can never be stuck.
     if (
@@ -743,7 +747,7 @@ export class GameSession {
     )
       await this.armAuction(gameId, loaded.auction);
     return {
-      stateVersion: await this.stateVersion(),
+      stateVersion: version,
       details: {
         ...loaded,
         controlledWallets,

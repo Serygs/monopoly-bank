@@ -98,8 +98,9 @@ function LobbyPlayers({ gameId, details, setDetails, offline }: LobbyPanelProps)
   const { busy, error, run } = useAsyncAction();
   const remove = (playerId: string) =>
     void run(async () => {
-      setDetails(
-        withClientGameDetails(await monopolyBankApi.removeLobbyPlayer(gameId, playerId), details),
+      const updated = await monopolyBankApi.removeLobbyPlayer(gameId, playerId);
+      setDetails((current) =>
+        current === null ? updated : withClientGameDetails(updated, current),
       );
     });
   const controlled = details.controlledPlayerIds ?? [];
