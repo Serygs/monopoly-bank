@@ -22,16 +22,16 @@
   --mb-tracking-display: -0.035em;
   --mb-tracking-meta: 0.08em;
 
-  --mb-space-1: 4px;
-  --mb-space-2: 8px;
-  --mb-space-3: 12px;
-  --mb-space-4: 16px;
-  --mb-space-5: 20px;
-  --mb-space-6: 24px;
-  --mb-space-7: 32px;
-  --mb-space-8: 40px;
-  --mb-space-9: 48px;
-  --mb-space-10: 64px;
+  --mb-space-1: 0.25rem;
+  --mb-space-2: 0.5rem;
+  --mb-space-3: 0.75rem;
+  --mb-space-4: 1rem;
+  --mb-space-5: 1.25rem;
+  --mb-space-6: 1.5rem;
+  --mb-space-7: 2rem;
+  --mb-space-8: 2.5rem;
+  --mb-space-9: 3rem;
+  --mb-space-10: 4rem;
 
   --mb-layout-content-max: 1280px;
   --mb-layout-content-narrow: 760px;

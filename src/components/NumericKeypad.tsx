@@ -11,7 +11,7 @@ import type { AmountUnit } from '../utils/preferences';
 import { cx, keyButtonClass } from './ui/class-names';
 
 const keypadClass =
-  'grid grid-cols-[repeat(3,1fr)] content-start gap-[6px] [&>button]:min-h-12 md:mx-auto md:w-[min(100%,360px)]';
+  'grid grid-cols-[repeat(3,1fr)] content-start gap-[6px] [&>button]:min-h-[max(44px,3rem)] md:mx-auto md:w-[min(100%,360px)]';
 
 export function NumericKeypad({
   digits,

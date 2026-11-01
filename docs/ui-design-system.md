@@ -199,7 +199,7 @@ per-component stylesheets.
   `classic:` and `glass:`, which follow `data-visual-style`, and `dark:` and
   `light:`, which follow the resolved `data-color-mode` and never
   `prefers-color-scheme`. It also registers the media variants `fine-pointer:`,
-  `forced-colors:`, and `short-landscape:`. Tailwind's `motion-safe:` and
+  `forced-colors:`, `short-landscape:`, and `short-portrait:`. Tailwind's `motion-safe:` and
   `motion-reduce:` cover reduced motion. Classic Bank and Liquid Glass differ
   only through these variants on the same element, for example
   `glass:backdrop-blur-[26px] glass:forced-colors:backdrop-filter-none`, and
@@ -486,8 +486,15 @@ phones (the primary wider; a lone button is full width) with no background strip
   breakpoints: compact is unprefixed or `max-md:`, medium is `md:`, and wide is
   `lg:`. `src/styles/tailwind-theme.css` defines only `md` (48rem) and `lg`
   (64rem). A feature may use only these boundaries (plus the registered
-  `short-landscape:` variant) when it changes composition; never add a
-  page-local breakpoint value.
+  `short-landscape:` and `short-portrait:` variants) when it changes
+  composition; never add a page-local breakpoint value. `short-portrait:`
+  (height up to 43.75rem) is for a phone in a Safari tab, where the toolbars
+  leave about 660px; use it only to tighten gaps, never to change structure.
+- **Compact phones scale with the screen.** Below `md` the root font size is
+  `clamp(87.5%, min(3.72vw, 2.2svh), 100%)` (`src/index.css`): 16px on a 430px
+  phone, about 14.6px on 393px, a 14px floor on 360px Android. Size icons,
+  rows, and controls in `rem` (spacing tokens are `rem`) so they follow it;
+  keep interactive targets at least 44px with `max(44px, ...rem)`.
 - Use CSS grid, flex, intrinsic sizing (`minmax(0, ...)`), and wrapping before
   adding a breakpoint. Never use fixed widths that make a 320px viewport or a
   Ukrainian label overflow.
@@ -537,7 +544,8 @@ in both visual styles:
   reverse, finish; `sheet="flow"`) cover the navigation and the Pay button, so the bar owns the
   bottom edge. The
   `--mb-app-safe-*` properties are defined in `src/index.css`; iOS standalone
-  portrait raises the top inset in `layout.css`.
+  portrait (`display-mode: standalone` only, never a Safari tab) raises the
+  top inset to at least 54px in `layout.css`.
 - A decorative 42×4px grab handle in `--mb-color-border-strong` sits 10px from
   the top. It is an absolutely placed `::before`, so it never becomes a grid item
   of a grid-laid panel. It is not a drag affordance, and the sheet is not
@@ -683,8 +691,9 @@ reachable at every size.
   calculator is a chained pocket calculator (digits, decimal, + − × ÷, %, ±, ⌫, C,
   repeated equals, the last five calculations to reuse, physical keyboard) and
   never changes balances.
-- **Fit target.** On 393×852 and 430×932 the Wallets view for up to six players
-  fits without vertical scrolling; the nav labels must not truncate in English or
+- **Fit target.** On 393×852, 430×932, a 393×660 Safari viewport, and 360×740
+  Android the Wallets view for up to six players fits without vertical
+  scrolling; the nav labels must not truncate in English or
   Ukrainian.
 
 #### Compact banking sheet (below `md`)
