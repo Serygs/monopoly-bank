@@ -1,4 +1,4 @@
-import { Button, Notice, SheetActions, Toggle } from '../../components/ui';
+import { Button, FieldHint, Notice, SheetActions, Toggle } from '../../components/ui';
 import { CommentField } from './BankingCommentField';
 import { StepBody } from './banking-dialog-parts';
 import { stepFooterClass } from './banking-dialog-styles';
@@ -79,6 +79,11 @@ export function BankingConfirmStep({ form, action }: { form: BankingForm; action
           lenderIsBank={d.loan.isBankRepayment}
           reserved={funds.reserved}
         />
+        {form.batchSize > 1 && (
+          <div className="mt-(--mb-space-3)">
+            <FieldHint as="p">{t('batchSeparateOperations', { count: form.batchSize })}</FieldHint>
+          </div>
+        )}
         <OverrideConfirm form={form} />
         {action === 'PASS_GO' && (
           <div className="mt-(--mb-space-3)">

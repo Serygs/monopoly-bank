@@ -883,6 +883,14 @@ blue, lavender, and mint CSS ambient background, more opaque readable cards,
 and progressive-enhancement blur (22px desktop, 16px compact). The fallback
 surfaces remain contrast-safe when blur is unavailable.
 
+Dark Liquid Glass is a night vault: an ink-blue ground (`#0a0f1e`) with saturated blue, violet,
+mint and a faint brass colour field behind navy glass whose top edge catches a cool highlight
+(`--mb-glass-rim`, `--mb-glass-specular`). Text keeps at least 5:1 on the opaque fallbacks
+(`--mb-glass-tint-solid`, `--mb-glass-card-tint-solid`, `--mb-popover-tint-solid`). The
+saved-games hero carries a thin guilloche rosette (`--mb-hero-ornament`, a gradient-stroked SVG
+background, one token per colour mode) that fades out towards the text; the MB seal takes its
+plate from `--mb-glass-seal-bg`.
+
 Liquid Glass pointer reflection is frame-throttled and writes bounded custom
 properties only to the currently highlighted hero or card. It measures a
 surface once on pointer entry, does not read layout during pointer movement,

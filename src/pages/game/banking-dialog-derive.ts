@@ -36,6 +36,11 @@ function deriveTile(inputs: BankingInputs, fields: BankingFields) {
   const views = board === null ? [] : tileViews(board, inputs.properties);
   const tileAction = board !== null && isIn(tileActions, action);
   const selectedTile = views.find((view) => view.tile.id === fields.tileId) ?? null;
+  // Board games: every tile chosen to mortgage, in board order.
+  const mortgageTiles =
+    board !== null && action === 'MORTGAGE'
+      ? views.filter((view) => fields.batchIds.includes(view.tile.id))
+      : [];
   const diceSumValue = fields.diceSum === '' ? undefined : Number(fields.diceSum);
   const needsDiceSum = action === 'PAY_RENT' && selectedTile?.tile.type === 'utility';
   const rentAmount =
@@ -56,6 +61,7 @@ function deriveTile(inputs: BankingInputs, fields: BankingFields) {
     views,
     tileAction,
     selectedTile,
+    mortgageTiles,
     diceSumValue,
     needsDiceSum,
     rentAmount,
@@ -119,10 +125,17 @@ function deriveLoans(inputs: BankingInputs, fields: BankingFields) {
 function deriveMortgages(inputs: BankingInputs, fields: BankingFields, effectiveTargetId: string) {
   const playerMortgages = inputs.mortgages.filter((item) => item.playerId === inputs.player.id);
   const selected = playerMortgages.find((item) => item.id === fields.mortgageId) ?? null;
+  // Board games: every mortgage chosen to redeem; without a board one is redeemed at a time.
+  const batch =
+    inputs.settings?.board != null && fields.action === 'MORTGAGE_REDEMPTION'
+      ? playerMortgages.filter((item) => fields.batchIds.includes(item.id))
+      : [];
+  const chosen = batch.length > 0 ? batch : selected === null ? [] : [selected];
   return {
     playerMortgages,
     selected,
-    redemptionAmount: selected === null ? 0 : redemptionCost(selected.mortgageValue),
+    batch,
+    redemptionAmount: chosen.reduce((sum, item) => sum + redemptionCost(item.mortgageValue), 0),
     targetMortgages: inputs.mortgages.filter((item) => item.playerId === effectiveTargetId),
     tidyName: normalizePropertyName(fields.propertyName) ?? fields.propertyName.trim(),
   };
@@ -164,14 +177,17 @@ export function deriveBanking(inputs: BankingInputs, fields: BankingFields) {
   const tile = deriveTile(inputs, fields);
   const build = deriveBuild(inputs, fields, tile);
   const loan = deriveLoans(inputs, fields);
-  const tileAmount = tileAmountOf({
-    action,
-    buildMode: build.buildMode,
-    buildPreview: build.preview,
-    selectedTile: tile.selectedTile,
-    purchaseOverride: tile.purchaseOverride,
-    rentAmount: tile.rentAmount,
-  });
+  const tileAmount =
+    tile.mortgageTiles.length > 0
+      ? tile.mortgageTiles.reduce((sum, view) => sum + view.tile.mortgage, 0)
+      : tileAmountOf({
+          action,
+          buildMode: build.buildMode,
+          buildPreview: build.preview,
+          selectedTile: tile.selectedTile,
+          purchaseOverride: tile.purchaseOverride,
+          rentAmount: tile.rentAmount,
+        });
   const parties = deriveParties(inputs, fields, tile, loan, tileAmount);
   const { amountValue } = parties;
   return {
@@ -218,6 +234,27 @@ export function requestFor(inputs: BankingInputs, fields: BankingFields, d: Bank
 }
 
 export type BankingRequest = ReturnType<typeof requestFor>;
+
+/**
+ * The operations to record: one, or one per tile (mortgage) or per mortgage (redemption) when
+ * several were chosen. A mortgage row is keyed by its transaction, so each stays its own
+ * operation with its own ledger entry and reversal.
+ */
+export function requestsFor(
+  inputs: BankingInputs,
+  fields: BankingFields,
+  d: BankingDerived,
+): BankingRequest[] {
+  if (d.mortgageTiles.length > 1)
+    return d.mortgageTiles.map((view) =>
+      requestFor(inputs, { ...fields, tileId: view.tile.id }, d),
+    );
+  if (d.mortgage.batch.length > 1)
+    return d.mortgage.batch.map((item) =>
+      requestFor(inputs, { ...fields, mortgageId: item.id }, d),
+    );
+  return [requestFor(inputs, fields, d)];
+}
 
 export function previewFor(inputs: BankingInputs, d: BankingDerived, request: BankingRequest) {
   if (request === null) return [];

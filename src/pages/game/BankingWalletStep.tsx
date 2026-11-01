@@ -83,12 +83,13 @@ export function BankingWalletStep({ form }: { form: BankingForm }) {
         groups={walletMenuGroups(form)}
       >
         <MenuHints form={form} />
-        <button type="button" className={bankruptcyClass} onClick={props.onBankrupt}>
-          {t('declareBankrupt')}
-        </button>
         <Button variant="quiet" onClick={() => props.onViewHistory(player)}>
           {t('viewPlayerHistory', { name: player.name })}
         </Button>
+        {/* Last and quiet: a final step should not be the brightest thing in the menu. */}
+        <button type="button" className={bankruptcyClass} onClick={props.onBankrupt}>
+          {t('declareBankrupt')}
+        </button>
       </WalletMenu>
     </>
   );

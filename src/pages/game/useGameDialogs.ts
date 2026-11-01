@@ -65,6 +65,8 @@ function useSheetState() {
   const [summary, setSummary] = useState<Summary>(null);
   const [statisticsOpen, setStatisticsOpen] = useState(false);
   const [propertyOpen, setPropertyOpen] = useState(false);
+  /** The player whose cards the Property screen opens filtered to; null opens "Mine". */
+  const [propertyOwner, setPropertyOwner] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -76,6 +78,8 @@ function useSheetState() {
     setStatisticsOpen,
     propertyOpen,
     setPropertyOpen,
+    propertyOwner,
+    setPropertyOwner,
     toolsOpen,
     setToolsOpen,
     rulesOpen,
@@ -117,8 +121,15 @@ export function useGameDialogs(gameId: string, onPaymentFlowChange: (open: boole
     activity.setPlayerId(null);
     sheets.setStatisticsOpen(false);
     sheets.setPropertyOpen(false);
+    sheets.setPropertyOwner(null);
     sheets.setToolsOpen(false);
     wallet.setSelectedPlayer(null);
+  };
+  /** Opens the Property screen on the viewer's cards, or on one player's when `owner` is given. */
+  const openProperty = (owner: string | null = null) => {
+    closeNavSheets();
+    sheets.setPropertyOwner(owner);
+    sheets.setPropertyOpen(true);
   };
   const openStatistics = () =>
     void monopolyBankApi.getGameSummary(gameId).then((result) => {
@@ -139,7 +150,16 @@ export function useGameDialogs(gameId: string, onPaymentFlowChange: (open: boole
       wallet.setSelectedPlayer(target);
     }
   };
-  return { activity, wallet, sheets, prompts, closeNavSheets, openStatistics, startTileIntent };
+  return {
+    activity,
+    wallet,
+    sheets,
+    prompts,
+    closeNavSheets,
+    openProperty,
+    openStatistics,
+    startTileIntent,
+  };
 }
 
 export type GameDialogs = ReturnType<typeof useGameDialogs>;

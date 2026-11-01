@@ -1,6 +1,7 @@
 import type { PlayerController } from '../../../shared/contracts/api';
 import type { BoardSnapshot } from '../../../shared/board';
 import type { Auction, Currency, Loan, Player, Transaction } from '../../../shared/types/monopoly';
+import { PropertyStrip } from '../../components/game/PropertyStrip';
 import { TransactionRow } from '../../components/game/TransactionRow';
 import { Button, Notice } from '../../components/ui';
 import { cx } from '../../components/ui/class-names';
@@ -8,6 +9,7 @@ import { useLanguage } from '../../i18n/language-context';
 import { auctionReserveFor } from '../../utils/auction';
 import { activeBankLoan, loanOutstanding } from '../../utils/loans';
 import { formatMoney } from '../../utils/money';
+import type { PropertyStripCard } from '../../utils/property-view';
 import { controllerLabel } from './game-page-helpers';
 import { WalletCard } from './WalletCard';
 
@@ -23,8 +25,18 @@ export interface WalletsSectionProps {
   loans?: Loan[];
   /** The running auction; its leading bid is shown as reserved on the leader's card. */
   auction?: Auction | null;
-  /** Board games: the viewer's cards (count, formatted list value) and the entry to the Property screen. */
-  property?: { count: number; value: string; onOpen: () => void };
+  /**
+   * Board games: the viewer's cards (count, formatted list value), a strip of every tile of the
+   * board and the entry to the Property screen.
+   */
+  property?: {
+    count: number;
+    value: string;
+    strip: readonly PropertyStripCard[];
+    onOpen: () => void;
+  };
+  /** Board games: another player's cards and the entry to their property list. */
+  playerProperty?: (player: Player) => { cards: readonly PropertyStripCard[]; onOpen: () => void };
   recentTransactions?: Transaction[];
   board?: BoardSnapshot | null;
   onSelectWallet: (playerId: string) => void;
@@ -69,6 +81,7 @@ export function WalletsSection({
   loans = [],
   auction = null,
   property,
+  playerProperty,
   recentTransactions = [],
   board = null,
   onSelectWallet,
@@ -168,12 +181,15 @@ export function WalletsSection({
             {property !== undefined && (
               <Button
                 variant="secondary"
-                className="mt-(--mb-space-3) w-full"
+                className="mt-(--mb-space-3) w-full flex-col"
                 onClick={property.onOpen}
               >
-                {property.count === 1
-                  ? t('walletPropertyOne', { value: property.value })
-                  : t('walletProperty', { count: property.count, value: property.value })}
+                <span>
+                  {property.count === 1
+                    ? t('walletPropertyOne', { value: property.value })
+                    : t('walletProperty', { count: property.count, value: property.value })}
+                </span>
+                <PropertyStrip cards={property.strip} className="justify-center" />
               </Button>
             )}
             {settleLoan !== null && (
@@ -208,6 +224,7 @@ export function WalletsSection({
                 loans={loans}
                 auctionReserve={auctionReserveFor(auction, player.id)}
                 gameActive={canMutate}
+                property={playerProperty?.(player)}
                 onOpen={() => onOpenWallet(player)}
               />
             ))}

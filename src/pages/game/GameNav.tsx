@@ -27,11 +27,7 @@ export function GameNav({ ctx }: { ctx: GameContext }) {
       active={activeDestination(ctx)}
       onClose={dialogs.closeNavSheets}
       hasPending={canMutate && (view.inboxRequests.length > 0 || view.incomingTrades.length > 0)}
-      property={
-        view.board === null
-          ? undefined
-          : { onOpen: open(() => dialogs.sheets.setPropertyOpen(true)) }
-      }
+      property={view.board === null ? undefined : { onOpen: () => dialogs.openProperty() }}
       payDisabled={!canMutate || activeWallet === null || activeWallet.status === 'BANKRUPT'}
       activityDisabled={offline}
       toolsDisabled={details.game.status !== 'ACTIVE'}

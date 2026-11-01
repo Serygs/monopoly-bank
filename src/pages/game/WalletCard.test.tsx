@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import type { Loan, Player } from '../../../shared/types/monopoly';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
 import { WalletCard } from './WalletCard';
@@ -93,5 +94,41 @@ describe('WalletCard own card', () => {
       </LanguageProvider>,
     );
     expect(screen.getByText('You')).toBeInTheDocument();
+  });
+});
+
+describe('WalletCard property', () => {
+  const cards = [
+    { tileId: 'a', group: 'brown' as const, color: '#8b5a2b', owned: true },
+    { tileId: 'b', group: 'blue' as const, color: '#2750b8', owned: true },
+  ];
+
+  it("opens another player's property list and shows their cards beside the name", async () => {
+    const onOpen = vi.fn();
+    render(
+      <LanguageProvider>
+        <WalletCard
+          player={olena}
+          players={[olena]}
+          currency="USD"
+          active={false}
+          gameActive={false}
+          property={{ cards, onOpen }}
+          onOpen={() => undefined}
+        />
+      </LanguageProvider>,
+    );
+    const card = screen.getByRole('button', {
+      name: /View their property./,
+    });
+    expect(card.querySelectorAll('[data-testid="property-strip"] > span')).toHaveLength(2);
+    await userEvent.click(card);
+    expect(onOpen).toHaveBeenCalledOnce();
+  });
+
+  it('stays a read-only card without a board', () => {
+    renderCard([]);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByTestId('property-strip')).toBeNull();
   });
 });

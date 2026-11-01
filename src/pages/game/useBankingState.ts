@@ -6,7 +6,8 @@ export function useBankingState(inputs: BankingInputs) {
   const [error, setError] = useState<unknown | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const commandIdRef = useRef<string | null>(null);
+  /** One command id per operation of the current form (keyed by its request). */
+  const commandIdsRef = useRef(new Map<string, string>());
 
   const patch = (changes: Partial<BankingFields>) =>
     setFields((current) => ({ ...current, ...changes }));
@@ -14,7 +15,7 @@ export function useBankingState(inputs: BankingInputs) {
   const edit = (changes: Partial<BankingFields>) => {
     patch(changes);
     setError(null);
-    commandIdRef.current = null;
+    commandIdsRef.current.clear();
   };
 
   return {
@@ -26,7 +27,7 @@ export function useBankingState(inputs: BankingInputs) {
     submitting,
     setSubmitting,
     submittingRef,
-    commandIdRef,
+    commandIdsRef,
   };
 }
 
