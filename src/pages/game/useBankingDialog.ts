@@ -8,10 +8,15 @@ import { presetAmounts } from '../../utils/quick-amounts';
 import {
   deriveBanking,
   previewFor,
-  requestFor,
+  requestsFor,
   type BankingDerived,
 } from './banking-dialog-derive';
-import type { BankingInputs } from './banking-dialog-fields';
+import {
+  mortgageTilesPatch,
+  redemptionsPatch,
+  type BankingFields,
+  type BankingInputs,
+} from './banking-dialog-fields';
 import { fieldHandlers, flowHandlers } from './banking-dialog-handlers';
 import type { BankingDialogProps } from './banking-dialog-types';
 import { isFormValid } from './banking-dialog-validity';
@@ -99,9 +104,13 @@ export function useBankingDialog(props: BankingDialogProps) {
   const state = useBankingState(inputs);
   const { fields } = state;
   const d = deriveBanking(inputs, fields);
-  const request = requestFor(inputs, fields, d);
+  const requests = requestsFor(inputs, fields, d);
+  const request = requests[0] ?? null;
   const funds = useFunds(inputs, d.amountValue + d.loan.interest, fields.action);
-  const valid = isFormValid(inputs, fields, d, request) && funds.error === null;
+  const valid =
+    isFormValid(inputs, fields, d, request) &&
+    requests.every((item) => item !== null) &&
+    funds.error === null;
   const texts = useBankingTexts(inputs, d, fields.action, state.error);
   const handlers = {
     patchField: state.patch,
@@ -112,9 +121,13 @@ export function useBankingDialog(props: BankingDialogProps) {
     props,
     state,
     action: fields.action,
-    request,
+    requests,
     valid,
     targetName: d.target?.name,
+    batchPatch: (ids: string[]): Partial<BankingFields> =>
+      fields.action === 'MORTGAGE'
+        ? mortgageTilesPatch(ids)
+        : redemptionsPatch(d.mortgage.playerMortgages.filter((item) => ids.includes(item.id))),
   });
   return {
     ...texts,
@@ -127,6 +140,7 @@ export function useBankingDialog(props: BankingDialogProps) {
     handlers,
     submit,
     request,
+    batchSize: requests.length,
     preview: previewFor(inputs, d, request),
     presets: quickPresets(inputs),
     auctionBusy: inputs.auction?.state === 'ACTIVE',

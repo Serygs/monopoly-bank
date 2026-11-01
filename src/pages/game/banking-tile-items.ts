@@ -109,6 +109,9 @@ export function confirmedPropertyName(
       )
       .join('\n');
   }
+  if (d.mortgageTiles.length > 1) return d.mortgageTiles.map((view) => view.tile.name).join('\n');
+  if (action === 'MORTGAGE_REDEMPTION' && d.mortgage.batch.length > 1)
+    return d.mortgage.batch.map((item) => item.propertyName).join('\n');
   if (d.selectedTile !== null && d.tileAction) return d.selectedTile.tile.name;
   return action === 'MORTGAGE' ? d.mortgage.tidyName : d.mortgage.selected?.propertyName;
 }

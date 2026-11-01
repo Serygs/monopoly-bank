@@ -951,6 +951,88 @@ describe('BankingDialog board mode', () => {
     createTransaction.mockRestore();
   });
 
+  it('mortgages several tiles after one review, each as its own operation', async () => {
+    const createTransaction = vi.spyOn(monopolyBankApi, 'createTransaction').mockImplementation(
+      async (_game, request) =>
+        ({
+          transaction: { amount: tile((request as { tileId: string }).tileId).mortgage },
+          players: [],
+        }) as never,
+    );
+    const { user, props } = renderDialog(
+      [olena, taras],
+      boardProps([row('zhitna'), row('nagatinska'), row('tverska')]),
+    );
+    await user.click(screen.getByRole('button', { name: 'Mortgage property' }));
+    await user.click(tileButton('zhitna')!);
+    await user.click(tileButton('tverska')!);
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    expect(screen.getByText(tile('zhitna').name)).toBeInTheDocument();
+    expect(screen.getByText(tile('tverska').name)).toBeInTheDocument();
+    expect(screen.getByText(/recorded as its own operation \(2 in total\)/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction.mock.calls.map((call) => call[1])).toEqual([
+      { type: 'MORTGAGE', playerId: 'p1', tileId: 'zhitna' },
+      { type: 'MORTGAGE', playerId: 'p1', tileId: 'tverska' },
+    ]);
+    // Each operation has its own command id, so the server records both.
+    expect(new Set(createTransaction.mock.calls.map((call) => call[2])).size).toBe(2);
+    expect(props.onCompleted).toHaveBeenCalledTimes(1);
+    createTransaction.mockRestore();
+  });
+
+  it('keeps the rest of a batch to retry when one operation fails', async () => {
+    const createTransaction = vi
+      .spyOn(monopolyBankApi, 'createTransaction')
+      .mockResolvedValueOnce({ transaction: { amount: 1 }, players: [] } as never)
+      .mockRejectedValueOnce(new Error('offline'));
+    const { user, props } = renderDialog(
+      [olena, taras],
+      boardProps([row('zhitna'), row('nagatinska'), row('tverska')]),
+    );
+    await user.click(screen.getByRole('button', { name: 'Mortgage property' }));
+    await user.click(tileButton('zhitna')!);
+    await user.click(tileButton('tverska')!);
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(props.onCompleted).not.toHaveBeenCalled();
+    expect(screen.queryByText(/recorded as its own operation/)).toBeNull();
+    expect(screen.queryByText(tile('zhitna').name)).toBeNull();
+    expect(screen.getByText(tile('tverska').name)).toBeInTheDocument();
+    createTransaction.mockRestore();
+  });
+
+  it('redeems several tile mortgages for their combined cost', async () => {
+    const createTransaction = vi
+      .spyOn(monopolyBankApi, 'createTransaction')
+      .mockResolvedValue({ transaction: { amount: 1 }, players: [] } as never);
+    const mortgageOf = (id: string, tileId: string) => ({
+      id,
+      gameId: 'g1',
+      playerId: 'p1',
+      propertyName: tile(tileId).name,
+      tileId,
+      mortgageValue: tile(tileId).mortgage,
+      createdAt: '',
+    });
+    const { user } = renderDialog(
+      [olena, taras],
+      boardProps([row('zhitna', { mortgaged: true }), row('tverska', { mortgaged: true })], {
+        mortgages: [mortgageOf('m1', 'zhitna'), mortgageOf('m2', 'tverska')],
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Redeem mortgage' }));
+    await user.click(tileButton('zhitna')!);
+    await user.click(tileButton('tverska')!);
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction.mock.calls.map((call) => call[1])).toEqual([
+      { type: 'MORTGAGE_REDEMPTION', playerId: 'p1', mortgageId: 'm1' },
+      { type: 'MORTGAGE_REDEMPTION', playerId: 'p1', mortgageId: 'm2' },
+    ]);
+    createTransaction.mockRestore();
+  });
+
   it('redeems an active tile mortgage picked from the tile list', async () => {
     const createTransaction = vi
       .spyOn(monopolyBankApi, 'createTransaction')

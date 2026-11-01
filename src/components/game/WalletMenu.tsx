@@ -4,11 +4,17 @@ import { cx } from '../ui/class-names';
 
 export type WalletMenuIconName = 'property' | 'loans' | 'group' | 'fund';
 
-/** One wallet action. `outgoing` is the only thing that turns it red: money leaves the wallet. */
+/**
+ * Which way the money moves for the wallet: `expense` (red) takes it out, `income` (green) brings
+ * it in; an action that is neither (a trade, an auction) stays neutral.
+ */
+export type WalletMenuTone = 'expense' | 'income';
+
+/** One wallet action. */
 export interface WalletMenuItem {
   key: string;
   label: string;
-  outgoing?: boolean;
+  tone?: WalletMenuTone;
   disabled?: boolean;
   onSelect: () => void;
 }
@@ -58,10 +64,19 @@ function GroupIcon({ name }: { name: WalletMenuIconName }) {
   );
 }
 
-const tileClass =
-  'min-h-16 justify-start rounded-control px-(--mb-space-4) py-[10px] text-left text-button leading-[1.15]';
-const toneClass = (outgoing: boolean | undefined) =>
-  outgoing === true ? 'border-danger-border bg-danger-soft text-danger' : '';
+const tileClass = 'min-h-16 rounded-control px-(--mb-space-4) py-[10px] text-button leading-[1.15]';
+const startAlignedClass = 'justify-start text-left';
+/*
+ * The tone replaces the secondary button's border, fill and text in every style (the Classic and
+ * Liquid Glass secondary colours are variant classes, so the tone needs `!` to win over them).
+ * The label still says what the action does; colour only adds the direction of the money.
+ */
+const toneClasses: Record<WalletMenuTone, string> = {
+  expense: 'border-danger-border! bg-danger-soft! text-danger!',
+  income: 'border-status-border! bg-status-surface! text-status-text!',
+};
+const toneClass = (tone: WalletMenuTone | undefined) =>
+  tone === undefined ? '' : toneClasses[tone];
 
 const groupClass = cx(
   'border-t border-border',
@@ -70,8 +85,8 @@ const groupClass = cx(
 );
 
 /**
- * The wallet action menu: four primary tiles, then collapsible groups. Red marks outgoing money
- * only; everything else is neutral, so colour never doubles as an action category.
+ * The wallet action menu: the primary tiles, then collapsible groups. Red marks money leaving the
+ * wallet, green money coming in; actions that move no money one way stay neutral.
  */
 export function WalletMenu({ primary, exactGo, groups, children }: WalletMenuProps) {
   return (
@@ -83,9 +98,12 @@ export function WalletMenu({ primary, exactGo, groups, children }: WalletMenuPro
             variant="secondary"
             className={cx(
               tileClass,
-              toneClass(item.outgoing),
-              // An odd count leaves the last tile alone in its row: it takes the whole row.
-              primary.length % 2 === 1 && index === primary.length - 1 && 'col-span-2',
+              toneClass(item.tone),
+              // An odd count leaves the last tile alone in its row: it takes the whole row and
+              // centres its label.
+              primary.length % 2 === 1 && index === primary.length - 1
+                ? 'col-span-2 justify-center text-center'
+                : startAlignedClass,
             )}
             disabled={item.disabled === true}
             onClick={item.onSelect}
@@ -111,7 +129,7 @@ export function WalletMenu({ primary, exactGo, groups, children }: WalletMenuPro
                   <Button
                     key={item.key}
                     variant="secondary"
-                    className={cx(tileClass, toneClass(item.outgoing))}
+                    className={cx(tileClass, startAlignedClass, toneClass(item.tone))}
                     disabled={item.disabled === true}
                     onClick={item.onSelect}
                   >

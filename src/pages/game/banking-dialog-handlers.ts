@@ -6,7 +6,10 @@ import type { BankingDerived } from './banking-dialog-derive';
 import {
   chooseLoanPatch,
   chooseMortgagePatch,
+  mortgageTilesPatch,
+  redemptionsPatch,
   selectActionPatch,
+  toggledIds,
   type BankingFields,
   type BankingInputs,
 } from './banking-dialog-fields';
@@ -80,6 +83,17 @@ export function flowHandlers(ctx: FlowContext) {
     else patch({ confirming: true });
   };
 
+  /** Board games: adds a tile to the mortgage batch, or takes it out. */
+  const toggleMortgageTile = (view: TileView) =>
+    edit(mortgageTilesPatch(toggledIds(fields.batchIds, view.tile.id)));
+
+  /** Board games: adds a mortgage to the redemption batch, or takes it out. */
+  const toggleRedemption = (mortgage: Mortgage) => {
+    const ids = toggledIds(fields.batchIds, mortgage.id);
+    const byId = new Map(d.mortgage.playerMortgages.map((item) => [item.id, item]));
+    edit(redemptionsPatch(ids.flatMap((id) => byId.get(id) ?? [])));
+  };
+
   const borrowAnyway = () =>
     edit({ cooldownAcknowledged: true, cooldownRounds: null, confirming: true });
 
@@ -89,5 +103,13 @@ export function flowHandlers(ctx: FlowContext) {
       ...chooseLoanPatch(loan),
     });
 
-  return { select, review, borrowAnyway, settleBankLoan, ...quickHandlers(ctx) };
+  return {
+    select,
+    review,
+    borrowAnyway,
+    settleBankLoan,
+    toggleMortgageTile,
+    toggleRedemption,
+    ...quickHandlers(ctx),
+  };
 }
