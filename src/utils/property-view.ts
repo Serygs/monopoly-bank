@@ -399,3 +399,55 @@ export function previewBuildings(
 export function levelBounds(view: TileView, mode: BuildMode): { min: number; max: number } {
   return mode === 'BUILD' ? { min: view.houses, max: MAX_BUILDINGS } : { min: 0, max: view.houses };
 }
+
+/** One card of an ownership strip: its group colour, whether anybody holds it, an owner ring. */
+export interface PropertyStripCard {
+  tileId: string;
+  /** The colour group; the strip leaves a wider gap where the group changes. */
+  group: PropertyGroupId;
+  color: string;
+  owned: boolean;
+  /** The owner's player colour, drawn as a ring around the viewer's own cards. */
+  ring?: string;
+}
+
+/** Cards in strip order: colour groups cheapest first (over the whole board), by price inside. */
+function stripOrder(views: readonly TileView[], cards: readonly TileView[]): TileView[] {
+  return cardsByGroup(cards, groupOrder(views)).flatMap((entry) => entry.cards);
+}
+
+/**
+ * Every tile of the board for the viewer's own strip: held cards are solid, free ones pale, and
+ * the cards of the wallets the viewer controls carry a ring in that wallet's colour.
+ */
+export function boardStrip(
+  views: readonly TileView[],
+  controlledPlayerIds: readonly string[],
+  playerColors: ReadonlyMap<string, string>,
+): PropertyStripCard[] {
+  return stripOrder(views, views).map((view) => {
+    const owner = view.ownerPlayerId;
+    const ring =
+      owner !== null && controlledPlayerIds.includes(owner) ? playerColors.get(owner) : undefined;
+    return {
+      tileId: view.tile.id,
+      group: view.tile.group,
+      color: propertyGroupColors[view.tile.group],
+      owned: owner !== null,
+      ...(ring === undefined ? {} : { ring }),
+    };
+  });
+}
+
+/** The cards one player holds, in strip order. */
+export function playerStrip(views: readonly TileView[], playerId: string): PropertyStripCard[] {
+  return stripOrder(
+    views,
+    views.filter((view) => view.ownerPlayerId === playerId),
+  ).map((view) => ({
+    tileId: view.tile.id,
+    group: view.tile.group,
+    color: propertyGroupColors[view.tile.group],
+    owned: true,
+  }));
+}

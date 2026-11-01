@@ -7,7 +7,7 @@ const brandMarkClass = cx(
   'grid flex-none place-items-center rounded-md border border-[color:color-mix(in_srgb,var(--mb-color-highlight)_64%,transparent)]',
   'bg-surface-inverse-elevated text-meta font-bold tracking-meta text-on-inverse',
   'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--mb-color-surface-inverse)_70%,transparent)]',
-  'glass:border-[rgb(255_255_255/0.44)] glass:text-white glass:[background:linear-gradient(145deg,#6f91ba,#354d71)]',
+  'glass:border-[rgb(255_255_255/0.44)] glass:text-white glass:[background:var(--mb-glass-seal-bg)]',
   'glass:shadow-[inset_0_1px_0_rgb(255_255_255/0.36),0_6px_16px_rgb(50_70_100/0.14)]',
 );
 
@@ -28,6 +28,8 @@ const sealClass: Record<BankSealVariant, string | undefined> = {
     'text-meta font-bold tracking-meta text-on-inverse shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--mb-color-surface-inverse)_70%,transparent)]',
     'classic:border-[rgb(197_163_77/0.5)] classic:text-transparent classic:shadow-[inset_0_0_0_1px_rgb(255_249_234/0.22)]',
     'classic:bg-[image:linear-gradient(rgb(7_56_45/0.12),rgb(7_56_45/0.18)),url(/assets/themes/classic/hero-bank.webp)]',
+    'glass:border-[rgb(255_255_255/0.4)] glass:text-white glass:[background:var(--mb-glass-seal-bg)]',
+    'glass:shadow-[inset_0_1px_0_rgb(255_255_255/0.36),0_6px_16px_rgb(0_0_0/0.14)]',
     'classic:[.game-card:nth-child(2n):not(:nth-child(3n))_&]:bg-[position:75%_center] classic:[.game-card:nth-child(3n)_&]:bg-[position:88%_62%]',
   ),
 };

@@ -10,14 +10,15 @@ export const shortfallClass =
   'mt-(--mb-space-2) flex flex-wrap items-center justify-between gap-(--mb-space-3) [&>p]:m-0 [&>p]:font-semibold [&>p]:text-danger';
 
 /*
- * A solid danger button, not an outlined box. White on the darker danger fill is 7:1 in Classic
- * light and 4.8:1 in Liquid Glass light; the two dark fills are light, so they take dark text.
+ * Declaring bankruptcy is a last resort, so it is a quiet text button in the danger colour rather
+ * than a solid fill: a habitual tap on the brightest control must not land on it. A soft danger
+ * fill shows on hover and press.
  */
 export const bankruptcyClass = cx(
   buttonCoreClass,
   buttonShapeClass,
-  'mt-(--mb-space-2) w-full border-transparent bg-danger-hover text-on-danger shadow-sm',
-  'glass:dark:text-[#1b080a]',
+  'mt-(--mb-space-2) w-full border-transparent bg-transparent text-danger shadow-none',
+  'fine-pointer:hover:bg-danger-soft not-disabled:active:bg-danger-soft',
 );
 
 export const stepPanelClass = 'flex flex-col overflow-hidden!';

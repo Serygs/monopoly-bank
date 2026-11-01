@@ -5,6 +5,7 @@ import type { GameProperty } from '../../shared/types/monopoly';
 import {
   buildableTiles,
   buildingGroups,
+  boardStrip,
   cardsByGroup,
   cardsOwnedBy,
   cardsValue,
@@ -16,6 +17,8 @@ import {
   levelBounds,
   mergeProperties,
   mortgageableTiles,
+  playerStrip,
+  propertyGroupColors,
   previewBuildings,
   registryOf,
   rentableTiles,
@@ -212,6 +215,51 @@ describe('group order and sections', () => {
   it('drops groups without cards', () => {
     const only = views.filter((view) => view.tile.group === 'blue');
     expect(cardsByGroup(only, groupOrder(views)).map((entry) => entry.group)).toEqual(['blue']);
+  });
+});
+
+describe('ownership strips', () => {
+  const tileOf = (group: PropertyGroupId, index = 0) =>
+    board.tiles.filter((tile) => tile.group === group)[index]!.id;
+  const blue = tileOf('blue');
+  const brown = tileOf('brown');
+  const orange = tileOf('orange');
+  const views = tileViews(board, [
+    row(blue, { ownerPlayerId: 'a' }),
+    row(orange, { ownerPlayerId: 'b' }),
+    row(brown, { ownerPlayerId: 'a', mortgaged: true }),
+  ]);
+  const colors = new Map([
+    ['a', '#e11d48'],
+    ['b', '#7c3aed'],
+  ]);
+
+  it("lists a player's cards from the cheapest group to the dearest", () => {
+    expect(playerStrip(views, 'a')).toEqual([
+      { tileId: brown, group: 'brown', color: propertyGroupColors.brown, owned: true },
+      { tileId: blue, group: 'blue', color: propertyGroupColors.blue, owned: true },
+    ]);
+    expect(playerStrip(views, 'c')).toEqual([]);
+  });
+
+  it("shows every tile, solid when held, ringed for the viewer's wallets", () => {
+    const strip = boardStrip(views, ['a'], colors);
+    expect(strip).toHaveLength(board.tiles.length);
+    expect(strip[0]).toEqual({
+      tileId: brown,
+      group: 'brown',
+      color: propertyGroupColors.brown,
+      owned: true,
+      ring: '#e11d48',
+    });
+    expect(strip.at(-1)?.color).toBe(propertyGroupColors.blue);
+    expect(strip.find((card) => card.tileId === orange)).toEqual({
+      tileId: orange,
+      group: 'orange',
+      color: propertyGroupColors.orange,
+      owned: true,
+    });
+    expect(strip.filter((card) => card.owned)).toHaveLength(3);
   });
 });
 
