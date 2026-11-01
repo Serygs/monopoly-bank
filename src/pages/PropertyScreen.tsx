@@ -44,6 +44,8 @@ export interface PropertyScreenProps {
   currency: Currency;
   /** The wallets the viewer controls; "Mine" lists their cards. */
   controlledPlayerIds: readonly string[];
+  /** Opens on every tile filtered to this player's cards instead of "Mine". */
+  initialOwner?: string | null;
   /** The wallet that buys, bids and pays rent from the tile sheet; none hides those actions. */
   actorPlayerId?: string | null;
   /** The auctions rule is on and no auction is running. */
@@ -64,14 +66,17 @@ export function PropertyScreen({
   players,
   currency,
   controlledPlayerIds,
+  initialOwner = null,
   actorPlayerId = null,
   auctionsAvailable = false,
   onIntent,
   onClose,
 }: PropertyScreenProps) {
   const { t } = useLanguage();
-  const [view, setView] = useState<PropertyView>('MINE');
-  const [filters, setFilters] = useState<PropertyFilterState>(noPropertyFilters);
+  const [view, setView] = useState<PropertyView>(initialOwner === null ? 'MINE' : 'ALL');
+  const [filters, setFilters] = useState<PropertyFilterState>(
+    initialOwner === null ? noPropertyFilters : { ...noPropertyFilters, owner: initialOwner },
+  );
   const [openTileId, setOpenTileId] = useState<string | null>(null);
   const views = tileViews(board, properties);
   const ownerOf = (card: TileView) =>

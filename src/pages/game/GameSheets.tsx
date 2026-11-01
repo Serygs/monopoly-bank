@@ -52,12 +52,16 @@ function PropertySheet({ ctx }: { ctx: GameContext }) {
       players={details.players}
       currency={details.game.currency}
       controlledPlayerIds={view.controlledIds}
+      initialOwner={dialogs.sheets.propertyOwner}
       actorPlayerId={actor}
       auctionsAvailable={details.game.rules.auctions && details.auction?.state !== 'ACTIVE'}
       onIntent={
         view.canMutate ? (intent) => dialogs.startTileIntent(details.players, intent) : undefined
       }
-      onClose={() => dialogs.sheets.setPropertyOpen(false)}
+      onClose={() => {
+        dialogs.sheets.setPropertyOpen(false);
+        dialogs.sheets.setPropertyOwner(null);
+      }}
     />
   );
 }
