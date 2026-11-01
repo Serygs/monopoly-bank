@@ -1,9 +1,11 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { Currency, Loan, Player } from '../../../shared/types/monopoly';
+import { PropertyStrip } from '../../components/game/PropertyStrip';
 import { cx, playerSwatchClass } from '../../components/ui/class-names';
 import { useLanguage } from '../../i18n/language-context';
 import { activeBankLoan, loanOutstanding, playerDebt } from '../../utils/loans';
 import { formatMoney } from '../../utils/money';
+import type { PropertyStripCard } from '../../utils/property-view';
 import { playerNameWithGameId } from '../../utils/player-display';
 
 export interface WalletCardProps {
@@ -17,6 +19,11 @@ export interface WalletCardProps {
   loans?: Loan[];
   /** Cash held back for this player's leading auction bid (auctions rule). */
   auctionReserve?: number;
+  /**
+   * Board games, another player's card: the cards they hold (a strip beside the name) and the
+   * entry to their property list, which makes the card a button.
+   */
+  property?: { cards: readonly PropertyStripCard[]; onOpen: () => void };
   onOpen: () => void;
 }
 
@@ -49,14 +56,22 @@ const activeCardClass = cx(
   'glass:dark:fine-pointer:enabled:hover:border-y-[color:color-mix(in_srgb,var(--mb-color-accent)_48%,rgb(255_255_255/0.2))] glass:dark:fine-pointer:enabled:hover:border-e-[color:color-mix(in_srgb,var(--mb-color-accent)_48%,rgb(255_255_255/0.2))]',
   'glass:dark:fine-pointer:enabled:hover:shadow-[0_18px_46px_rgb(0_0_0/0.3),0_0_0_1px_rgb(137_169_207/0.12),inset_0_1px_0_rgb(255_255_255/0.16)]',
 );
+/* Another player's card that opens their property list. */
+const propertyCardClass = cx(
+  'w-full cursor-pointer focus-visible:outline-offset-3 active:transform-[translateY(1px)]',
+  '[transition:transform_var(--mb-duration-normal)_var(--mb-ease-standard),box-shadow_var(--mb-duration-normal)_var(--mb-ease-standard)]',
+  'fine-pointer:hover:shadow-hover',
+);
 const prominentCardClass =
   'min-h-[210px] p-[clamp(var(--mb-space-5),5vw,var(--mb-space-7))] max-md:min-h-[120px] max-md:gap-(--mb-space-3) max-md:p-(--mb-space-4)';
 const standardActiveCardClass = 'min-h-[154px] p-(--mb-space-5)';
 
 const headingClass =
   'grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-(--mb-space-2) max-md:flex';
-const nameClass =
-  'min-w-0 max-md:flex-1 text-[1rem] leading-[1.25] font-semibold text-inherit wrap-anywhere';
+/* The strip follows the name and wraps under it, from its start, when the line is too short. */
+const nameGroupClass =
+  'flex min-w-0 flex-wrap items-center gap-x-(--mb-space-2) gap-y-(--mb-space-1) max-md:flex-1';
+const nameClass = 'min-w-0 text-[1rem] leading-[1.25] font-semibold text-inherit wrap-anywhere';
 const badgesClass = 'col-span-full flex flex-wrap gap-(--mb-space-2) max-md:flex-none';
 const badgeClass =
   'inline-flex min-h-[26px] w-fit items-center rounded-pill border border-[color:color-mix(in_srgb,currentColor_42%,transparent)] px-(--mb-space-2) py-[2px] text-meta font-semibold';
@@ -106,6 +121,7 @@ export function WalletCard({
   prominent = false,
   loans = [],
   auctionReserve = 0,
+  property,
   onOpen,
 }: WalletCardProps) {
   const { t } = useLanguage();
@@ -121,6 +137,7 @@ export function WalletCard({
     player.id,
   );
   const bankLoan = activeBankLoan(loans, player.id);
+  const opensProperty = !active && property !== undefined;
   const content = (
     <>
       <span className={headingClass}>
@@ -133,7 +150,10 @@ export function WalletCard({
           style={{ backgroundColor: player.color }}
           aria-hidden="true"
         />
-        <span className={nameClass}>{playerName}</span>
+        <span className={nameGroupClass}>
+          <span className={nameClass}>{playerName}</span>
+          {!active && property !== undefined && <PropertyStrip cards={property.cards} />}
+        </span>
         <span className={badgesClass}>
           {active && <WalletBadge tone="active">{t('walletYouTag')}</WalletBadge>}
           {player.status === 'BANKRUPT' && (
@@ -194,15 +214,38 @@ export function WalletCard({
             : 'border-border text-secondary',
         )}
       >
-        <span>{interactive ? t('walletAction') : t('walletReadOnly')}</span>
-        {interactive && <span aria-hidden="true">→</span>}
+        <span>
+          {interactive
+            ? t('walletAction')
+            : opensProperty
+              ? t('walletViewProperty')
+              : t('walletReadOnly')}
+        </span>
+        {(interactive || opensProperty) && <span aria-hidden="true">→</span>}
       </span>
     </>
   );
-  const accessibleLabel = t(interactive ? 'walletAria' : 'walletReadOnlyAria', {
-    name: playerName,
-    balance,
-  });
+  const accessibleLabel = t(
+    interactive ? 'walletAria' : opensProperty ? 'walletPropertyAria' : 'walletReadOnlyAria',
+    { name: playerName, balance },
+  );
+  if (opensProperty)
+    return (
+      <button
+        type="button"
+        className={cx(
+          cardClass,
+          readonlyCardClass,
+          propertyCardClass,
+          bankrupt ? 'text-secondary' : 'text-primary',
+        )}
+        style={cardStyle}
+        aria-label={accessibleLabel}
+        onClick={property.onOpen}
+      >
+        {content}
+      </button>
+    );
   if (!active)
     return (
       <article

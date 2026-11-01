@@ -1,5 +1,5 @@
 import type { GameDetails } from '../../../shared/contracts/api';
-import { cardsValue } from '../../utils/property-view';
+import { boardStrip, cardsValue, playerStrip, tileViews } from '../../utils/property-view';
 import { formatMoney } from '../../utils/money';
 import type { LiveStatus } from './GameHeader';
 import type { GameContext } from './game-context';
@@ -22,16 +22,23 @@ export function headerProps(ctx: GameContext, liveStatus: LiveStatus, onBack: ()
   };
 }
 
-function propertyEntry(ctx: GameContext) {
+/** Board games: the viewer's Property button with a strip of every tile, and each player's cards. */
+function propertyEntries(ctx: GameContext) {
   const { details, view, dialogs } = ctx;
-  if (view.board === null) return undefined;
+  if (view.board === null) return { property: undefined, playerProperty: undefined };
+  const views = tileViews(view.board, view.properties);
+  const colors = new Map(details.players.map((player) => [player.id, player.color]));
   return {
-    count: view.myCards.length,
-    value: formatMoney(cardsValue(view.myCards), details.game.currency),
-    onOpen: () => {
-      dialogs.closeNavSheets();
-      dialogs.sheets.setPropertyOpen(true);
+    property: {
+      count: view.myCards.length,
+      value: formatMoney(cardsValue(view.myCards), details.game.currency),
+      strip: boardStrip(views, view.controlledIds, colors),
+      onOpen: () => dialogs.openProperty(),
     },
+    playerProperty: (player: GameDetails['players'][number]) => ({
+      cards: playerStrip(views, player.id),
+      onOpen: () => dialogs.openProperty(player.id),
+    }),
   };
 }
 
@@ -54,7 +61,7 @@ export function walletsProps(ctx: GameContext) {
     auction: details.game.rules.auctions ? (details.auction ?? null) : null,
     recentTransactions: view.recentTransactions,
     board: view.board,
-    property: propertyEntry(ctx),
+    ...propertyEntries(ctx),
     onSelectWallet: wallet.setActiveWalletId,
     onOpenWallet: openWallet(false),
     onSettleLoan: openWallet(true),

@@ -33,7 +33,7 @@ const properties = [
 ];
 const name = (id: string) => board.tiles.find((tile) => tile.id === id)!.name;
 
-function renderScreen(rows: GameProperty[] = properties) {
+function renderScreen(rows: GameProperty[] = properties, initialOwner: string | null = null) {
   return {
     user: userEvent.setup(),
     ...render(
@@ -44,6 +44,7 @@ function renderScreen(rows: GameProperty[] = properties) {
           players={players}
           currency="USD"
           controlledPlayerIds={['a']}
+          initialOwner={initialOwner}
           onClose={() => {}}
         />
       </LanguageProvider>,
@@ -61,6 +62,14 @@ describe('PropertyScreen', () => {
     const railways = screen.getByRole('heading', { name: /Railways/ }).closest('section')!;
     expect(within(railways).getAllByText('Mortgaged').length).toBeGreaterThan(0);
     expect(screen.queryByText(name('nagatinska'))).toBeNull();
+  });
+
+  it("opens on every tile filtered to another player's cards", () => {
+    renderScreen(properties, 'b');
+    expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Remove filter Bo' })).toBeInTheDocument();
+    expect(screen.getByText(name('nagatinska'))).toBeInTheDocument();
+    expect(screen.queryByText(name('zhitna'))).toBeNull();
   });
 
   it('marks a monopoly when the viewer holds the whole group', () => {
