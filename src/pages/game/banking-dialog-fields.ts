@@ -46,6 +46,11 @@ export interface BankingFields {
   buildGroup: PropertyGroupId | '';
   buildLevels: Record<string, number> | null;
   mortgageId: string;
+  /**
+   * Board games: every tile chosen to mortgage, or every mortgage chosen to redeem. `tileId` /
+   * `mortgageId` hold the first of them; each one is recorded as its own operation.
+   */
+  batchIds: string[];
   loanId: string;
   ratePercent: InterestRatePercent | null;
   cooldownRounds: number | null;
@@ -70,6 +75,7 @@ const clearedFields: Omit<BankingFields, 'action' | 'exactGoChosen'> = {
   buildGroup: '',
   buildLevels: null,
   mortgageId: '',
+  batchIds: [],
   loanId: '',
   ratePercent: null,
   cooldownRounds: null,
@@ -99,6 +105,15 @@ function openingAction(inputs: BankingInputs, bankLoan: Loan | null): ActionType
   return inputs.settings?.board == null ? null : (inputs.initialAction ?? null);
 }
 
+function openingBatch(inputs: BankingInputs, redemption: Mortgage | undefined): string[] {
+  if (redemption !== undefined) return [redemption.id];
+  return inputs.settings?.board != null &&
+    inputs.initialAction === 'MORTGAGE' &&
+    inputs.initialTileId !== undefined
+    ? [inputs.initialTileId]
+    : [];
+}
+
 function openingAmount(bankLoan: Loan | null, redemption: Mortgage | undefined): string {
   if (bankLoan !== null) return String(loanOutstanding(bankLoan));
   return redemption === undefined ? '' : String(redemptionCost(redemption.mortgageValue));
@@ -114,6 +129,7 @@ export function initialFields(inputs: BankingInputs): BankingFields {
     tileId: inputs.initialAction === 'MORTGAGE_REDEMPTION' ? '' : (inputs.initialTileId ?? ''),
     amount: openingAmount(bankLoan, redemption),
     mortgageId: redemption?.id ?? '',
+    batchIds: openingBatch(inputs, redemption),
     loanId: bankLoan?.id ?? '',
   };
 }
@@ -137,6 +153,27 @@ export function chooseLoanPatch(loan: Loan): Partial<BankingFields> {
     loanId: loan.id,
     ratePercent: null,
     amount: String(loanOutstanding(loan)),
+    payToPot: false,
+  };
+}
+
+/** `ids` with `id` added, or removed when it was already there. */
+export function toggledIds(ids: readonly string[], id: string): string[] {
+  return ids.includes(id) ? ids.filter((candidate) => candidate !== id) : [...ids, id];
+}
+
+/** Board games: the tiles chosen to mortgage; the first also drives the single-tile fields. */
+export function mortgageTilesPatch(tileIds: string[]): Partial<BankingFields> {
+  return { batchIds: tileIds, tileId: tileIds[0] ?? '' };
+}
+
+/** Board games: the mortgages chosen to redeem; the amount is what redeeming all of them costs. */
+export function redemptionsPatch(chosen: readonly Mortgage[]): Partial<BankingFields> {
+  const total = chosen.reduce((sum, item) => sum + redemptionCost(item.mortgageValue), 0);
+  return {
+    batchIds: chosen.map((item) => item.id),
+    mortgageId: chosen[0]?.id ?? '',
+    amount: chosen.length === 0 ? '' : String(total),
     payToPot: false,
   };
 }

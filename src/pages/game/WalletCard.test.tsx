@@ -99,8 +99,8 @@ describe('WalletCard own card', () => {
 
 describe('WalletCard property', () => {
   const cards = [
-    { tileId: 'a', color: '#8b5a2b', owned: true },
-    { tileId: 'b', color: '#2750b8', owned: true },
+    { tileId: 'a', group: 'brown' as const, color: '#8b5a2b', owned: true },
+    { tileId: 'b', group: 'blue' as const, color: '#2750b8', owned: true },
   ];
 
   it("opens another player's property list and shows their cards beside the name", async () => {
