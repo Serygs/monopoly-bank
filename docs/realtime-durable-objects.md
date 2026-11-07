@@ -23,6 +23,15 @@ Do not manually create a second Durable Object class migration with the same `v1
 
 The full release procedure, including the isolated development and staging environments, is in [deployment](deployment.md).
 
+## Client behaviour on a bad network
+
+A phone can keep a request or a socket waiting for minutes without reporting a failure, so the client sets its own limits. Request limits are in `src/api/monopoly-bank-api.ts`, socket limits in `src/hooks/useGameSync.ts`.
+
+- A REST request gives up after 15 seconds (reads) or 20 seconds (commands), body included, and fails with `NETWORK_ERROR`. A command that timed out may still have been recorded, so a retry from the same form reuses its command ID and the server replays the result.
+- A socket that has not opened after 10 seconds is abandoned. So is an open socket with no message for 30 seconds while the page is visible (checked at each 20-second ping), or one that does not answer within 5 seconds when the page comes back, which also covers `pageshow`.
+- An abandoned socket is forgotten at once rather than waiting for its close, which a dead connection can report minutes later. The normal backoff then applies; only a received message resets it, because every attempt costs D1 reads and a presence broadcast to the table.
+- A manual refresh or an `online` event starts anything but an open socket over without the backoff wait, and asks an open socket for a sign of life.
+
 ## Dice rolls
 
 Dice history is a table tool, not game state, so it lives in the game object's storage instead of D1: one key per player (`dice:<playerId>`) holding that player's newest 100 rolls, newest first. `GET` and `POST /api/games/:id/players/:playerId/dice-rolls` are authorised and validated in the Worker (any member reads, only the wallet's controller rolls) and then forwarded to the object, which records through the same queue as commands. A roll ID is idempotent for its player and refused with `DICE_ROLL_ID_REUSED` when another player of the game used it. The history is shown only while the game is ACTIVE, and `FINISH_GAME` deletes every `dice:` key from the object. A game soft-deleted while still active keeps its hidden keys (at most 100 rolls per player), because deletion runs in the Worker rather than the object. Rolls stored in the legacy `dice_rolls` table by games that were running when this moved are still read, and copied into the object on that player's next roll; the table and its finish trigger can be dropped once no such game is active.

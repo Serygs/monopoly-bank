@@ -450,35 +450,59 @@ class FetchMonopolyBankApi implements MonopolyBankApi {
   }
 }
 
+const READ_TIMEOUT_MS = 15_000;
+const WRITE_TIMEOUT_MS = 20_000;
+
 function commandInit(init: RequestInit, commandId: string = crypto.randomUUID()): RequestInit {
   return { ...init, headers: { ...init.headers, 'x-command-id': commandId } };
 }
 
+function networkError(): MonopolyBankApiError {
+  return new MonopolyBankApiError({
+    code: 'NETWORK_ERROR',
+    message: 'Unable to reach Monopoly Bank. Please try again.',
+  });
+}
+
+/**
+ * A browser can wait minutes for an answer on a bad network, and everything queued behind the
+ * request waits with it. The limit covers the body too, since a response can stall halfway.
+ * A command that timed out may still have been recorded: retrying it with the same command ID
+ * replays the result instead of recording it twice.
+ */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  let response: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    (init.method ?? 'GET') === 'GET' ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS,
+  );
   try {
-    response = await fetch(path, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new MonopolyBankApiError({
-      code: 'NETWORK_ERROR',
-      message: 'Unable to reach Monopoly Bank. Please try again.',
-    });
+    let response: Response;
+    try {
+      response = await fetch(path, {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          accept: 'application/json',
+          ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...init.headers,
+        },
+      });
+    } catch {
+      throw networkError();
+    }
+    const payload: unknown = await response.json().catch(() => null);
+    if (controller.signal.aborted) throw networkError();
+    if (isApiError(payload)) throw new MonopolyBankApiError(payload.error);
+    if (!response.ok || !isApiSuccess<T>(payload))
+      throw new MonopolyBankApiError({
+        code: 'API_ERROR',
+        message: 'The server returned an unexpected response.',
+      });
+    return payload.data;
+  } finally {
+    clearTimeout(timeout);
   }
-  const payload: unknown = await response.json().catch(() => null);
-  if (isApiError(payload)) throw new MonopolyBankApiError(payload.error);
-  if (!response.ok || !isApiSuccess<T>(payload))
-    throw new MonopolyBankApiError({
-      code: 'API_ERROR',
-      message: 'The server returned an unexpected response.',
-    });
-  return payload.data;
 }
 
 function isApiSuccess<T>(value: unknown): value is ApiResponse<T> & { data: T } {

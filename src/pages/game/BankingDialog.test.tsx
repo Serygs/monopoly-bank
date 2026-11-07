@@ -153,6 +153,37 @@ describe('BankingDialog amount entry', () => {
   });
 });
 
+describe('BankingDialog group transfers with a bankrupt player', () => {
+  const dmytro: Player = { ...player('p4', 'Dmytro', 0), status: 'BANKRUPT' };
+
+  async function reviewGroup(action: string) {
+    const { user, props } = renderDialog([olena, taras, iryna, dmytro]);
+    await user.click(screen.getByRole('button', { name: action }));
+    await user.click(screen.getByRole('button', { name: 'Whole units' }));
+    await press(user, '1', '0', '0');
+    await user.click(screen.getByRole('button', { name: 'Review transaction' }));
+    return { user, props };
+  }
+
+  const totalShown = () =>
+    within(screen.getByText('Total').parentElement as HTMLElement).getByRole('definition');
+
+  it.each([
+    ['Everyone Pays Me', 'ALL_TO_PLAYER', { recipientPlayerId: 'p1', amountPerPlayer: 100 }],
+    ['Pay Everyone', 'PLAYER_TO_ALL', { payerPlayerId: 'p1', amountPerPlayer: 100 }],
+  ])('lets "%s" through, counting only the active players', async (action, type, fields) => {
+    const createTransaction = vi
+      .spyOn(monopolyBankApi, 'createTransaction')
+      .mockResolvedValue({ transaction: { amount: 100 }, players: [] } as never);
+    const { user, props } = await reviewGroup(action);
+    expect(totalShown()).toHaveTextContent('200');
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(createTransaction).toHaveBeenCalledWith('g1', { type, ...fields }, expect.any(String));
+    expect(props.onCompleted).toHaveBeenCalledTimes(1);
+    createTransaction.mockRestore();
+  });
+});
+
 describe('BankingDialog compact flow', () => {
   it('preselects the only recipient and skips the choice', async () => {
     const { user } = renderDialog([olena, taras]);
@@ -603,6 +634,23 @@ describe('BankingDialog bank loans', () => {
       },
       expect.any(String),
     );
+    createTransaction.mockRestore();
+  });
+
+  it('retries a lost response with the same command id, so it is not recorded twice', async () => {
+    const createTransaction = vi
+      .spyOn(monopolyBankApi, 'createTransaction')
+      .mockRejectedValueOnce(new MonopolyBankApiError({ code: 'NETWORK_ERROR', message: 'x' }))
+      .mockResolvedValueOnce({ transaction: { amount: 250 }, players: [] } as never);
+    const { user, props } = renderDialog([olena, taras], { rules, settings });
+    await borrow250(user);
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(props.onCompleted).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(props.onCompleted).toHaveBeenCalledTimes(1);
+    const [first, second] = createTransaction.mock.calls;
+    expect(first?.[2]).toBeDefined();
+    expect(second?.[2]).toBe(first?.[2]);
     createTransaction.mockRestore();
   });
 

@@ -19,6 +19,8 @@ const POLL_INTERVAL_MS = 15_000;
 const STALE_AFTER_MS = 30_000;
 const REFRESH_THROTTLE_MS = 2000;
 const REFRESH_DONE_MS = 1500;
+const CONNECT_TIMEOUT_MS = 10_000;
+const PROBE_TIMEOUT_MS = 5000;
 const MAX_LIVE_TRANSACTIONS = 50;
 const PING = 'ping';
 const PONG = 'pong';
@@ -72,14 +74,80 @@ interface Connection {
   closed: boolean;
   retry: number | undefined;
   heartbeat: number | undefined;
+  handshake: number | undefined;
+  probe: number | undefined;
   socket: WebSocket | null;
   attempts: number;
+  lastMessageAt: number;
 }
 
-function stopHeartbeat(state: Connection): void {
+function clearHandshake(state: Connection): void {
+  if (state.handshake === undefined) return;
+  window.clearTimeout(state.handshake);
+  state.handshake = undefined;
+}
+
+function clearProbe(state: Connection): void {
+  if (state.probe === undefined) return;
+  window.clearTimeout(state.probe);
+  state.probe = undefined;
+}
+
+function clearRetry(state: Connection): void {
+  if (state.retry === undefined) return;
+  window.clearTimeout(state.retry);
+  state.retry = undefined;
+}
+
+function stopSocketTimers(state: Connection): void {
+  clearHandshake(state);
+  clearProbe(state);
   if (state.heartbeat === undefined) return;
   window.clearInterval(state.heartbeat);
   state.heartbeat = undefined;
+}
+
+function scheduleRetry(state: Connection, gameId: string, listener: LiveListener): void {
+  listener.onStatus('offline');
+  state.attempts += 1;
+  state.retry = window.setTimeout(() => {
+    state.retry = undefined;
+    connect(state, gameId, listener);
+  }, reconnectDelay(state.attempts));
+}
+
+/** Forgets a socket without waiting for its close, which a dead connection can take minutes to report. */
+function dropSocket(state: Connection, socket: WebSocket): void {
+  stopSocketTimers(state);
+  socket.onopen = null;
+  socket.onmessage = null;
+  socket.onclose = null;
+  socket.onerror = null;
+  socket.close();
+}
+
+function abandon(
+  state: Connection,
+  socket: WebSocket,
+  gameId: string,
+  listener: LiveListener,
+): void {
+  if (state.closed || state.socket !== socket) return;
+  dropSocket(state, socket);
+  scheduleRetry(state, gameId, listener);
+}
+
+/** Asks an open socket for a sign of life, because a phone can kill one in the background silently. */
+function probe(state: Connection, gameId: string, listener: LiveListener): void {
+  const socket = state.socket;
+  if (state.closed || socket?.readyState !== WebSocket.OPEN || state.probe !== undefined) return;
+  // The time spent asleep says nothing about this socket, so the heartbeat check starts over too.
+  state.lastMessageAt = Date.now();
+  socket.send(PING);
+  state.probe = window.setTimeout(() => {
+    state.probe = undefined;
+    abandon(state, socket, gameId, listener);
+  }, PROBE_TIMEOUT_MS);
 }
 
 function connect(state: Connection, gameId: string, listener: LiveListener): void {
@@ -88,59 +156,77 @@ function connect(state: Connection, gameId: string, listener: LiveListener): voi
   const socket = new WebSocket(liveUrl(gameId));
   state.socket = socket;
   listener.onSocket(socket);
+  state.handshake = window.setTimeout(() => {
+    state.handshake = undefined;
+    abandon(state, socket, gameId, listener);
+  }, CONNECT_TIMEOUT_MS);
   socket.onopen = () => {
     if (state.socket !== socket) return;
-    state.attempts = 0;
+    clearHandshake(state);
+    state.lastMessageAt = Date.now();
     listener.onStatus('live');
     state.heartbeat = window.setInterval(() => {
+      if (
+        document.visibilityState === 'visible' &&
+        Date.now() - state.lastMessageAt > STALE_AFTER_MS
+      ) {
+        abandon(state, socket, gameId, listener);
+        return;
+      }
       if (socket.readyState === WebSocket.OPEN) socket.send(PING);
     }, HEARTBEAT_INTERVAL_MS);
     listener.onOpen();
   };
   socket.onmessage = (message) => {
-    if (state.socket === socket) listener.onMessage(message.data);
+    if (state.socket !== socket) return;
+    // Only a message proves the connection works. A socket that opens and dies at once keeps
+    // backing off, since every attempt reads the game and tells all the other players.
+    state.attempts = 0;
+    state.lastMessageAt = Date.now();
+    clearProbe(state);
+    listener.onMessage(message.data);
   };
   socket.onclose = () => {
-    stopHeartbeat(state);
     if (state.closed || state.socket !== socket) return;
-    listener.onStatus('offline');
-    state.attempts += 1;
-    state.retry = window.setTimeout(
-      () => connect(state, gameId, listener),
-      reconnectDelay(state.attempts),
-    );
+    stopSocketTimers(state);
+    scheduleRetry(state, gameId, listener);
   };
-  socket.onerror = () => {
-    if (state.socket === socket) socket.close();
-  };
+  socket.onerror = () => abandon(state, socket, gameId, listener);
 }
 
 function startLiveConnection(
   gameId: string,
   listener: LiveListener,
-): { stop: () => void; reconnectNow: () => void } {
+): { stop: () => void; reconnectNow: () => void; probe: () => void } {
   const state: Connection = {
     closed: false,
     retry: undefined,
     heartbeat: undefined,
+    handshake: undefined,
+    probe: undefined,
     socket: null,
     attempts: 0,
+    lastMessageAt: Date.now(),
   };
   connect(state, gameId, listener);
   return {
     stop: () => {
       state.closed = true;
-      if (state.retry !== undefined) window.clearTimeout(state.retry);
-      stopHeartbeat(state);
+      clearRetry(state);
+      stopSocketTimers(state);
       state.socket?.close();
       listener.onSocket(null);
     },
-    // Skips the backoff wait: only when the last socket is gone and a retry is still pending.
+    probe: () => probe(state, gameId, listener),
+    // An open socket only has to prove itself; anything else starts over without the backoff wait.
     reconnectNow: () => {
-      if (state.closed || state.retry === undefined) return;
-      if (state.socket !== null && state.socket.readyState !== WebSocket.CLOSED) return;
-      window.clearTimeout(state.retry);
-      state.retry = undefined;
+      if (state.closed) return;
+      if (state.socket?.readyState === WebSocket.OPEN) {
+        probe(state, gameId, listener);
+        return;
+      }
+      if (state.socket !== null) dropSocket(state, state.socket);
+      clearRetry(state);
       connect(state, gameId, listener);
     },
   };
@@ -207,6 +293,7 @@ export function useGameSync({
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
   const sync = useRef<SyncState>(initialSync());
   const reconnectNow = useRef<() => void>(() => undefined);
+  const probeSocket = useRef<() => void>(() => undefined);
   const resync = useCallback((): Promise<void> => {
     const current = sync.current;
     if (current.inFlight !== null) {
@@ -314,8 +401,12 @@ export function useGameSync({
       sync.current.lastMessageAt = Date.now();
       requestResync();
     };
+    const onResume = () => {
+      probeSocket.current();
+      requestResync();
+    };
     const onVisible = () => {
-      if (document.visibilityState === 'visible') requestResync();
+      if (document.visibilityState === 'visible') onResume();
     };
     const poll = window.setInterval(() => {
       if (document.visibilityState !== 'visible' || isHealthy(sync.current)) return;
@@ -327,7 +418,7 @@ export function useGameSync({
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('online', onOnline);
-    window.addEventListener('pageshow', requestResync);
+    window.addEventListener('pageshow', onResume);
     const onSocket = (socket: WebSocket | null) => {
       sync.current.socket = socket;
     };
@@ -338,12 +429,14 @@ export function useGameSync({
       onMessage,
     });
     reconnectNow.current = connection.reconnectNow;
+    probeSocket.current = connection.probe;
     return () => {
       window.clearInterval(poll);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', onOnline);
-      window.removeEventListener('pageshow', requestResync);
+      window.removeEventListener('pageshow', onResume);
       reconnectNow.current = () => undefined;
+      probeSocket.current = () => undefined;
       connection.stop();
     };
   }, [gameId, enabled, resync, setDetails, setLiveTransactions, loadPaymentRequests]);
