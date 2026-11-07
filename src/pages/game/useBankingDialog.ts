@@ -2,6 +2,7 @@ import { defaultGameRules } from '../../../shared/types/monopoly';
 import { useBuildingLabel } from '../../components/game/property-labels';
 import { apiErrorMessage } from '../../i18n/api-errors';
 import { useLanguage } from '../../i18n/language-context';
+import type { Translate } from '../../i18n/translations';
 import { auctionReserveFor } from '../../utils/auction';
 import { formatMoney } from '../../utils/money';
 import { presetAmounts } from '../../utils/quick-amounts';
@@ -20,6 +21,7 @@ import {
 import { fieldHandlers, flowHandlers } from './banking-dialog-handlers';
 import type { BankingDialogProps } from './banking-dialog-types';
 import { isFormValid } from './banking-dialog-validity';
+import { raiseRequests, raiseSummary } from './banking-raise-plan';
 import { confirmedPropertyName, tileItems } from './banking-tile-items';
 import {
   actionLabel,
@@ -29,7 +31,7 @@ import {
   type ActionType,
 } from './game-page-helpers';
 import { useBankingState } from './useBankingState';
-import { useBankingSubmit } from './useBankingSubmit';
+import { useBankingSubmit, useRaiseSubmit } from './useBankingSubmit';
 
 function resolveInputs(props: BankingDialogProps): BankingInputs {
   return {
@@ -52,8 +54,7 @@ function resolveInputs(props: BankingDialogProps): BankingInputs {
   };
 }
 
-function useFunds(inputs: BankingInputs, amount: number, action: ActionType | null) {
-  const { t } = useLanguage();
+function fundsFor(inputs: BankingInputs, amount: number, action: ActionType | null, t: Translate) {
   const { player, players, currency } = inputs;
   const reserved = auctionReserveFor(inputs.auction, player.id);
   const available = player.balance - reserved;
@@ -106,7 +107,24 @@ export function useBankingDialog(props: BankingDialogProps) {
   const d = deriveBanking(inputs, fields);
   const requests = requestsFor(inputs, fields, d);
   const request = requests[0] ?? null;
-  const funds = useFunds(inputs, d.amountValue + d.loan.interest, fields.action);
+  const { t } = useLanguage();
+  const funds = fundsFor(inputs, d.amountValue + d.loan.interest, fields.action, t);
+  // Building is a choice rather than a debt, and a mortgage would block it in the same group.
+  const canRaise = funds.shortfall !== null && fields.action !== 'PROPERTY_BUILD';
+  const summary =
+    d.board === null || !fields.raising
+      ? null
+      : raiseSummary(d.board, d.views, inputs.player.id, fields.raisePlan);
+  const planRequests = summary === null ? [] : raiseRequests(inputs.player.id, summary);
+  const waiting = fields.resume;
+  const waitingShortfall =
+    waiting === null
+      ? null
+      : (() => {
+          const paying = deriveBanking(inputs, waiting);
+          return fundsFor(inputs, paying.amountValue + paying.loan.interest, waiting.action, t)
+            .shortfall;
+        })();
   const valid =
     isFormValid(inputs, fields, d, request) &&
     requests.every((item) => item !== null) &&
@@ -115,7 +133,14 @@ export function useBankingDialog(props: BankingDialogProps) {
   const handlers = {
     patchField: state.patch,
     ...fieldHandlers(state.edit),
-    ...flowHandlers({ inputs, d, t: texts.t, available: funds.available, ...state }),
+    ...flowHandlers({
+      inputs,
+      d,
+      t: texts.t,
+      available: funds.available,
+      shortfall: funds.shortfall,
+      ...state,
+    }),
   };
   const submit = useBankingSubmit({
     props,
@@ -129,6 +154,7 @@ export function useBankingDialog(props: BankingDialogProps) {
         ? mortgageTilesPatch(ids)
         : redemptionsPatch(d.mortgage.playerMortgages.filter((item) => ids.includes(item.id))),
   });
+  const submitRaise = useRaiseSubmit({ props, state, requests: planRequests });
   return {
     ...texts,
     props,
@@ -139,6 +165,11 @@ export function useBankingDialog(props: BankingDialogProps) {
     valid,
     handlers,
     submit,
+    submitRaise,
+    canRaise,
+    raise: summary,
+    raiseReady: summary !== null && !summary.invalid && planRequests.length > 0,
+    waitingShortfall,
     request,
     batchSize: requests.length,
     preview: previewFor(inputs, d, request),

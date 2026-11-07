@@ -674,6 +674,11 @@ reachable at every size.
   no wallet is controlled, or the wallet is bankrupt. Activity and Statistics are
   disabled offline; Tools is disabled outside an active game. Dice and calculator
   appear inline from `md`; below `md` they live only in the Tools sheet.
+- **Find funds.** When a payment is short, the banking sheet's primary action becomes Find funds
+  instead of a disabled Review. It opens one step over the waiting payment: buildings and tiles are
+  chosen right there, with the totals they change pinned to the top of the step so they stay in view.
+  The pinned block uses the solid glass tint, since the choices scroll under it. Building is not a
+  payment and keeps its disabled Review.
 - **Confirmation mode only.** The payment inbox, the pending-request badge on
   Activity and the Pending tab in Activity exist only in games created with
   confirmation payments. Fast (immediate) games never show them.

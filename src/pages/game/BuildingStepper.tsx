@@ -31,6 +31,8 @@ export interface BuildingStepperProps {
   onLevelsChange: (levels: Record<string, number>) => void;
   balance: number;
   currency: Currency;
+  /** One of several steppers on a screen that has its own totals: names the group, no summary. */
+  compact?: boolean;
 }
 
 const reasonKeys = {
@@ -60,6 +62,7 @@ export function BuildingStepper({
   onLevelsChange,
   balance,
   currency,
+  compact = false,
 }: BuildingStepperProps) {
   const { t } = useLanguage();
   const buildingLabel = useBuildingLabel();
@@ -81,7 +84,9 @@ export function BuildingStepper({
   const reason = preview.ok
     ? null
     : preview.reason === 'NOTHING'
-      ? t('buildingReasonNothing')
+      ? compact
+        ? null
+        : t('buildingReasonNothing')
       : t(reasonKeys[preview.reason as keyof typeof reasonKeys] ?? 'buildingReasonGeneric');
   const label = (level: number) => buildingLabel(level) ?? t('buildingNone');
   // Streets that cause an invalid plan, each with its own reason under its row.
@@ -144,7 +149,9 @@ export function BuildingStepper({
       {group !== '' && (
         <fieldset className="m-0 grid gap-(--mb-space-2) border-0 p-0">
           <legend className="mb-(--mb-space-2) font-semibold text-primary">
-            {t(sell ? 'tileChooseSellBuilding' : 'tileChooseBuild')}
+            {compact
+              ? t(propertyGroupKeys[group])
+              : t(sell ? 'tileChooseSellBuilding' : 'tileChooseBuild')}
           </legend>
           {streets.map((view) => {
             const { min, max } = levelBounds(view, mode);
@@ -224,18 +231,20 @@ export function BuildingStepper({
           <Button variant="secondary" onClick={() => shift(sell ? -1 : 1)}>
             {t(sell ? 'buildingRemoveAll' : 'buildingAddAll')}
           </Button>
-          <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-(--mb-space-4) gap-y-[2px] text-small [&_dd]:m-0 [&_dd]:text-end [&_dd]:font-semibold [&_dt]:text-secondary">
-            <dt>{t('buildingSummaryCount')}</dt>
-            <dd>{buildings}</dd>
-            <dt>{t(sell ? 'buildingSummaryRefund' : 'buildingSummaryCost')}</dt>
-            <dd className="font-money tabular-nums">{formatMoney(amount, currency)}</dd>
-            <dt>{t('buildingSummaryBalance')}</dt>
-            <dd className="font-money tabular-nums">{formatMoney(after, currency)}</dd>
-          </dl>
+          {!compact && (
+            <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-(--mb-space-4) gap-y-[2px] text-small [&_dd]:m-0 [&_dd]:text-end [&_dd]:font-semibold [&_dt]:text-secondary">
+              <dt>{t('buildingSummaryCount')}</dt>
+              <dd>{buildings}</dd>
+              <dt>{t(sell ? 'buildingSummaryRefund' : 'buildingSummaryCost')}</dt>
+              <dd className="font-money tabular-nums">{formatMoney(amount, currency)}</dd>
+              <dt>{t('buildingSummaryBalance')}</dt>
+              <dd className="font-money tabular-nums">{formatMoney(after, currency)}</dd>
+            </dl>
+          )}
           {reason !== null && (
             <FieldError
               as="p"
-              id="building-reason"
+              id={compact ? undefined : 'building-reason'}
               announce={preview.ok === false && preview.reason !== 'NOTHING'}
             >
               {reason}
