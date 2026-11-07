@@ -1,6 +1,6 @@
 # Deployment
 
-Monopoly Bank deploys as one Cloudflare Worker with static assets, a D1 database and the `GAME_SESSIONS` Durable Object. There are three isolated environments: development (deployed automatically from `dev`), staging (manual rehearsal) and production (manual, approved release). This page collects the procedures; the [operations runbooks](operations-runbooks.md) cover what to do once a release is live.
+Monopoly Bank deploys as one Cloudflare Worker with static assets, a D1 database and the `GAME_SESSIONS` Durable Object. There are three isolated environments: development (deployed automatically from `dev`), staging (manual rehearsal) and production (deployed automatically from `main`). This page collects the procedures; the [operations runbooks](operations-runbooks.md) cover what to do once a release is live.
 
 ## Environment isolation
 
@@ -103,17 +103,17 @@ npm run deploy
 
 Run the migration command before every deployment that introduces a new file in `migrations/`. The first deployment also applies the `v1` Durable Object class migration declared in `wrangler.jsonc`; see [Real-time Durable Objects](realtime-durable-objects.md).
 
-### Manual production release
+### Automatic production release
 
-Production releases are manual only:
+Every push to `main` releases production through the `Deploy` workflow, so merging the release PR from `dev` into `main` is the decision to release. No further approval follows it, and its pending D1 migrations are applied without a prompt.
 
-1. Merge the release PR from `dev` into `main` after its required checks and review.
-2. Open **Actions → Deploy → Run workflow**.
-3. Select `main`, enable `confirm_production_release`, provide the production HTTPS URL for smoke testing, and run the workflow.
+The workflow re-runs lint, tests, and the production build, validates the production bindings, performs a `wrangler deploy --dry-run`, applies production D1 migrations, deploys `monopoly-bank`, and runs `npm run smoke:deployment` against the production Worker. A failing check stops it before any migration. It does not create or substitute production D1 IDs. Configure required reviewers on the GitHub `production` environment if an additional approval gate is desired.
 
-The workflow re-runs lint, tests, and the production build, validates the production bindings, performs a `wrangler deploy --dry-run`, applies production D1 migrations, deploys `monopoly-bank`, and runs `npm run smoke:deployment` against the supplied URL. It does not create or substitute production D1 IDs and must not be triggered without separate authorization. Configure required reviewers on the GitHub `production` environment if an additional approval gate is desired.
+To deploy the current `main` again, open **Actions → Deploy → Run workflow**, select `main` and enable `confirm_production_release`. `production_base_url` is optional and overrides the smoke-test URL.
 
-Before production approval: review staging evidence, confirm native D1 backup/time-travel retention, run the same backup/restore rehearsal against a sanitized or access-restricted export, confirm pending migrations are expand-safe, and save the current Worker version ID from `wrangler versions list`.
+A deployment restarts the game Durable Objects, so players connected at that moment reconnect.
+
+Before merging a release: review staging evidence, confirm native D1 backup/time-travel retention, run the same backup/restore rehearsal against a sanitized or access-restricted export, confirm pending migrations are expand-safe, and save the current Worker version ID from `wrangler versions list`.
 
 ### Rollback
 
