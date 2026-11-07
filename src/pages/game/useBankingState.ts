@@ -12,8 +12,9 @@ export function useBankingState(inputs: BankingInputs) {
   const patch = (changes: Partial<BankingFields>) =>
     setFields((current) => ({ ...current, ...changes }));
 
+  // A changed form closes the "Find funds" menu, so typing never pops it up mid-amount.
   const edit = (changes: Partial<BankingFields>) => {
-    patch(changes);
+    patch({ raising: false, raiseConfirming: false, ...changes });
     setError(null);
     commandIdsRef.current.clear();
   };

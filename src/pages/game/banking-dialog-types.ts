@@ -9,7 +9,7 @@ import type {
   Mortgage,
   Player,
 } from '../../../shared/types/monopoly';
-import type { ActionType } from './game-page-helpers';
+import type { ActionType, BankingResponseFields } from './game-page-helpers';
 
 export interface BankingDialogProps {
   gameId: string;
@@ -61,6 +61,10 @@ export interface BankingDialogProps {
     jackpot?: number,
     properties?: GameProperty[],
   ) => void;
+  /** One operation from the "Find funds" menu was recorded; the dialog stays open. */
+  onFundsRaised: (response: BankingResponseFields) => void;
+  /** Everything chosen in that menu is recorded: `action` for a single form, `null` for a plan. */
+  onFundsRaiseFinished: (action: ActionType | null) => void;
   /** A payment or loan request was created; a loan request names the lender being asked. */
   onPaymentRequested: (action: ActionType, lenderName?: string) => void;
 }

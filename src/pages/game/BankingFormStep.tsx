@@ -11,11 +11,15 @@ import { actionDescription, type ActionType } from './game-page-helpers';
 import type { BankingForm } from './useBankingDialog';
 
 export function BankingFormStep({ form, action }: { form: BankingForm; action: ActionType }) {
-  const { t, inputs, d, valid, handlers, transactionError } = form;
+  const { t, money, inputs, d, valid, handlers, transactionError, canRaise, waitingShortfall } =
+    form;
   return (
     <>
       <StepBody>
         <p className="sr-only">{actionDescription(action, inputs.player.name, t)}</p>
+        {waitingShortfall !== null && (
+          <Notice tone="info">{t('raiseReminder', { amount: money(waitingShortfall) })}</Notice>
+        )}
         {transactionError !== null && <Notice tone="error">{transactionError}</Notice>}
         <BankingTargetFields form={form} />
         <BankingPropertyPickers form={form} />
@@ -30,17 +34,23 @@ export function BankingFormStep({ form, action }: { form: BankingForm; action: A
         )}
       </StepBody>
       <SheetActions className={stepFooterClass}>
-        <Button variant="secondary" onClick={() => handlers.select(null)}>
+        <Button variant="secondary" onClick={handlers.leaveForm}>
           {t('back')}
         </Button>
-        <Button
-          variant="primary"
-          disabled={!valid}
-          aria-describedby={d.build.buildMode !== null && !valid ? 'building-reason' : undefined}
-          onClick={handlers.review}
-        >
-          {t('reviewTransaction')}
-        </Button>
+        {canRaise ? (
+          <Button variant="primary" onClick={handlers.openRaise}>
+            {t('raiseFunds')}
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            disabled={!valid}
+            aria-describedby={d.build.buildMode !== null && !valid ? 'building-reason' : undefined}
+            onClick={handlers.review}
+          >
+            {t('reviewTransaction')}
+          </Button>
+        )}
       </SheetActions>
     </>
   );
