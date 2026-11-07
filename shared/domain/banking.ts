@@ -975,15 +975,21 @@ export function bankToPlayer(command: BankToPlayerCommand): BankingOperationResu
   );
 }
 
+/** Who a group transfer reaches: everyone else still in the game, never a bankrupt player. */
+export function otherActivePlayers<T extends Pick<Player, 'id' | 'status'>>(
+  players: readonly T[],
+  playerId: string,
+): T[] {
+  return players.filter((player) => player.id !== playerId && player.status !== 'BANKRUPT');
+}
+
 export function playerToAll(command: PlayerToAllCommand): BankingOperationResult {
   const players = validateGame(command.game, command.players);
   validateAmount(command.amountPerPlayer);
 
   const payer = findPlayer(players, command.payerPlayerId);
   ensureActive(payer);
-  const recipients = players.filter(
-    (player) => player.id !== payer.id && player.status !== 'BANKRUPT',
-  );
+  const recipients = otherActivePlayers(players, payer.id);
   if (recipients.length === 0) throw new NoOtherActivePlayersError();
   const totalAmount = multiplyAmounts(command.amountPerPlayer, recipients.length);
   ensureSufficientFunds(payer, totalAmount);
@@ -1011,9 +1017,7 @@ export function allToPlayer(command: AllToPlayerCommand): BankingOperationResult
 
   const recipient = findPlayer(players, command.recipientPlayerId);
   ensureActive(recipient);
-  const payers = players.filter(
-    (player) => player.id !== recipient.id && player.status !== 'BANKRUPT',
-  );
+  const payers = otherActivePlayers(players, recipient.id);
   if (payers.length === 0) throw new NoOtherActivePlayersError();
   for (const payer of payers) {
     ensureSufficientFunds(payer, command.amountPerPlayer);
@@ -1435,12 +1439,11 @@ export interface PreviewContext {
  */
 export function previewDeltas(
   request: PlayerTransactionRequest,
-  players: readonly Pick<Player, 'id'>[],
+  players: readonly Pick<Player, 'id' | 'status'>[],
   context: PreviewContext,
 ): PlayerDelta[] {
   const { tile } = context;
-  const others = (playerId: string) =>
-    players.filter(({ id }) => id !== playerId).map(({ id }) => id);
+  const others = (playerId: string) => otherActivePlayers(players, playerId).map(({ id }) => id);
   switch (request.type) {
     case 'PLAYER_TO_PLAYER':
       return transferDeltas(request.sourcePlayerId, request.destinationPlayerId, request.amount);

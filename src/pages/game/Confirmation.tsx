@@ -69,9 +69,10 @@ export function Confirmation({
   reserved = 0,
 }: ConfirmationProps) {
   const { t } = useLanguage();
+  // A bankrupt player is listed with the balances but takes no part in a group transfer.
   const total =
     action === 'PLAYER_TO_ALL' || action === 'ALL_TO_PLAYER'
-      ? amount * (preview.length - 1)
+      ? amount * (preview.filter(({ delta }) => delta !== 0).length - 1)
       : action === 'PASS_GO'
         ? passGoReward
         : amount + interest;

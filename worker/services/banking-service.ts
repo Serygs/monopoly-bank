@@ -48,6 +48,7 @@ import {
   LoanNotFoundError,
   MortgageNotFoundError,
   NoOtherActivePlayersError,
+  otherActivePlayers,
   mortgageProperty,
   mortgageTile,
   payRent,
@@ -1186,18 +1187,14 @@ export class DefaultBankingService implements BankingService {
               comment: request.comment ?? null,
             },
           ]
-        : players
-            .filter(
-              (player) => player.id !== request.recipientPlayerId && player.status !== 'BANKRUPT',
-            )
-            .map((player) => ({
-              payerPlayerId: player.id,
-              recipientPlayerId: request.recipientPlayerId,
-              creatorPlayerId: request.recipientPlayerId,
-              approverPlayerId: player.id,
-              amount: request.amountPerPlayer,
-              comment: request.comment ?? null,
-            }));
+        : otherActivePlayers(players, request.recipientPlayerId).map((player) => ({
+            payerPlayerId: player.id,
+            recipientPlayerId: request.recipientPlayerId,
+            creatorPlayerId: request.recipientPlayerId,
+            approverPlayerId: player.id,
+            amount: request.amountPerPlayer,
+            comment: request.comment ?? null,
+          }));
     if (pairs.length === 0) throw new NoOtherActivePlayersError();
     const auction = await this.runningAuction(game);
     const playersById = new Map(players.map((player) => [player.id, player]));
