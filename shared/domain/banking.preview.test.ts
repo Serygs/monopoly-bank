@@ -53,6 +53,37 @@ function previewed(deltas: ReturnType<typeof previewDeltas>): Record<string, num
 }
 
 describe('previewDeltas', () => {
+  describe('with a bankrupt player at the table', () => {
+    const table: Player[] = [
+      ...players,
+      { ...(players[0] as Player), id: 'player-4', balance: 0, status: 'BANKRUPT' },
+    ];
+
+    it('matches the operation when one player pays everyone', () => {
+      const request = {
+        type: 'PLAYER_TO_ALL',
+        payerPlayerId: 'player-1',
+        amountPerPlayer: 50,
+      } as const;
+      const operation = playerToAll({ game, players: table, ...request });
+      const preview = previewed(previewDeltas(request, table, context));
+      expect(preview).toEqual(byPlayer(operation));
+      expect(preview).not.toHaveProperty('player-4');
+    });
+
+    it('matches the operation when everyone pays one player', () => {
+      const request = {
+        type: 'ALL_TO_PLAYER',
+        recipientPlayerId: 'player-1',
+        amountPerPlayer: 50,
+      } as const;
+      const operation = allToPlayer({ game, players: table, ...request });
+      const preview = previewed(previewDeltas(request, table, context));
+      expect(preview).toEqual(byPlayer(operation));
+      expect(preview).not.toHaveProperty('player-4');
+    });
+  });
+
   it('matches the operation for a player-to-player payment', () => {
     const operation = playerToPlayer({
       game,

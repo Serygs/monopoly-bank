@@ -16,7 +16,7 @@ import type {
   Transaction,
   TransactionType,
 } from '../../../shared/types/monopoly';
-import { previewDeltas } from '../../../shared/domain/banking';
+import { otherActivePlayers, previewDeltas } from '../../../shared/domain/banking';
 import { MonopolyBankApiError } from '../../api/monopoly-bank-api';
 import type { Translate } from '../../i18n/translations';
 import { newerAuction } from '../../utils/auction';
@@ -475,14 +475,14 @@ export function preflightFundsError(
 ) {
   if (!Number.isSafeInteger(amount) || amount <= 0) return null;
   if (action === 'PLAYER_TO_ALL') {
-    const required = amount * (players.length - 1);
+    const required = amount * otherActivePlayers(players, player.id).length;
     return player.balance < required
       ? `${t('insufficientFunds')} ${t('balanceRequirement', { current: formatMoney(player.balance, currency), required: formatMoney(required, currency) })}`
       : null;
   }
   if (action === 'ALL_TO_PLAYER') {
-    const payers = players.filter(
-      (candidate) => candidate.id !== player.id && candidate.balance < amount,
+    const payers = otherActivePlayers(players, player.id).filter(
+      (candidate) => candidate.balance < amount,
     );
     return payers.length === 0
       ? null
@@ -517,7 +517,7 @@ export function preflightShortfall(
   if (!Number.isSafeInteger(amount) || amount <= 0) return null;
   const required =
     action === 'PLAYER_TO_ALL'
-      ? amount * (players.length - 1)
+      ? amount * otherActivePlayers(players, player.id).length
       : action === 'PLAYER_TO_PLAYER' ||
           action === 'PLAYER_TO_BANK' ||
           action === 'MORTGAGE_REDEMPTION' ||

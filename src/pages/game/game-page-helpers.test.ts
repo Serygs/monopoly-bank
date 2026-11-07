@@ -17,6 +17,7 @@ import {
   lobbyNeedsMorePlayers,
   insufficientMessage,
   preflightFundsError,
+  preflightShortfall,
   previewBalances,
   splitPaymentRequests,
   walletActionTone,
@@ -301,6 +302,33 @@ describe('preflightFundsError', () => {
     expect(preflightFundsError('ALL_TO_PLAYER', carol, players, 600, 'USD', t)).toBe(
       t('cannotAfford', { names: 'Bob', amount: formatMoney(600, 'USD') }),
     );
+  });
+
+  describe('with a bankrupt player at the table', () => {
+    const bankrupt: Player = { ...player('p4', 'Dmytro', 0), status: 'BANKRUPT' };
+    const table = [alice, bob, carol, bankrupt];
+
+    it('does not ask a bankrupt player to pay when everyone pays', () => {
+      expect(preflightFundsError('ALL_TO_PLAYER', alice, table, 100, 'USD', t)).toBeNull();
+    });
+
+    it('still names an active player who cannot afford it, and only them', () => {
+      expect(preflightFundsError('ALL_TO_PLAYER', alice, table, 101, 'USD', t)).toBe(
+        t('cannotAfford', { names: 'Carol', amount: formatMoney(101, 'USD') }),
+      );
+    });
+
+    it('does not make the payer cover a bankrupt player when paying everyone', () => {
+      expect(preflightFundsError('PLAYER_TO_ALL', bob, table, 250, 'USD', t)).toBeNull();
+      expect(preflightShortfall('PLAYER_TO_ALL', bob, table, 250)).toBeNull();
+    });
+
+    it('still reports a shortfall measured against the active players', () => {
+      expect(preflightFundsError('PLAYER_TO_ALL', bob, table, 251, 'USD', t)).toBe(
+        requirement(500, 502),
+      );
+      expect(preflightShortfall('PLAYER_TO_ALL', bob, table, 251)).toBe(2);
+    });
   });
 
   it.each([null, 'BANK_TO_PLAYER', 'PASS_GO'] as const)('never blocks %s', (action) => {
