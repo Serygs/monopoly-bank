@@ -497,6 +497,65 @@ describe('reading a response', () => {
     });
   });
 
+  describe('on a network that stops answering', () => {
+    const untilAborted = (signal: AbortSignal | null | undefined) =>
+      new Promise<never>((_, reject) => {
+        signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    /** Settles as soon as `call` does, so a test can see whether the limit has passed yet. */
+    const watch = (call: () => Promise<unknown>) => {
+      const seen: { error?: unknown } = {};
+      void call().catch((error: unknown) => {
+        seen.error = error;
+      });
+      return seen;
+    };
+
+    afterEach(() => vi.useRealTimers());
+
+    it.each([
+      ['a read', () => monopolyBankApi.getGame(G), 15_000],
+      [
+        'a command',
+        () =>
+          monopolyBankApi.placeBid(G, {
+            bidderPlayerId: P,
+            auctionId: CMD,
+            expectedVersion: 1,
+            step: 10,
+          }),
+        20_000,
+      ],
+    ] as const)('gives up on %s that hangs, at its own limit', async (_, call, limit) => {
+      vi.useFakeTimers();
+      vi.stubGlobal('fetch', (_input: RequestInfo | URL, init?: RequestInit) =>
+        untilAborted(init?.signal),
+      );
+      const seen = watch(call);
+      await vi.advanceTimersByTimeAsync(limit - 1);
+      expect(seen.error).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(seen.error).toMatchObject({ code: 'NETWORK_ERROR' });
+    });
+
+    it('gives up on a response whose body stalls', async () => {
+      vi.useFakeTimers();
+      vi.stubGlobal('fetch', (_input: RequestInfo | URL, init?: RequestInit) =>
+        Promise.resolve({ ok: true, json: () => untilAborted(init?.signal) }),
+      );
+      const seen = watch(() => monopolyBankApi.getGame(G));
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(seen.error).toMatchObject({ code: 'NETWORK_ERROR' });
+    });
+
+    it('leaves no timer behind once a response has arrived', async () => {
+      vi.useFakeTimers();
+      stubFetch();
+      await monopolyBankApi.getGame(G);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
   it('turns an error payload into an error with its code, message, details and request id', async () => {
     stubFetch(
       () =>

@@ -606,6 +606,23 @@ describe('BankingDialog bank loans', () => {
     createTransaction.mockRestore();
   });
 
+  it('retries a lost response with the same command id, so it is not recorded twice', async () => {
+    const createTransaction = vi
+      .spyOn(monopolyBankApi, 'createTransaction')
+      .mockRejectedValueOnce(new MonopolyBankApiError({ code: 'NETWORK_ERROR', message: 'x' }))
+      .mockResolvedValueOnce({ transaction: { amount: 250 }, players: [] } as never);
+    const { user, props } = renderDialog([olena, taras], { rules, settings });
+    await borrow250(user);
+    await user.click(screen.getByRole('button', { name: 'Confirm transaction' }));
+    expect(props.onCompleted).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(props.onCompleted).toHaveBeenCalledTimes(1);
+    const [first, second] = createTransaction.mock.calls;
+    expect(first?.[2]).toBeDefined();
+    expect(second?.[2]).toBe(first?.[2]);
+    createTransaction.mockRestore();
+  });
+
   it('shows the cooldown warning when the Worker reports one the client did not know', async () => {
     const createTransaction = vi.spyOn(monopolyBankApi, 'createTransaction').mockRejectedValue(
       new MonopolyBankApiError({

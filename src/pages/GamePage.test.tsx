@@ -379,7 +379,8 @@ describe('GamePage live connection lifecycle', () => {
 
     expect(socket.closeCode).toBeUndefined();
     expect(api.getGameVersion).toHaveBeenCalledTimes(1);
-    expect(setTimeoutMock).not.toHaveBeenCalled();
+    expect(socket.readyState).not.toBe(FakeWebSocket.CLOSED);
+    expect(FakeWebSocket.instances).toHaveLength(1);
   });
 });
 
@@ -532,6 +533,8 @@ describe('GamePage live connection recovery', () => {
   }
   let intervals: Timer[];
   let timeouts: Timer[];
+  /** The reconnect timers, without the limit every new socket gets for its handshake. */
+  const retries = () => timeouts.filter((timer) => timer.delay !== 10_000);
   const register = (list: Timer[]) => (callback: () => void, delay: number) => {
     const timer = { id: list.length + 1, callback, delay, cleared: false };
     list.push(timer);
@@ -635,17 +638,17 @@ describe('GamePage live connection recovery', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     socket.close();
     expect(liveStatusOf(rendered())).toBe('offline');
-    expect(timeouts).toHaveLength(1);
-    expect(timeouts[0]?.delay).toBe(1000);
-    timeouts[0]?.callback();
+    expect(retries()).toHaveLength(1);
+    expect(retries()[0]?.delay).toBe(1000);
+    retries()[0]?.callback();
     expect(liveStatusOf(rendered())).toBe('reconnecting');
     expect(FakeWebSocket.instances).toHaveLength(2);
     const second = FakeWebSocket.instances[1] as FakeWebSocket;
     second.close();
-    expect(timeouts[1]?.delay).toBe(2000);
-    timeouts[1]?.callback();
+    expect(retries()[1]?.delay).toBe(2000);
+    retries()[1]?.callback();
     FakeWebSocket.instances[2]?.close();
-    expect(timeouts[2]?.delay).toBe(4000);
+    expect(retries()[2]?.delay).toBe(4000);
   });
 
   it('goes from offline through reconnecting back to live once the new socket opens', async () => {
@@ -654,7 +657,7 @@ describe('GamePage live connection recovery', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     socket.close();
     expect(liveStatusOf(rendered())).toBe('offline');
-    timeouts[0]?.callback();
+    retries()[0]?.callback();
     expect(liveStatusOf(rendered())).toBe('reconnecting');
     FakeWebSocket.instances[1]?.open();
     expect(liveStatusOf(rendered())).toBe('live');
@@ -666,33 +669,46 @@ describe('GamePage live connection recovery', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     for (let attempt = 0; attempt < 6; attempt += 1) {
       FakeWebSocket.instances.at(-1)?.close();
-      delays.push(timeouts.at(-1)?.delay ?? 0);
-      timeouts.at(-1)?.callback();
+      delays.push(retries().at(-1)?.delay ?? 0);
+      retries().at(-1)?.callback();
     }
     expect(delays).toEqual([700, 1400, 2800, 5600, 7000, 7000]);
     vi.spyOn(Math, 'random').mockReturnValue(0.999999);
     FakeWebSocket.instances.at(-1)?.close();
-    expect(timeouts.at(-1)?.delay).toBe(13000);
+    expect(retries().at(-1)?.delay).toBe(13000);
   });
 
-  it('starts the delay over after a connection succeeds', async () => {
+  it('starts the delay over once a connection delivers a message', async () => {
     await connected();
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     FakeWebSocket.instances[0]?.close();
-    timeouts[0]?.callback();
+    retries()[0]?.callback();
     FakeWebSocket.instances[1]?.close();
-    expect(timeouts[1]?.delay).toBe(2000);
-    timeouts[1]?.callback();
+    expect(retries()[1]?.delay).toBe(2000);
+    retries()[1]?.callback();
     FakeWebSocket.instances[2]?.open();
+    FakeWebSocket.instances[2]?.onmessage?.({ data: 'pong' });
     FakeWebSocket.instances[2]?.close();
-    expect(timeouts[2]?.delay).toBe(1000);
+    expect(retries()[2]?.delay).toBe(1000);
+  });
+
+  it('keeps backing off when a socket opens and dies before any message', async () => {
+    await connected();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    FakeWebSocket.instances[0]?.open();
+    FakeWebSocket.instances[0]?.close();
+    expect(retries()[0]?.delay).toBe(1000);
+    retries()[0]?.callback();
+    FakeWebSocket.instances[1]?.open();
+    FakeWebSocket.instances[1]?.close();
+    expect(retries()[1]?.delay).toBe(2000);
   });
 
   it('closes a failing socket so the normal reconnect takes over', async () => {
     const socket = await connected();
     socket.onerror?.();
     expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
-    expect(timeouts).toHaveLength(1);
+    expect(retries()).toHaveLength(1);
   });
 
   it('ignores everything a replaced socket still says', async () => {
@@ -700,13 +716,13 @@ describe('GamePage live connection recovery', () => {
     first.open();
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     first.close();
-    timeouts[0]?.callback();
+    retries()[0]?.callback();
     const second = FakeWebSocket.instances[1] as FakeWebSocket;
     first.onopen?.();
     first.onerror?.();
     first.onclose?.();
     first.message(snapshot(5, gameDetails('ACTIVE', [owner, joined])));
-    expect(timeouts).toHaveLength(1);
+    expect(retries()).toHaveLength(1);
     expect(second.readyState).not.toBe(FakeWebSocket.CLOSED);
     expect(renderedPlayerNames(rendered())).not.toContain(joined.name);
   });
@@ -798,7 +814,7 @@ describe('GamePage live connection recovery', () => {
     hooks.unmount();
     expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
     expect(intervals[0]?.cleared).toBe(true);
-    expect(timeouts).toHaveLength(0);
+    expect(retries()).toHaveLength(0);
   });
 
   it('cancels a pending reconnect when the page goes away', async () => {
@@ -806,8 +822,8 @@ describe('GamePage live connection recovery', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     socket.close();
     hooks.unmount();
-    expect(timeouts[0]?.cleared).toBe(true);
-    timeouts[0]?.callback();
+    expect(retries()[0]?.cleared).toBe(true);
+    retries()[0]?.callback();
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
