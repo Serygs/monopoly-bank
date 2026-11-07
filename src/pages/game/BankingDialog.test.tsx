@@ -31,6 +31,8 @@ function renderDialog(players: Player[], overrides: Partial<BankingDialogProps> 
     onBankrupt: vi.fn(),
     onViewHistory: vi.fn(),
     onCompleted: vi.fn(),
+    onFundsRaised: vi.fn(),
+    onFundsRaiseFinished: vi.fn(),
     onPaymentRequested: vi.fn(),
     ...overrides,
   };
@@ -102,8 +104,9 @@ describe('BankingDialog amount entry', () => {
     await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
     await user.type(screen.getByRole('textbox', { name: 'Amount' }), '1500000');
     expect(screen.getByText('Short by $500 000.')).toBeInTheDocument();
-    const shortfall = screen.getByText('Short by $500 000.').parentElement as HTMLElement;
-    await user.click(within(shortfall).getByRole('button', { name: 'Declare bankrupt' }));
+    await user.click(screen.getByRole('button', { name: 'Find funds' }));
+    expect(screen.getByText('Still short by').nextElementSibling).toHaveTextContent('$500 000');
+    await user.click(screen.getByRole('button', { name: 'Declare bankrupt' }));
     expect(props.onBankrupt).toHaveBeenCalledOnce();
   });
 
@@ -296,12 +299,13 @@ describe('BankingDialog house rules', () => {
     expect(screen.getByText('Luxury tax')).toBeInTheDocument();
   });
 
-  it('fills the amount but stays on the form when the payer cannot afford the fixed payment', async () => {
+  it('goes straight to finding funds when the payer cannot afford the fixed payment', async () => {
     const { user } = renderDialog([olena, taras], { player: taras, settings });
     await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
     await user.click(screen.getByRole('button', { name: /Income tax/ }));
-    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
-    expect(screen.getByText('Short by $1 000 000.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirm transaction' })).toBeNull();
+    expect(screen.getByText('Still short by').nextElementSibling).toHaveTextContent('$1 000 000');
+    expect(screen.getByText('Available now')).toBeInTheDocument();
   });
 
   it('hides the fixed payments for games created before the settings snapshot', async () => {
@@ -431,7 +435,8 @@ describe('BankingDialog mortgages', () => {
     await user.click(screen.getByRole('button', { name: 'Redeem mortgage' }));
     await user.click(screen.getByRole('button', { name: /Boardwalk/ }));
 
-    expect(screen.getByRole('button', { name: 'Review transaction' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Review transaction' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Find funds' })).toBeEnabled();
     expect(screen.getByText('Short by $1 200 000.')).toBeInTheDocument();
   });
 
@@ -736,6 +741,7 @@ describe('BankingDialog bank loans', () => {
     expect(screen.getByText(/is overdue \(round 4\)/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Settle loan' }));
     expect(screen.getByText(/Short by/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Find funds' }));
     expect(screen.getByRole('button', { name: 'Mortgage property' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sell buildings to the bank' })).toBeInTheDocument();
     await user.click(screen.getAllByRole('button', { name: 'Declare bankrupt' })[0]!);
@@ -804,8 +810,9 @@ describe('BankingDialog Free Parking jackpot', () => {
     const createTransaction = mockCreate();
     const { user } = renderDialog([olena, taras], { player: taras, rules, settings });
     await user.click(screen.getByRole('button', { name: 'Pay Bank' }));
-    // Too expensive to review, so the form stays open with the pot payment selected.
+    // Too expensive to review, so it opens the menu; Back finds the pot payment still selected.
     await user.click(screen.getByRole('button', { name: /Income tax/ }));
+    await user.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByText(/goes into the Free Parking pot/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Whole units' }));
     await user.click(screen.getByRole('button', { name: 'Clear' }));
@@ -902,6 +909,7 @@ describe('BankingDialog auctions', () => {
     await user.type(screen.getByRole('textbox', { name: 'Amount' }), '1500000');
     await user.click(screen.getByRole('button', { name: /Add a comment/ }));
     await user.type(screen.getByRole('textbox', { name: 'Comment' }), 'Boardwalk');
+    await user.click(screen.getByRole('button', { name: 'Find funds' }));
     await user.click(screen.getByRole('button', { name: 'Auction it instead' }));
     expect(onStartAuction).toHaveBeenCalledWith('Boardwalk');
   });

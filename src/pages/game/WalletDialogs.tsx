@@ -59,6 +59,14 @@ function useWalletCompletion(ctx: GameContext) {
     closeWallet();
     notify({ tone: 'success', message: t(completionMessage[action] ?? 'paymentSent') });
   };
+  const raised: BankingProps['onFundsRaised'] = (response) =>
+    setDetails((current) => (current === null ? current : applyBankingResponse(current, response)));
+  const raiseFinished: BankingProps['onFundsRaiseFinished'] = (action) => {
+    playPaymentFeedback(preferences.sound);
+    vibrate(35, preferences.vibration);
+    const message = action === null ? undefined : completionMessage[action];
+    notify({ tone: 'success', message: t(message ?? 'raiseRecorded') });
+  };
   const requested = (action: ActionType, lenderName?: string) => {
     ctx.loadPaymentRequests();
     closeWallet();
@@ -68,7 +76,12 @@ function useWalletCompletion(ctx: GameContext) {
         : t('paymentRequestCreated');
     notify({ tone: 'success', message });
   };
-  return { onCompleted: completed, onPaymentRequested: requested };
+  return {
+    onCompleted: completed,
+    onFundsRaised: raised,
+    onFundsRaiseFinished: raiseFinished,
+    onPaymentRequested: requested,
+  };
 }
 
 function bankingDataProps(ctx: GameContext, player: Player) {
@@ -130,8 +143,10 @@ function bankingActionProps(ctx: GameContext, player: Player) {
 
 function BankingHost({ ctx }: { ctx: GameContext }) {
   const completion = useWalletCompletion(ctx);
-  const player = ctx.dialogs.wallet.selectedPlayer;
-  if (player === null) return null;
+  const selected = ctx.dialogs.wallet.selectedPlayer;
+  if (selected === null) return null;
+  // The current wallet, not the copy from when the dialog opened: the balance must follow.
+  const player = ctx.details.players.find(({ id }) => id === selected.id) ?? selected;
   return (
     <BankingDialog
       {...bankingDataProps(ctx, player)}

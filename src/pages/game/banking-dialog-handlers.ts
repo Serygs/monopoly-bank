@@ -1,7 +1,7 @@
 import type { PropertyGroupId } from '../../../shared/board';
 import type { InterestRatePercent, Loan, Mortgage } from '../../../shared/types/monopoly';
 import type { Translate } from '../../i18n/translations';
-import type { TileView } from '../../utils/property-view';
+import { groupStreets, type TileView } from '../../utils/property-view';
 import type { BankingDerived } from './banking-dialog-derive';
 import {
   chooseLoanPatch,
@@ -13,7 +13,7 @@ import {
   type BankingFields,
   type BankingInputs,
 } from './banking-dialog-fields';
-import { preflightFundsError, type ActionType } from './game-page-helpers';
+import { preflightShortfall, type ActionType } from './game-page-helpers';
 
 type Edit = (changes: Partial<BankingFields>) => void;
 
@@ -43,31 +43,81 @@ export interface FlowContext {
   d: BankingDerived;
   t: Translate;
   available: number;
+  /** How much the current payment is short by, if it is. */
+  shortfall: number | null;
   edit: Edit;
   patch: Edit;
+  setError: (error: unknown) => void;
 }
 
 function quickHandlers(ctx: FlowContext) {
-  const { inputs, fields, d, t, available, edit, patch } = ctx;
+  const { inputs, fields, d, available, edit } = ctx;
 
+  // Picking a sum the wallet cannot cover goes straight to the "Find funds" menu.
   const reviewFixedPayment = (label: string, fixedAmount: number, toPot: boolean) =>
     edit({
       amount: String(fixedAmount),
       payToPot: toPot,
       comment: label,
-      ...(available >= fixedAmount ? { confirming: true } : {}),
+      ...(available >= fixedAmount ? { confirming: true } : { raising: true }),
     });
 
   const reviewQuickAmount = (nextAmount: number) => {
-    edit({ amount: String(nextAmount), payToPot: false });
-    const { player, players, currency } = inputs;
-    const affordable =
-      preflightFundsError(fields.action, player, players, nextAmount, currency, t) === null;
-    if (fields.action === 'PLAYER_TO_PLAYER' && d.target !== null && affordable)
-      patch({ confirming: true });
+    const spender = { ...inputs.player, balance: available };
+    const short = preflightShortfall(fields.action, spender, inputs.players, nextAmount) !== null;
+    edit({
+      amount: String(nextAmount),
+      payToPot: false,
+      raising: short,
+      confirming: !short && fields.action === 'PLAYER_TO_PLAYER' && d.target !== null,
+    });
   };
 
   return { reviewFixedPayment, reviewQuickAmount };
+}
+
+function raiseHandlers(ctx: FlowContext) {
+  const { fields, d, t, shortfall, edit, patch, setError } = ctx;
+  const { raisePlan } = fields;
+
+  const changePlan = (changes: Partial<typeof raisePlan>) => {
+    setError(null);
+    patch({ raisePlan: { ...raisePlan, ...changes } });
+  };
+
+  const changeRaiseLevels = (group: PropertyGroupId, levels: Record<string, number>) => {
+    const streets = new Set(groupStreets(d.views, group).map((view) => view.tile.id));
+    const others = Object.entries(raisePlan.levels).filter(([id]) => !streets.has(id));
+    changePlan({ levels: { ...Object.fromEntries(others), ...levels } });
+  };
+
+  /** Opens an existing form from the menu; the payment and the selection wait behind it. */
+  const startRaise = (next: ActionType) =>
+    edit({
+      ...selectActionPatch(next, false, t('passGoExactComment')),
+      resume: fields,
+      amount:
+        next === 'BANK_LOAN' && shortfall !== null
+          ? String(Math.min(shortfall, d.loan.bankLoanMax ?? shortfall))
+          : '',
+    });
+
+  return {
+    openRaise: () => patch({ raising: true }),
+    closeRaise: () => {
+      setError(null);
+      patch({ raising: false, raiseConfirming: false });
+    },
+    changeRaiseLevels,
+    toggleRaiseMortgage: (view: TileView) =>
+      changePlan({ mortgageIds: toggledIds(raisePlan.mortgageIds, view.tile.id) }),
+    reviewRaise: () => patch({ raiseConfirming: true }),
+    backFromRaiseReview: () => {
+      setError(null);
+      patch({ raiseConfirming: false });
+    },
+    startRaise,
+  };
 }
 
 export function flowHandlers(ctx: FlowContext) {
@@ -75,6 +125,9 @@ export function flowHandlers(ctx: FlowContext) {
 
   const select = (next: ActionType | null, exact = false) =>
     edit(selectActionPatch(next, exact, t('passGoExactComment')));
+
+  /** Back from a form: to the menu it was opened from, or to the wallet's actions. */
+  const leaveForm = () => (fields.resume === null ? select(null) : edit(fields.resume));
 
   const review = () => {
     const { cooldown } = d.loan;
@@ -105,11 +158,13 @@ export function flowHandlers(ctx: FlowContext) {
 
   return {
     select,
+    leaveForm,
     review,
     borrowAnyway,
     settleBankLoan,
     toggleMortgageTile,
     toggleRedemption,
     ...quickHandlers(ctx),
+    ...raiseHandlers(ctx),
   };
 }

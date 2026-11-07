@@ -2,6 +2,7 @@ import { Dialog } from '../../components/Dialog';
 import { BankingConfirmStep } from './BankingConfirmStep';
 import { BankingCooldownStep } from './BankingCooldownStep';
 import { BankingFormStep } from './BankingFormStep';
+import { BankingRaiseStep } from './BankingRaiseStep';
 import { BankingWalletStep } from './BankingWalletStep';
 import { stepPanelClass } from './banking-dialog-styles';
 import type { BankingDialogProps } from './banking-dialog-types';
@@ -13,6 +14,8 @@ function BankingStep({ form }: { form: BankingForm }) {
   const { action, cooldownRounds, confirming } = form.fields;
   if (action === null) return <BankingWalletStep form={form} />;
   if (cooldownRounds !== null) return <BankingCooldownStep form={form} rounds={cooldownRounds} />;
+  // Once the payment is covered the menu gives way to the payment's own form.
+  if (form.fields.raising && form.canRaise) return <BankingRaiseStep form={form} />;
   if (confirming) return <BankingConfirmStep form={form} action={action} />;
   return <BankingFormStep form={form} action={action} />;
 }

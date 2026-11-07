@@ -4,6 +4,7 @@ import type { InterestRatePercent, Loan, Mortgage } from '../../../shared/types/
 import { activeBankLoan, loanOutstanding } from '../../utils/loans';
 import { reviewOnlyActions } from './banking-actions';
 import type { BankingDialogProps } from './banking-dialog-types';
+import { emptyRaisePlan, type RaisePlan } from './banking-raise-plan';
 import type { ActionType } from './game-page-helpers';
 
 export type BankingInputs = Required<
@@ -55,6 +56,12 @@ export interface BankingFields {
   ratePercent: InterestRatePercent | null;
   cooldownRounds: number | null;
   cooldownAcknowledged: boolean;
+  /** The "Find funds" menu is open over a payment the player cannot cover yet. */
+  raising: boolean;
+  raiseConfirming: boolean;
+  raisePlan: RaisePlan;
+  /** The payment waiting behind a form opened from that menu; it comes back when the form is done. */
+  resume: BankingFields | null;
 }
 
 const clearedFields: Omit<BankingFields, 'action' | 'exactGoChosen'> = {
@@ -80,6 +87,10 @@ const clearedFields: Omit<BankingFields, 'action' | 'exactGoChosen'> = {
   ratePercent: null,
   cooldownRounds: null,
   cooldownAcknowledged: false,
+  raising: false,
+  raiseConfirming: false,
+  raisePlan: emptyRaisePlan,
+  resume: null,
 };
 
 function settledBankLoan(inputs: BankingInputs): Loan | null {

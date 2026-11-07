@@ -4,6 +4,7 @@ import { completedAmount, cooldownRetryRounds } from './banking-dialog-model';
 import type { BankingRequest } from './banking-dialog-derive';
 import type { BankingFields } from './banking-dialog-fields';
 import type { BankingDialogProps } from './banking-dialog-types';
+import { emptyRaisePlan } from './banking-raise-plan';
 import type { BankingState } from './useBankingState';
 import type { ActionType } from './game-page-helpers';
 
@@ -34,6 +35,55 @@ function commandIdFor(state: BankingState, request: Request): string {
   return fresh;
 }
 
+/**
+ * The dialog stays open after raising funds, so a recorded operation's id must go: the same sale
+ * again is a new operation, and the server would otherwise replay the first one.
+ */
+function forgetCommandIds(state: BankingState, requests: readonly Request[]): void {
+  for (const request of requests) state.commandIdsRef.current.delete(JSON.stringify(request));
+}
+
+/**
+ * Records everything chosen in the "Find funds" menu, one operation at a time. Each response is
+ * applied as it arrives: what is recorded stays recorded if a later one fails, the menu then shows
+ * that state, and a retry only sends what is left. An operation that failed keeps its command id,
+ * so a retry after a lost response is deduplicated by the server.
+ */
+export function useRaiseSubmit(input: {
+  props: BankingDialogProps;
+  state: BankingState;
+  requests: readonly Request[];
+}) {
+  const { props, state, requests } = input;
+  const { patch, setError, setSubmitting, submittingRef } = state;
+
+  return async () => {
+    if (submittingRef.current || requests.length === 0) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setError(null);
+    try {
+      for (const request of requests) {
+        const result = await monopolyBankApi.createTransaction(
+          props.gameId,
+          request,
+          commandIdFor(state, request),
+        );
+        forgetCommandIds(state, [request]);
+        if (!('paymentRequests' in result)) props.onFundsRaised(result);
+      }
+      props.onFundsRaiseFinished(null);
+      patch({ raiseConfirming: false, raisePlan: emptyRaisePlan });
+    } catch (caught) {
+      setError(caught);
+      patch({ raiseConfirming: false });
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
+}
+
 export function useBankingSubmit(input: SubmitInput) {
   const { props, state, action, requests, valid, targetName } = input;
   const { patch, setError, setSubmitting, submittingRef, commandIdsRef } = state;
@@ -61,6 +111,13 @@ export function useBankingSubmit(input: SubmitInput) {
       }
       const last = done.at(-1);
       if (last === undefined) return;
+      if (state.fields.resume !== null) {
+        done.forEach((result) => props.onFundsRaised(result));
+        props.onFundsRaiseFinished(action);
+        forgetCommandIds(state, batch);
+        patch(state.fields.resume);
+        return;
+      }
       const total = done.reduce((sum, result) => sum + result.transaction.amount, 0);
       props.onCompleted(
         last.players,
